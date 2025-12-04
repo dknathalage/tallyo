@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tallyo - Legal Documents</title>
+    <title>Tallyo - Simple Expense Tracking</title>
+    <meta name="description" content="Tallyo - A simple and elegant expense tracking app">
     <style>
         * {
             margin: 0;
@@ -14,106 +15,219 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
-            color: #333;
-            background-color: #f5f5f7;
+            color: #1d1d1f;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 40px 20px;
+            padding: 20px;
         }
 
         header {
             text-align: center;
-            margin-bottom: 60px;
+            padding: 80px 20px 60px;
         }
 
-        h1 {
-            font-size: 48px;
-            font-weight: 600;
-            margin-bottom: 10px;
-            color: #1d1d1f;
+        .logo {
+            font-size: 64px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 20px;
+            letter-spacing: -1px;
         }
 
-        .subtitle {
-            font-size: 21px;
-            color: #6e6e73;
-        }
-
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 40px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            text-decoration: none;
-            color: inherit;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-        }
-
-        .card h2 {
+        .tagline {
             font-size: 28px;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .description {
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.8);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 16px 40px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 30px;
+            font-size: 18px;
             font-weight: 600;
-            margin-bottom: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin: 60px 0;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 40px 30px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 24px;
+            margin-bottom: 12px;
             color: #1d1d1f;
         }
 
-        .card p {
+        .feature-card p {
             color: #6e6e73;
-            font-size: 17px;
+            font-size: 16px;
+            line-height: 1.5;
         }
 
-        .arrow {
-            margin-top: 15px;
-            color: #0071e3;
-            font-size: 20px;
+        .links-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 40px;
+            margin: 40px 0;
+            text-align: center;
+        }
+
+        .links-section h2 {
+            font-size: 32px;
+            margin-bottom: 30px;
+            color: #1d1d1f;
+        }
+
+        .link-grid {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .link-item {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #f5f5f7;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .link-item:hover {
+            background: #667eea;
+            color: white;
         }
 
         footer {
             text-align: center;
-            margin-top: 80px;
-            padding-top: 40px;
-            border-top: 1px solid #d2d2d7;
-            color: #6e6e73;
+            padding: 40px 20px;
+            color: rgba(255, 255, 255, 0.8);
             font-size: 14px;
+        }
+
+        footer a {
+            color: white;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .logo {
+                font-size: 48px;
+            }
+
+            .tagline {
+                font-size: 24px;
+            }
+
+            .description {
+                font-size: 16px;
+            }
+
+            .features {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Tallyo</h1>
-            <p class="subtitle">Legal Documents</p>
+            <h1 class="logo">Tallyo</h1>
+            <p class="tagline">Simple Expense Tracking</p>
+            <p class="description">
+                Keep track of your expenses effortlessly. Simple, elegant, and efficient expense management at your fingertips.
+            </p>
+            <a href="#download" class="cta-button">Get Started</a>
         </header>
 
-        <div class="card-grid">
-            <a href="privacy.html" class="card">
-                <h2>Privacy Policy</h2>
-                <p>Learn how we collect, use, and protect your personal information.</p>
-                <div class="arrow">→</div>
-            </a>
+        <div class="features">
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Track Expenses</h3>
+                <p>Easily record and categorize your daily expenses with just a few taps.</p>
+            </div>
 
-            <a href="terms.html" class="card">
-                <h2>Terms of Service</h2>
-                <p>Read the terms and conditions for using Tallyo.</p>
-                <div class="arrow">→</div>
-            </a>
+            <div class="feature-card">
+                <div class="feature-icon">📈</div>
+                <h3>Visualize Spending</h3>
+                <p>Get clear insights into your spending patterns with beautiful charts and reports.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>Secure & Private</h3>
+                <p>Your financial data is encrypted and stored securely. Your privacy is our priority.</p>
+            </div>
+        </div>
+
+        <div class="links-section">
+            <h2>Legal & Support</h2>
+            <div class="link-grid">
+                <a href="privacy.html" class="link-item">Privacy Policy</a>
+                <a href="terms.html" class="link-item">Terms of Service</a>
+            </div>
         </div>
 
         <footer>
             <p>&copy; 2024 Tallyo. All rights reserved.</p>
+            <p>
+                <a href="privacy.html">Privacy</a>
+                <a href="terms.html">Terms</a>
+            </p>
         </footer>
     </div>
 </body>
