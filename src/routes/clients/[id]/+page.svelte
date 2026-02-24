@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { getClient, updateClient, deleteClient } from '$lib/db/queries/clients';
 	import { getClientInvoices } from '$lib/db/queries/invoices';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
@@ -24,13 +25,13 @@
 
 	async function handleDelete() {
 		await deleteClient(clientId);
-		goto('/clients');
+		goto(`${base}/clients`);
 	}
 </script>
 
 {#if !client}
 	<EmptyState title="Client not found" message="This client does not exist or has been deleted.">
-		<a href="/clients">
+		<a href="{base}/clients">
 			<Button variant="secondary">Back to Clients</Button>
 		</a>
 	</EmptyState>
@@ -39,7 +40,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="/clients" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Clients</a>
+				<a href="{base}/clients" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Clients</a>
 				<h1 class="mt-1 text-2xl font-bold text-gray-900">{client.name}</h1>
 			</div>
 			<div class="flex gap-2">
@@ -77,7 +78,7 @@
 		<div>
 			<div class="flex items-center justify-between">
 				<h2 class="text-lg font-semibold text-gray-900">Invoices</h2>
-				<a href="/invoices/new?client_id={clientId}">
+				<a href="{base}/invoices/new?client_id={clientId}">
 					<Button size="sm">New Invoice</Button>
 				</a>
 			</div>
@@ -101,7 +102,7 @@
 							{#each invoices as invoice}
 								<tr class="transition-colors hover:bg-gray-50">
 									<td class="px-6 py-4">
-										<a href="/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
+										<a href="{base}/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
 											{invoice.invoice_number}
 										</a>
 									</td>

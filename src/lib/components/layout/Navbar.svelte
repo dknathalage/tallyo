@@ -1,18 +1,20 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { base } from '$app/paths';
 	import { db, close } from '$lib/db/connection.svelte';
 
 	let mobileMenuOpen = $state(false);
 
 	const navLinks = [
-		{ href: '/', label: 'Dashboard' },
-		{ href: '/invoices', label: 'Invoices' },
-		{ href: '/clients', label: 'Clients' }
+		{ href: `${base}/`, label: 'Dashboard' },
+		{ href: `${base}/invoices`, label: 'Invoices' },
+		{ href: `${base}/clients`, label: 'Clients' }
 	];
 
 	function isActive(href: string): boolean {
-		if (href === '/') return page.url.pathname === '/';
-		return page.url.pathname.startsWith(href);
+		const path = page.url.pathname;
+		if (href === `${base}/`) return path === `${base}/` || path === base;
+		return path.startsWith(href);
 	}
 </script>
 
@@ -21,7 +23,7 @@
 		<div class="flex h-16 items-center justify-between">
 			<!-- Left: Logo + Nav Links -->
 			<div class="flex items-center gap-8">
-				<a href="/" class="flex items-center gap-2">
+				<a href="{base}/" class="flex items-center gap-2">
 					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
 						IM
 					</div>

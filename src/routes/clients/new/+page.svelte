@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { createClient } from '$lib/db/queries/clients';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 
 	async function handleSubmit(data: { name: string; email: string; phone: string; address: string }) {
 		await createClient(data);
-		goto('/clients');
+		goto(`${base}/clients`);
 	}
 </script>
 

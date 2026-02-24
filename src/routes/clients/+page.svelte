@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import { getClients } from '$lib/db/queries/clients';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -13,7 +14,7 @@
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-gray-900">Clients</h1>
-		<a href="/clients/new">
+		<a href="{base}/clients/new">
 			<Button>New Client</Button>
 		</a>
 	</div>
@@ -29,7 +30,7 @@
 			<EmptyState title="No results" message="No clients match your search. Try a different term." />
 		{:else}
 			<EmptyState title="No clients yet" message="Create your first client to get started.">
-				<a href="/clients/new">
+				<a href="{base}/clients/new">
 					<Button>New Client</Button>
 				</a>
 			</EmptyState>
@@ -48,7 +49,7 @@
 					{#each clients as client}
 						<tr class="transition-colors hover:bg-gray-50">
 							<td class="px-6 py-4">
-								<a href="/clients/{client.id}" class="font-medium text-primary-600 hover:text-primary-700">
+								<a href="{base}/clients/{client.id}" class="font-medium text-primary-600 hover:text-primary-700">
 									{client.name}
 								</a>
 							</td>

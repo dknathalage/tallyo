@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { getInvoice, getInvoiceLineItems, updateInvoice } from '$lib/db/queries/invoices.js';
 	import InvoiceForm from '$lib/components/invoice/InvoiceForm.svelte';
 	import type { Invoice, LineItem } from '$lib/types/index.js';
@@ -33,19 +34,19 @@
 	) {
 		if (!invoice) return;
 		await updateInvoice(invoice.id, data, items);
-		goto(`/invoices/${invoice.id}`);
+		goto(`${base}/invoices/${invoice.id}`);
 	}
 </script>
 
 {#if !invoice}
 	<div class="py-12 text-center">
 		<p class="text-gray-500">Invoice not found.</p>
-		<a href="/invoices" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">Back to invoices</a>
+		<a href="{base}/invoices" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">Back to invoices</a>
 	</div>
 {:else}
 	<div class="space-y-6">
 		<div class="flex items-center gap-3">
-			<a href="/invoices/{invoice.id}" class="text-gray-400 transition-colors hover:text-gray-600" aria-label="Back to invoice">
+			<a href="{base}/invoices/{invoice.id}" class="text-gray-400 transition-colors hover:text-gray-600" aria-label="Back to invoice">
 				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
 				</svg>

@@ -7,6 +7,7 @@
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 
 	let search = $state('');
 	let statusFilter = $state('');
@@ -30,7 +31,7 @@
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-gray-900">Invoices</h1>
-		<Button onclick={() => goto('/invoices/new')}>New Invoice</Button>
+		<Button onclick={() => goto(`${base}/invoices/new`)}>New Invoice</Button>
 	</div>
 
 	<!-- Search and filters -->
@@ -54,7 +55,7 @@
 	<!-- Invoice list -->
 	{#if invoices.length === 0}
 		<EmptyState title="No invoices found" message="Create your first invoice to get started.">
-			<Button onclick={() => goto('/invoices/new')}>New Invoice</Button>
+			<Button onclick={() => goto(`${base}/invoices/new`)}>New Invoice</Button>
 		</EmptyState>
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -72,7 +73,7 @@
 					{#each invoices as invoice}
 						<tr
 							class="cursor-pointer transition-colors hover:bg-gray-50"
-							onclick={() => goto(`/invoices/${invoice.id}`)}
+							onclick={() => goto(`${base}/invoices/${invoice.id}`)}
 						>
 							<td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-primary-600">
 								{invoice.invoice_number}

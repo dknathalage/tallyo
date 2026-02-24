@@ -1,11 +1,27 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { db, initNew, openExisting } from '$lib/db/connection.svelte';
+	import { db, initNew, openExisting, tryRestore } from '$lib/db/connection.svelte';
 
 	let { children }: { children: Snippet } = $props();
+	let restoring = $state(true);
+
+	onMount(async () => {
+		await tryRestore();
+		restoring = false;
+	});
 </script>
 
-{#if db.isOpen}
+{#if restoring}
+	<div class="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 via-white to-primary-100">
+		<div class="text-center">
+			<div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary-600 text-2xl font-bold text-white">
+				IM
+			</div>
+			<p class="text-sm text-gray-500">Loading...</p>
+		</div>
+	</div>
+{:else if db.isOpen}
 	{@render children()}
 {:else}
 	<div class="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 via-white to-primary-100">

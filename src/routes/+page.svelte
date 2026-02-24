@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import { getDashboardStats } from '$lib/db/queries/dashboard';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
@@ -13,10 +14,10 @@
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
 		<div class="flex gap-2">
-			<a href="/invoices/new">
+			<a href="{base}/invoices/new">
 				<Button>New Invoice</Button>
 			</a>
-			<a href="/clients/new">
+			<a href="{base}/clients/new">
 				<Button variant="secondary">New Client</Button>
 			</a>
 		</div>
@@ -90,14 +91,14 @@
 		<div class="flex items-center justify-between">
 			<h2 class="text-lg font-semibold text-gray-900">Recent Invoices</h2>
 			{#if stats.total_invoices > 0}
-				<a href="/invoices" class="text-sm text-primary-600 hover:text-primary-700">View all</a>
+				<a href="{base}/invoices" class="text-sm text-primary-600 hover:text-primary-700">View all</a>
 			{/if}
 		</div>
 
 		{#if stats.recent_invoices.length === 0}
 			<div class="mt-4">
 				<EmptyState title="No invoices yet" message="Create your first invoice to start tracking your business.">
-					<a href="/invoices/new">
+					<a href="{base}/invoices/new">
 						<Button>Create Invoice</Button>
 					</a>
 				</EmptyState>
@@ -118,7 +119,7 @@
 						{#each stats.recent_invoices as invoice}
 							<tr class="transition-colors hover:bg-gray-50">
 								<td class="px-6 py-4">
-									<a href="/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
+									<a href="{base}/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
 										{invoice.invoice_number}
 									</a>
 								</td>

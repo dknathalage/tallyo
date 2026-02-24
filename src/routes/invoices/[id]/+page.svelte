@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { getInvoice, getInvoiceLineItems, deleteInvoice, updateInvoiceStatus } from '$lib/db/queries/invoices.js';
 	import { getClient } from '$lib/db/queries/clients.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
@@ -28,7 +29,7 @@
 	async function handleDelete() {
 		if (!invoice) return;
 		await deleteInvoice(invoice.id);
-		goto('/invoices');
+		goto(`${base}/invoices`);
 	}
 
 	async function handleStatusChange(status: string) {
@@ -49,14 +50,14 @@
 {#if !invoice}
 	<div class="py-12 text-center">
 		<p class="text-gray-500">Invoice not found.</p>
-		<a href="/invoices" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">Back to invoices</a>
+		<a href="{base}/invoices" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">Back to invoices</a>
 	</div>
 {:else}
 	<div class="space-y-6">
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
-				<a href="/invoices" class="text-gray-400 transition-colors hover:text-gray-600" aria-label="Back to invoices">
+				<a href="{base}/invoices" class="text-gray-400 transition-colors hover:text-gray-600" aria-label="Back to invoices">
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
 					</svg>
@@ -89,7 +90,7 @@
 					PDF
 				</Button>
 
-				<Button variant="secondary" size="sm" onclick={() => goto(`/invoices/${invoice?.id}/edit`)}>
+				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/invoices/${invoice?.id}/edit`)}>
 					Edit
 				</Button>
 

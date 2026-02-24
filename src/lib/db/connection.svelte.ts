@@ -19,6 +19,98 @@ export const db = $state<{
 	isOpen: false
 });
 
+// --- IndexedDB helpers for persisting the file handle ---
+const IDB_NAME = 'invoice-manager';
+const IDB_STORE = 'file-handles';
+const IDB_KEY = 'last-db-handle';
+
+function openIDB(): Promise<IDBDatabase> {
+	return new Promise((resolve, reject) => {
+		const req = indexedDB.open(IDB_NAME, 1);
+		req.onupgradeneeded = () => {
+			req.result.createObjectStore(IDB_STORE);
+		};
+		req.onsuccess = () => resolve(req.result);
+		req.onerror = () => reject(req.error);
+	});
+}
+
+async function storeHandle(handle: FileSystemFileHandle) {
+	const idb = await openIDB();
+	const tx = idb.transaction(IDB_STORE, 'readwrite');
+	tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
+	return new Promise<void>((resolve, reject) => {
+		tx.oncomplete = () => { idb.close(); resolve(); };
+		tx.onerror = () => { idb.close(); reject(tx.error); };
+	});
+}
+
+async function getStoredHandle(): Promise<FileSystemFileHandle | null> {
+	try {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_STORE, 'readonly');
+		const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+		return new Promise((resolve) => {
+			req.onsuccess = () => { idb.close(); resolve(req.result ?? null); };
+			req.onerror = () => { idb.close(); resolve(null); };
+		});
+	} catch {
+		return null;
+	}
+}
+
+async function clearStoredHandle() {
+	try {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_STORE, 'readwrite');
+		tx.objectStore(IDB_STORE).delete(IDB_KEY);
+		return new Promise<void>((resolve) => {
+			tx.oncomplete = () => { idb.close(); resolve(); };
+			tx.onerror = () => { idb.close(); resolve(); };
+		});
+	} catch {
+		// ignore
+	}
+}
+
+/** Try to restore the last-used database from a stored file handle. */
+export async function tryRestore(): Promise<boolean> {
+	if (!supportsFileSystemAccess()) return false;
+
+	const handle = await getStoredHandle();
+	if (!handle) return false;
+
+	// Check/request permission
+	const perm = await handle.queryPermission({ mode: 'readwrite' });
+	if (perm === 'denied') {
+		await clearStoredHandle();
+		return false;
+	}
+
+	if (perm === 'prompt') {
+		const granted = await handle.requestPermission({ mode: 'readwrite' });
+		if (granted !== 'granted') return false;
+	}
+
+	try {
+		const SQL = await initSql();
+		const file = await handle.getFile();
+		const buffer = await file.arrayBuffer();
+		const database = new SQL.Database(new Uint8Array(buffer));
+		database.run('PRAGMA foreign_keys = ON;');
+
+		_instance = database;
+		db.instance = database;
+		db.fileName = handle.name;
+		db.fileHandle = handle;
+		db.isOpen = true;
+		return true;
+	} catch {
+		await clearStoredHandle();
+		return false;
+	}
+}
+
 async function initSql() {
 	return await initSqlJs({
 		locateFile: () => `${base}/sql-wasm.wasm`
@@ -58,6 +150,7 @@ export async function initNew() {
 	db.fileHandle = fileHandle;
 	db.isOpen = true;
 
+	if (fileHandle) await storeHandle(fileHandle);
 	await save();
 }
 
@@ -83,6 +176,8 @@ export async function openExisting() {
 		db.fileName = fileHandle.name;
 		db.fileHandle = fileHandle;
 		db.isOpen = true;
+
+		await storeHandle(fileHandle);
 	} else {
 		const input = document.createElement('input');
 		input.type = 'file';
@@ -131,7 +226,7 @@ export async function save() {
 	}
 }
 
-export function close() {
+export async function close() {
 	if (_instance) {
 		_instance.close();
 	}
@@ -140,6 +235,7 @@ export function close() {
 	db.fileName = '';
 	db.fileHandle = null;
 	db.isOpen = false;
+	await clearStoredHandle();
 }
 
 export function runRaw(sql: string) {

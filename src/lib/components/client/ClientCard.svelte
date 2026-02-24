@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import type { Client } from '$lib/types';
 
 	let { client }: { client: Client } = $props();
 </script>
 
 <a
-	href="/clients/{client.id}"
+	href="{base}/clients/{client.id}"
 	class="block rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
 >
 	<h3 class="font-semibold text-gray-900">{client.name}</h3>

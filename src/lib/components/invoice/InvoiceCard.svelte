@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import type { Invoice } from '$lib/types/index.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
@@ -7,7 +8,7 @@
 </script>
 
 <a
-	href="/invoices/{invoice.id}"
+	href="{base}/invoices/{invoice.id}"
 	class="block rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
 >
 	<div class="flex items-center justify-between">
