@@ -1,0 +1,21 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { createClient } from '$lib/db/queries/clients';
+	import ClientForm from '$lib/components/client/ClientForm.svelte';
+
+	async function handleSubmit(data: { name: string; email: string; phone: string; address: string }) {
+		await createClient(data);
+		goto('/clients');
+	}
+</script>
+
+<div class="mx-auto max-w-lg space-y-6">
+	<div>
+		<h1 class="text-2xl font-bold text-gray-900">New Client</h1>
+		<p class="mt-1 text-sm text-gray-500">Add a new client to your database.</p>
+	</div>
+
+	<div class="rounded-lg border border-gray-200 bg-white p-6">
+		<ClientForm onsubmit={handleSubmit} />
+	</div>
+</div>
