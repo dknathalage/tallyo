@@ -65,7 +65,7 @@
 			</div>
 
 			<p class="mt-6 text-center text-xs text-gray-400">
-				Files are saved locally using the File System Access API.
+				Your data stays on your device.
 			</p>
 		</div>
 	</div>

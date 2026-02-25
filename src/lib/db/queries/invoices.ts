@@ -51,13 +51,16 @@ export async function createInvoice(
 		total: number;
 		notes?: string;
 		status?: string;
+		business_snapshot?: string;
+		client_snapshot?: string;
+		payer_snapshot?: string;
 	},
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
+	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
 ): Promise<number> {
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				crypto.randomUUID(),
 				data.invoice_number,
@@ -69,7 +72,10 @@ export async function createInvoice(
 				data.tax_amount,
 				data.total,
 				data.notes ?? '',
-				data.status ?? 'draft'
+				data.status ?? 'draft',
+				data.business_snapshot ?? '{}',
+				data.client_snapshot ?? '{}',
+				data.payer_snapshot ?? '{}'
 			]
 		);
 
@@ -78,8 +84,8 @@ export async function createInvoice(
 
 		for (const item of lineItems) {
 			execute(
-				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				[crypto.randomUUID(), invoiceId, item.description, item.quantity, item.rate, item.amount, item.sort_order]
+				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				[crypto.randomUUID(), invoiceId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
 			);
 		}
 
@@ -112,14 +118,17 @@ export async function updateInvoice(
 		total: number;
 		notes?: string;
 		status?: string;
+		business_snapshot?: string;
+		client_snapshot?: string;
+		payer_snapshot?: string;
 	},
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
+	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
 ): Promise<void> {
 	const oldInvoice = getInvoice(id);
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
 			[
 				data.invoice_number,
 				data.client_id,
@@ -131,6 +140,9 @@ export async function updateInvoice(
 				data.total,
 				data.notes ?? '',
 				data.status ?? 'draft',
+				data.business_snapshot ?? '{}',
+				data.client_snapshot ?? '{}',
+				data.payer_snapshot ?? '{}',
 				id
 			]
 		);
@@ -139,8 +151,8 @@ export async function updateInvoice(
 
 		for (const item of lineItems) {
 			execute(
-				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				[crypto.randomUUID(), id, item.description, item.quantity, item.rate, item.amount, item.sort_order]
+				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				[crypto.randomUUID(), id, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
 			);
 		}
 

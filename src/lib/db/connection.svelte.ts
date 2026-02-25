@@ -2,6 +2,8 @@ import initSqlJs, { type Database } from 'sql.js';
 import { base } from '$app/paths';
 import { CREATE_TABLES } from './schema.js';
 import { migrateAddUuids } from './migrate.js';
+import { getIO } from '$lib/io/index.js';
+import type { WebFileIO } from '$lib/io/web-io.js';
 
 // Raw (non-proxied) reference to the Database instance.
 // Svelte 5's $state deep proxy wraps objects in a Proxy, which
@@ -11,125 +13,76 @@ let _instance: Database | null = null;
 export const db = $state<{
 	instance: Database | null;
 	fileName: string;
-	fileHandle: FileSystemFileHandle | null;
+	ioHandle: string | null;
 	isOpen: boolean;
 }>({
 	instance: null,
 	fileName: '',
-	fileHandle: null,
+	ioHandle: null,
 	isOpen: false
 });
 
-// --- IndexedDB helpers for persisting the file handle ---
-const IDB_NAME = 'invoice-manager';
-const IDB_STORE = 'file-handles';
-const IDB_KEY = 'last-db-handle';
-
-function openIDB(): Promise<IDBDatabase> {
-	return new Promise((resolve, reject) => {
-		const req = indexedDB.open(IDB_NAME, 1);
-		req.onupgradeneeded = () => {
-			req.result.createObjectStore(IDB_STORE);
-		};
-		req.onsuccess = () => resolve(req.result);
-		req.onerror = () => reject(req.error);
-	});
-}
-
-async function storeHandle(handle: FileSystemFileHandle) {
-	const idb = await openIDB();
-	const tx = idb.transaction(IDB_STORE, 'readwrite');
-	tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
-	return new Promise<void>((resolve, reject) => {
-		tx.oncomplete = () => { idb.close(); resolve(); };
-		tx.onerror = () => { idb.close(); reject(tx.error); };
-	});
-}
-
-async function getStoredHandle(): Promise<FileSystemFileHandle | null> {
-	try {
-		const idb = await openIDB();
-		const tx = idb.transaction(IDB_STORE, 'readonly');
-		const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
-		return new Promise((resolve) => {
-			req.onsuccess = () => { idb.close(); resolve(req.result ?? null); };
-			req.onerror = () => { idb.close(); resolve(null); };
-		});
-	} catch {
-		return null;
-	}
-}
-
-async function clearStoredHandle() {
-	try {
-		const idb = await openIDB();
-		const tx = idb.transaction(IDB_STORE, 'readwrite');
-		tx.objectStore(IDB_STORE).delete(IDB_KEY);
-		return new Promise<void>((resolve) => {
-			tx.oncomplete = () => { idb.close(); resolve(); };
-			tx.onerror = () => { idb.close(); resolve(); };
-		});
-	} catch {
-		// ignore
-	}
-}
-
 /**
  * Check if there's a stored handle we can reconnect to.
- * If permission is already granted, opens it silently.
+ * If permission is already granted (or native), opens silently.
  * Returns the stored file name if a handle exists but needs user activation, or null.
  */
 export async function tryRestore(): Promise<string | null> {
-	if (!supportsFileSystemAccess()) return null;
+	const io = await getIO();
+	const restored = await io.tryRestore();
+	if (!restored) return null;
 
-	const handle = await getStoredHandle();
-	if (!handle) return null;
-
-	const perm = await handle.queryPermission({ mode: 'readwrite' });
-	if (perm === 'denied') {
-		await clearStoredHandle();
-		return null;
-	}
-
-	// Permission already granted — open silently
-	if (perm === 'granted') {
-		const opened = await openFromHandle(handle);
-		return opened ? null : null;
-	}
-
-	// Permission needs user gesture — return the file name so UI can show a button
-	return handle.name;
-}
-
-/** Reconnect to the stored handle (must be called from a user gesture). */
-export async function reconnect(): Promise<boolean> {
-	const handle = await getStoredHandle();
-	if (!handle) return false;
-
-	const granted = await handle.requestPermission({ mode: 'readwrite' });
-	if (granted !== 'granted') return false;
-
-	return openFromHandle(handle);
-}
-
-async function openFromHandle(handle: FileSystemFileHandle): Promise<boolean> {
+	// Try reading immediately — works when permission is granted or on native
 	try {
+		const data = await io.readFile(restored.handle);
 		const SQL = await initSql();
-		const file = await handle.getFile();
-		const buffer = await file.arrayBuffer();
-		const database = new SQL.Database(new Uint8Array(buffer));
+		const database = new SQL.Database(data);
 		database.run('PRAGMA foreign_keys = ON;');
 		database.run(CREATE_TABLES);
 		_instance = database;
 		migrateAddUuids();
 
 		db.instance = database;
-		db.fileName = handle.name;
-		db.fileHandle = handle;
+		db.fileName = restored.name;
+		db.ioHandle = restored.handle;
+		db.isOpen = true;
+		return null; // opened silently
+	} catch {
+		// Permission needs user gesture — return the file name so UI can show a button
+		return restored.name;
+	}
+}
+
+/** Reconnect to the stored handle (must be called from a user gesture on web). */
+export async function reconnect(): Promise<boolean> {
+	const io = await getIO();
+
+	// On web, the IO implementation may need to request permission
+	if ('requestPermission' in io) {
+		const granted = await (io as WebFileIO).requestPermission();
+		if (!granted) return false;
+	}
+
+	const restored = await io.tryRestore();
+	if (!restored) return false;
+
+	try {
+		const data = await io.readFile(restored.handle);
+		const SQL = await initSql();
+		const database = new SQL.Database(data);
+		database.run('PRAGMA foreign_keys = ON;');
+		database.run(CREATE_TABLES);
+		_instance = database;
+		migrateAddUuids();
+
+		db.instance = database;
+		db.fileName = restored.name;
+		db.ioHandle = restored.handle;
 		db.isOpen = true;
 		return true;
 	} catch {
-		await clearStoredHandle();
+		const ioForClear = await getIO();
+		await ioForClear.clearStored();
 		return false;
 	}
 }
@@ -140,28 +93,12 @@ async function initSql() {
 	});
 }
 
-function supportsFileSystemAccess(): boolean {
-	return typeof window !== 'undefined' && 'showSaveFilePicker' in window;
-}
-
 export async function initNew() {
+	const io = await getIO();
 	const SQL = await initSql();
 
-	let fileHandle: FileSystemFileHandle | null = null;
-	let fileName = 'invoices.sqlite';
-
-	if (supportsFileSystemAccess()) {
-		fileHandle = await window.showSaveFilePicker({
-			suggestedName: 'invoices.sqlite',
-			types: [
-				{
-					description: 'SQLite Database',
-					accept: { 'application/x-sqlite3': ['.sqlite', '.db'] }
-				}
-			]
-		});
-		fileName = fileHandle.name;
-	}
+	const handle = await io.pickNewFile('invoices.sqlite');
+	const fileName = io.getFileName(handle);
 
 	const database = new SQL.Database();
 	database.run('PRAGMA foreign_keys = ON;');
@@ -171,80 +108,43 @@ export async function initNew() {
 
 	db.instance = database;
 	db.fileName = fileName;
-	db.fileHandle = fileHandle;
+	db.ioHandle = handle;
 	db.isOpen = true;
 
-	if (fileHandle) await storeHandle(fileHandle);
 	await save();
 }
 
 export async function openExisting() {
+	const io = await getIO();
 	const SQL = await initSql();
 
-	if (supportsFileSystemAccess()) {
-		const [fileHandle] = await window.showOpenFilePicker({
-			types: [
-				{
-					description: 'SQLite Database',
-					accept: { 'application/x-sqlite3': ['.sqlite', '.db'] }
-				}
-			]
-		});
-		const file = await fileHandle.getFile();
-		const buffer = await file.arrayBuffer();
-		const database = new SQL.Database(new Uint8Array(buffer));
-		database.run('PRAGMA foreign_keys = ON;');
-		database.run(CREATE_TABLES);
-		_instance = database;
-		migrateAddUuids();
+	const handle = await io.pickExistingFile();
+	const data = await io.readFile(handle);
+	const fileName = io.getFileName(handle);
 
-		db.instance = database;
-		db.fileName = fileHandle.name;
-		db.fileHandle = fileHandle;
-		db.isOpen = true;
+	const database = new SQL.Database(data);
+	database.run('PRAGMA foreign_keys = ON;');
+	database.run(CREATE_TABLES);
+	_instance = database;
+	migrateAddUuids();
 
-		await storeHandle(fileHandle);
-	} else {
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = '.sqlite,.db';
-
-		const file = await new Promise<File>((resolve, reject) => {
-			input.onchange = () => {
-				if (input.files && input.files[0]) {
-					resolve(input.files[0]);
-				} else {
-					reject(new Error('No file selected'));
-				}
-			};
-			input.click();
-		});
-
-		const buffer = await file.arrayBuffer();
-		const database = new SQL.Database(new Uint8Array(buffer));
-		database.run('PRAGMA foreign_keys = ON;');
-		database.run(CREATE_TABLES);
-		_instance = database;
-		migrateAddUuids();
-
-		db.instance = database;
-		db.fileName = file.name;
-		db.fileHandle = null;
-		db.isOpen = true;
-	}
+	db.instance = database;
+	db.fileName = fileName;
+	db.ioHandle = handle;
+	db.isOpen = true;
 }
 
 export async function save() {
 	if (!_instance) return;
 
+	const io = await getIO();
 	const data = _instance.export();
-	const blob = new Blob([data as unknown as BlobPart], { type: 'application/x-sqlite3' });
 
-	if (db.fileHandle) {
-		const writable = await db.fileHandle.createWritable();
-		await writable.write(blob);
-		await writable.close();
+	if (db.ioHandle) {
+		await io.writeFile(db.ioHandle, data);
 	} else {
+		// Fallback: trigger download
+		const blob = new Blob([data as unknown as BlobPart], { type: 'application/x-sqlite3' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
@@ -261,9 +161,11 @@ export async function close() {
 	_instance = null;
 	db.instance = null;
 	db.fileName = '';
-	db.fileHandle = null;
+	db.ioHandle = null;
 	db.isOpen = false;
-	await clearStoredHandle();
+
+	const io = await getIO();
+	await io.clearStored();
 }
 
 export function runRaw(sql: string) {

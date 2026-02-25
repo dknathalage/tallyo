@@ -5,6 +5,7 @@
 	import { getClient, updateClient, deleteClient } from '$lib/db/queries/clients';
 	import { getClientInvoices } from '$lib/db/queries/invoices';
 	import { getEntityHistory } from '$lib/db/queries/audit';
+	import { getPayer } from '$lib/db/queries/payers';
 	import type { AuditLogEntry } from '$lib/types/index.js';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -17,11 +18,21 @@
 	let client = $derived(getClient(clientId));
 	let invoices = $derived(getClientInvoices(clientId));
 	let history = $derived(getEntityHistory('client', clientId));
+	let payer = $derived(client?.payer_id ? getPayer(client.payer_id) : null);
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
 
-	async function handleUpdate(data: { name: string; email: string; phone: string; address: string }) {
+	function parseMetadataObj(metaStr?: string): Record<string, string> {
+		try {
+			const obj = JSON.parse(metaStr || '{}');
+			return typeof obj === 'object' ? obj : {};
+		} catch {
+			return {};
+		}
+	}
+
+	async function handleUpdate(data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) {
 		await updateClient(clientId, data);
 		editing = false;
 	}
@@ -113,7 +124,43 @@
 						<dt class="text-sm font-medium text-gray-500">Address</dt>
 						<dd class="mt-1 whitespace-pre-line text-sm text-gray-900">{client.address || '-'}</dd>
 					</div>
+					{#if Object.keys(parseMetadataObj(client.metadata)).length > 0}
+						<div class="sm:col-span-2">
+							<dt class="text-sm font-medium text-gray-500">Additional Fields</dt>
+							<dd class="mt-1">
+								<div class="space-y-1">
+									{#each Object.entries(parseMetadataObj(client.metadata)) as [key, value]}
+										<div class="text-sm">
+											<span class="font-medium text-gray-700">{key}:</span>
+											<span class="text-gray-900">{value}</span>
+										</div>
+									{/each}
+								</div>
+							</dd>
+						</div>
+					{/if}
 				</dl>
+				{#if payer}
+					<div class="mt-6 border-t border-gray-200 pt-4">
+						<h3 class="text-sm font-medium text-gray-500">Bill-To Payer</h3>
+						<div class="mt-2">
+							<p class="text-sm font-medium text-gray-900">{payer.name}</p>
+							{#if payer.email}<p class="text-sm text-gray-500">{payer.email}</p>{/if}
+							{#if payer.phone}<p class="text-sm text-gray-500">{payer.phone}</p>{/if}
+							{#if payer.address}<p class="mt-1 whitespace-pre-line text-sm text-gray-500">{payer.address}</p>{/if}
+							{#if Object.keys(parseMetadataObj(payer.metadata)).length > 0}
+								<div class="mt-2 space-y-1">
+									{#each Object.entries(parseMetadataObj(payer.metadata)) as [key, value]}
+										<div class="text-sm">
+											<span class="font-medium text-gray-700">{key}:</span>
+											<span class="text-gray-900">{value}</span>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
 			{/if}
 		</div>
 

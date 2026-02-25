@@ -1,23 +1,22 @@
 <script lang="ts">
-	import type { Client, Payer, KeyValuePair } from '$lib/types';
+	import type { Payer, KeyValuePair } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
-	import { getPayers } from '$lib/db/queries/payers';
 
 	let {
 		initialData,
 		onsubmit
 	}: {
-		initialData?: Client;
-		onsubmit: (data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) => void;
+		initialData?: Payer;
+		onsubmit: (data: { name: string; email: string; phone: string; address: string; metadata: string }) => void;
 	} = $props();
 
 	let name = $state(initialData?.name ?? '');
 	let email = $state(initialData?.email ?? '');
 	let phone = $state(initialData?.phone ?? '');
 	let address = $state(initialData?.address ?? '');
-	let payerId: number | null = $state(initialData?.payer_id ?? null);
-	let payers: Payer[] = $state([]);
+
+	// Parse metadata from JSON string into pairs for editor
 	let metadataPairs: KeyValuePair[] = $state(parseMetadata(initialData?.metadata));
 
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
@@ -29,10 +28,6 @@
 		}
 	}
 
-	$effect(() => {
-		payers = getPayers();
-	});
-
 	function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
 		const metaObj: Record<string, string> = {};
@@ -41,38 +36,38 @@
 				metaObj[pair.key.trim()] = pair.value;
 			}
 		}
-		onsubmit({ name, email, phone, address, metadata: JSON.stringify(metaObj), payer_id: payerId });
+		onsubmit({ name, email, phone, address, metadata: JSON.stringify(metaObj) });
 	}
 </script>
 
 <form onsubmit={handleSubmit} class="space-y-4">
 	<div>
-		<label for="name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+		<label for="payer-name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
 		<input
-			id="name"
+			id="payer-name"
 			type="text"
 			bind:value={name}
 			required
 			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-			placeholder="Client name"
+			placeholder="Payer name"
 		/>
 	</div>
 
 	<div>
-		<label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+		<label for="payer-email" class="block text-sm font-medium text-gray-700">Email</label>
 		<input
-			id="email"
+			id="payer-email"
 			type="email"
 			bind:value={email}
 			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-			placeholder="client@example.com"
+			placeholder="payer@example.com"
 		/>
 	</div>
 
 	<div>
-		<label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
+		<label for="payer-phone" class="block text-sm font-medium text-gray-700">Phone</label>
 		<input
-			id="phone"
+			id="payer-phone"
 			type="tel"
 			bind:value={phone}
 			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
@@ -81,28 +76,14 @@
 	</div>
 
 	<div>
-		<label for="address" class="block text-sm font-medium text-gray-700">Address</label>
+		<label for="payer-address" class="block text-sm font-medium text-gray-700">Address</label>
 		<textarea
-			id="address"
+			id="payer-address"
 			bind:value={address}
 			rows={3}
 			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="Street address, city, state, zip"
 		></textarea>
-	</div>
-
-	<div>
-		<label for="payer" class="block text-sm font-medium text-gray-700">Bill-To Payer</label>
-		<select
-			id="payer"
-			bind:value={payerId}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-		>
-			<option value={null}>None</option>
-			{#each payers as payer}
-				<option value={payer.id}>{payer.name}</option>
-			{/each}
-		</select>
 	</div>
 
 	<div>
@@ -113,7 +94,6 @@
 	</div>
 
 	<div class="flex justify-end gap-3 pt-2">
-		<Button variant="secondary" onclick={() => history.back()}>Cancel</Button>
-		<Button type="submit">{initialData ? 'Save Changes' : 'Create Client'}</Button>
+		<Button type="submit">{initialData ? 'Save Changes' : 'Create Payer'}</Button>
 	</div>
 </form>

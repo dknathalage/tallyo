@@ -7,6 +7,9 @@ export interface Client {
 	address: string;
 	pricing_tier_id: number | null;
 	pricing_tier_name?: string;
+	metadata: string;
+	payer_id: number | null;
+	payer_name?: string;
 	created_at: string;
 	updated_at: string;
 }
@@ -25,6 +28,9 @@ export interface Invoice {
 	total: number;
 	notes: string;
 	status: 'draft' | 'sent' | 'paid' | 'overdue';
+	business_snapshot: string;
+	client_snapshot: string;
+	payer_snapshot: string;
 	created_at: string;
 	updated_at: string;
 }
@@ -37,6 +43,7 @@ export interface LineItem {
 	quantity: number;
 	rate: number;
 	amount: number;
+	notes: string;
 	sort_order: number;
 	catalog_item_id: number | null;
 	rate_tier_id: number | null;
@@ -110,4 +117,43 @@ export interface DashboardStats {
 	total_clients: number;
 	total_invoices: number;
 	recent_invoices: Invoice[];
+}
+
+export interface BusinessProfile {
+	id: number;
+	uuid: string;
+	name: string;
+	email: string;
+	phone: string;
+	address: string;
+	logo: string;
+	metadata: string; // JSON string of Record<string, string>
+	created_at: string;
+	updated_at: string;
+}
+
+export interface Payer {
+	id: number;
+	uuid: string;
+	name: string;
+	email: string;
+	phone: string;
+	address: string;
+	metadata: string; // JSON string of Record<string, string>
+	created_at: string;
+	updated_at: string;
+}
+
+export interface PartySnapshot {
+	name: string;
+	email: string;
+	phone: string;
+	address: string;
+	logo?: string;
+	metadata: Record<string, string>;
+}
+
+export interface KeyValuePair {
+	key: string;
+	value: string;
 }

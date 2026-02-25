@@ -1,6 +1,7 @@
 import adapter from '@sveltejs/adapter-static';
 
 const dev = process.argv.includes('dev');
+const capacitor = process.env.CAPACITOR_BUILD === 'true';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -9,7 +10,7 @@ const config = {
 			fallback: 'index.html'
 		}),
 		paths: {
-			base: dev ? '' : '/invoices'
+			base: dev || capacitor ? '' : '/invoices'
 		},
 		serviceWorker: {
 			register: false

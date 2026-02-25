@@ -27,12 +27,16 @@ export interface ParsedInvoiceGroup {
 	taxRate: number;
 	notes: string;
 	status: string;
+	businessSnapshot: string;
+	clientSnapshot: string;
+	payerSnapshot: string;
 	lineItems: {
 		description: string;
 		quantity: number;
 		rate: number;
 		amount: number;
 		sortOrder: number;
+		notes: string;
 	}[];
 	isNew: boolean;
 }

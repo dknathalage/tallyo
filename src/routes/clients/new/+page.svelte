@@ -4,7 +4,7 @@
 	import { createClient } from '$lib/db/queries/clients';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 
-	async function handleSubmit(data: { name: string; email: string; phone: string; address: string }) {
+	async function handleSubmit(data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) {
 		await createClient(data);
 		goto(`${base}/clients`);
 	}

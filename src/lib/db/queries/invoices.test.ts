@@ -117,7 +117,7 @@ describe('createInvoice', () => {
 	};
 
 	const lineItems = [
-		{ description: 'Service A', quantity: 1, rate: 100, amount: 100, sort_order: 0 }
+		{ description: 'Service A', quantity: 1, rate: 100, amount: 100, sort_order: 0, notes: 'Test note' }
 	];
 
 	it('creates invoice with line items in a transaction', async () => {
@@ -132,7 +132,7 @@ describe('createInvoice', () => {
 		);
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO line_items'),
-			[expect.any(String), 7, 'Service A', 1, 100, 100, 0]
+			[expect.any(String), 7, 'Service A', 1, 100, 100, 'Test note', 0]
 		);
 		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
 		expect(mockSave).toHaveBeenCalled();
@@ -159,6 +159,35 @@ describe('createInvoice', () => {
 			expect.arrayContaining(['', 'draft'])
 		);
 	});
+
+	it('includes snapshot fields when provided', async () => {
+		mockQuery.mockReturnValue([{ id: 1 }]);
+
+		const dataWithSnapshots = {
+			...invoiceData,
+			business_snapshot: '{"name":"My Biz"}',
+			client_snapshot: '{"name":"Client A"}',
+			payer_snapshot: '{"name":"Payer X"}'
+		};
+
+		await createInvoice(dataWithSnapshots, []);
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('business_snapshot'),
+			expect.arrayContaining(['{"name":"My Biz"}', '{"name":"Client A"}', '{"name":"Payer X"}'])
+		);
+	});
+
+	it('defaults snapshot fields to empty JSON object', async () => {
+		mockQuery.mockReturnValue([{ id: 1 }]);
+
+		await createInvoice(invoiceData, []);
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('INSERT INTO invoices'),
+			expect.arrayContaining(['{}', '{}', '{}'])
+		);
+	});
 });
 
 describe('updateInvoice', () => {
@@ -177,7 +206,7 @@ describe('updateInvoice', () => {
 
 	it('updates invoice and replaces line items in a transaction', async () => {
 		const newItems = [
-			{ description: 'New Service', quantity: 2, rate: 100, amount: 200, sort_order: 0 }
+			{ description: 'New Service', quantity: 2, rate: 100, amount: 200, sort_order: 0, notes: 'Updated note' }
 		];
 
 		await updateInvoice(1, invoiceData, newItems);
@@ -190,7 +219,7 @@ describe('updateInvoice', () => {
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM line_items WHERE invoice_id = ?', [1]);
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO line_items'),
-			[expect.any(String), 1, 'New Service', 2, 100, 200, 0]
+			[expect.any(String), 1, 'New Service', 2, 100, 200, 'Updated note', 0]
 		);
 		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
 		expect(mockSave).toHaveBeenCalled();
@@ -203,6 +232,22 @@ describe('updateInvoice', () => {
 
 		await expect(updateInvoice(1, invoiceData, [])).rejects.toThrow('Update failed');
 		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
+	});
+
+	it('includes snapshot fields in update', async () => {
+		const dataWithSnapshots = {
+			...invoiceData,
+			business_snapshot: '{"name":"Updated Biz"}',
+			client_snapshot: '{"name":"Updated Client"}',
+			payer_snapshot: '{"name":"Updated Payer"}'
+		};
+
+		await updateInvoice(1, dataWithSnapshots, []);
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('business_snapshot'),
+			expect.arrayContaining(['{"name":"Updated Biz"}', '{"name":"Updated Client"}', '{"name":"Updated Payer"}'])
+		);
 	});
 });
 

@@ -91,7 +91,8 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 			quantity: Number(r.line_quantity) || 1,
 			rate: Number(r.line_rate) || 0,
 			amount: Number(r.line_amount) || 0,
-			sortOrder: Number(r.line_sort_order) || idx
+			sortOrder: Number(r.line_sort_order) || idx,
+			notes: r.line_notes?.trim() || ''
 		}));
 
 		groups.push({
@@ -104,6 +105,9 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 			taxRate: Number(first.tax_rate) || 0,
 			notes: first.notes?.trim() || '',
 			status: first.status?.trim().toLowerCase() || 'draft',
+			businessSnapshot: first.business_snapshot?.trim() || '{}',
+			clientSnapshot: first.client_snapshot?.trim() || '{}',
+			payerSnapshot: first.payer_snapshot?.trim() || '{}',
 			lineItems,
 			isNew: true
 		});
@@ -157,7 +161,7 @@ export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClien
 			const total = subtotal + taxAmount;
 
 			execute(
-				'INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 				[
 					group.invoiceUuid,
 					invoiceNumber,
@@ -169,7 +173,10 @@ export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClien
 					taxAmount,
 					total,
 					group.notes,
-					group.status
+					group.status,
+					group.businessSnapshot,
+					group.clientSnapshot,
+					group.payerSnapshot
 				]
 			);
 
@@ -181,7 +188,7 @@ export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClien
 			// Insert line items
 			for (const li of group.lineItems) {
 				execute(
-					'INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+					'INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 					[
 						crypto.randomUUID(),
 						invoiceId,
@@ -189,6 +196,7 @@ export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClien
 						li.quantity,
 						li.rate,
 						li.amount,
+						li.notes ?? '',
 						li.sortOrder
 					]
 				);

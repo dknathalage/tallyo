@@ -3,7 +3,6 @@
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { getInvoice, getInvoiceLineItems, deleteInvoice, updateInvoiceStatus } from '$lib/db/queries/invoices.js';
-	import { getClient } from '$lib/db/queries/clients.js';
 	import { getEntityHistory } from '$lib/db/queries/audit.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportInvoicePdf } from '$lib/utils/pdf.js';
@@ -19,6 +18,10 @@
 	let showStatusMenu = $state(false);
 
 	const allStatuses = ['draft', 'sent', 'paid', 'overdue'] as const;
+
+	let businessSnap = $derived.by(() => parseSnapshot((invoice as any)?.business_snapshot ?? '{}'));
+	let clientSnap = $derived.by(() => parseSnapshot((invoice as any)?.client_snapshot ?? '{}'));
+	let payerSnap = $derived.by(() => parseSnapshot((invoice as any)?.payer_snapshot ?? '{}'));
 
 	$effect(() => {
 		const id = Number(page.params.id);
@@ -45,9 +48,7 @@
 
 	function handleExportPdf() {
 		if (!invoice) return;
-		const client = getClient(invoice.client_id);
-		if (!client) return;
-		exportInvoicePdf(invoice, lineItems, client);
+		exportInvoicePdf(invoice, lineItems);
 	}
 
 	function formatTimestamp(ts: string): string {
@@ -89,6 +90,15 @@
 		if (val === null || val === undefined) return '(empty)';
 		if (typeof val === 'number') return String(val);
 		return String(val) || '(empty)';
+	}
+
+	function parseSnapshot(json: string): { name: string; email: string; phone: string; address: string; logo?: string; metadata: Record<string, string> } {
+		try {
+			const p = JSON.parse(json || '{}');
+			return { name: p.name || '', email: p.email || '', phone: p.phone || '', address: p.address || '', logo: p.logo, metadata: p.metadata || {} };
+		} catch {
+			return { name: '', email: '', phone: '', address: '', metadata: {} };
+		}
 	}
 </script>
 
@@ -145,29 +155,89 @@
 			</div>
 		</div>
 
-		<!-- Invoice details -->
+		<!-- Party Details -->
 		<div class="rounded-lg border border-gray-200 bg-white p-6">
-			<div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-				<div>
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Client</h3>
-					<p class="mt-1 text-sm text-gray-900">{invoice.client_name ?? 'Unknown'}</p>
+			{#if businessSnap.name}
+				<div class="mb-4">
+					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">From</h3>
+					<div class="mt-1">
+						<p class="text-sm font-medium text-gray-900">{businessSnap.name}</p>
+						{#if businessSnap.email}<p class="text-sm text-gray-500">{businessSnap.email}</p>{/if}
+						{#if businessSnap.phone}<p class="text-sm text-gray-500">{businessSnap.phone}</p>{/if}
+						{#if businessSnap.address}<p class="whitespace-pre-line text-sm text-gray-500">{businessSnap.address}</p>{/if}
+						{#if Object.keys(businessSnap.metadata).length > 0}
+							<div class="mt-1 space-y-0.5">
+								{#each Object.entries(businessSnap.metadata) as [key, value]}
+									<p class="text-sm text-gray-500"><span class="font-medium text-gray-700">{key}:</span> {value}</p>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
+				<div class="mb-4 border-t border-gray-200"></div>
+			{/if}
+
+			<div class="grid grid-cols-1 gap-6 {payerSnap.name ? 'sm:grid-cols-2' : ''}">
 				<div>
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Invoice Number</h3>
-					<p class="mt-1 text-sm text-gray-900">{invoice.invoice_number}</p>
+					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Service For</h3>
+					<div class="mt-1">
+						<p class="text-sm font-medium text-gray-900">{clientSnap.name || invoice.client_name || 'Unknown'}</p>
+						{#if clientSnap.email}<p class="text-sm text-gray-500">{clientSnap.email}</p>{/if}
+						{#if clientSnap.phone}<p class="text-sm text-gray-500">{clientSnap.phone}</p>{/if}
+						{#if clientSnap.address}<p class="whitespace-pre-line text-sm text-gray-500">{clientSnap.address}</p>{/if}
+						{#if Object.keys(clientSnap.metadata).length > 0}
+							<div class="mt-1 space-y-0.5">
+								{#each Object.entries(clientSnap.metadata) as [key, value]}
+									<p class="text-sm text-gray-500"><span class="font-medium text-gray-700">{key}:</span> {value}</p>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
-				<div>
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Date</h3>
-					<p class="mt-1 text-sm text-gray-900">{formatDate(invoice.date)}</p>
-				</div>
-				<div>
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Due Date</h3>
-					<p class="mt-1 text-sm text-gray-900">{formatDate(invoice.due_date)}</p>
+
+				{#if payerSnap.name}
+					<div>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Bill To</h3>
+						<div class="mt-1">
+							<p class="text-sm font-medium text-gray-900">{payerSnap.name}</p>
+							{#if payerSnap.email}<p class="text-sm text-gray-500">{payerSnap.email}</p>{/if}
+							{#if payerSnap.phone}<p class="text-sm text-gray-500">{payerSnap.phone}</p>{/if}
+							{#if payerSnap.address}<p class="whitespace-pre-line text-sm text-gray-500">{payerSnap.address}</p>{/if}
+							{#if Object.keys(payerSnap.metadata).length > 0}
+								<div class="mt-1 space-y-0.5">
+									{#each Object.entries(payerSnap.metadata) as [key, value]}
+										<p class="text-sm text-gray-500"><span class="font-medium text-gray-700">{key}:</span> {value}</p>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<div class="mt-4 border-t border-gray-200 pt-4">
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-4">
+					<div>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Invoice Number</h3>
+						<p class="mt-1 text-sm text-gray-900">{invoice.invoice_number}</p>
+					</div>
+					<div>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Date</h3>
+						<p class="mt-1 text-sm text-gray-900">{formatDate(invoice.date)}</p>
+					</div>
+					<div>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Due Date</h3>
+						<p class="mt-1 text-sm text-gray-900">{formatDate(invoice.due_date)}</p>
+					</div>
+					<div>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Status</h3>
+						<p class="mt-1"><StatusBadge status={invoice.status} /></p>
+					</div>
 				</div>
 			</div>
 
 			{#if invoice.notes}
-				<div class="mt-6">
+				<div class="mt-4 border-t border-gray-200 pt-4">
 					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Notes</h3>
 					<p class="mt-1 whitespace-pre-wrap text-sm text-gray-700">{invoice.notes}</p>
 				</div>
@@ -188,7 +258,12 @@
 				<tbody class="divide-y divide-gray-200">
 					{#each lineItems as item}
 						<tr>
-							<td class="px-4 py-3 text-sm text-gray-900">{item.description}</td>
+							<td class="px-4 py-3 text-sm text-gray-900">
+								{item.description}
+								{#if item.notes}
+									<p class="mt-0.5 text-xs text-gray-500">{item.notes}</p>
+								{/if}
+							</td>
 							<td class="px-4 py-3 text-right text-sm text-gray-600">{item.quantity}</td>
 							<td class="px-4 py-3 text-right text-sm text-gray-600">{formatCurrency(item.rate)}</td>
 							<td class="px-4 py-3 text-right text-sm font-medium text-gray-900">{formatCurrency(item.amount)}</td>

@@ -16,6 +16,9 @@
 			total: number;
 			notes: string;
 			status: string;
+			business_snapshot: string;
+			client_snapshot: string;
+			payer_snapshot: string;
 		},
 		lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {

@@ -85,6 +85,26 @@ function migration4_defaultTier() {
 	}
 }
 
+/** Migration 5: Add metadata/payer_id to clients, snapshot columns to invoices */
+function migration5_metadataAndParties() {
+	if (!tableHasColumn('clients', 'metadata')) {
+		execute(`ALTER TABLE clients ADD COLUMN metadata TEXT DEFAULT '{}'`);
+	}
+	if (!tableHasColumn('clients', 'payer_id')) {
+		execute(`ALTER TABLE clients ADD COLUMN payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL`);
+	}
+	execute(`CREATE INDEX IF NOT EXISTS idx_clients_payer ON clients(payer_id)`);
+	if (!tableHasColumn('invoices', 'business_snapshot')) {
+		execute(`ALTER TABLE invoices ADD COLUMN business_snapshot TEXT DEFAULT '{}'`);
+	}
+	if (!tableHasColumn('invoices', 'client_snapshot')) {
+		execute(`ALTER TABLE invoices ADD COLUMN client_snapshot TEXT DEFAULT '{}'`);
+	}
+	if (!tableHasColumn('invoices', 'payer_snapshot')) {
+		execute(`ALTER TABLE invoices ADD COLUMN payer_snapshot TEXT DEFAULT '{}'`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations() {
 	migration0_addUuids();
@@ -92,6 +112,7 @@ export function runMigrations() {
 	migration2_clientTier();
 	migration3_lineItemRefs();
 	migration4_defaultTier();
+	migration5_metadataAndParties();
 }
 
 // Keep backward-compatible export name

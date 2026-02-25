@@ -32,7 +32,7 @@ describe('getClients', () => {
 		const result = getClients();
 
 		expect(mockQuery).toHaveBeenCalledWith(
-			'SELECT c.*, rt.name as pricing_tier_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id ORDER BY c.name'
+			'SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id ORDER BY c.name'
 		);
 		expect(result).toEqual(clients);
 	});
@@ -43,7 +43,7 @@ describe('getClients', () => {
 		getClients('alice');
 
 		expect(mockQuery).toHaveBeenCalledWith(
-			'SELECT c.*, rt.name as pricing_tier_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id WHERE c.name LIKE ? OR c.email LIKE ? ORDER BY c.name',
+			'SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id WHERE c.name LIKE ? OR c.email LIKE ? ORDER BY c.name',
 			['%alice%', '%alice%']
 		);
 	});
@@ -56,7 +56,7 @@ describe('getClient', () => {
 
 		expect(getClient(1)).toEqual(client);
 		expect(mockQuery).toHaveBeenCalledWith(
-			'SELECT c.*, rt.name as pricing_tier_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id WHERE c.id = ?',
+			'SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id WHERE c.id = ?',
 			[1]
 		);
 	});
@@ -75,8 +75,8 @@ describe('createClient', () => {
 		const id = await createClient({ name: 'Bob', email: 'bob@test.com', phone: '555-0100', address: '123 Main St' });
 
 		expect(mockExecute).toHaveBeenCalledWith(
-			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id) VALUES (?, ?, ?, ?, ?, ?)',
-			[expect.any(String), 'Bob', 'bob@test.com', '555-0100', '123 Main St', null]
+			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id, metadata, payer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+			[expect.any(String), 'Bob', 'bob@test.com', '555-0100', '123 Main St', null, '{}', null]
 		);
 		expect(mockSave).toHaveBeenCalled();
 		expect(id).toBe(42);
@@ -88,8 +88,8 @@ describe('createClient', () => {
 		await createClient({ name: 'Bob' });
 
 		expect(mockExecute).toHaveBeenCalledWith(
-			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id) VALUES (?, ?, ?, ?, ?, ?)',
-			[expect.any(String), 'Bob', '', '', '', null]
+			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id, metadata, payer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+			[expect.any(String), 'Bob', '', '', '', null, '{}', null]
 		);
 	});
 
@@ -107,6 +107,17 @@ describe('createClient', () => {
 		await expect(createClient({ name: undefined as any })).rejects.toThrow('Client name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
+
+	it('passes metadata and payer_id when provided', async () => {
+		mockQuery.mockReturnValue([{ id: 1 }]);
+
+		await createClient({ name: 'Bob', metadata: '{"ABN":"123"}', payer_id: 5 });
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('INSERT INTO clients'),
+			expect.arrayContaining(['{"ABN":"123"}', 5])
+		);
+	});
 });
 
 describe('updateClient', () => {
@@ -115,7 +126,7 @@ describe('updateClient', () => {
 
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE clients SET'),
-			['Alice Updated', 'alice@new.com', '', '', null, 1]
+			['Alice Updated', 'alice@new.com', '', '', null, '{}', null, 1]
 		);
 		expect(mockSave).toHaveBeenCalled();
 	});

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS line_items (
 	quantity REAL NOT NULL DEFAULT 1,
 	rate REAL NOT NULL DEFAULT 0,
 	amount REAL NOT NULL DEFAULT 0,
+	notes TEXT DEFAULT '',
 	sort_order INTEGER DEFAULT 0,
 	catalog_item_id INTEGER,
 	rate_tier_id INTEGER
@@ -97,6 +98,31 @@ CREATE TABLE IF NOT EXISTS audit_log (
 	context TEXT DEFAULT '',
 	batch_id TEXT,
 	created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS business_profile (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	uuid TEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL DEFAULT '',
+	email TEXT DEFAULT '',
+	phone TEXT DEFAULT '',
+	address TEXT DEFAULT '',
+	logo TEXT DEFAULT '',
+	metadata TEXT DEFAULT '{}',
+	created_at TEXT DEFAULT (datetime('now')),
+	updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS payers (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	uuid TEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL,
+	email TEXT DEFAULT '',
+	phone TEXT DEFAULT '',
+	address TEXT DEFAULT '',
+	metadata TEXT DEFAULT '{}',
+	created_at TEXT DEFAULT (datetime('now')),
+	updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);

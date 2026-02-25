@@ -9,12 +9,13 @@
 		onremove,
 		tierId
 	}: {
-		item: { description: string; quantity: number; rate: number; amount: number; unit?: string };
+		item: { description: string; quantity: number; rate: number; amount: number; unit?: string; notes?: string };
 		onremove: () => void;
 		tierId?: number | null;
 	} = $props();
 
 	let browseOpen = $state(false);
+	let notesOpen = $state(false);
 
 	function recalculate() {
 		item.amount = Math.round(item.quantity * item.rate * 100) / 100;
@@ -34,6 +35,16 @@
 			<div class="flex-1">
 				<CatalogAutocomplete bind:value={item.description} onselect={handleCatalogSelect} {tierId} />
 			</div>
+			<button
+				type="button"
+				onclick={() => (notesOpen = !notesOpen)}
+				class="mt-0.5 cursor-pointer rounded p-1.5 transition-colors {notesOpen || item.notes ? 'text-primary-500 hover:bg-primary-50 hover:text-primary-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}"
+				aria-label="Toggle notes"
+			>
+				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+				</svg>
+			</button>
 			<button
 				type="button"
 				onclick={() => (browseOpen = true)}
@@ -89,5 +100,16 @@
 		</svg>
 	</button>
 </div>
+
+{#if notesOpen}
+	<div class="ml-0 mt-1">
+		<textarea
+			bind:value={item.notes}
+			rows={2}
+			placeholder="Work notes..."
+			class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+		></textarea>
+	</div>
+{/if}
 
 <CatalogBrowseModal open={browseOpen} onclose={() => (browseOpen = false)} onselect={handleCatalogSelect} {tierId} />

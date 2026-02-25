@@ -1,102 +1,173 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Invoice, LineItem, Client } from '$lib/types';
+import type { Invoice, LineItem, PartySnapshot } from '$lib/types';
+import { getIO } from '$lib/io/index.js';
 
-export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[], client: Client): void {
+function parseSnapshot(json: string): PartySnapshot {
+	try {
+		const parsed = JSON.parse(json || '{}');
+		return {
+			name: parsed.name || '',
+			email: parsed.email || '',
+			phone: parsed.phone || '',
+			address: parsed.address || '',
+			logo: parsed.logo,
+			metadata: parsed.metadata || {}
+		};
+	} catch {
+		return { name: '', email: '', phone: '', address: '', metadata: {} };
+	}
+}
+
+export async function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): Promise<void> {
 	const doc = new jsPDF();
 	const pageWidth = doc.internal.pageSize.getWidth();
 	let y = 20;
 
-	// Header
+	const business = parseSnapshot(invoice.business_snapshot);
+	const client = parseSnapshot(invoice.client_snapshot);
+	const payer = parseSnapshot(invoice.payer_snapshot);
+
+	// --- Header with logo ---
+	let headerTextX = 14;
+
+	if (business.logo) {
+		try {
+			doc.addImage(business.logo, 'AUTO', 14, y - 5, 20, 20);
+			headerTextX = 38;
+		} catch {
+			// Skip logo if it fails to load
+		}
+	}
+
+	if (business.name) {
+		doc.setFontSize(16);
+		doc.setTextColor(17, 24, 39);
+		doc.text(business.name, headerTextX, y);
+		y += 6;
+
+		doc.setFontSize(9);
+		doc.setTextColor(107, 114, 128);
+		if (business.address) {
+			const addressLines = business.address.split('\n');
+			for (const line of addressLines) {
+				doc.text(line, headerTextX, y);
+				y += 4;
+			}
+		}
+		// Business metadata (e.g., ABN)
+		for (const [key, value] of Object.entries(business.metadata)) {
+			doc.text(`${key}: ${value}`, headerTextX, y);
+			y += 4;
+		}
+	}
+
+	// Invoice title on the right
 	doc.setFontSize(28);
-	doc.setTextColor(37, 99, 235); // primary-600 blue
-	doc.text('INVOICE', 14, y);
+	doc.setTextColor(37, 99, 235);
+	doc.text('INVOICE', pageWidth - 14, 20, { align: 'right' });
 
 	doc.setFontSize(12);
-	doc.setTextColor(107, 114, 128); // gray-500
-	doc.text(invoice.invoice_number, pageWidth - 14, y, { align: 'right' });
+	doc.setTextColor(107, 114, 128);
+	doc.text(invoice.invoice_number, pageWidth - 14, 28, { align: 'right' });
 
-	y += 16;
+	y = Math.max(y, 40);
+	y += 4;
 
 	// Divider
 	doc.setDrawColor(229, 231, 235);
 	doc.setLineWidth(0.5);
 	doc.line(14, y, pageWidth - 14, y);
+	y += 10;
 
-	y += 12;
+	// --- Service For / Bill To sections side by side ---
+	const hasPayer = payer.name.trim().length > 0;
+	const colWidth = hasPayer ? (pageWidth - 28) / 2 : pageWidth - 28;
 
-	// Bill To section
+	// SERVICE FOR (left)
+	const serviceForY = y;
 	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	doc.text('BILL TO', 14, y);
-
-	doc.setFontSize(9);
-	doc.text('INVOICE DETAILS', pageWidth / 2 + 10, y);
-
+	doc.text('SERVICE FOR', 14, y);
 	y += 6;
 
 	doc.setFontSize(11);
-	doc.setTextColor(17, 24, 39); // gray-900
-	doc.text(client.name, 14, y);
-
-	// Invoice details on the right
-	doc.setFontSize(10);
-	const detailsX = pageWidth / 2 + 10;
-	const detailsValueX = pageWidth - 14;
-
-	doc.setTextColor(107, 114, 128);
-	doc.text('Invoice Number:', detailsX, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(invoice.invoice_number, detailsValueX, y, { align: 'right' });
+	doc.text(client.name || invoice.client_name || 'Unknown', 14, y);
+	y += 5;
 
-	y += 6;
-
-	if (client.email) {
-		doc.setFontSize(10);
-		doc.setTextColor(107, 114, 128);
-		doc.text(client.email, 14, y);
-	}
-
+	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	doc.text('Date:', detailsX, y);
-	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfDate(invoice.date), detailsValueX, y, { align: 'right' });
-
-	y += 6;
-
-	if (client.phone) {
-		doc.setFontSize(10);
-		doc.setTextColor(107, 114, 128);
-		doc.text(client.phone, 14, y);
-	}
-
-	doc.setTextColor(107, 114, 128);
-	doc.text('Due Date:', detailsX, y);
-	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfDate(invoice.due_date), detailsValueX, y, { align: 'right' });
-
-	y += 6;
-
+	if (client.email) { doc.text(client.email, 14, y); y += 4; }
+	if (client.phone) { doc.text(client.phone, 14, y); y += 4; }
 	if (client.address) {
-		doc.setFontSize(10);
+		const lines = client.address.split('\n');
+		for (const line of lines) { doc.text(line, 14, y); y += 4; }
+	}
+	for (const [key, value] of Object.entries(client.metadata)) {
+		doc.text(`${key}: ${value}`, 14, y);
+		y += 4;
+	}
+
+	// BILL TO (right) if payer exists
+	let rightY = serviceForY;
+	if (hasPayer) {
+		const rightX = 14 + colWidth + 4;
+		doc.setFontSize(9);
 		doc.setTextColor(107, 114, 128);
-		const addressLines = client.address.split('\n');
-		for (const line of addressLines) {
-			doc.text(line, 14, y);
-			y += 5;
+		doc.text('BILL TO', rightX, rightY);
+		rightY += 6;
+
+		doc.setFontSize(11);
+		doc.setTextColor(17, 24, 39);
+		doc.text(payer.name, rightX, rightY);
+		rightY += 5;
+
+		doc.setFontSize(9);
+		doc.setTextColor(107, 114, 128);
+		if (payer.email) { doc.text(payer.email, rightX, rightY); rightY += 4; }
+		if (payer.phone) { doc.text(payer.phone, rightX, rightY); rightY += 4; }
+		if (payer.address) {
+			const lines = payer.address.split('\n');
+			for (const line of lines) { doc.text(line, rightX, rightY); rightY += 4; }
+		}
+		for (const [key, value] of Object.entries(payer.metadata)) {
+			doc.text(`${key}: ${value}`, rightX, rightY);
+			rightY += 4;
 		}
 	}
 
+	y = Math.max(y, rightY) + 6;
+
+	// --- Invoice details row ---
+	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	doc.text('Status:', detailsX, y);
+	const detailsY = y;
+
+	doc.text('Invoice #:', 14, detailsY);
 	doc.setTextColor(17, 24, 39);
-	doc.text(invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1), detailsValueX, y, { align: 'right' });
+	doc.text(invoice.invoice_number, 40, detailsY);
 
-	y += 12;
+	doc.setTextColor(107, 114, 128);
+	doc.text('Date:', 80, detailsY);
+	doc.setTextColor(17, 24, 39);
+	doc.text(formatPdfDate(invoice.date), 96, detailsY);
 
-	// Line items table
+	doc.setTextColor(107, 114, 128);
+	doc.text('Due:', 130, detailsY);
+	doc.setTextColor(17, 24, 39);
+	doc.text(formatPdfDate(invoice.due_date), 142, detailsY);
+
+	doc.setTextColor(107, 114, 128);
+	doc.text('Status:', 170, detailsY);
+	doc.setTextColor(17, 24, 39);
+	doc.text(invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1), pageWidth - 14, detailsY, { align: 'right' });
+
+	y = detailsY + 10;
+
+	// --- Line items table ---
 	const tableBody = lineItems.map((item) => [
-		item.description,
+		item.notes ? `${item.description}\n${item.notes}` : item.description,
 		String(item.quantity),
 		formatPdfCurrency(item.rate),
 		formatPdfCurrency(item.amount)
@@ -176,8 +247,9 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[], client
 	doc.setTextColor(156, 163, 175);
 	doc.text('Thank you for your business', pageWidth / 2, footerY, { align: 'center' });
 
-	// Save
-	doc.save(`invoice-${invoice.invoice_number}.pdf`);
+	const io = await getIO();
+	const pdfBlob = doc.output('blob');
+	await io.exportBlob(pdfBlob, `invoice-${invoice.invoice_number}.pdf`, 'application/pdf');
 }
 
 function formatPdfCurrency(amount: number): string {
