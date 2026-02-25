@@ -4,6 +4,8 @@
 	import { base } from '$app/paths';
 	import { getClient, updateClient, deleteClient } from '$lib/db/queries/clients';
 	import { getClientInvoices } from '$lib/db/queries/invoices';
+	import { getEntityHistory } from '$lib/db/queries/audit';
+	import type { AuditLogEntry } from '$lib/types/index.js';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
@@ -14,6 +16,7 @@
 	let clientId = $derived(Number(page.params.id));
 	let client = $derived(getClient(clientId));
 	let invoices = $derived(getClientInvoices(clientId));
+	let history = $derived(getEntityHistory('client', clientId));
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
@@ -26,6 +29,46 @@
 	async function handleDelete() {
 		await deleteClient(clientId);
 		goto(`${base}/clients`);
+	}
+
+	function formatTimestamp(ts: string): string {
+		const d = new Date(ts + 'Z');
+		return d.toLocaleString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+	}
+
+	function formatAction(action: string): string {
+		return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+	}
+
+	function actionColor(action: string): string {
+		if (action === 'create') return 'bg-green-100 text-green-800';
+		if (action === 'update') return 'bg-blue-100 text-blue-800';
+		if (action === 'delete') return 'bg-red-100 text-red-800';
+		return 'bg-gray-100 text-gray-800';
+	}
+
+	function parseChanges(changesStr: string): Record<string, { old: unknown; new: unknown }> | null {
+		try {
+			const parsed = JSON.parse(changesStr);
+			if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+				return parsed;
+			}
+			return null;
+		} catch {
+			return null;
+		}
+	}
+
+	function formatChangeValue(val: unknown): string {
+		if (val === null || val === undefined) return '(empty)';
+		if (typeof val === 'number') return String(val);
+		return String(val) || '(empty)';
 	}
 </script>
 
@@ -122,6 +165,42 @@
 				</div>
 			{/if}
 		</div>
+
+		<!-- Change History -->
+		{#if history.length > 0}
+			<div class="rounded-lg border border-gray-200 bg-white p-6">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900">Change History</h2>
+				<div class="space-y-4">
+					{#each history as entry}
+						{@const changes = parseChanges(entry.changes)}
+						<div class="flex gap-3 border-l-2 border-gray-200 pl-4">
+							<div class="flex-1">
+								<div class="flex items-center gap-2">
+									<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {actionColor(entry.action)}">
+										{formatAction(entry.action)}
+									</span>
+									<span class="text-xs text-gray-500">{formatTimestamp(entry.created_at)}</span>
+								</div>
+								{#if changes}
+									<div class="mt-1 space-y-0.5">
+										{#each Object.entries(changes) as [field, diff]}
+											<p class="text-sm text-gray-600">
+												<span class="font-medium">{field}:</span>
+												<span class="text-red-600 line-through">{formatChangeValue(diff.old)}</span>
+												<span class="text-gray-400">-></span>
+												<span class="text-green-700">{formatChangeValue(diff.new)}</span>
+											</p>
+										{/each}
+									</div>
+								{:else if entry.context}
+									<p class="mt-1 text-sm text-gray-600">{entry.context}</p>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Delete confirmation -->

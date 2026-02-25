@@ -10,6 +10,9 @@ const config = {
 		}),
 		paths: {
 			base: dev ? '' : '/invoices'
+		},
+		serviceWorker: {
+			register: false
 		}
 	}
 };

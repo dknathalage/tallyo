@@ -1,6 +1,7 @@
 import initSqlJs, { type Database } from 'sql.js';
 import { base } from '$app/paths';
 import { CREATE_TABLES } from './schema.js';
+import { migrateAddUuids } from './migrate.js';
 
 // Raw (non-proxied) reference to the Database instance.
 // Svelte 5's $state deep proxy wraps objects in a Proxy, which
@@ -73,33 +74,55 @@ async function clearStoredHandle() {
 	}
 }
 
-/** Try to restore the last-used database from a stored file handle. */
-export async function tryRestore(): Promise<boolean> {
-	if (!supportsFileSystemAccess()) return false;
+/**
+ * Check if there's a stored handle we can reconnect to.
+ * If permission is already granted, opens it silently.
+ * Returns the stored file name if a handle exists but needs user activation, or null.
+ */
+export async function tryRestore(): Promise<string | null> {
+	if (!supportsFileSystemAccess()) return null;
 
 	const handle = await getStoredHandle();
-	if (!handle) return false;
+	if (!handle) return null;
 
-	// Check/request permission
 	const perm = await handle.queryPermission({ mode: 'readwrite' });
 	if (perm === 'denied') {
 		await clearStoredHandle();
-		return false;
+		return null;
 	}
 
-	if (perm === 'prompt') {
-		const granted = await handle.requestPermission({ mode: 'readwrite' });
-		if (granted !== 'granted') return false;
+	// Permission already granted — open silently
+	if (perm === 'granted') {
+		const opened = await openFromHandle(handle);
+		return opened ? null : null;
 	}
 
+	// Permission needs user gesture — return the file name so UI can show a button
+	return handle.name;
+}
+
+/** Reconnect to the stored handle (must be called from a user gesture). */
+export async function reconnect(): Promise<boolean> {
+	const handle = await getStoredHandle();
+	if (!handle) return false;
+
+	const granted = await handle.requestPermission({ mode: 'readwrite' });
+	if (granted !== 'granted') return false;
+
+	return openFromHandle(handle);
+}
+
+async function openFromHandle(handle: FileSystemFileHandle): Promise<boolean> {
 	try {
 		const SQL = await initSql();
 		const file = await handle.getFile();
 		const buffer = await file.arrayBuffer();
 		const database = new SQL.Database(new Uint8Array(buffer));
 		database.run('PRAGMA foreign_keys = ON;');
-
+		database.run(CREATE_TABLES);
 		_instance = database;
+		migrateAddUuids();
+
 		db.instance = database;
 		db.fileName = handle.name;
 		db.fileHandle = handle;
@@ -143,8 +166,9 @@ export async function initNew() {
 	const database = new SQL.Database();
 	database.run('PRAGMA foreign_keys = ON;');
 	database.run(CREATE_TABLES);
-
 	_instance = database;
+	migrateAddUuids();
+
 	db.instance = database;
 	db.fileName = fileName;
 	db.fileHandle = fileHandle;
@@ -170,8 +194,10 @@ export async function openExisting() {
 		const buffer = await file.arrayBuffer();
 		const database = new SQL.Database(new Uint8Array(buffer));
 		database.run('PRAGMA foreign_keys = ON;');
-
+		database.run(CREATE_TABLES);
 		_instance = database;
+		migrateAddUuids();
+
 		db.instance = database;
 		db.fileName = fileHandle.name;
 		db.fileHandle = fileHandle;
@@ -197,8 +223,10 @@ export async function openExisting() {
 		const buffer = await file.arrayBuffer();
 		const database = new SQL.Database(new Uint8Array(buffer));
 		database.run('PRAGMA foreign_keys = ON;');
-
+		database.run(CREATE_TABLES);
 		_instance = database;
+		migrateAddUuids();
+
 		db.instance = database;
 		db.fileName = file.name;
 		db.fileHandle = null;

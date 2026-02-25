@@ -6,11 +6,13 @@
 		open = false,
 		onclose,
 		title,
+		maxWidth = 'max-w-lg',
 		children
 	}: {
 		open: boolean;
 		onclose: () => void;
 		title: string;
+		maxWidth?: string;
 		children: Snippet;
 	} = $props();
 
@@ -43,7 +45,7 @@
 
 		<!-- Dialog -->
 		<div
-			class="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-2xl"
+			class="relative z-10 w-full {maxWidth} rounded-xl bg-white shadow-2xl"
 			transition:scale={{ duration: 150, start: 0.95 }}
 			role="dialog"
 			aria-modal="true"

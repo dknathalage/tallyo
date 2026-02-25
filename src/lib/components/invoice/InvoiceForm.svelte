@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getClients } from '$lib/db/queries/clients.js';
+	import { getClients, getClient } from '$lib/db/queries/clients.js';
+	import { getRateTiers } from '$lib/db/queries/rate-tiers.js';
 	import { generateInvoiceNumber } from '$lib/utils/invoice-number.js';
 	import { today } from '$lib/utils/format.js';
 	import type { Client, Invoice, LineItem } from '$lib/types/index.js';
@@ -39,14 +40,19 @@
 	let notes = $state(initialData?.notes ?? '');
 	let status = $state(initialData?.status ?? 'draft');
 
-	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number }>>(
+	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string }>>(
 		initialLineItems?.map((li) => ({
 			description: li.description,
 			quantity: li.quantity,
 			rate: li.rate,
 			amount: li.amount
-		})) ?? [{ description: '', quantity: 1, rate: 0, amount: 0 }]
+		})) ?? [{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined }]
 	);
+
+	let selectedClient = $derived(clientId ? getClient(clientId) : null);
+	let activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
+	let tiers = $derived(getRateTiers());
+	let activeTierName = $derived(tiers.find(t => t.id === activeTierId)?.name ?? null);
 
 	let subtotal = $derived(
 		Math.round(lineItems.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
@@ -62,7 +68,7 @@
 	});
 
 	function addLineItem() {
-		lineItems.push({ description: '', quantity: 1, rate: 0, amount: 0 });
+		lineItems.push({ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined });
 	}
 
 	function removeLineItem(index: number) {
@@ -122,6 +128,9 @@
 					<option value={client.id}>{client.name}</option>
 				{/each}
 			</select>
+			{#if activeTierName}
+				<p class="mt-1 text-xs text-gray-500">Pricing: {activeTierName}</p>
+			{/if}
 		</div>
 
 		<div>
@@ -162,7 +171,7 @@
 
 		<div class="space-y-2">
 			{#each lineItems as _, i}
-				<LineItemRow bind:item={lineItems[i]} onremove={() => removeLineItem(i)} />
+				<LineItemRow bind:item={lineItems[i]} onremove={() => removeLineItem(i)} tierId={activeTierId} />
 			{/each}
 		</div>
 

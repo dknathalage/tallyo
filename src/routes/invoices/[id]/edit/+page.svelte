@@ -11,9 +11,10 @@
 
 	$effect(() => {
 		const id = Number(page.params.id);
-		invoice = getInvoice(id);
-		if (invoice) {
-			lineItems = getInvoiceLineItems(invoice.id);
+		const inv = getInvoice(id);
+		invoice = inv;
+		if (inv) {
+			lineItems = getInvoiceLineItems(inv.id);
 		}
 	});
 

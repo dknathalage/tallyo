@@ -8,7 +8,9 @@
 	const navLinks = [
 		{ href: `${base}/`, label: 'Dashboard' },
 		{ href: `${base}/invoices`, label: 'Invoices' },
-		{ href: `${base}/clients`, label: 'Clients' }
+		{ href: `${base}/clients`, label: 'Clients' },
+		{ href: `${base}/catalog`, label: 'Catalog' },
+		{ href: `${base}/settings`, label: 'Settings' }
 	];
 
 	function isActive(href: string): boolean {

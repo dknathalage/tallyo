@@ -1,0 +1,107 @@
+<script lang="ts">
+	import { searchCatalogItems, getEffectiveRate } from '$lib/db/queries/catalog.js';
+	import type { CatalogItem } from '$lib/types/index.js';
+
+	let {
+		value = $bindable(),
+		onselect,
+		tierId
+	}: {
+		value: string;
+		onselect: (item: CatalogItem) => void;
+		tierId?: number | null;
+	} = $props();
+
+	let suggestions = $state<CatalogItem[]>([]);
+	let showDropdown = $state(false);
+	let highlightedIndex = $state(-1);
+	let blurTimeout: ReturnType<typeof setTimeout> | undefined;
+
+	function handleInput() {
+		if (value.trim().length > 0) {
+			suggestions = searchCatalogItems(value);
+			showDropdown = suggestions.length > 0;
+			highlightedIndex = -1;
+		} else {
+			suggestions = [];
+			showDropdown = false;
+		}
+	}
+
+	function selectItem(item: CatalogItem) {
+		value = item.name;
+		showDropdown = false;
+		suggestions = [];
+		highlightedIndex = -1;
+		onselect(item);
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (!showDropdown) return;
+
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			highlightedIndex = (highlightedIndex + 1) % suggestions.length;
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			highlightedIndex = highlightedIndex <= 0 ? suggestions.length - 1 : highlightedIndex - 1;
+		} else if (e.key === 'Enter' && highlightedIndex >= 0) {
+			e.preventDefault();
+			selectItem(suggestions[highlightedIndex]);
+		} else if (e.key === 'Escape') {
+			showDropdown = false;
+			highlightedIndex = -1;
+		}
+	}
+
+	function handleBlur() {
+		blurTimeout = setTimeout(() => {
+			showDropdown = false;
+			highlightedIndex = -1;
+		}, 200);
+	}
+
+	function handleFocus() {
+		if (blurTimeout) {
+			clearTimeout(blurTimeout);
+		}
+		if (value.trim().length > 0) {
+			suggestions = searchCatalogItems(value);
+			showDropdown = suggestions.length > 0;
+		}
+	}
+</script>
+
+<div class="relative">
+	<input
+		type="text"
+		bind:value
+		oninput={handleInput}
+		onkeydown={handleKeydown}
+		onblur={handleBlur}
+		onfocus={handleFocus}
+		placeholder="Description"
+		class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+		autocomplete="off"
+	/>
+
+	{#if showDropdown}
+		<div class="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+			{#each suggestions as item, i}
+				<button
+					type="button"
+					class="w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 {i === highlightedIndex ? 'bg-primary-50' : ''}"
+					onmousedown={() => selectItem(item)}
+				>
+					<span class="font-medium text-gray-900">{item.name}</span>
+					<span class="ml-2 text-gray-500">
+						${tierId ? getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
+					</span>
+					{#if item.category}
+						<span class="ml-2 text-xs text-gray-400">{item.category}</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
+	{/if}
+</div>

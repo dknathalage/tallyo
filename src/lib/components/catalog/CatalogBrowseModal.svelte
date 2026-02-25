@@ -1,0 +1,89 @@
+<script lang="ts">
+	import Modal from '$lib/components/shared/Modal.svelte';
+	import { getCatalogItems, getCatalogCategories, getEffectiveRate } from '$lib/db/queries/catalog.js';
+	import type { CatalogItem } from '$lib/types/index.js';
+
+	let {
+		open = false,
+		onclose,
+		onselect,
+		tierId
+	}: {
+		open: boolean;
+		onclose: () => void;
+		onselect: (item: CatalogItem) => void;
+		tierId?: number | null;
+	} = $props();
+
+	let search = $state('');
+	let selectedCategory = $state('');
+
+	let categories = $derived(open ? getCatalogCategories() : []);
+	let items = $derived(open ? getCatalogItems(search || undefined, selectedCategory || undefined) : []);
+
+	function handleSelect(item: CatalogItem) {
+		onselect(item);
+		onclose();
+	}
+</script>
+
+<Modal {open} {onclose} title="Browse Catalog" maxWidth="max-w-2xl">
+	<div class="space-y-4">
+		<!-- Search and filter -->
+		<div class="flex gap-3">
+			<div class="flex-1">
+				<input
+					type="text"
+					bind:value={search}
+					placeholder="Search catalog..."
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				/>
+			</div>
+			<div class="w-40">
+				<select
+					bind:value={selectedCategory}
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				>
+					<option value="">All categories</option>
+					{#each categories as category}
+						<option value={category}>{category}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+
+		<!-- Items list -->
+		<div class="max-h-96 overflow-y-auto">
+			{#if items.length === 0}
+				<div class="py-8 text-center text-sm text-gray-500">
+					No catalog items found.
+				</div>
+			{:else}
+				<div class="divide-y divide-gray-100">
+					{#each items as item}
+						<button
+							type="button"
+							class="flex w-full cursor-pointer items-center justify-between px-3 py-3 text-left transition-colors hover:bg-gray-50"
+							onclick={() => handleSelect(item)}
+						>
+							<div>
+								<div class="text-sm font-medium text-gray-900">{item.name}</div>
+								{#if item.category}
+									<div class="text-xs text-gray-400">{item.category}</div>
+								{/if}
+							</div>
+							<div class="text-right">
+								<div class="text-sm font-medium text-gray-900">
+									${tierId ? getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
+								</div>
+								{#if item.unit}
+									<div class="text-xs text-gray-400">per {item.unit}</div>
+								{/if}
+							</div>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</div>
+</Modal>

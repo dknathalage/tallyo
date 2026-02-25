@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { db, initNew, openExisting, tryRestore } from '$lib/db/connection.svelte';
+	import { db, initNew, openExisting, tryRestore, reconnect } from '$lib/db/connection.svelte';
 
 	let { children }: { children: Snippet } = $props();
 	let restoring = $state(true);
+	let storedFileName: string | null = $state(null);
 
 	onMount(async () => {
-		await tryRestore();
+		storedFileName = await tryRestore();
 		restoring = false;
 	});
 </script>
@@ -37,9 +38,21 @@
 			</div>
 
 			<div class="space-y-3">
+				{#if storedFileName}
+					<button
+						onclick={() => reconnect().then(ok => { if (!ok) storedFileName = null; })}
+						class="w-full cursor-pointer rounded-lg bg-primary-600 px-4 py-3 font-medium text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+					>
+						Reconnect to {storedFileName}
+					</button>
+					<div class="relative my-2">
+						<div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
+						<div class="relative flex justify-center"><span class="bg-white px-3 text-xs text-gray-400">or</span></div>
+					</div>
+				{/if}
 				<button
 					onclick={initNew}
-					class="w-full cursor-pointer rounded-lg bg-primary-600 px-4 py-3 font-medium text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+					class="w-full cursor-pointer rounded-lg {storedFileName ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50' : 'bg-primary-600 text-white hover:bg-primary-700'} px-4 py-3 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
 				>
 					Create New Database
 				</button>
