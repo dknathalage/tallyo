@@ -2,8 +2,6 @@ import initSqlJs, { type Database } from 'sql.js';
 import { base } from '$app/paths';
 import { CREATE_TABLES } from './schema.js';
 import { migrateAddUuids } from './migrate.js';
-import { getIO } from '$lib/io/index.js';
-import type { WebFileIO } from '$lib/io/web-io.js';
 
 // Raw (non-proxied) reference to the Database instance.
 // Svelte 5's $state deep proxy wraps objects in a Proxy, which
@@ -13,59 +11,214 @@ let _instance: Database | null = null;
 export const db = $state<{
 	instance: Database | null;
 	fileName: string;
-	ioHandle: string | null;
+	fileHandle: FileSystemFileHandle | null;
+	/** IndexedDB key when File System Access API is unavailable (Safari/Firefox) */
+	idbKey: string | null;
 	isOpen: boolean;
 }>({
 	instance: null,
 	fileName: '',
-	ioHandle: null,
+	fileHandle: null,
+	idbKey: null,
 	isOpen: false
 });
 
+// --- IndexedDB helpers ---
+const IDB_NAME = 'invoice-manager';
+const IDB_STORE = 'file-handles';
+const IDB_KEY = 'last-db-handle';
+// Store for DB binary when File System Access API is unavailable
+const IDB_DB_STORE = 'db-storage';
+const IDB_META_KEY = '__meta__';
+
+interface FSAccessHandle extends FileSystemFileHandle {
+	queryPermission(opts: { mode: string }): Promise<string>;
+	requestPermission(opts: { mode: string }): Promise<string>;
+}
+
+function openIDB(): Promise<IDBDatabase> {
+	return new Promise((resolve, reject) => {
+		const req = indexedDB.open(IDB_NAME, 2);
+		req.onupgradeneeded = () => {
+			const idb = req.result;
+			if (!idb.objectStoreNames.contains(IDB_STORE)) {
+				idb.createObjectStore(IDB_STORE);
+			}
+			if (!idb.objectStoreNames.contains(IDB_DB_STORE)) {
+				idb.createObjectStore(IDB_DB_STORE);
+			}
+		};
+		req.onsuccess = () => resolve(req.result);
+		req.onerror = () => reject(req.error);
+	});
+}
+
+function txComplete(tx: IDBTransaction): Promise<void> {
+	return new Promise((resolve, reject) => {
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+	});
+}
+
+function reqResult<T>(req: IDBRequest): Promise<T> {
+	return new Promise((resolve, reject) => {
+		req.onsuccess = () => resolve(req.result as T);
+		req.onerror = () => reject(req.error);
+	});
+}
+
+async function storeHandle(handle: FileSystemFileHandle) {
+	const idb = await openIDB();
+	const tx = idb.transaction(IDB_STORE, 'readwrite');
+	tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
+	await txComplete(tx);
+	idb.close();
+}
+
+async function getStoredHandle(): Promise<FileSystemFileHandle | null> {
+	try {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_STORE, 'readonly');
+		const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+		const result = await reqResult<FileSystemFileHandle | undefined>(req);
+		idb.close();
+		return result ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function clearStoredHandle() {
+	try {
+		const idb = await openIDB();
+		const tx1 = idb.transaction(IDB_STORE, 'readwrite');
+		tx1.objectStore(IDB_STORE).delete(IDB_KEY);
+		await txComplete(tx1);
+		// Also clear IDB meta/data
+		const tx2 = idb.transaction(IDB_DB_STORE, 'readwrite');
+		tx2.objectStore(IDB_DB_STORE).delete(IDB_META_KEY);
+		await txComplete(tx2);
+		idb.close();
+	} catch {
+		// ignore
+	}
+}
+
+// --- IDB binary storage (Safari/Firefox fallback) ---
+
+async function storeDbBinary(key: string, data: Uint8Array, name: string) {
+	const idb = await openIDB();
+	const tx = idb.transaction(IDB_DB_STORE, 'readwrite');
+	tx.objectStore(IDB_DB_STORE).put(data, key);
+	tx.objectStore(IDB_DB_STORE).put({ key, name }, IDB_META_KEY);
+	await txComplete(tx);
+	idb.close();
+}
+
+async function loadDbBinary(key: string): Promise<Uint8Array | null> {
+	try {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_DB_STORE, 'readonly');
+		const req = tx.objectStore(IDB_DB_STORE).get(key);
+		const result = await reqResult<Uint8Array | undefined>(req);
+		idb.close();
+		return result ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function getStoredDbMeta(): Promise<{ key: string; name: string } | null> {
+	try {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_DB_STORE, 'readonly');
+		const req = tx.objectStore(IDB_DB_STORE).get(IDB_META_KEY);
+		const meta = await reqResult<{ key: string; name: string } | undefined>(req);
+		idb.close();
+		return meta ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function supportsFileSystemAccess(): boolean {
+	return typeof window !== 'undefined' && 'showSaveFilePicker' in window;
+}
+
 /**
  * Check if there's a stored handle we can reconnect to.
- * If permission is already granted (or native), opens silently.
+ * If permission is already granted, opens it silently.
  * Returns the stored file name if a handle exists but needs user activation, or null.
  */
 export async function tryRestore(): Promise<string | null> {
-	const io = await getIO();
-	const restored = await io.tryRestore();
-	if (!restored) return null;
+	// Path 1: File System Access API (Chromium)
+	if (supportsFileSystemAccess()) {
+		const handle = await getStoredHandle();
+		if (!handle) return null;
 
-	// Try reading immediately — works when:
-	// - FSAA permission is already granted (Chromium)
-	// - IndexedDB storage (Safari/Firefox) — always works, no permission needed
-	// - Native platform
-	try {
-		const opened = await openFromIO(io, restored.handle, restored.name);
-		if (opened) return null; // opened silently
-	} catch {
-		// Fall through — permission may need user gesture (FSAA on Chromium)
+		const perm = await (handle as FSAccessHandle).queryPermission({ mode: 'readwrite' });
+		if (perm === 'denied') {
+			await clearStoredHandle();
+			return null;
+		}
+
+		if (perm === 'granted') {
+			const opened = await openFromHandle(handle);
+			return opened ? null : null;
+		}
+
+		// Permission needs user gesture
+		return handle.name;
 	}
 
-	// Permission needs user gesture — return the file name so UI can show a button
-	return restored.name;
+	// Path 2: IndexedDB binary storage (Safari/Firefox)
+	const meta = await getStoredDbMeta();
+	if (!meta) return null;
+
+	const data = await loadDbBinary(meta.key);
+	if (!data) return null;
+
+	// Open silently — no permission needed for IndexedDB
+	const opened = await openFromBinary(data, meta.name, meta.key);
+	return opened ? null : null;
 }
 
-/** Reconnect to the stored handle (must be called from a user gesture on web for FSAA). */
+/** Reconnect to the stored handle (must be called from a user gesture). */
 export async function reconnect(): Promise<boolean> {
-	const io = await getIO();
+	const handle = await getStoredHandle();
+	if (!handle) return false;
 
-	// On web with File System Access API, we need to request permission via user gesture
-	if ('requestPermission' in io) {
-		const granted = await (io as WebFileIO).requestPermission();
-		if (!granted) return false;
-	}
+	const granted = await (handle as FSAccessHandle).requestPermission({ mode: 'readwrite' });
+	if (granted !== 'granted') return false;
 
-	const restored = await io.tryRestore();
-	if (!restored) return false;
-
-	return await openFromIO(io, restored.handle, restored.name);
+	return openFromHandle(handle);
 }
 
-async function openFromIO(io: Awaited<ReturnType<typeof getIO>>, handle: string, name: string): Promise<boolean> {
+async function openFromHandle(handle: FileSystemFileHandle): Promise<boolean> {
 	try {
-		const data = await io.readFile(handle);
+		const SQL = await initSql();
+		const file = await handle.getFile();
+		const buffer = await file.arrayBuffer();
+		const database = new SQL.Database(new Uint8Array(buffer));
+		database.run('PRAGMA foreign_keys = ON;');
+		database.run(CREATE_TABLES);
+		_instance = database;
+		migrateAddUuids();
+
+		db.instance = database;
+		db.fileName = handle.name;
+		db.fileHandle = handle;
+		db.idbKey = null;
+		db.isOpen = true;
+		return true;
+	} catch {
+		await clearStoredHandle();
+		return false;
+	}
+}
+
+async function openFromBinary(data: Uint8Array, name: string, idbKey: string): Promise<boolean> {
+	try {
 		const SQL = await initSql();
 		const database = new SQL.Database(data);
 		database.run('PRAGMA foreign_keys = ON;');
@@ -75,11 +228,12 @@ async function openFromIO(io: Awaited<ReturnType<typeof getIO>>, handle: string,
 
 		db.instance = database;
 		db.fileName = name;
-		db.ioHandle = handle;
+		db.fileHandle = null;
+		db.idbKey = idbKey;
 		db.isOpen = true;
 		return true;
 	} catch {
-		await io.clearStored();
+		await clearStoredHandle();
 		return false;
 	}
 }
@@ -91,11 +245,27 @@ async function initSql() {
 }
 
 export async function initNew() {
-	const io = await getIO();
 	const SQL = await initSql();
 
-	const handle = await io.pickNewFile('invoices.sqlite');
-	const fileName = io.getFileName(handle);
+	let fileHandle: FileSystemFileHandle | null = null;
+	let fileName = 'invoices.sqlite';
+	let idbKey: string | null = null;
+
+	if (supportsFileSystemAccess()) {
+		fileHandle = await window.showSaveFilePicker({
+			suggestedName: 'invoices.sqlite',
+			types: [
+				{
+					description: 'SQLite Database',
+					accept: { 'application/x-sqlite3': ['.sqlite', '.db'] }
+				}
+			]
+		});
+		fileName = fileHandle.name;
+	} else {
+		// Safari/Firefox: store in IndexedDB
+		idbKey = 'idb:invoices.sqlite';
+	}
 
 	const database = new SQL.Database();
 	database.run('PRAGMA foreign_keys = ON;');
@@ -105,42 +275,93 @@ export async function initNew() {
 
 	db.instance = database;
 	db.fileName = fileName;
-	db.ioHandle = handle;
+	db.fileHandle = fileHandle;
+	db.idbKey = idbKey;
 	db.isOpen = true;
 
+	if (fileHandle) await storeHandle(fileHandle);
 	await save();
 }
 
 export async function openExisting() {
-	const io = await getIO();
 	const SQL = await initSql();
 
-	const handle = await io.pickExistingFile();
-	const data = await io.readFile(handle);
-	const fileName = io.getFileName(handle);
+	if (supportsFileSystemAccess()) {
+		const [fileHandle] = await window.showOpenFilePicker({
+			types: [
+				{
+					description: 'SQLite Database',
+					accept: { 'application/x-sqlite3': ['.sqlite', '.db'] }
+				}
+			]
+		});
+		const file = await fileHandle.getFile();
+		const buffer = await file.arrayBuffer();
+		const database = new SQL.Database(new Uint8Array(buffer));
+		database.run('PRAGMA foreign_keys = ON;');
+		database.run(CREATE_TABLES);
+		_instance = database;
+		migrateAddUuids();
 
-	const database = new SQL.Database(data);
-	database.run('PRAGMA foreign_keys = ON;');
-	database.run(CREATE_TABLES);
-	_instance = database;
-	migrateAddUuids();
+		db.instance = database;
+		db.fileName = fileHandle.name;
+		db.fileHandle = fileHandle;
+		db.idbKey = null;
+		db.isOpen = true;
 
-	db.instance = database;
-	db.fileName = fileName;
-	db.ioHandle = handle;
-	db.isOpen = true;
+		await storeHandle(fileHandle);
+	} else {
+		// Safari/Firefox: pick via <input type="file">, then persist in IndexedDB
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.sqlite,.db';
+
+		const file = await new Promise<File>((resolve, reject) => {
+			input.onchange = () => {
+				if (input.files && input.files[0]) {
+					resolve(input.files[0]);
+				} else {
+					reject(new Error('No file selected'));
+				}
+			};
+			input.click();
+		});
+
+		const buffer = await file.arrayBuffer();
+		const database = new SQL.Database(new Uint8Array(buffer));
+		database.run('PRAGMA foreign_keys = ON;');
+		database.run(CREATE_TABLES);
+		_instance = database;
+		migrateAddUuids();
+
+		const idbKey = 'idb:' + file.name;
+		db.instance = database;
+		db.fileName = file.name;
+		db.fileHandle = null;
+		db.idbKey = idbKey;
+		db.isOpen = true;
+
+		// Persist immediately
+		await save();
+	}
 }
 
 export async function save() {
 	if (!_instance) return;
 
-	const io = await getIO();
 	const data = _instance.export();
 
-	if (db.ioHandle) {
-		await io.writeFile(db.ioHandle, data);
+	if (db.fileHandle) {
+		// Chromium: write directly to file
+		const blob = new Blob([data as unknown as BlobPart], { type: 'application/x-sqlite3' });
+		const writable = await db.fileHandle.createWritable();
+		await writable.write(blob);
+		await writable.close();
+	} else if (db.idbKey) {
+		// Safari/Firefox: persist in IndexedDB
+		await storeDbBinary(db.idbKey, data, db.fileName);
 	} else {
-		// Fallback: trigger download
+		// Last resort: trigger download
 		const blob = new Blob([data as unknown as BlobPart], { type: 'application/x-sqlite3' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
@@ -158,11 +379,10 @@ export async function close() {
 	_instance = null;
 	db.instance = null;
 	db.fileName = '';
-	db.ioHandle = null;
+	db.fileHandle = null;
+	db.idbKey = null;
 	db.isOpen = false;
-
-	const io = await getIO();
-	await io.clearStored();
+	await clearStoredHandle();
 }
 
 export function runRaw(sql: string) {

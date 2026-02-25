@@ -4,8 +4,7 @@ import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
 const dev = process.argv.includes('dev');
-const capacitor = process.env.CAPACITOR_BUILD === 'true';
-const basePath = dev || capacitor ? '' : '/invoices';
+const basePath = dev ? '' : '/invoices';
 
 export default defineConfig({
 	plugins: [

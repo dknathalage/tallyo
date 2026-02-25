@@ -5,7 +5,7 @@ import { getRateTiers } from '$lib/db/queries/rate-tiers.js';
 import { getCatalogItemWithRates } from '$lib/db/queries/catalog.js';
 import type { CatalogItem } from '$lib/types/index.js';
 
-export async function exportCatalog(): Promise<void> {
+export function exportCatalog(): void {
 	const items = query<CatalogItem>(
 		'SELECT * FROM catalog_items ORDER BY name'
 	);
@@ -34,5 +34,5 @@ export async function exportCatalog(): Promise<void> {
 
 	const csv = Papa.unparse(rows);
 	const date = new Date().toISOString().slice(0, 10);
-	await downloadCsv(csv, `catalog-${date}.csv`);
+	downloadCsv(csv, `catalog-${date}.csv`);
 }

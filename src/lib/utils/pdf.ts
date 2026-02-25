@@ -1,7 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Invoice, LineItem, PartySnapshot } from '$lib/types';
-import { getIO } from '$lib/io/index.js';
 
 function parseSnapshot(json: string): PartySnapshot {
 	try {
@@ -19,7 +18,7 @@ function parseSnapshot(json: string): PartySnapshot {
 	}
 }
 
-export async function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): Promise<void> {
+export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void {
 	const doc = new jsPDF();
 	const pageWidth = doc.internal.pageSize.getWidth();
 	let y = 20;
@@ -247,9 +246,7 @@ export async function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]):
 	doc.setTextColor(156, 163, 175);
 	doc.text('Thank you for your business', pageWidth / 2, footerY, { align: 'center' });
 
-	const io = await getIO();
-	const pdfBlob = doc.output('blob');
-	await io.exportBlob(pdfBlob, `invoice-${invoice.invoice_number}.pdf`, 'application/pdf');
+	doc.save(`invoice-${invoice.invoice_number}.pdf`);
 }
 
 function formatPdfCurrency(amount: number): string {

@@ -2,7 +2,7 @@ import { query } from '$lib/db/connection.svelte.js';
 import Papa from 'papaparse';
 import { downloadCsv } from './download.js';
 
-export async function exportInvoices(): Promise<void> {
+export function exportInvoices(): void {
 	const rows = query<Record<string, unknown>>(`
 		SELECT i.uuid as invoice_uuid, i.invoice_number, c.name as client_name,
 		       COALESCE(c.email,'') as client_email, i.date, i.due_date, i.tax_rate,
@@ -19,5 +19,5 @@ export async function exportInvoices(): Promise<void> {
 	`);
 	const csv = Papa.unparse(rows);
 	const date = new Date().toISOString().slice(0, 10);
-	await downloadCsv(csv, `invoices-${date}.csv`);
+	downloadCsv(csv, `invoices-${date}.csv`);
 }
