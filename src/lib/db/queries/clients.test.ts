@@ -6,6 +6,11 @@ vi.mock('../connection.svelte.js', () => ({
 	save: vi.fn().mockResolvedValue(undefined)
 }));
 
+vi.mock('../audit.js', () => ({
+	logAudit: vi.fn(),
+	computeChanges: vi.fn().mockReturnValue({})
+}));
+
 import { getClients, getClient, createClient, updateClient, deleteClient } from './clients.js';
 import { query, execute, save } from '../connection.svelte.js';
 
@@ -26,7 +31,9 @@ describe('getClients', () => {
 
 		const result = getClients();
 
-		expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM clients ORDER BY name');
+		expect(mockQuery).toHaveBeenCalledWith(
+			'SELECT c.*, rt.name as pricing_tier_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id ORDER BY c.name'
+		);
 		expect(result).toEqual(clients);
 	});
 
@@ -36,7 +43,7 @@ describe('getClients', () => {
 		getClients('alice');
 
 		expect(mockQuery).toHaveBeenCalledWith(
-			'SELECT * FROM clients WHERE name LIKE ? OR email LIKE ? ORDER BY name',
+			'SELECT c.*, rt.name as pricing_tier_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id WHERE c.name LIKE ? OR c.email LIKE ? ORDER BY c.name',
 			['%alice%', '%alice%']
 		);
 	});
@@ -48,7 +55,10 @@ describe('getClient', () => {
 		mockQuery.mockReturnValue([client]);
 
 		expect(getClient(1)).toEqual(client);
-		expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM clients WHERE id = ?', [1]);
+		expect(mockQuery).toHaveBeenCalledWith(
+			'SELECT c.*, rt.name as pricing_tier_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id WHERE c.id = ?',
+			[1]
+		);
 	});
 
 	it('returns null when not found', () => {
@@ -65,8 +75,8 @@ describe('createClient', () => {
 		const id = await createClient({ name: 'Bob', email: 'bob@test.com', phone: '555-0100', address: '123 Main St' });
 
 		expect(mockExecute).toHaveBeenCalledWith(
-			'INSERT INTO clients (name, email, phone, address) VALUES (?, ?, ?, ?)',
-			['Bob', 'bob@test.com', '555-0100', '123 Main St']
+			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id) VALUES (?, ?, ?, ?, ?, ?)',
+			[expect.any(String), 'Bob', 'bob@test.com', '555-0100', '123 Main St', null]
 		);
 		expect(mockSave).toHaveBeenCalled();
 		expect(id).toBe(42);
@@ -78,8 +88,8 @@ describe('createClient', () => {
 		await createClient({ name: 'Bob' });
 
 		expect(mockExecute).toHaveBeenCalledWith(
-			'INSERT INTO clients (name, email, phone, address) VALUES (?, ?, ?, ?)',
-			['Bob', '', '', '']
+			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id) VALUES (?, ?, ?, ?, ?, ?)',
+			[expect.any(String), 'Bob', '', '', '', null]
 		);
 	});
 
@@ -105,7 +115,7 @@ describe('updateClient', () => {
 
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE clients SET'),
-			['Alice Updated', 'alice@new.com', '', '', 1]
+			['Alice Updated', 'alice@new.com', '', '', null, 1]
 		);
 		expect(mockSave).toHaveBeenCalled();
 	});

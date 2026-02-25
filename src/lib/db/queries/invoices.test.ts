@@ -7,6 +7,11 @@ vi.mock('../connection.svelte.js', () => ({
 	runRaw: vi.fn()
 }));
 
+vi.mock('../audit.js', () => ({
+	logAudit: vi.fn(),
+	computeChanges: vi.fn().mockReturnValue({})
+}));
+
 import {
 	getInvoices,
 	getInvoice,
@@ -127,7 +132,7 @@ describe('createInvoice', () => {
 		);
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO line_items'),
-			[7, 'Service A', 1, 100, 100, 0]
+			[expect.any(String), 7, 'Service A', 1, 100, 100, 0]
 		);
 		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
 		expect(mockSave).toHaveBeenCalled();
@@ -185,7 +190,7 @@ describe('updateInvoice', () => {
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM line_items WHERE invoice_id = ?', [1]);
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO line_items'),
-			[1, 'New Service', 2, 100, 200, 0]
+			[expect.any(String), 1, 'New Service', 2, 100, 200, 0]
 		);
 		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
 		expect(mockSave).toHaveBeenCalled();
