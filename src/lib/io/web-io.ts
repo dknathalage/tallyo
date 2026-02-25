@@ -7,15 +7,25 @@ interface FSAccessHandle extends FileSystemFileHandle {
 	requestPermission(opts: { mode: string }): Promise<string>;
 }
 
+// --- IndexedDB constants ---
 const IDB_NAME = 'invoice-manager';
 const IDB_STORE = 'file-handles';
 const IDB_KEY = 'last-db-handle';
+// Store for the fallback DB binary (Safari/Firefox)
+const IDB_DB_STORE = 'db-storage';
+const IDB_DB_KEY_PREFIX = 'idb:';
 
 function openIDB(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
-		const req = indexedDB.open(IDB_NAME, 1);
+		const req = indexedDB.open(IDB_NAME, 2);
 		req.onupgradeneeded = () => {
-			req.result.createObjectStore(IDB_STORE);
+			const db = req.result;
+			if (!db.objectStoreNames.contains(IDB_STORE)) {
+				db.createObjectStore(IDB_STORE);
+			}
+			if (!db.objectStoreNames.contains(IDB_DB_STORE)) {
+				db.createObjectStore(IDB_DB_STORE);
+			}
 		};
 		req.onsuccess = () => resolve(req.result);
 		req.onerror = () => reject(req.error);
@@ -29,17 +39,20 @@ function supportsFileSystemAccess(): boolean {
 /**
  * Web implementation of FileIO.
  *
- * Uses the File System Access API (showSaveFilePicker / showOpenFilePicker)
- * when available (Chromium browsers), with a fallback to <input type="file">
- * and <a> download links for other browsers.
+ * **Chromium browsers** — Uses the File System Access API
+ * (showSaveFilePicker / showOpenFilePicker) for direct file read/write.
+ * FileSystemFileHandle objects are stored in IndexedDB for session restore.
  *
- * FileSystemFileHandle objects are stored in IndexedDB for restore.
- * The opaque string handle is the IDB_KEY constant — there's only ever one
- * stored handle on web, so we use it as a sentinel.
+ * **Safari / Firefox (no File System Access API)** — Uses IndexedDB to
+ * transparently persist the SQLite database binary. The database survives
+ * page reloads without requiring file downloads on every save. Users can
+ * still import an existing .sqlite file via <input type="file">.
  */
 export class WebFileIO implements FileIO {
 	/** In-memory cache of the FileSystemFileHandle for the current session. */
 	private fsHandle: FileSystemFileHandle | null = null;
+
+	// ─── File System Access API path (Chromium) ───────────────────────
 
 	async pickNewFile(suggestedName: string): Promise<string> {
 		if (supportsFileSystemAccess()) {
@@ -52,11 +65,14 @@ export class WebFileIO implements FileIO {
 					}
 				]
 			});
-			await this.storeHandle(this.fsHandle);
+			await this.storeFsHandle(this.fsHandle);
 			return IDB_KEY;
 		}
-		// Non-FSAA browsers: no persistent handle — use a sentinel
-		return '__memory__';
+
+		// Safari/Firefox: create a new DB stored in IndexedDB
+		const handle = IDB_DB_KEY_PREFIX + suggestedName;
+		await this.storeIdbMeta(handle, suggestedName);
+		return handle;
 	}
 
 	async pickExistingFile(): Promise<string> {
@@ -70,38 +86,22 @@ export class WebFileIO implements FileIO {
 				]
 			});
 			this.fsHandle = handle;
-			await this.storeHandle(handle);
+			await this.storeFsHandle(handle);
 			return IDB_KEY;
 		}
 
-		// Fallback: <input type="file">
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = '.sqlite,.db';
-
-		const file = await new Promise<File>((resolve, reject) => {
-			input.onchange = () => {
-				if (input.files && input.files[0]) {
-					resolve(input.files[0]);
-				} else {
-					reject(new Error('No file selected'));
-				}
-			};
-			input.click();
-		});
-
-		// Stash the file data so readFile can return it
-		this._fallbackFile = file;
-		return '__fallback__';
+		// Safari/Firefox: pick via <input type="file">, then store in IndexedDB
+		const file = await this.pickFileViaInput();
+		const handle = IDB_DB_KEY_PREFIX + file.name;
+		const buffer = await file.arrayBuffer();
+		await this.writeIdbData(handle, new Uint8Array(buffer));
+		await this.storeIdbMeta(handle, file.name);
+		return handle;
 	}
 
-	/** Temporary storage for the file picked via the <input> fallback. */
-	private _fallbackFile: File | null = null;
-
 	async readFile(handle: string): Promise<Uint8Array> {
-		if (handle === '__fallback__' && this._fallbackFile) {
-			const buffer = await this._fallbackFile.arrayBuffer();
-			return new Uint8Array(buffer);
+		if (this.isIdbHandle(handle)) {
+			return await this.readIdbData(handle);
 		}
 
 		const fsHandle = this.fsHandle ?? (await this.getStoredFsHandle());
@@ -114,15 +114,8 @@ export class WebFileIO implements FileIO {
 	}
 
 	async writeFile(handle: string, data: Uint8Array): Promise<void> {
-		if (handle === '__memory__' || handle === '__fallback__') {
-			// No persistent file handle — trigger a download
-			const blob = new Blob([data as BlobPart], { type: 'application/x-sqlite3' });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = 'invoices.sqlite';
-			a.click();
-			URL.revokeObjectURL(url);
+		if (this.isIdbHandle(handle)) {
+			await this.writeIdbData(handle, data);
 			return;
 		}
 
@@ -136,29 +129,34 @@ export class WebFileIO implements FileIO {
 	}
 
 	async tryRestore(): Promise<{ handle: string; name: string } | null> {
-		if (!supportsFileSystemAccess()) return null;
+		// Try File System Access API restore first (Chromium)
+		if (supportsFileSystemAccess()) {
+			const handle = await this.getStoredFsHandle();
+			if (!handle) return null;
 
-		const handle = await this.getStoredFsHandle();
-		if (!handle) return null;
+			const perm = await (handle as FSAccessHandle).queryPermission({ mode: 'readwrite' });
+			if (perm === 'denied') {
+				await this.clearStored();
+				return null;
+			}
 
-		const perm = await (handle as FSAccessHandle).queryPermission({ mode: 'readwrite' });
-		if (perm === 'denied') {
-			await this.clearStored();
-			return null;
-		}
+			if (perm === 'granted') {
+				this.fsHandle = handle;
+				return { handle: IDB_KEY, name: handle.name };
+			}
 
-		if (perm === 'granted') {
-			this.fsHandle = handle;
+			// Permission needs user gesture
 			return { handle: IDB_KEY, name: handle.name };
 		}
 
-		// Permission needs user gesture
-		return { handle: IDB_KEY, name: handle.name };
+		// Safari/Firefox: check for stored DB in IndexedDB
+		return await this.getIdbMeta();
 	}
 
 	/**
 	 * Request readwrite permission on the stored handle.
 	 * Must be called from a user gesture context.
+	 * Only relevant for File System Access API (Chromium).
 	 */
 	async requestPermission(): Promise<boolean> {
 		const handle = this.fsHandle ?? (await this.getStoredFsHandle());
@@ -172,13 +170,27 @@ export class WebFileIO implements FileIO {
 	}
 
 	getFileName(handle: string): string {
-		if (handle === '__fallback__' && this._fallbackFile) {
-			return this._fallbackFile.name;
+		if (this.isIdbHandle(handle)) {
+			return handle.slice(IDB_DB_KEY_PREFIX.length);
 		}
 		return this.fsHandle?.name ?? 'invoices.sqlite';
 	}
 
 	async exportBlob(blob: Blob, filename: string, _mimeType: string): Promise<void> {
+		// Use Web Share API on mobile browsers that support it (iOS Safari)
+		if (this.isMobileBrowser() && navigator.canShare?.({ files: [new File([blob], filename)] })) {
+			try {
+				await navigator.share({
+					files: [new File([blob], filename, { type: _mimeType })],
+					title: filename
+				});
+				return;
+			} catch (e) {
+				// User cancelled or share failed — fall through to download
+				if (e instanceof Error && e.name === 'AbortError') return;
+			}
+		}
+
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
@@ -189,30 +201,33 @@ export class WebFileIO implements FileIO {
 
 	async clearStored(): Promise<void> {
 		this.fsHandle = null;
-		this._fallbackFile = null;
 		try {
 			const idb = await openIDB();
-			const tx = idb.transaction(IDB_STORE, 'readwrite');
-			tx.objectStore(IDB_STORE).delete(IDB_KEY);
-			await new Promise<void>((resolve) => {
-				tx.oncomplete = () => { idb.close(); resolve(); };
-				tx.onerror = () => { idb.close(); resolve(); };
-			});
+
+			// Clear FSAA handle
+			const tx1 = idb.transaction(IDB_STORE, 'readwrite');
+			tx1.objectStore(IDB_STORE).delete(IDB_KEY);
+			await txComplete(tx1);
+
+			// Clear IDB meta
+			const tx2 = idb.transaction(IDB_DB_STORE, 'readwrite');
+			tx2.objectStore(IDB_DB_STORE).delete('__meta__');
+			await txComplete(tx2);
+
+			idb.close();
 		} catch {
 			// ignore
 		}
 	}
 
-	// --- private helpers ---
+	// ─── Private: File System Access API helpers ──────────────────────
 
-	private async storeHandle(handle: FileSystemFileHandle): Promise<void> {
+	private async storeFsHandle(handle: FileSystemFileHandle): Promise<void> {
 		const idb = await openIDB();
 		const tx = idb.transaction(IDB_STORE, 'readwrite');
 		tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
-		return new Promise<void>((resolve, reject) => {
-			tx.oncomplete = () => { idb.close(); resolve(); };
-			tx.onerror = () => { idb.close(); reject(tx.error); };
-		});
+		await txComplete(tx);
+		idb.close();
 	}
 
 	private async getStoredFsHandle(): Promise<FileSystemFileHandle | null> {
@@ -220,12 +235,106 @@ export class WebFileIO implements FileIO {
 			const idb = await openIDB();
 			const tx = idb.transaction(IDB_STORE, 'readonly');
 			const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
-			return new Promise((resolve) => {
-				req.onsuccess = () => { idb.close(); resolve(req.result ?? null); };
-				req.onerror = () => { idb.close(); resolve(null); };
-			});
+			const result = await reqResult<FileSystemFileHandle | undefined>(req);
+			idb.close();
+			return result ?? null;
 		} catch {
 			return null;
 		}
 	}
+
+	// ─── Private: IndexedDB fallback helpers (Safari/Firefox) ─────────
+
+	private isIdbHandle(handle: string): boolean {
+		return handle.startsWith(IDB_DB_KEY_PREFIX);
+	}
+
+	private async writeIdbData(handle: string, data: Uint8Array): Promise<void> {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_DB_STORE, 'readwrite');
+		tx.objectStore(IDB_DB_STORE).put(data, handle);
+		await txComplete(tx);
+		idb.close();
+	}
+
+	private async readIdbData(handle: string): Promise<Uint8Array> {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_DB_STORE, 'readonly');
+		const req = tx.objectStore(IDB_DB_STORE).get(handle);
+		const result = await reqResult<Uint8Array | undefined>(req);
+		idb.close();
+		if (!result) throw new Error('No database found in storage');
+		return result;
+	}
+
+	/** Store which IDB handle + display name was last used, for tryRestore. */
+	private async storeIdbMeta(handle: string, name: string): Promise<void> {
+		const idb = await openIDB();
+		const tx = idb.transaction(IDB_DB_STORE, 'readwrite');
+		tx.objectStore(IDB_DB_STORE).put({ handle, name }, '__meta__');
+		await txComplete(tx);
+		idb.close();
+	}
+
+	/** Retrieve last-used IDB handle + name. */
+	private async getIdbMeta(): Promise<{ handle: string; name: string } | null> {
+		try {
+			const idb = await openIDB();
+			const tx = idb.transaction(IDB_DB_STORE, 'readonly');
+			const req = tx.objectStore(IDB_DB_STORE).get('__meta__');
+			const meta = await reqResult<{ handle: string; name: string } | undefined>(req);
+			idb.close();
+			if (!meta) return null;
+
+			// Verify the data actually exists
+			const idb2 = await openIDB();
+			const tx2 = idb2.transaction(IDB_DB_STORE, 'readonly');
+			const dataReq = tx2.objectStore(IDB_DB_STORE).get(meta.handle);
+			const data = await reqResult<Uint8Array | undefined>(dataReq);
+			idb2.close();
+
+			return data ? meta : null;
+		} catch {
+			return null;
+		}
+	}
+
+	// ─── Private: input fallback ──────────────────────────────────────
+
+	private pickFileViaInput(): Promise<File> {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.sqlite,.db';
+
+		return new Promise<File>((resolve, reject) => {
+			input.onchange = () => {
+				if (input.files && input.files[0]) {
+					resolve(input.files[0]);
+				} else {
+					reject(new Error('No file selected'));
+				}
+			};
+			input.click();
+		});
+	}
+
+	private isMobileBrowser(): boolean {
+		return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+	}
+}
+
+// ─── IndexedDB promise helpers ────────────────────────────────────────
+
+function txComplete(tx: IDBTransaction): Promise<void> {
+	return new Promise((resolve, reject) => {
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+	});
+}
+
+function reqResult<T>(req: IDBRequest): Promise<T> {
+	return new Promise((resolve, reject) => {
+		req.onsuccess = () => resolve(req.result as T);
+		req.onerror = () => reject(req.error);
+	});
 }

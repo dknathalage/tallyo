@@ -32,32 +32,26 @@ export async function tryRestore(): Promise<string | null> {
 	const restored = await io.tryRestore();
 	if (!restored) return null;
 
-	// Try reading immediately — works when permission is granted or on native
+	// Try reading immediately — works when:
+	// - FSAA permission is already granted (Chromium)
+	// - IndexedDB storage (Safari/Firefox) — always works, no permission needed
+	// - Native platform
 	try {
-		const data = await io.readFile(restored.handle);
-		const SQL = await initSql();
-		const database = new SQL.Database(data);
-		database.run('PRAGMA foreign_keys = ON;');
-		database.run(CREATE_TABLES);
-		_instance = database;
-		migrateAddUuids();
-
-		db.instance = database;
-		db.fileName = restored.name;
-		db.ioHandle = restored.handle;
-		db.isOpen = true;
-		return null; // opened silently
+		const opened = await openFromIO(io, restored.handle, restored.name);
+		if (opened) return null; // opened silently
 	} catch {
-		// Permission needs user gesture — return the file name so UI can show a button
-		return restored.name;
+		// Fall through — permission may need user gesture (FSAA on Chromium)
 	}
+
+	// Permission needs user gesture — return the file name so UI can show a button
+	return restored.name;
 }
 
-/** Reconnect to the stored handle (must be called from a user gesture on web). */
+/** Reconnect to the stored handle (must be called from a user gesture on web for FSAA). */
 export async function reconnect(): Promise<boolean> {
 	const io = await getIO();
 
-	// On web, the IO implementation may need to request permission
+	// On web with File System Access API, we need to request permission via user gesture
 	if ('requestPermission' in io) {
 		const granted = await (io as WebFileIO).requestPermission();
 		if (!granted) return false;
@@ -66,8 +60,12 @@ export async function reconnect(): Promise<boolean> {
 	const restored = await io.tryRestore();
 	if (!restored) return false;
 
+	return await openFromIO(io, restored.handle, restored.name);
+}
+
+async function openFromIO(io: Awaited<ReturnType<typeof getIO>>, handle: string, name: string): Promise<boolean> {
 	try {
-		const data = await io.readFile(restored.handle);
+		const data = await io.readFile(handle);
 		const SQL = await initSql();
 		const database = new SQL.Database(data);
 		database.run('PRAGMA foreign_keys = ON;');
@@ -76,13 +74,12 @@ export async function reconnect(): Promise<boolean> {
 		migrateAddUuids();
 
 		db.instance = database;
-		db.fileName = restored.name;
-		db.ioHandle = restored.handle;
+		db.fileName = name;
+		db.ioHandle = handle;
 		db.isOpen = true;
 		return true;
 	} catch {
-		const ioForClear = await getIO();
-		await ioForClear.clearStored();
+		await io.clearStored();
 		return false;
 	}
 }
