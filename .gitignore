@@ -7,6 +7,8 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/src/docs/.vitepress/dist
+/src/docs/.vitepress/cache
 
 # OS
 .DS_Store

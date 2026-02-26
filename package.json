@@ -11,7 +11,11 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"docs:dev": "vitepress dev src/docs",
+		"docs:build": "vitepress build src/docs",
+		"docs:preview": "vitepress preview src/docs",
+		"build:all": "npm run build && npm run docs:build && cp -r src/docs/.vitepress/dist build/web"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",
@@ -23,6 +27,7 @@
 		"svelte-check": "^4.3.6",
 		"typescript": "^5.9.3",
 		"vite": "^7.3.1",
+		"vitepress": "^1.6.4",
 		"vitest": "^4.0.18"
 	},
 	"dependencies": {

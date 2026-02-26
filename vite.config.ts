@@ -17,6 +17,7 @@ export default defineConfig({
 			workbox: {
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,wasm,webmanifest}'],
 				navigateFallback: `${basePath}/index.html`,
+				navigateFallbackDenylist: [/^\/invoices\/web\//],
 				cleanupOutdatedCaches: true,
 				clientsClaim: true,
 				skipWaiting: false
