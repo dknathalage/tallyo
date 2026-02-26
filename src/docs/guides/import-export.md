@@ -4,7 +4,7 @@ Invoice Manager supports bulk data operations via CSV and Excel files.
 
 ## Exporting Data
 
-Export buttons are available on the Invoices, Clients, and Catalog pages. Clicking **Export** downloads a CSV file with all records of that type.
+Export buttons are available on the Invoices, Clients, Catalog, and Estimates pages. Clicking **Export** downloads a CSV file with all records of that type.
 
 ## Importing Data
 
@@ -37,6 +37,13 @@ Click **Import** to apply the changes. All modifications are recorded in the aud
 
 - **CSV** — Comma-separated values (parsed with PapaParse)
 - **Excel** — .xlsx files (parsed with SheetJS)
+
+## Estimate Import & Export
+
+Estimates support the same import/export workflow as invoices:
+
+- **Export** — Click **Export** on the Estimates page to download a CSV with all estimates and their line items (one row per line item, grouped by estimate number)
+- **Import** — Click **Import** to open the wizard. Required fields are estimate number, client name, date, and line description. Missing clients are created automatically. Statuses must be one of: draft, sent, accepted, rejected, or expired.
 
 ## Database Backup
 

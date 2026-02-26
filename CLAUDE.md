@@ -35,3 +35,4 @@ Local-first invoice management PWA. All data stays on the user's device via Inde
 - Routes follow SvelteKit file-based routing with `+page.svelte` files
 - UUIDs are used as primary keys throughout
 - All database mutations are audit-logged
+- Update user documentation (`src/docs/`) when a feature change impacts user-facing functionality

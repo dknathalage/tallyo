@@ -22,4 +22,12 @@ features:
     details: Generate professional PDF invoices with your business branding, ready to send.
   - title: Import & Export
     details: Bulk import and export data via CSV and Excel files with a guided wizard.
+  - title: Estimates & Quotes
+    details: Send prospective pricing to clients and convert accepted estimates into invoices with one click.
+  - title: Multi-Currency
+    details: Create invoices and estimates in 20+ currencies with locale-aware formatting.
+  - title: Dark Mode
+    details: Switch between light, dark, and system themes for comfortable viewing any time of day.
+  - title: Internationalization
+    details: Locale-aware date and number formatting with a translation-ready architecture.
 ---

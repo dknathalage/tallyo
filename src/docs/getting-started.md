@@ -24,6 +24,14 @@ Once installed, the app launches in its own window and works offline.
 
 3. **Create an invoice** — Go to **Invoices → New**, select a client, add line items, and save. You can preview and download the invoice as a PDF.
 
+4. **Create an estimate** — Go to **Estimates → New** to send prospective pricing to a client. Once accepted, convert it to an invoice with one click.
+
+## Customize Your Experience
+
+- **Theme** — Toggle between light, dark, or system theme from the navbar
+- **Language** — Set your preferred locale in the app settings for locale-aware formatting
+- **Default currency** — Choose your default currency in **Settings → Business Profile** so new invoices and estimates start with the right currency
+
 ## Browser Support
 
 Invoice Manager works in all modern browsers. It uses IndexedDB for data storage, which is supported in:

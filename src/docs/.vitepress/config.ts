@@ -28,6 +28,7 @@ export default defineConfig({
         text: 'Guides',
         items: [
           { text: 'Invoices', link: '/guides/invoices' },
+          { text: 'Estimates', link: '/guides/estimates' },
           { text: 'Clients', link: '/guides/clients' },
           { text: 'Catalog', link: '/guides/catalog' },
           { text: 'Import & Export', link: '/guides/import-export' },

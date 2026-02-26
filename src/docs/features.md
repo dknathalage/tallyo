@@ -2,7 +2,11 @@
 
 ## Dashboard
 
-The home page shows an overview of your invoicing activity with stats cards for revenue, invoice counts, and outstanding amounts. Quick action buttons let you jump to common tasks.
+The home page shows an overview of your invoicing activity with stats cards for revenue, invoice counts, outstanding amounts, and pending estimates. Quick action buttons let you jump to common tasks.
+
+::: tip
+Dashboard totals are calculated in your default currency. Invoices in other currencies are excluded and noted separately.
+:::
 
 ## Invoice Management
 
@@ -12,6 +16,15 @@ The home page shows an overview of your invoicing activity with stats cards for 
 - Status tracking (draft, sent, paid, overdue)
 - Search and filter your invoice list
 - Bulk selection and actions
+
+## Estimates & Quotes
+
+- Create estimates with line items, client, and payer details
+- Five-status workflow: draft → sent → accepted → rejected → expired
+- Convert accepted estimates to invoices with one click
+- PDF export with business branding
+- Search, filter by status, and bulk actions
+- CSV import and export
 
 ## Client Management
 
@@ -26,6 +39,13 @@ The home page shows an overview of your invoicing activity with stats cards for 
 - Autocomplete search when adding invoice line items
 - Browse catalog via a modal picker
 - Rate tiers for flexible pricing
+
+## Multi-Currency
+
+- Support for 20 currencies (USD, EUR, GBP, AUD, CAD, JPY, CHF, and more)
+- Set a default currency in your business profile
+- Choose a currency per invoice or estimate
+- Locale-aware formatting with proper symbols and decimal handling
 
 ## Import & Export
 
@@ -46,7 +66,32 @@ The home page shows an overview of your invoicing activity with stats cards for 
 
 ## Settings
 
-- Business profile (name, address, contact, tax ID)
+- Business profile (name, address, contact, tax ID, default currency)
 - Logo upload
 - Custom metadata key-value pairs
 - Full database export and import
+
+## Payers / Bill-To
+
+- Maintain a directory of payer entities separate from clients
+- Link a default payer to a client for automatic population
+- Override payer details per invoice or estimate
+- Payer snapshots are captured at document creation time
+
+## Dark Mode
+
+- Three theme options: light, dark, and system (follows OS preference)
+- Toggle from the navbar
+- All pages and PDF previews respect the selected theme
+
+## Internationalization
+
+- Locale-aware date and number formatting via the Intl API
+- Translation-ready architecture with structured message keys
+- Language preference saved in your browser
+
+## Audit Logging
+
+- Every data change is recorded with a timestamp, action type, and field-level diffs
+- View change history on invoice, estimate, client, and payer detail pages
+- Bulk operations are grouped under a shared batch ID

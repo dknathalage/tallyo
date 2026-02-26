@@ -25,7 +25,14 @@ You can also use the **Browse** button to open a modal and pick items from the f
 
 ## Rate Tiers
 
-Catalog items can have tiered pricing for quantity-based discounts. Configure rate tiers from the catalog item detail page.
+Catalog items can have tiered pricing for different client segments or volume levels.
+
+### How It Works
+
+1. **Create tiers** in **Settings → Rate Tiers** (e.g. Standard, Premium, Wholesale)
+2. **Assign tier-specific rates** on a catalog item's detail page — each item can have a different rate per tier
+3. **Assign a tier to a client** on the client edit page
+4. **Automatic rate selection** — When you add a catalog item to an invoice for a client with a tier, the tier rate is used instead of the default rate
 
 ## Import & Export
 
