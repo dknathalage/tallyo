@@ -44,7 +44,7 @@
 	} = $props();
 
 	let clients: Client[] = $state([]);
-	let invoiceNumber = $state(initialData?.invoice_number ?? '');
+	let invoiceNumber = $derived(initialData?.invoice_number ?? '');
 	let clientId = $state(initialData?.client_id ?? 0);
 	let date = $state(initialData?.date ?? today());
 	let dueDate = $state(initialData?.due_date ?? today());
@@ -54,14 +54,29 @@
 	let currencyCode = $state(initialData?.currency_code ?? '');
 
 	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string; notes?: string }>>(
-		initialLineItems?.map((li) => ({
-			description: li.description,
-			quantity: li.quantity,
-			rate: li.rate,
-			amount: li.amount,
-			notes: li.notes ?? ''
-		})) ?? [{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]
+		[{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]
 	);
+
+	$effect(() => {
+		if (initialData) {
+			clientId = initialData.client_id ?? 0;
+			date = initialData.date ?? today();
+			dueDate = initialData.due_date ?? today();
+			taxRate = initialData.tax_rate ?? 0;
+			notes = initialData.notes ?? '';
+			status = initialData.status ?? 'draft';
+			currencyCode = initialData.currency_code ?? '';
+		}
+		if (initialLineItems) {
+			lineItems = initialLineItems.map((li) => ({
+				description: li.description,
+				quantity: li.quantity,
+				rate: li.rate,
+				amount: li.amount,
+				notes: li.notes ?? ''
+			}));
+		}
+	});
 
 	let selectedClient = $derived(clientId ? getClient(clientId) : null);
 	let activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
@@ -404,7 +419,7 @@
 				</div>
 			</div>
 			<div class="mt-3">
-				<label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('common.additionalFields')}</label>
+				<span class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('common.additionalFields')}</span>
 				<div class="mt-1">
 					<KeyValueEditor bind:pairs={payerMetadataPairs} addLabel={i18n.t('common.addField')} />
 				</div>
