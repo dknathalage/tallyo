@@ -11,7 +11,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: Open App
-      link: /invoices/console/
+      link: /console/
 
 features:
   - title: Fully Offline
