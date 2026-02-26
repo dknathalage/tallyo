@@ -11,7 +11,7 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Guides', link: '/guides/invoices' },
-      { text: 'Open App', link: '/console/' }
+      { text: 'Open App', link: '/console/', target: '_self' }
     ],
 
     sidebar: [
