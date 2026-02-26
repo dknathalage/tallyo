@@ -24,9 +24,9 @@
 
 	const variantClasses: Record<Variant, string> = {
 		primary: 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500',
-		secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500',
+		secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600',
 		danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-		ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-primary-500'
+		ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-gray-700'
 	};
 
 	const sizeClasses: Record<Size, string> = {
@@ -40,7 +40,7 @@
 	{type}
 	{disabled}
 	{onclick}
-	class="inline-flex cursor-pointer items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 {variantClasses[variant]} {sizeClasses[size]} {disabled ? 'cursor-not-allowed opacity-50' : ''} {className}"
+	class="inline-flex cursor-pointer items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 dark:ring-offset-gray-900 {variantClasses[variant]} {sizeClasses[size]} {disabled ? 'cursor-not-allowed opacity-50' : ''} {className}"
 >
 	{@render children()}
 </button>

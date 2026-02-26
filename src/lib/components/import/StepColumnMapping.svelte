@@ -169,15 +169,15 @@
 	<!-- Saved presets -->
 	{#if savedMappings.length > 0}
 		<div>
-			<label class="block text-sm font-medium text-gray-700 mb-1">Saved mappings</label>
+			<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Saved mappings</label>
 			<div class="flex flex-wrap gap-2">
 				{#each savedMappings as mapping}
-					<div class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm">
+					<div class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-sm">
 						<button class="cursor-pointer text-primary-600 hover:text-primary-700" onclick={() => loadPreset(mapping)}>
 							{mapping.name}
 						</button>
 						<button
-							class="cursor-pointer ml-1 text-gray-400 hover:text-red-500"
+							class="cursor-pointer ml-1 text-gray-400 dark:text-gray-500 hover:text-red-500"
 							onclick={() => handleDeletePreset(mapping.id)}
 							aria-label="Delete mapping"
 						>
@@ -190,25 +190,25 @@
 	{/if}
 
 	<!-- Column mapping table -->
-	<div class="max-h-80 overflow-auto rounded-lg border border-gray-200">
-		<table class="min-w-full divide-y divide-gray-200 text-sm">
-			<thead class="sticky top-0 bg-gray-50">
+	<div class="max-h-80 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+		<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+			<thead class="sticky top-0 bg-gray-50 dark:bg-gray-900">
 				<tr>
-					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source Column</th>
-					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Map To</th>
-					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Sample Values</th>
+					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Source Column</th>
+					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Map To</th>
+					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Sample Values</th>
 				</tr>
 			</thead>
-			<tbody class="divide-y divide-gray-200 bg-white">
+			<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
 				{#each headers as header}
 					{@const mapping = getMapping(header)}
-					<tr class={mapping === 'new_tier' ? 'bg-green-50' : ''}>
-						<td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900">{header}</td>
+					<tr class={mapping === 'new_tier' ? 'bg-green-50 dark:bg-green-900/20' : ''}>
+						<td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900 dark:text-white">{header}</td>
 						<td class="px-3 py-2">
 							<select
 								value={mapping}
 								onchange={(e) => setMapping(header, (e.target as HTMLSelectElement).value)}
-								class="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+								class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm dark:text-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
 							>
 								<option value="skip">-- Skip --</option>
 								<optgroup label="Standard Fields">
@@ -229,7 +229,7 @@
 								</optgroup>
 							</select>
 						</td>
-						<td class="px-3 py-2 text-gray-500">
+						<td class="px-3 py-2 text-gray-500 dark:text-gray-400">
 							{preview.map((r) => r[header] || '').filter(Boolean).slice(0, 3).join(', ') || '-'}
 						</td>
 					</tr>
@@ -258,7 +258,7 @@
 				type="text"
 				bind:value={saveName}
 				placeholder="Mapping name..."
-				class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			/>
 			<Button variant="secondary" size="sm" onclick={savePreset} disabled={!saveName.trim()}>Save</Button>
 			<Button variant="ghost" size="sm" onclick={() => (showSave = false)}>Cancel</Button>
@@ -268,7 +268,7 @@
 	</div>
 
 	<!-- Footer -->
-	<div class="flex justify-end border-t border-gray-200 pt-4">
+	<div class="flex justify-end border-t border-gray-200 dark:border-gray-700 pt-4">
 		<Button disabled={!hasNameMapping} onclick={handleNext}>
 			Next
 		</Button>

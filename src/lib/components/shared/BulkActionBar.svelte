@@ -16,15 +16,15 @@
 
 {#if count > 0}
 	<div
-		class="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2"
+		class="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 dark:border-primary-800 dark:bg-primary-900/30"
 		transition:fly={{ y: -8, duration: 150 }}
 	>
-		<span class="text-sm font-medium text-primary-700">
+		<span class="text-sm font-medium text-primary-700 dark:text-primary-300">
 			{count} selected
 		</span>
 		<button
 			onclick={ondeselect}
-			class="cursor-pointer text-sm text-primary-600 underline hover:text-primary-800"
+			class="cursor-pointer text-sm text-primary-600 underline hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200"
 		>
 			Deselect
 		</button>

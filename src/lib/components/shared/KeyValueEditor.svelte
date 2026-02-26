@@ -28,20 +28,20 @@
 				bind:value={pairs[i].key}
 				placeholder="Field name"
 				{readonly}
-				class="w-1/3 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 {readonly ? 'bg-gray-50' : ''}"
+				class="w-1/3 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 {readonly ? 'bg-gray-50 dark:bg-gray-900' : ''}"
 			/>
 			<input
 				type="text"
 				bind:value={pairs[i].value}
 				placeholder="Value"
 				{readonly}
-				class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 {readonly ? 'bg-gray-50' : ''}"
+				class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 {readonly ? 'bg-gray-50 dark:bg-gray-900' : ''}"
 			/>
 			{#if !readonly}
 				<button
 					type="button"
 					onclick={() => removePair(i)}
-					class="cursor-pointer rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+					class="cursor-pointer rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
 					aria-label="Remove field"
 				>
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -55,7 +55,7 @@
 		<button
 			type="button"
 			onclick={addPair}
-			class="cursor-pointer text-sm font-medium text-primary-600 hover:text-primary-700"
+			class="cursor-pointer text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
 		>
 			+ {addLabel}
 		</button>

@@ -94,8 +94,8 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/clients" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Clients</a>
-				<h1 class="mt-1 text-2xl font-bold text-gray-900">{client.name}</h1>
+				<a href="{base}/clients" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; Back to Clients</a>
+				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{client.name}</h1>
 			</div>
 			<div class="flex gap-2">
 				{#if !editing}
@@ -106,33 +106,33 @@
 		</div>
 
 		<!-- Client details / Edit form -->
-		<div class="rounded-lg border border-gray-200 bg-white p-6">
+		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 			{#if editing}
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Edit Client</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Edit Client</h2>
 				<ClientForm initialData={client} onsubmit={handleUpdate} />
 			{:else}
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<dt class="text-sm font-medium text-gray-500">Email</dt>
-						<dd class="mt-1 text-sm text-gray-900">{client.email || '-'}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Email</dt>
+						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{client.email || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500">Phone</dt>
-						<dd class="mt-1 text-sm text-gray-900">{client.phone || '-'}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Phone</dt>
+						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{client.phone || '-'}</dd>
 					</div>
 					<div class="sm:col-span-2">
-						<dt class="text-sm font-medium text-gray-500">Address</dt>
-						<dd class="mt-1 whitespace-pre-line text-sm text-gray-900">{client.address || '-'}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Address</dt>
+						<dd class="mt-1 whitespace-pre-line text-sm text-gray-900 dark:text-white">{client.address || '-'}</dd>
 					</div>
 					{#if Object.keys(parseMetadataObj(client.metadata)).length > 0}
 						<div class="sm:col-span-2">
-							<dt class="text-sm font-medium text-gray-500">Additional Fields</dt>
+							<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Additional Fields</dt>
 							<dd class="mt-1">
 								<div class="space-y-1">
 									{#each Object.entries(parseMetadataObj(client.metadata)) as [key, value]}
 										<div class="text-sm">
-											<span class="font-medium text-gray-700">{key}:</span>
-											<span class="text-gray-900">{value}</span>
+											<span class="font-medium text-gray-700 dark:text-gray-300">{key}:</span>
+											<span class="text-gray-900 dark:text-white">{value}</span>
 										</div>
 									{/each}
 								</div>
@@ -141,19 +141,19 @@
 					{/if}
 				</dl>
 				{#if payer}
-					<div class="mt-6 border-t border-gray-200 pt-4">
-						<h3 class="text-sm font-medium text-gray-500">Bill-To Payer</h3>
+					<div class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+						<h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Bill-To Payer</h3>
 						<div class="mt-2">
-							<p class="text-sm font-medium text-gray-900">{payer.name}</p>
-							{#if payer.email}<p class="text-sm text-gray-500">{payer.email}</p>{/if}
-							{#if payer.phone}<p class="text-sm text-gray-500">{payer.phone}</p>{/if}
-							{#if payer.address}<p class="mt-1 whitespace-pre-line text-sm text-gray-500">{payer.address}</p>{/if}
+							<p class="text-sm font-medium text-gray-900 dark:text-white">{payer.name}</p>
+							{#if payer.email}<p class="text-sm text-gray-500 dark:text-gray-400">{payer.email}</p>{/if}
+							{#if payer.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{payer.phone}</p>{/if}
+							{#if payer.address}<p class="mt-1 whitespace-pre-line text-sm text-gray-500 dark:text-gray-400">{payer.address}</p>{/if}
 							{#if Object.keys(parseMetadataObj(payer.metadata)).length > 0}
 								<div class="mt-2 space-y-1">
 									{#each Object.entries(parseMetadataObj(payer.metadata)) as [key, value]}
 										<div class="text-sm">
-											<span class="font-medium text-gray-700">{key}:</span>
-											<span class="text-gray-900">{value}</span>
+											<span class="font-medium text-gray-700 dark:text-gray-300">{key}:</span>
+											<span class="text-gray-900 dark:text-white">{value}</span>
 										</div>
 									{/each}
 								</div>
@@ -167,7 +167,7 @@
 		<!-- Client invoices -->
 		<div>
 			<div class="flex items-center justify-between">
-				<h2 class="text-lg font-semibold text-gray-900">Invoices</h2>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Invoices</h2>
 				<a href="{base}/invoices/new?client_id={clientId}">
 					<Button size="sm">New Invoice</Button>
 				</a>
@@ -178,31 +178,31 @@
 					<EmptyState title="No invoices" message="This client has no invoices yet." />
 				</div>
 			{:else}
-				<div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-					<table class="min-w-full divide-y divide-gray-200">
-						<thead class="bg-gray-50">
+				<div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+					<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+						<thead class="bg-gray-50 dark:bg-gray-900">
 							<tr>
-								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Invoice #</th>
-								<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:table-cell">Date</th>
-								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-								<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Total</th>
+								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Invoice #</th>
+								<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Date</th>
+								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+								<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-gray-200">
+						<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 							{#each invoices as invoice}
-								<tr class="transition-colors hover:bg-gray-50">
+								<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 									<td class="px-6 py-4">
 										<a href="{base}/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
 											{invoice.invoice_number}
 										</a>
 									</td>
-									<td class="hidden px-6 py-4 text-sm text-gray-500 sm:table-cell">
+									<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
 										{formatDate(invoice.date)}
 									</td>
 									<td class="px-6 py-4">
 										<StatusBadge status={invoice.status} />
 									</td>
-									<td class="px-6 py-4 text-right text-sm font-medium text-gray-900">
+									<td class="px-6 py-4 text-right text-sm font-medium text-gray-900 dark:text-white">
 										{formatCurrency(invoice.total)}
 									</td>
 								</tr>
@@ -215,26 +215,26 @@
 
 		<!-- Change History -->
 		{#if history.length > 0}
-			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Change History</h2>
+			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Change History</h2>
 				<div class="space-y-4">
 					{#each history as entry}
 						{@const changes = parseChanges(entry.changes)}
-						<div class="flex gap-3 border-l-2 border-gray-200 pl-4">
+						<div class="flex gap-3 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
 							<div class="flex-1">
 								<div class="flex items-center gap-2">
 									<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {actionColor(entry.action)}">
 										{formatAction(entry.action)}
 									</span>
-									<span class="text-xs text-gray-500">{formatTimestamp(entry.created_at)}</span>
+									<span class="text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.created_at)}</span>
 								</div>
 								{#if changes}
 									<div class="mt-1 space-y-0.5">
 										{#each Object.entries(changes) as [field, diff]}
-											<p class="text-sm text-gray-600">
+											<p class="text-sm text-gray-600 dark:text-gray-300">
 												<span class="font-medium">{field}:</span>
 												<span class="text-red-600 line-through">{formatChangeValue(diff.old)}</span>
-												<span class="text-gray-400">-></span>
+												<span class="text-gray-400 dark:text-gray-500">-></span>
 												<span class="text-green-700">{formatChangeValue(diff.new)}</span>
 											</p>
 										{/each}

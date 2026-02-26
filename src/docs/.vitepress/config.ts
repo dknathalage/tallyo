@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Invoice Manager',
   description: 'Documentation for the Invoice Manager PWA',
-  base: '/invoices/web/',
+  base: '/invoices/',
   cleanUrls: true,
 
   themeConfig: {
@@ -11,7 +11,7 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Guides', link: '/guides/invoices' },
-      { text: 'Open App', link: 'https://dknathalage.github.io/invoices/' }
+      { text: 'Open App', link: '/invoices/console/' }
     ],
 
     sidebar: [

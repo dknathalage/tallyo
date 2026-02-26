@@ -11,7 +11,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: Open App
-      link: https://dknathalage.github.io/invoices/
+      link: /invoices/console/
 
 features:
   - title: Fully Offline

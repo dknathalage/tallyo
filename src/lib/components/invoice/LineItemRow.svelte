@@ -38,7 +38,7 @@
 			<button
 				type="button"
 				onclick={() => (notesOpen = !notesOpen)}
-				class="mt-0.5 cursor-pointer rounded p-1.5 transition-colors {notesOpen || item.notes ? 'text-primary-500 hover:bg-primary-50 hover:text-primary-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}"
+				class="mt-0.5 cursor-pointer rounded p-1.5 transition-colors {notesOpen || item.notes ? 'text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'}"
 				aria-label="Toggle notes"
 			>
 				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -48,7 +48,7 @@
 			<button
 				type="button"
 				onclick={() => (browseOpen = true)}
-				class="mt-0.5 cursor-pointer rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+				class="mt-0.5 cursor-pointer rounded p-1.5 text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
 				aria-label="Browse catalog"
 			>
 				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -57,7 +57,7 @@
 			</button>
 		</div>
 		{#if item.unit}
-			<p class="mt-0.5 text-xs text-gray-400">per {item.unit}</p>
+			<p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">per {item.unit}</p>
 		{/if}
 	</div>
 
@@ -69,7 +69,7 @@
 			min="0"
 			step="any"
 			placeholder="Qty"
-			class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 		/>
 	</div>
 
@@ -81,18 +81,18 @@
 			min="0"
 			step="any"
 			placeholder="Rate"
-			class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 		/>
 	</div>
 
-	<div class="flex w-28 items-center justify-end py-2 text-sm font-medium text-gray-900">
+	<div class="flex w-28 items-center justify-end py-2 text-sm font-medium text-gray-900 dark:text-white">
 		${item.amount.toFixed(2)}
 	</div>
 
 	<button
 		type="button"
 		onclick={onremove}
-		class="mt-1.5 cursor-pointer rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+		class="mt-1.5 cursor-pointer rounded p-1 text-gray-400 dark:text-gray-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600"
 		aria-label="Remove line item"
 	>
 		<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -107,7 +107,7 @@
 			bind:value={item.notes}
 			rows={2}
 			placeholder="Work notes..."
-			class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 		></textarea>
 	</div>
 {/if}

@@ -36,13 +36,13 @@
 					type="text"
 					bind:value={search}
 					placeholder="Search catalog..."
-					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+					class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				/>
 			</div>
 			<div class="w-40">
 				<select
 					bind:value={selectedCategory}
-					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+					class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				>
 					<option value="">All categories</option>
 					{#each categories as category}
@@ -55,29 +55,29 @@
 		<!-- Items list -->
 		<div class="max-h-96 overflow-y-auto">
 			{#if items.length === 0}
-				<div class="py-8 text-center text-sm text-gray-500">
+				<div class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
 					No catalog items found.
 				</div>
 			{:else}
-				<div class="divide-y divide-gray-100">
+				<div class="divide-y divide-gray-100 dark:divide-gray-800">
 					{#each items as item}
 						<button
 							type="button"
-							class="flex w-full cursor-pointer items-center justify-between px-3 py-3 text-left transition-colors hover:bg-gray-50"
+							class="flex w-full cursor-pointer items-center justify-between px-3 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
 							onclick={() => handleSelect(item)}
 						>
 							<div>
-								<div class="text-sm font-medium text-gray-900">{item.name}</div>
+								<div class="text-sm font-medium text-gray-900 dark:text-white">{item.name}</div>
 								{#if item.category}
-									<div class="text-xs text-gray-400">{item.category}</div>
+									<div class="text-xs text-gray-400 dark:text-gray-500">{item.category}</div>
 								{/if}
 							</div>
 							<div class="text-right">
-								<div class="text-sm font-medium text-gray-900">
+								<div class="text-sm font-medium text-gray-900 dark:text-white">
 									${tierId ? getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
 								</div>
 								{#if item.unit}
-									<div class="text-xs text-gray-400">per {item.unit}</div>
+									<div class="text-xs text-gray-400 dark:text-gray-500">per {item.unit}</div>
 								{/if}
 							</div>
 						</button>

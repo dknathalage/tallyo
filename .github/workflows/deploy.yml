@@ -37,12 +37,35 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: cp build/index.html build/404.html
       - run: npm run docs:build
-      - run: cp -r src/docs/.vitepress/dist build/web
+      # Assemble deploy directory
+      - name: Assemble deploy directory
+        run: |
+          mkdir -p deploy/console
+          cp -r src/docs/.vitepress/dist/* deploy/
+          cp -r build/* deploy/console/
+          touch deploy/.nojekyll
+          cat > deploy/404.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Redirecting...</title>
+              <script>
+                // GitHub Pages SPA redirect for /invoices/console/* routes
+                var path = window.location.pathname;
+                if (path.startsWith('/invoices/console')) {
+                  sessionStorage.setItem('spa-redirect', path + window.location.search);
+                  window.location.replace('/invoices/console/');
+                }
+              </script>
+            </head>
+            <body></body>
+          </html>
+          HTMLEOF
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: build
+          path: deploy
 
   deploy:
     runs-on: ubuntu-latest

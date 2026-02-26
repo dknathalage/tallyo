@@ -95,7 +95,7 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900">Catalog</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Catalog</h1>
 		<div class="flex items-center gap-3">
 			<Button variant="secondary" size="sm" onclick={exportCatalog}>Export CSV</Button>
 			<Button variant="secondary" size="sm" onclick={handleImport}>Import</Button>
@@ -112,7 +112,7 @@
 		</div>
 		<select
 			bind:value={selectedCategory}
-			class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
 		>
 			<option value="">All Categories</option>
 			{#each categories as cat}
@@ -122,7 +122,7 @@
 		{#if tiers.length > 0}
 			<select
 				bind:value={selectedTierId}
-				class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
 			>
 				<option value="">Default Rates</option>
 				{#each tiers as tier}
@@ -149,9 +149,9 @@
 			</EmptyState>
 		{/if}
 	{:else}
-		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
+		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+			<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+				<thead class="bg-gray-50 dark:bg-gray-900">
 					<tr>
 						<th class="w-10 px-4 py-3">
 							<input
@@ -161,16 +161,16 @@
 								class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 							/>
 						</th>
-						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
-						<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Rate</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:table-cell">Unit</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 md:table-cell">Category</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 lg:table-cell">SKU</th>
+						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
+						<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Rate</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Unit</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">Category</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 lg:table-cell">SKU</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-gray-200">
+				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 					{#each items as item}
-						<tr class="transition-colors {selectedIds.has(item.id) ? 'bg-primary-50' : 'hover:bg-gray-50'}">
+						<tr class="transition-colors {selectedIds.has(item.id) ? 'bg-primary-50 dark:bg-primary-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}">
 							<td class="w-10 px-4 py-3">
 								<input
 									type="checkbox"
@@ -184,19 +184,19 @@
 									{item.name}
 								</a>
 							</td>
-							<td class="px-6 py-4 text-right text-sm text-gray-900">
+							<td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">
 								{formatCurrency(getDisplayRate(item))}
 								{#if selectedTierId && item.tier_rate == null}
-									<span class="text-xs text-gray-400">(default)</span>
+									<span class="text-xs text-gray-400 dark:text-gray-500">(default)</span>
 								{/if}
 							</td>
-							<td class="hidden px-6 py-4 text-sm text-gray-500 sm:table-cell">
+							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
 								{item.unit || '-'}
 							</td>
-							<td class="hidden px-6 py-4 text-sm text-gray-500 md:table-cell">
+							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 md:table-cell">
 								{item.category || '-'}
 							</td>
-							<td class="hidden px-6 py-4 text-sm text-gray-500 lg:table-cell">
+							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 lg:table-cell">
 								{item.sku || '-'}
 							</td>
 						</tr>
@@ -208,7 +208,7 @@
 </div>
 
 <Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title="Delete Catalog Items">
-	<p class="text-sm text-gray-600">
+	<p class="text-sm text-gray-600 dark:text-gray-300">
 		Are you sure you want to delete {selectedIds.size} catalog item{selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
 	</p>
 	<div class="mt-4 flex justify-end gap-3">

@@ -34,13 +34,13 @@
 
 {#if showPrompt}
 	<div
-		class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-lg"
+		class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 shadow-lg"
 		role="alert"
 	>
 		{#if $offlineReady}
-			<p class="text-sm text-gray-700">Ready to work offline</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300">Ready to work offline</p>
 		{:else}
-			<p class="text-sm text-gray-700">New version available</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300">New version available</p>
 		{/if}
 
 		<div class="flex gap-2">
@@ -54,7 +54,7 @@
 			{/if}
 			<button
 				onclick={close}
-				class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-50"
+				class="rounded border border-gray-300 dark:border-gray-600 px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
 			>
 				Dismiss
 			</button>

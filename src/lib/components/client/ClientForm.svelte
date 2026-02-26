@@ -47,56 +47,56 @@
 
 <form onsubmit={handleSubmit} class="space-y-4">
 	<div>
-		<label for="name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+		<label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name <span class="text-red-500">*</span></label>
 		<input
 			id="name"
 			type="text"
 			bind:value={name}
 			required
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="Client name"
 		/>
 	</div>
 
 	<div>
-		<label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+		<label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
 		<input
 			id="email"
 			type="email"
 			bind:value={email}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="client@example.com"
 		/>
 	</div>
 
 	<div>
-		<label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
+		<label for="phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label>
 		<input
 			id="phone"
 			type="tel"
 			bind:value={phone}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="(555) 123-4567"
 		/>
 	</div>
 
 	<div>
-		<label for="address" class="block text-sm font-medium text-gray-700">Address</label>
+		<label for="address" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
 		<textarea
 			id="address"
 			bind:value={address}
 			rows={3}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="Street address, city, state, zip"
 		></textarea>
 	</div>
 
 	<div>
-		<label for="payer" class="block text-sm font-medium text-gray-700">Bill-To Payer</label>
+		<label for="payer" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Bill-To Payer</label>
 		<select
 			id="payer"
 			bind:value={payerId}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 		>
 			<option value={null}>None</option>
 			{#each payers as payer}
@@ -106,7 +106,7 @@
 	</div>
 
 	<div>
-		<label class="block text-sm font-medium text-gray-700">Additional Fields</label>
+		<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Additional Fields</label>
 		<div class="mt-1">
 			<KeyValueEditor bind:pairs={metadataPairs} addLabel="Add Field" />
 		</div>

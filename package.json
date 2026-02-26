@@ -15,7 +15,7 @@
 		"docs:dev": "vitepress dev src/docs",
 		"docs:build": "vitepress build src/docs",
 		"docs:preview": "vitepress preview src/docs",
-		"build:all": "npm run build && npm run docs:build && cp -r src/docs/.vitepress/dist build/web"
+		"build:all": "npm run build && npm run docs:build"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",

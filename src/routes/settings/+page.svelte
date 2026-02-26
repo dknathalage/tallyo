@@ -220,14 +220,14 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
 	</div>
 
 	<!-- Business Profile Section -->
 	<div class="space-y-4">
 		<div>
-			<h2 class="text-lg font-semibold text-gray-900">Business Profile</h2>
-			<p class="text-sm text-gray-500">Your business details that appear on invoices.</p>
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Business Profile</h2>
+			<p class="text-sm text-gray-500 dark:text-gray-400">Your business details that appear on invoices.</p>
 		</div>
 
 		{#if bpError}
@@ -236,64 +236,64 @@
 			</div>
 		{/if}
 
-		<div class="rounded-lg border border-gray-200 bg-white p-6">
+		<div class="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
 			<div class="space-y-4">
 				<div>
-					<label for="bp-name" class="block text-sm font-medium text-gray-700">Business Name <span class="text-red-500">*</span></label>
+					<label for="bp-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Business Name <span class="text-red-500">*</span></label>
 					<input
 						id="bp-name"
 						type="text"
 						bind:value={bpName}
 						required
-						class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+						class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 						placeholder="Your business name"
 					/>
 				</div>
 
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<label for="bp-email" class="block text-sm font-medium text-gray-700">Email</label>
+						<label for="bp-email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
 						<input
 							id="bp-email"
 							type="email"
 							bind:value={bpEmail}
-							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 							placeholder="business@example.com"
 						/>
 					</div>
 					<div>
-						<label for="bp-phone" class="block text-sm font-medium text-gray-700">Phone</label>
+						<label for="bp-phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label>
 						<input
 							id="bp-phone"
 							type="tel"
 							bind:value={bpPhone}
-							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 							placeholder="(555) 123-4567"
 						/>
 					</div>
 				</div>
 
 				<div>
-					<label for="bp-address" class="block text-sm font-medium text-gray-700">Address</label>
+					<label for="bp-address" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
 					<textarea
 						id="bp-address"
 						bind:value={bpAddress}
 						rows={3}
-						class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+						class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 						placeholder="Street address, city, state, zip"
 					></textarea>
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Logo</label>
+					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Logo</label>
 					<div class="mt-1">
 						<LogoUploader bind:logo={bpLogo} />
 					</div>
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Additional Fields</label>
-					<p class="text-xs text-gray-500">e.g., ABN, registration numbers, tax IDs</p>
+					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Additional Fields</label>
+					<p class="text-xs text-gray-500 dark:text-gray-400">e.g., ABN, registration numbers, tax IDs</p>
 					<div class="mt-1">
 						<KeyValueEditor bind:pairs={bpMetadata} addLabel="Add Field" />
 					</div>
@@ -312,8 +312,8 @@
 	<div class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div>
-				<h2 class="text-lg font-semibold text-gray-900">Payers</h2>
-				<p class="text-sm text-gray-500">Manage payers (bill-to parties) that can be assigned to clients.</p>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Payers</h2>
+				<p class="text-sm text-gray-500 dark:text-gray-400">Manage payers (bill-to parties) that can be assigned to clients.</p>
 			</div>
 			<Button onclick={openAddPayer}>Add Payer</Button>
 		</div>
@@ -329,22 +329,22 @@
 				<Button onclick={openAddPayer}>Add Payer</Button>
 			</EmptyState>
 		{:else}
-			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-				<table class="min-w-full divide-y divide-gray-200">
-					<thead class="bg-gray-50">
+			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+					<thead class="bg-gray-50 dark:bg-gray-900">
 						<tr>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Email</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Phone</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
+							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Email</th>
+							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Phone</th>
+							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-gray-200">
+					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 						{#each payers as payer}
-							<tr class="transition-colors hover:bg-gray-50">
-								<td class="px-6 py-4 text-sm font-medium text-gray-900">{payer.name}</td>
-								<td class="px-6 py-4 text-sm text-gray-500">{payer.email || '-'}</td>
-								<td class="px-6 py-4 text-sm text-gray-500">{payer.phone || '-'}</td>
+							<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
+								<td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{payer.name}</td>
+								<td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{payer.email || '-'}</td>
+								<td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{payer.phone || '-'}</td>
 								<td class="px-6 py-4 text-right">
 									<div class="flex justify-end gap-2">
 										<Button variant="ghost" size="sm" onclick={() => openEditPayer(payer)}>Edit</Button>
@@ -363,8 +363,8 @@
 	<div class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div>
-				<h2 class="text-lg font-semibold text-gray-900">Rate Tiers</h2>
-				<p class="text-sm text-gray-500">Manage pricing tiers for catalog items. Clients can be assigned a tier to get tier-specific rates.</p>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Rate Tiers</h2>
+				<p class="text-sm text-gray-500 dark:text-gray-400">Manage pricing tiers for catalog items. Clients can be assigned a tier to get tier-specific rates.</p>
 			</div>
 			<Button onclick={openAdd}>Add Tier</Button>
 		</div>
@@ -380,22 +380,22 @@
 				<Button onclick={openAdd}>Add Tier</Button>
 			</EmptyState>
 		{:else}
-			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-				<table class="min-w-full divide-y divide-gray-200">
-					<thead class="bg-gray-50">
+			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+					<thead class="bg-gray-50 dark:bg-gray-900">
 						<tr>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Description</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Sort Order</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
+							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Description</th>
+							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Sort Order</th>
+							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-gray-200">
+					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 						{#each tiers as tier}
-							<tr class="transition-colors hover:bg-gray-50">
-								<td class="px-6 py-4 text-sm font-medium text-gray-900">{tier.name}</td>
-								<td class="px-6 py-4 text-sm text-gray-500">{tier.description || '-'}</td>
-								<td class="px-6 py-4 text-right text-sm text-gray-500">{tier.sort_order}</td>
+							<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
+								<td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{tier.name}</td>
+								<td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{tier.description || '-'}</td>
+								<td class="px-6 py-4 text-right text-sm text-gray-500 dark:text-gray-400">{tier.sort_order}</td>
 								<td class="px-6 py-4 text-right">
 									<div class="flex justify-end gap-2">
 										<Button variant="ghost" size="sm" onclick={() => openEdit(tier)}>Edit</Button>
@@ -428,37 +428,37 @@
 		{/if}
 
 		<div>
-			<label for="tier-name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+			<label for="tier-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name <span class="text-red-500">*</span></label>
 			<input
 				id="tier-name"
 				type="text"
 				bind:value={formName}
 				required
-				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 				placeholder="e.g., Standard, Premium"
 			/>
 		</div>
 
 		<div>
-			<label for="tier-description" class="block text-sm font-medium text-gray-700">Description</label>
+			<label for="tier-description" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
 			<input
 				id="tier-description"
 				type="text"
 				bind:value={formDescription}
-				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 				placeholder="Optional description"
 			/>
 		</div>
 
 		<div>
-			<label for="tier-sort-order" class="block text-sm font-medium text-gray-700">Sort Order</label>
+			<label for="tier-sort-order" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sort Order</label>
 			<input
 				id="tier-sort-order"
 				type="number"
 				min="0"
 				step="1"
 				bind:value={formSortOrder}
-				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
 				placeholder="0"
 			/>
 		</div>

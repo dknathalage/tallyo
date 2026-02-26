@@ -12,11 +12,11 @@
 
 <div class="mx-auto max-w-lg space-y-6">
 	<div>
-		<h1 class="text-2xl font-bold text-gray-900">New Catalog Item</h1>
-		<p class="mt-1 text-sm text-gray-500">Add a new item to your catalog.</p>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">New Catalog Item</h1>
+		<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Add a new item to your catalog.</p>
 	</div>
 
-	<div class="rounded-lg border border-gray-200 bg-white p-6">
+	<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 		<CatalogForm onsubmit={handleSubmit} />
 	</div>
 </div>

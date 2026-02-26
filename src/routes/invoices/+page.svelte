@@ -93,7 +93,7 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900">Invoices</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Invoices</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportInvoices} onimport={handleImport} />
 			<Button onclick={() => goto(`${base}/invoices/new`)}>New Invoice</Button>
@@ -110,7 +110,7 @@
 					onclick={() => (statusFilter = s)}
 					class="cursor-pointer rounded-full px-3 py-1 text-sm font-medium transition-colors {statusFilter === s
 						? 'bg-primary-600 text-white'
-						: 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"
+						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}"
 				>
 					{statusLabels[s]}
 				</button>
@@ -128,7 +128,7 @@
 					e.currentTarget.value = '';
 				}
 			}}
-			class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
 		>
 			<option value="">Change status...</option>
 			<option value="draft">Draft</option>
@@ -145,9 +145,9 @@
 			<Button onclick={() => goto(`${base}/invoices/new`)}>New Invoice</Button>
 		</EmptyState>
 	{:else}
-		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
+		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+			<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+				<thead class="bg-gray-50 dark:bg-gray-900">
 					<tr>
 						<th class="w-10 px-4 py-3">
 							<input
@@ -157,17 +157,17 @@
 								class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 							/>
 						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Invoice</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Client</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Date</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
-						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Total</th>
+						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice</th>
+						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Client</th>
+						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Date</th>
+						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
+						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-gray-200">
+				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 					{#each invoices as invoice}
 						<tr
-							class="transition-colors {selectedIds.has(invoice.id) ? 'bg-primary-50' : 'hover:bg-gray-50'}"
+							class="transition-colors {selectedIds.has(invoice.id) ? 'bg-primary-50 dark:bg-primary-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}"
 						>
 							<td class="w-10 px-4 py-3">
 								<input
@@ -185,13 +185,13 @@
 								{invoice.invoice_number}
 							</td>
 							<td
-								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-900"
+								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-900 dark:text-white"
 								onclick={() => goto(`${base}/invoices/${invoice.id}`)}
 							>
 								{invoice.client_name ?? 'Unknown'}
 							</td>
 							<td
-								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-500"
+								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
 								onclick={() => goto(`${base}/invoices/${invoice.id}`)}
 							>
 								{formatDate(invoice.date)}
@@ -217,7 +217,7 @@
 </div>
 
 <Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title="Delete Invoices">
-	<p class="text-sm text-gray-600">
+	<p class="text-sm text-gray-600 dark:text-gray-300">
 		Are you sure you want to delete {selectedIds.size} invoice{selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
 	</p>
 	<div class="mt-4 flex justify-end gap-3">

@@ -104,7 +104,7 @@
 
 {#if !invoice}
 	<div class="py-12 text-center">
-		<p class="text-gray-500">Invoice not found.</p>
+		<p class="text-gray-500 dark:text-gray-400">Invoice not found.</p>
 		<a href="{base}/invoices" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">Back to invoices</a>
 	</div>
 {:else}
@@ -112,12 +112,12 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
-				<a href="{base}/invoices" class="text-gray-400 transition-colors hover:text-gray-600" aria-label="Back to invoices">
+				<a href="{base}/invoices" class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label="Back to invoices">
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
 					</svg>
 				</a>
-				<h1 class="text-2xl font-bold text-gray-900">{invoice.invoice_number}</h1>
+				<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{invoice.invoice_number}</h1>
 				<StatusBadge status={invoice.status} />
 			</div>
 
@@ -128,11 +128,11 @@
 						Status
 					</Button>
 					{#if showStatusMenu}
-						<div class="absolute right-0 z-10 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+						<div class="absolute right-0 z-10 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
 							{#each allStatuses as s}
 								<button
 									onclick={() => handleStatusChange(s)}
-									class="w-full cursor-pointer px-4 py-2 text-left text-sm transition-colors hover:bg-gray-50 {invoice.status === s ? 'font-medium text-primary-600' : 'text-gray-700'}"
+									class="w-full cursor-pointer px-4 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 {invoice.status === s ? 'font-medium text-primary-600' : 'text-gray-700 dark:text-gray-300'}"
 								>
 									{s.charAt(0).toUpperCase() + s.slice(1)}
 								</button>
@@ -156,39 +156,39 @@
 		</div>
 
 		<!-- Party Details -->
-		<div class="rounded-lg border border-gray-200 bg-white p-6">
+		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 			{#if businessSnap.name}
 				<div class="mb-4">
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">From</h3>
+					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">From</h3>
 					<div class="mt-1">
-						<p class="text-sm font-medium text-gray-900">{businessSnap.name}</p>
-						{#if businessSnap.email}<p class="text-sm text-gray-500">{businessSnap.email}</p>{/if}
-						{#if businessSnap.phone}<p class="text-sm text-gray-500">{businessSnap.phone}</p>{/if}
-						{#if businessSnap.address}<p class="whitespace-pre-line text-sm text-gray-500">{businessSnap.address}</p>{/if}
+						<p class="text-sm font-medium text-gray-900 dark:text-white">{businessSnap.name}</p>
+						{#if businessSnap.email}<p class="text-sm text-gray-500 dark:text-gray-400">{businessSnap.email}</p>{/if}
+						{#if businessSnap.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{businessSnap.phone}</p>{/if}
+						{#if businessSnap.address}<p class="whitespace-pre-line text-sm text-gray-500 dark:text-gray-400">{businessSnap.address}</p>{/if}
 						{#if Object.keys(businessSnap.metadata).length > 0}
 							<div class="mt-1 space-y-0.5">
 								{#each Object.entries(businessSnap.metadata) as [key, value]}
-									<p class="text-sm text-gray-500"><span class="font-medium text-gray-700">{key}:</span> {value}</p>
+									<p class="text-sm text-gray-500 dark:text-gray-400"><span class="font-medium text-gray-700 dark:text-gray-300">{key}:</span> {value}</p>
 								{/each}
 							</div>
 						{/if}
 					</div>
 				</div>
-				<div class="mb-4 border-t border-gray-200"></div>
+				<div class="mb-4 border-t border-gray-200 dark:border-gray-700"></div>
 			{/if}
 
 			<div class="grid grid-cols-1 gap-6 {payerSnap.name ? 'sm:grid-cols-2' : ''}">
 				<div>
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Service For</h3>
+					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Service For</h3>
 					<div class="mt-1">
-						<p class="text-sm font-medium text-gray-900">{clientSnap.name || invoice.client_name || 'Unknown'}</p>
-						{#if clientSnap.email}<p class="text-sm text-gray-500">{clientSnap.email}</p>{/if}
-						{#if clientSnap.phone}<p class="text-sm text-gray-500">{clientSnap.phone}</p>{/if}
-						{#if clientSnap.address}<p class="whitespace-pre-line text-sm text-gray-500">{clientSnap.address}</p>{/if}
+						<p class="text-sm font-medium text-gray-900 dark:text-white">{clientSnap.name || invoice.client_name || 'Unknown'}</p>
+						{#if clientSnap.email}<p class="text-sm text-gray-500 dark:text-gray-400">{clientSnap.email}</p>{/if}
+						{#if clientSnap.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{clientSnap.phone}</p>{/if}
+						{#if clientSnap.address}<p class="whitespace-pre-line text-sm text-gray-500 dark:text-gray-400">{clientSnap.address}</p>{/if}
 						{#if Object.keys(clientSnap.metadata).length > 0}
 							<div class="mt-1 space-y-0.5">
 								{#each Object.entries(clientSnap.metadata) as [key, value]}
-									<p class="text-sm text-gray-500"><span class="font-medium text-gray-700">{key}:</span> {value}</p>
+									<p class="text-sm text-gray-500 dark:text-gray-400"><span class="font-medium text-gray-700 dark:text-gray-300">{key}:</span> {value}</p>
 								{/each}
 							</div>
 						{/if}
@@ -197,16 +197,16 @@
 
 				{#if payerSnap.name}
 					<div>
-						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Bill To</h3>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Bill To</h3>
 						<div class="mt-1">
-							<p class="text-sm font-medium text-gray-900">{payerSnap.name}</p>
-							{#if payerSnap.email}<p class="text-sm text-gray-500">{payerSnap.email}</p>{/if}
-							{#if payerSnap.phone}<p class="text-sm text-gray-500">{payerSnap.phone}</p>{/if}
-							{#if payerSnap.address}<p class="whitespace-pre-line text-sm text-gray-500">{payerSnap.address}</p>{/if}
+							<p class="text-sm font-medium text-gray-900 dark:text-white">{payerSnap.name}</p>
+							{#if payerSnap.email}<p class="text-sm text-gray-500 dark:text-gray-400">{payerSnap.email}</p>{/if}
+							{#if payerSnap.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{payerSnap.phone}</p>{/if}
+							{#if payerSnap.address}<p class="whitespace-pre-line text-sm text-gray-500 dark:text-gray-400">{payerSnap.address}</p>{/if}
 							{#if Object.keys(payerSnap.metadata).length > 0}
 								<div class="mt-1 space-y-0.5">
 									{#each Object.entries(payerSnap.metadata) as [key, value]}
-										<p class="text-sm text-gray-500"><span class="font-medium text-gray-700">{key}:</span> {value}</p>
+										<p class="text-sm text-gray-500 dark:text-gray-400"><span class="font-medium text-gray-700 dark:text-gray-300">{key}:</span> {value}</p>
 									{/each}
 								</div>
 							{/if}
@@ -215,78 +215,78 @@
 				{/if}
 			</div>
 
-			<div class="mt-4 border-t border-gray-200 pt-4">
+			<div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-4">
 					<div>
-						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Invoice Number</h3>
-						<p class="mt-1 text-sm text-gray-900">{invoice.invoice_number}</p>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice Number</h3>
+						<p class="mt-1 text-sm text-gray-900 dark:text-white">{invoice.invoice_number}</p>
 					</div>
 					<div>
-						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Date</h3>
-						<p class="mt-1 text-sm text-gray-900">{formatDate(invoice.date)}</p>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Date</h3>
+						<p class="mt-1 text-sm text-gray-900 dark:text-white">{formatDate(invoice.date)}</p>
 					</div>
 					<div>
-						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Due Date</h3>
-						<p class="mt-1 text-sm text-gray-900">{formatDate(invoice.due_date)}</p>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Due Date</h3>
+						<p class="mt-1 text-sm text-gray-900 dark:text-white">{formatDate(invoice.due_date)}</p>
 					</div>
 					<div>
-						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Status</h3>
+						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</h3>
 						<p class="mt-1"><StatusBadge status={invoice.status} /></p>
 					</div>
 				</div>
 			</div>
 
 			{#if invoice.notes}
-				<div class="mt-4 border-t border-gray-200 pt-4">
-					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Notes</h3>
-					<p class="mt-1 whitespace-pre-wrap text-sm text-gray-700">{invoice.notes}</p>
+				<div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Notes</h3>
+					<p class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{invoice.notes}</p>
 				</div>
 			{/if}
 		</div>
 
 		<!-- Line items -->
-		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
+		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+			<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+				<thead class="bg-gray-50 dark:bg-gray-900">
 					<tr>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Description</th>
-						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Qty</th>
-						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Rate</th>
-						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Amount</th>
+						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Description</th>
+						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Qty</th>
+						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Rate</th>
+						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Amount</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-gray-200">
+				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 					{#each lineItems as item}
 						<tr>
-							<td class="px-4 py-3 text-sm text-gray-900">
+							<td class="px-4 py-3 text-sm text-gray-900 dark:text-white">
 								{item.description}
 								{#if item.notes}
-									<p class="mt-0.5 text-xs text-gray-500">{item.notes}</p>
+									<p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{item.notes}</p>
 								{/if}
 							</td>
-							<td class="px-4 py-3 text-right text-sm text-gray-600">{item.quantity}</td>
-							<td class="px-4 py-3 text-right text-sm text-gray-600">{formatCurrency(item.rate)}</td>
-							<td class="px-4 py-3 text-right text-sm font-medium text-gray-900">{formatCurrency(item.amount)}</td>
+							<td class="px-4 py-3 text-right text-sm text-gray-600 dark:text-gray-300">{item.quantity}</td>
+							<td class="px-4 py-3 text-right text-sm text-gray-600 dark:text-gray-300">{formatCurrency(item.rate)}</td>
+							<td class="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
 
 			<!-- Totals -->
-			<div class="border-t border-gray-200 bg-gray-50 px-4 py-3">
+			<div class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-3">
 				<div class="flex justify-end">
 					<div class="w-64 space-y-1">
 						<div class="flex justify-between text-sm">
-							<span class="text-gray-600">Subtotal</span>
-							<span class="text-gray-900">{formatCurrency(invoice.subtotal)}</span>
+							<span class="text-gray-600 dark:text-gray-300">Subtotal</span>
+							<span class="text-gray-900 dark:text-white">{formatCurrency(invoice.subtotal)}</span>
 						</div>
 						<div class="flex justify-between text-sm">
-							<span class="text-gray-600">Tax ({invoice.tax_rate}%)</span>
-							<span class="text-gray-900">{formatCurrency(invoice.tax_amount)}</span>
+							<span class="text-gray-600 dark:text-gray-300">Tax ({invoice.tax_rate}%)</span>
+							<span class="text-gray-900 dark:text-white">{formatCurrency(invoice.tax_amount)}</span>
 						</div>
-						<div class="flex justify-between border-t border-gray-300 pt-1 text-sm font-semibold">
-							<span class="text-gray-900">Total</span>
-							<span class="text-gray-900">{formatCurrency(invoice.total)}</span>
+						<div class="flex justify-between border-t border-gray-300 pt-1 text-sm font-semibold dark:border-gray-600">
+							<span class="text-gray-900 dark:text-white">Total</span>
+							<span class="text-gray-900 dark:text-white">{formatCurrency(invoice.total)}</span>
 						</div>
 					</div>
 				</div>
@@ -295,32 +295,32 @@
 
 		<!-- Change History -->
 		{#if history.length > 0}
-			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Change History</h2>
+			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Change History</h2>
 				<div class="space-y-4">
 					{#each history as entry}
 						{@const changes = parseChanges(entry.changes)}
-						<div class="flex gap-3 border-l-2 border-gray-200 pl-4">
+						<div class="flex gap-3 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
 							<div class="flex-1">
 								<div class="flex items-center gap-2">
 									<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {actionColor(entry.action)}">
 										{formatAction(entry.action)}
 									</span>
-									<span class="text-xs text-gray-500">{formatTimestamp(entry.created_at)}</span>
+									<span class="text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.created_at)}</span>
 								</div>
 								{#if changes}
 									<div class="mt-1 space-y-0.5">
 										{#each Object.entries(changes) as [field, diff]}
-											<p class="text-sm text-gray-600">
+											<p class="text-sm text-gray-600 dark:text-gray-300">
 												<span class="font-medium">{field}:</span>
 												<span class="text-red-600 line-through">{formatChangeValue(diff.old)}</span>
-												<span class="text-gray-400">-></span>
+												<span class="text-gray-400 dark:text-gray-500">-></span>
 												<span class="text-green-700">{formatChangeValue(diff.new)}</span>
 											</p>
 										{/each}
 									</div>
 								{:else if entry.context}
-									<p class="mt-1 text-sm text-gray-600">{entry.context}</p>
+									<p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{entry.context}</p>
 								{/if}
 							</div>
 						</div>

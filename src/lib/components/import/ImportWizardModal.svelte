@@ -140,8 +140,8 @@
 							stepNum < currentStep
 								? 'bg-primary-600 text-white'
 								: stepNum === currentStep
-									? 'bg-primary-100 text-primary-700 ring-2 ring-primary-500'
-									: 'bg-gray-100 text-gray-400'
+									? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 ring-2 ring-primary-500'
+									: 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
 						}"
 					>
 						{#if stepNum < currentStep}
@@ -152,11 +152,11 @@
 							{stepNum}
 						{/if}
 					</div>
-					<span class="hidden text-xs sm:inline {stepNum === currentStep ? 'font-medium text-gray-900' : 'text-gray-400'}">
+					<span class="hidden text-xs sm:inline {stepNum === currentStep ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}">
 						{step}
 					</span>
 					{#if i < STEPS.length - 1}
-						<div class="mx-2 h-px w-8 {stepNum < currentStep ? 'bg-primary-400' : 'bg-gray-200'}"></div>
+						<div class="mx-2 h-px w-8 {stepNum < currentStep ? 'bg-primary-400' : 'bg-gray-200 dark:bg-gray-700'}"></div>
 					{/if}
 				</div>
 			{/each}

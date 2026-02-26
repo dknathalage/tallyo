@@ -7,13 +7,13 @@
 
 <a
 	href="{base}/clients/{client.id}"
-	class="block rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
+	class="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 transition-shadow hover:shadow-md"
 >
-	<h3 class="font-semibold text-gray-900">{client.name}</h3>
+	<h3 class="font-semibold text-gray-900 dark:text-white">{client.name}</h3>
 	{#if client.email}
-		<p class="mt-1 text-sm text-gray-500">{client.email}</p>
+		<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{client.email}</p>
 	{/if}
 	{#if client.phone}
-		<p class="mt-0.5 text-sm text-gray-500">{client.phone}</p>
+		<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{client.phone}</p>
 	{/if}
 </a>

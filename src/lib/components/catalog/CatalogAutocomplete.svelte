@@ -81,24 +81,24 @@
 		onblur={handleBlur}
 		onfocus={handleFocus}
 		placeholder="Description"
-		class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+		class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 		autocomplete="off"
 	/>
 
 	{#if showDropdown}
-		<div class="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+		<div class="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-1 shadow-lg">
 			{#each suggestions as item, i}
 				<button
 					type="button"
-					class="w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 {i === highlightedIndex ? 'bg-primary-50' : ''}"
+					class="w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 {i === highlightedIndex ? 'bg-primary-50 dark:bg-primary-900/50' : ''}"
 					onmousedown={() => selectItem(item)}
 				>
-					<span class="font-medium text-gray-900">{item.name}</span>
-					<span class="ml-2 text-gray-500">
+					<span class="font-medium text-gray-900 dark:text-white">{item.name}</span>
+					<span class="ml-2 text-gray-500 dark:text-gray-400">
 						${tierId ? getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
 					</span>
 					{#if item.category}
-						<span class="ml-2 text-xs text-gray-400">{item.category}</span>
+						<span class="ml-2 text-xs text-gray-400 dark:text-gray-500">{item.category}</span>
 					{/if}
 				</button>
 			{/each}

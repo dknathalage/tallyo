@@ -11,7 +11,7 @@
 <div class="relative">
 	<!-- Search icon -->
 	<svg
-		class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+		class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
 		fill="none"
 		viewBox="0 0 24 24"
 		stroke-width="1.5"
@@ -24,14 +24,14 @@
 		type="text"
 		bind:value
 		{placeholder}
-		class="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-9 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+		class="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-9 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-500"
 	/>
 
 	<!-- Clear button -->
 	{#if value}
 		<button
 			onclick={() => (value = '')}
-			class="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 transition-colors hover:text-gray-600"
+			class="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
 			aria-label="Clear search"
 		>
 			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">

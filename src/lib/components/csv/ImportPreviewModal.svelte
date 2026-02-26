@@ -37,9 +37,9 @@
 	<div class="space-y-4">
 		<!-- Summary cards -->
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-			<div class="rounded-lg bg-gray-50 p-3 text-center">
-				<div class="text-2xl font-bold text-gray-900">{totalRows}</div>
-				<div class="text-xs text-gray-500">Total Rows</div>
+			<div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-center">
+				<div class="text-2xl font-bold text-gray-900 dark:text-white">{totalRows}</div>
+				<div class="text-xs text-gray-500 dark:text-gray-400">Total Rows</div>
 			</div>
 			<div class="rounded-lg bg-green-50 p-3 text-center">
 				<div class="text-2xl font-bold text-green-700">{validRows}</div>
@@ -84,25 +84,25 @@
 		<!-- Preview table -->
 		{#if displayRows.length > 0}
 			<div>
-				<p class="mb-2 text-sm font-medium text-gray-700">
+				<p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
 					Preview ({previewRows.length} valid rows{previewRows.length > 50 ? ', showing first 50' : ''}):
 				</p>
-				<div class="max-h-64 overflow-auto rounded-lg border border-gray-200">
-					<table class="min-w-full divide-y divide-gray-200 text-sm">
-						<thead class="sticky top-0 bg-gray-50">
+				<div class="max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+					<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+						<thead class="sticky top-0 bg-gray-50 dark:bg-gray-900">
 							<tr>
 								{#each columns as col}
-									<th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+									<th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
 										{col}
 									</th>
 								{/each}
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-gray-200 bg-white">
+						<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
 							{#each displayRows as row}
 								<tr>
 									{#each columns as col}
-										<td class="whitespace-nowrap px-3 py-1.5 text-gray-700">
+										<td class="whitespace-nowrap px-3 py-1.5 text-gray-700 dark:text-gray-300">
 											{row[col] || ''}
 										</td>
 									{/each}
@@ -115,7 +115,7 @@
 		{/if}
 
 		<!-- Footer -->
-		<div class="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+		<div class="flex items-center justify-end gap-3 border-t border-gray-200 dark:border-gray-700 pt-4">
 			<Button variant="secondary" onclick={onclose}>Cancel</Button>
 			<Button disabled={validRows === 0} onclick={onconfirm}>
 				Import {validRows} Row{validRows !== 1 ? 's' : ''}

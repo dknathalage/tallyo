@@ -9,7 +9,7 @@ const config = {
 			fallback: 'index.html'
 		}),
 		paths: {
-			base: dev ? '' : '/invoices'
+			base: dev ? '' : '/invoices/console'
 		},
 		serviceWorker: {
 			register: false

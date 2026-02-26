@@ -4,7 +4,7 @@ import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
 const dev = process.argv.includes('dev');
-const basePath = dev ? '' : '/invoices';
+const basePath = dev ? '' : '/invoices/console';
 
 export default defineConfig({
 	plugins: [
@@ -17,7 +17,7 @@ export default defineConfig({
 			workbox: {
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,wasm,webmanifest}'],
 				navigateFallback: `${basePath}/index.html`,
-				navigateFallbackDenylist: [/^\/invoices\/web\//],
+				navigateFallbackDenylist: [],
 				cleanupOutdatedCaches: true,
 				clientsClaim: true,
 				skipWaiting: false

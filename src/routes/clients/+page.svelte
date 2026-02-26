@@ -85,7 +85,7 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900">Clients</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Clients</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportClients} onimport={handleImport} />
 			<a href="{base}/clients/new">
@@ -116,9 +116,9 @@
 			</EmptyState>
 		{/if}
 	{:else}
-		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
+		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+			<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+				<thead class="bg-gray-50 dark:bg-gray-900">
 					<tr>
 						<th class="w-10 px-4 py-3">
 							<input
@@ -128,15 +128,15 @@
 								class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 							/>
 						</th>
-						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:table-cell">Email</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 md:table-cell">Phone</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 lg:table-cell">Tier</th>
+						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Email</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">Phone</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 lg:table-cell">Tier</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-gray-200">
+				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
 					{#each clients as client}
-						<tr class="transition-colors {selectedIds.has(client.id) ? 'bg-primary-50' : 'hover:bg-gray-50'}">
+						<tr class="transition-colors {selectedIds.has(client.id) ? 'bg-primary-50 dark:bg-primary-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}">
 							<td class="w-10 px-4 py-3">
 								<input
 									type="checkbox"
@@ -150,10 +150,10 @@
 									{client.name}
 								</a>
 							</td>
-							<td class="hidden px-6 py-4 text-sm text-gray-500 sm:table-cell">
+							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
 								{client.email || '-'}
 							</td>
-							<td class="hidden px-6 py-4 text-sm text-gray-500 md:table-cell">
+							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 md:table-cell">
 								{client.phone || '-'}
 							</td>
 							<td class="hidden px-6 py-4 lg:table-cell">
@@ -163,7 +163,7 @@
 										const val = (e.target as HTMLSelectElement).value;
 										handleTierChange(client, val ? Number(val) : null);
 									}}
-									class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+									class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
 								>
 									<option value="">No tier</option>
 									{#each tiers as tier}
@@ -180,7 +180,7 @@
 </div>
 
 <Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title="Delete Clients">
-	<p class="text-sm text-gray-600">
+	<p class="text-sm text-gray-600 dark:text-gray-300">
 		Are you sure you want to delete {selectedIds.size} client{selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
 	</p>
 	<div class="mt-4 flex justify-end gap-3">

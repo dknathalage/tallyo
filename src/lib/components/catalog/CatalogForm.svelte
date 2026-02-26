@@ -80,38 +80,38 @@
 
 <form onsubmit={handleSubmit} class="space-y-4">
 	<div>
-		<label for="name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+		<label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name <span class="text-red-500">*</span></label>
 		<input
 			id="name"
 			type="text"
 			bind:value={name}
 			required
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="Item name"
 		/>
 	</div>
 
 	<div>
-		<label for="rate" class="block text-sm font-medium text-gray-700">Default Rate</label>
+		<label for="rate" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Default Rate</label>
 		<input
 			id="rate"
 			type="number"
 			min="0"
 			step="any"
 			bind:value={rate}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="0.00"
 		/>
 	</div>
 
 	<!-- Tier Rates -->
 	{#if tiers.length > 0}
-		<div class="rounded-lg border border-gray-200 p-4">
-			<h3 class="mb-3 text-sm font-medium text-gray-700">Tier Rates</h3>
+		<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+			<h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Tier Rates</h3>
 			<div class="space-y-3">
 				{#each tiers as tier}
 					<div class="flex items-center gap-3">
-						<label for="tier-rate-{tier.id}" class="w-32 text-sm text-gray-600 truncate" title={tier.name}>
+						<label for="tier-rate-{tier.id}" class="w-32 text-sm text-gray-600 dark:text-gray-300 truncate" title={tier.name}>
 							{tier.name}
 						</label>
 						<input
@@ -120,35 +120,35 @@
 							min="0"
 							step="any"
 							bind:value={tierRates[tier.id]}
-							class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+							class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 							placeholder="Use default rate"
 						/>
 					</div>
 				{/each}
 			</div>
-			<p class="mt-2 text-xs text-gray-400">Leave blank to use the default rate for that tier.</p>
+			<p class="mt-2 text-xs text-gray-400 dark:text-gray-500">Leave blank to use the default rate for that tier.</p>
 		</div>
 	{/if}
 
 	<div>
-		<label for="unit" class="block text-sm font-medium text-gray-700">Unit</label>
+		<label for="unit" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Unit</label>
 		<input
 			id="unit"
 			type="text"
 			bind:value={unit}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="e.g., hour, each, day"
 		/>
 	</div>
 
 	<div>
-		<label for="category" class="block text-sm font-medium text-gray-700">Category</label>
+		<label for="category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
 		<input
 			id="category"
 			type="text"
 			bind:value={category}
 			list="category-options"
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="e.g., Services, Materials"
 		/>
 		<datalist id="category-options">
@@ -159,23 +159,23 @@
 	</div>
 
 	<div>
-		<label for="sku" class="block text-sm font-medium text-gray-700">SKU</label>
+		<label for="sku" class="block text-sm font-medium text-gray-700 dark:text-gray-300">SKU</label>
 		<input
 			id="sku"
 			type="text"
 			bind:value={sku}
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="Optional SKU code"
 		/>
 	</div>
 
 	<div>
-		<label for="metadata" class="block text-sm font-medium text-gray-700">Metadata (JSON)</label>
+		<label for="metadata" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Metadata (JSON)</label>
 		<textarea
 			id="metadata"
 			bind:value={metadata}
 			rows="3"
-			class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+			class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 font-mono text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			placeholder="JSON metadata"
 		></textarea>
 	</div>

@@ -130,8 +130,8 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/catalog" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Catalog</a>
-				<h1 class="mt-1 text-2xl font-bold text-gray-900">{item.name}</h1>
+				<a href="{base}/catalog" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; Back to Catalog</a>
+				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{item.name}</h1>
 			</div>
 			<div class="flex gap-2">
 				{#if !editing}
@@ -142,27 +142,27 @@
 		</div>
 
 		<!-- Item details / Edit form -->
-		<div class="rounded-lg border border-gray-200 bg-white p-6">
+		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 			{#if editing}
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Edit Item</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Edit Item</h2>
 				<CatalogForm initialData={item} onsubmit={handleUpdate} />
 			{:else}
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<dt class="text-sm font-medium text-gray-500">Default Rate</dt>
-						<dd class="mt-1 text-sm text-gray-900">{formatCurrency(item.rate)}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Default Rate</dt>
+						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{formatCurrency(item.rate)}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500">Unit</dt>
-						<dd class="mt-1 text-sm text-gray-900">{item.unit || '-'}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Unit</dt>
+						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{item.unit || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500">Category</dt>
-						<dd class="mt-1 text-sm text-gray-900">{item.category || '-'}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Category</dt>
+						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{item.category || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500">SKU</dt>
-						<dd class="mt-1 text-sm text-gray-900">{item.sku || '-'}</dd>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">SKU</dt>
+						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{item.sku || '-'}</dd>
 					</div>
 				</dl>
 			{/if}
@@ -170,17 +170,17 @@
 
 		<!-- Tier Rates -->
 		{#if !editing && tiers.length > 0 && itemWithRates}
-			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Tier Rates</h2>
+			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Tier Rates</h2>
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each tiers as tier}
 						<div>
-							<dt class="text-sm font-medium text-gray-500">{tier.name}</dt>
-							<dd class="mt-1 text-sm text-gray-900">
+							<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{tier.name}</dt>
+							<dd class="mt-1 text-sm text-gray-900 dark:text-white">
 								{#if itemWithRates.rates[tier.id] !== undefined}
 									{formatCurrency(itemWithRates.rates[tier.id])}
 								{:else}
-									<span class="text-gray-400">{formatCurrency(item.rate)} (default)</span>
+									<span class="text-gray-400 dark:text-gray-500">{formatCurrency(item.rate)} (default)</span>
 								{/if}
 							</dd>
 						</div>
@@ -191,34 +191,34 @@
 
 		<!-- Metadata -->
 		{#if !editing && hasMetadata(item.metadata)}
-			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Metadata</h2>
-				<pre class="overflow-x-auto rounded-lg bg-gray-50 p-4 text-sm text-gray-700">{formatMetadata(item.metadata)}</pre>
+			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Metadata</h2>
+				<pre class="overflow-x-auto rounded-lg bg-gray-50 p-4 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">{formatMetadata(item.metadata)}</pre>
 			</div>
 		{/if}
 
 		<!-- Change History -->
 		{#if history.length > 0}
-			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900">Change History</h2>
+			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Change History</h2>
 				<div class="space-y-4">
 					{#each history as entry}
 						{@const changes = parseChanges(entry.changes)}
-						<div class="flex gap-3 border-l-2 border-gray-200 pl-4">
+						<div class="flex gap-3 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
 							<div class="flex-1">
 								<div class="flex items-center gap-2">
 									<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {actionColor(entry.action)}">
 										{formatAction(entry.action)}
 									</span>
-									<span class="text-xs text-gray-500">{formatTimestamp(entry.created_at)}</span>
+									<span class="text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.created_at)}</span>
 								</div>
 								{#if changes}
 									<div class="mt-1 space-y-0.5">
 										{#each Object.entries(changes) as [field, diff]}
-											<p class="text-sm text-gray-600">
+											<p class="text-sm text-gray-600 dark:text-gray-300">
 												<span class="font-medium">{field}:</span>
 												<span class="text-red-600 line-through">{formatChangeValue(diff.old)}</span>
-												<span class="text-gray-400">-></span>
+												<span class="text-gray-400 dark:text-gray-500">-></span>
 												<span class="text-green-700">{formatChangeValue(diff.new)}</span>
 											</p>
 										{/each}
