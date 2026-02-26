@@ -3,6 +3,7 @@
 	import type { Invoice } from '$lib/types/index.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let { invoice }: { invoice: Invoice } = $props();
 </script>
@@ -17,7 +18,7 @@
 				<span class="text-sm font-semibold text-gray-900 dark:text-white">{invoice.invoice_number}</span>
 				<StatusBadge status={invoice.status} />
 			</div>
-			<p class="mt-1 truncate text-sm text-gray-600 dark:text-gray-300">{invoice.client_name ?? 'Unknown Client'}</p>
+			<p class="mt-1 truncate text-sm text-gray-600 dark:text-gray-300">{invoice.client_name ?? i18n.t('invoice.unknownClient')}</p>
 			<p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatDate(invoice.date)}</p>
 		</div>
 		<div class="ml-4 text-right">

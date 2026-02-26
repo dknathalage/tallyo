@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from '$lib/components/shared/Button.svelte';
 	import type { DiffResult } from '$lib/import/diff-catalog.js';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		diff,
@@ -28,23 +29,23 @@
 	<div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
 		<div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-center">
 			<div class="text-2xl font-bold text-gray-900 dark:text-white">{diff.summary.total}</div>
-			<div class="text-xs text-gray-500 dark:text-gray-400">Total</div>
+			<div class="text-xs text-gray-500 dark:text-gray-400">{i18n.t('importWizard.total')}</div>
 		</div>
 		<div class="rounded-lg bg-green-50 p-3 text-center">
 			<div class="text-2xl font-bold text-green-700">{diff.newItems.length}</div>
-			<div class="text-xs text-green-600">New</div>
+			<div class="text-xs text-green-600">{i18n.t('importWizard.new')}</div>
 		</div>
 		<div class="rounded-lg bg-amber-50 p-3 text-center">
 			<div class="text-2xl font-bold text-amber-700">{effectiveUpdated.length}</div>
-			<div class="text-xs text-amber-600">Updated</div>
+			<div class="text-xs text-amber-600">{i18n.t('importWizard.updated')}</div>
 		</div>
 		<div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-center">
 			<div class="text-2xl font-bold text-gray-500 dark:text-gray-400">{effectiveUnchanged}</div>
-			<div class="text-xs text-gray-400 dark:text-gray-500">Unchanged</div>
+			<div class="text-xs text-gray-400 dark:text-gray-500">{i18n.t('importWizard.unchanged')}</div>
 		</div>
 		<div class="rounded-lg bg-red-50 p-3 text-center">
 			<div class="text-2xl font-bold text-red-700">{diff.errorItems.length}</div>
-			<div class="text-xs text-red-600">Errors</div>
+			<div class="text-xs text-red-600">{i18n.t('csv.errors')}</div>
 		</div>
 	</div>
 
@@ -54,19 +55,19 @@
 			class="cursor-pointer px-4 py-2 text-sm font-medium transition-colors {activeTab === 'new' ? 'border-b-2 border-primary-500 text-primary-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}"
 			onclick={() => (activeTab = 'new')}
 		>
-			New ({diff.newItems.length})
+			{i18n.t('importWizard.new')} ({diff.newItems.length})
 		</button>
 		<button
 			class="cursor-pointer px-4 py-2 text-sm font-medium transition-colors {activeTab === 'updated' ? 'border-b-2 border-primary-500 text-primary-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}"
 			onclick={() => (activeTab = 'updated')}
 		>
-			Updated ({effectiveUpdated.length})
+			{i18n.t('importWizard.updated')} ({effectiveUpdated.length})
 		</button>
 		<button
 			class="cursor-pointer px-4 py-2 text-sm font-medium transition-colors {activeTab === 'errors' ? 'border-b-2 border-primary-500 text-primary-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}"
 			onclick={() => (activeTab = 'errors')}
 		>
-			Errors ({diff.errorItems.length})
+			{i18n.t('csv.errors')} ({diff.errorItems.length})
 		</button>
 	</div>
 
@@ -74,16 +75,16 @@
 	<div class="max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
 		{#if activeTab === 'new'}
 			{#if diff.newItems.length === 0}
-				<div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">No new items to add.</div>
+				<div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">{i18n.t('importWizard.noNewItems')}</div>
 			{:else}
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
 					<thead class="sticky top-0 bg-green-50">
 						<tr>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">Name</th>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">SKU</th>
-							<th class="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-green-700">Rate</th>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">Unit</th>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">Category</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">{i18n.t('catalog.name')}</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">{i18n.t('catalog.sku')}</th>
+							<th class="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-green-700">{i18n.t('catalog.rate')}</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">{i18n.t('catalog.unit')}</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-green-700">{i18n.t('catalog.category')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -100,7 +101,7 @@
 				</table>
 				{#if diff.newItems.length > 100}
 					<div class="p-2 text-center text-xs text-gray-400 dark:text-gray-500">
-						Showing 100 of {diff.newItems.length} new items
+						{i18n.t('importWizard.showingCount', { shown: '100', total: String(diff.newItems.length), type: i18n.t('importWizard.new').toLowerCase() })}
 					</div>
 				{/if}
 			{/if}
@@ -108,18 +109,18 @@
 			{#if effectiveUpdated.length === 0}
 				<div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
 					{#if importMode === 'insert_only'}
-						Update mode is disabled. Existing items will be skipped.
+						{i18n.t('importWizard.updateDisabled')}
 					{:else}
-						No existing items need updating.
+						{i18n.t('importWizard.noUpdates')}
 					{/if}
 				</div>
 			{:else}
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
 					<thead class="sticky top-0 bg-amber-50">
 						<tr>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700">Name</th>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700">SKU</th>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700">Changes</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700">{i18n.t('catalog.name')}</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700">{i18n.t('catalog.sku')}</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-amber-700">{i18n.t('importWizard.changes')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -138,19 +139,19 @@
 				</table>
 				{#if effectiveUpdated.length > 100}
 					<div class="p-2 text-center text-xs text-gray-400 dark:text-gray-500">
-						Showing 100 of {effectiveUpdated.length} updated items
+						{i18n.t('importWizard.showingCount', { shown: '100', total: String(effectiveUpdated.length), type: i18n.t('importWizard.updated').toLowerCase() })}
 					</div>
 				{/if}
 			{/if}
 		{:else if activeTab === 'errors'}
 			{#if diff.errorItems.length === 0}
-				<div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">No errors found.</div>
+				<div class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">{i18n.t('importWizard.noErrors')}</div>
 			{:else}
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
 					<thead class="sticky top-0 bg-red-50">
 						<tr>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-red-700">Row Data</th>
-							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-red-700">Errors</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-red-700">{i18n.t('importWizard.rowData')}</th>
+							<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-red-700">{i18n.t('importWizard.errorsColumn')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -175,13 +176,13 @@
 	<!-- Footer -->
 	<div class="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-4">
 		<div class="text-sm text-gray-500 dark:text-gray-400">
-			{importableCount} item{importableCount !== 1 ? 's' : ''} will be imported
+			{i18n.t('importWizard.itemsWillImport', { count: String(importableCount), plural: importableCount !== 1 ? 's' : '' })}
 		</div>
 		<Button disabled={importableCount === 0 || loading} onclick={oncommit}>
 			{#if loading}
-				Importing...
+				{i18n.t('importWizard.importing')}
 			{:else}
-				Import {importableCount} Item{importableCount !== 1 ? 's' : ''}
+				{i18n.t('importWizard.importItems', { count: String(importableCount), plural: importableCount !== 1 ? 's' : '' })}
 			{/if}
 		</Button>
 	</div>

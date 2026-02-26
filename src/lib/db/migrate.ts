@@ -105,6 +105,58 @@ function migration5_metadataAndParties() {
 	}
 }
 
+/** Migration 6: Add multi-currency support */
+function migration6_multiCurrency() {
+	if (!tableHasColumn('invoices', 'currency_code')) {
+		execute(`ALTER TABLE invoices ADD COLUMN currency_code TEXT DEFAULT 'USD'`);
+	}
+	if (!tableHasColumn('business_profile', 'default_currency')) {
+		execute(`ALTER TABLE business_profile ADD COLUMN default_currency TEXT DEFAULT 'USD'`);
+	}
+}
+
+/** Migration 7: Create estimates and estimate_line_items tables */
+function migration7_estimates() {
+	if (!tableExists('estimates')) {
+		execute(`CREATE TABLE IF NOT EXISTS estimates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT UNIQUE,
+			estimate_number TEXT UNIQUE NOT NULL,
+			client_id INTEGER REFERENCES clients(id),
+			date TEXT NOT NULL,
+			valid_until TEXT NOT NULL,
+			subtotal REAL DEFAULT 0,
+			tax_rate REAL DEFAULT 0,
+			tax_amount REAL DEFAULT 0,
+			total REAL DEFAULT 0,
+			notes TEXT DEFAULT '',
+			status TEXT DEFAULT 'draft',
+			currency_code TEXT DEFAULT 'USD',
+			converted_invoice_id INTEGER,
+			business_snapshot TEXT DEFAULT '{}',
+			client_snapshot TEXT DEFAULT '{}',
+			payer_snapshot TEXT DEFAULT '{}',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`);
+	}
+	if (!tableExists('estimate_line_items')) {
+		execute(`CREATE TABLE IF NOT EXISTS estimate_line_items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT UNIQUE,
+			estimate_id INTEGER REFERENCES estimates(id) ON DELETE CASCADE,
+			description TEXT NOT NULL,
+			quantity REAL DEFAULT 1,
+			rate REAL DEFAULT 0,
+			amount REAL DEFAULT 0,
+			notes TEXT DEFAULT '',
+			sort_order INTEGER DEFAULT 0,
+			catalog_item_id INTEGER,
+			rate_tier_id INTEGER
+		)`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations() {
 	migration0_addUuids();
@@ -113,6 +165,8 @@ export function runMigrations() {
 	migration3_lineItemRefs();
 	migration4_defaultTier();
 	migration5_metadataAndParties();
+	migration6_multiCurrency();
+	migration7_estimates();
 }
 
 // Keep backward-compatible export name

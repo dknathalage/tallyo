@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { i18n } from '$lib/stores/i18n.svelte.js';
+
 	let {
 		value = $bindable(''),
 		placeholder = 'Search...'
@@ -32,7 +34,7 @@
 		<button
 			onclick={() => (value = '')}
 			class="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded p-0.5 text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-			aria-label="Clear search"
+			aria-label={i18n.t('a11y.clearSearch')}
 		>
 			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />

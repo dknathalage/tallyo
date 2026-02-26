@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Invoice, LineItem, PartySnapshot } from '$lib/types';
+import type { Invoice, LineItem, Estimate, EstimateLineItem, PartySnapshot } from '$lib/types';
+import { i18n } from '$lib/stores/i18n.svelte.js';
 
 function parseSnapshot(json: string): PartySnapshot {
 	try {
@@ -18,14 +19,42 @@ function parseSnapshot(json: string): PartySnapshot {
 	}
 }
 
-export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void {
+function formatPdfCurrencyWithCode(amount: number, currencyCode: string = 'USD'): string {
+	return new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: currencyCode
+	}).format(amount);
+}
+
+interface PdfDocumentData {
+	title: string;
+	number: string;
+	clientName: string | undefined;
+	date: string;
+	secondDateLabel: string;
+	secondDate: string;
+	status: string;
+	currencyCode: string;
+	subtotal: number;
+	taxRate: number;
+	taxAmount: number;
+	total: number;
+	notes: string;
+	businessSnapshot: string;
+	clientSnapshot: string;
+	payerSnapshot: string;
+	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; notes: string }>;
+	fileName: string;
+}
+
+function renderPdf(data: PdfDocumentData): void {
 	const doc = new jsPDF();
 	const pageWidth = doc.internal.pageSize.getWidth();
 	let y = 20;
 
-	const business = parseSnapshot(invoice.business_snapshot);
-	const client = parseSnapshot(invoice.client_snapshot);
-	const payer = parseSnapshot(invoice.payer_snapshot);
+	const business = parseSnapshot(data.businessSnapshot);
+	const client = parseSnapshot(data.clientSnapshot);
+	const payer = parseSnapshot(data.payerSnapshot);
 
 	// --- Header with logo ---
 	let headerTextX = 14;
@@ -61,14 +90,14 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 		}
 	}
 
-	// Invoice title on the right
+	// Document title on the right
 	doc.setFontSize(28);
 	doc.setTextColor(37, 99, 235);
-	doc.text('INVOICE', pageWidth - 14, 20, { align: 'right' });
+	doc.text(data.title, pageWidth - 14, 20, { align: 'right' });
 
 	doc.setFontSize(12);
 	doc.setTextColor(107, 114, 128);
-	doc.text(invoice.invoice_number, pageWidth - 14, 28, { align: 'right' });
+	doc.text(data.number, pageWidth - 14, 28, { align: 'right' });
 
 	y = Math.max(y, 40);
 	y += 4;
@@ -87,12 +116,12 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 	const serviceForY = y;
 	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	doc.text('SERVICE FOR', 14, y);
+	doc.text(i18n.t('pdf.serviceFor'), 14, y);
 	y += 6;
 
 	doc.setFontSize(11);
 	doc.setTextColor(17, 24, 39);
-	doc.text(client.name || invoice.client_name || 'Unknown', 14, y);
+	doc.text(client.name || data.clientName || i18n.t('common.unknown'), 14, y);
 	y += 5;
 
 	doc.setFontSize(9);
@@ -114,7 +143,7 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 		const rightX = 14 + colWidth + 4;
 		doc.setFontSize(9);
 		doc.setTextColor(107, 114, 128);
-		doc.text('BILL TO', rightX, rightY);
+		doc.text(i18n.t('pdf.billTo'), rightX, rightY);
 		rightY += 6;
 
 		doc.setFontSize(11);
@@ -138,43 +167,46 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 
 	y = Math.max(y, rightY) + 6;
 
-	// --- Invoice details row ---
+	// --- Details row ---
 	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
 	const detailsY = y;
 
-	doc.text('Invoice #:', 14, detailsY);
+	const numberLabel = data.title === i18n.t('pdf.estimate') ? i18n.t('pdf.estimateNumber') : i18n.t('pdf.invoiceNumber');
+	doc.text(numberLabel, 14, detailsY);
 	doc.setTextColor(17, 24, 39);
-	doc.text(invoice.invoice_number, 40, detailsY);
+	doc.text(data.number, 40, detailsY);
 
 	doc.setTextColor(107, 114, 128);
-	doc.text('Date:', 80, detailsY);
+	doc.text(i18n.t('pdf.date'), 80, detailsY);
 	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfDate(invoice.date), 96, detailsY);
+	doc.text(formatPdfDate(data.date), 96, detailsY);
 
 	doc.setTextColor(107, 114, 128);
-	doc.text('Due:', 130, detailsY);
+	doc.text(data.secondDateLabel, 130, detailsY);
 	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfDate(invoice.due_date), 142, detailsY);
+	doc.text(formatPdfDate(data.secondDate), 152, detailsY);
 
 	doc.setTextColor(107, 114, 128);
-	doc.text('Status:', 170, detailsY);
+	doc.text(i18n.t('pdf.status'), 170, detailsY);
 	doc.setTextColor(17, 24, 39);
-	doc.text(invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1), pageWidth - 14, detailsY, { align: 'right' });
+	doc.text(data.status.charAt(0).toUpperCase() + data.status.slice(1), pageWidth - 14, detailsY, { align: 'right' });
 
 	y = detailsY + 10;
 
+	const cc = data.currencyCode || 'USD';
+
 	// --- Line items table ---
-	const tableBody = lineItems.map((item) => [
+	const tableBody = data.lineItems.map((item) => [
 		item.notes ? `${item.description}\n${item.notes}` : item.description,
 		String(item.quantity),
-		formatPdfCurrency(item.rate),
-		formatPdfCurrency(item.amount)
+		formatPdfCurrencyWithCode(item.rate, cc),
+		formatPdfCurrencyWithCode(item.amount, cc)
 	]);
 
 	autoTable(doc, {
 		startY: y,
-		head: [['Description', 'Quantity', 'Rate', 'Amount']],
+		head: [[i18n.t('pdf.description'), i18n.t('pdf.quantity'), i18n.t('pdf.rate'), i18n.t('pdf.amount')]],
 		body: tableBody,
 		theme: 'striped',
 		headStyles: {
@@ -203,16 +235,16 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 
 	doc.setFontSize(10);
 	doc.setTextColor(107, 114, 128);
-	doc.text('Subtotal:', summaryX, y);
+	doc.text(i18n.t('pdf.subtotal'), summaryX, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfCurrency(invoice.subtotal), summaryValueX, y, { align: 'right' });
+	doc.text(formatPdfCurrencyWithCode(data.subtotal, cc), summaryValueX, y, { align: 'right' });
 
 	y += 7;
 
 	doc.setTextColor(107, 114, 128);
-	doc.text(`Tax (${invoice.tax_rate}%):`, summaryX, y);
+	doc.text(i18n.t('pdf.tax', { rate: data.taxRate }), summaryX, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfCurrency(invoice.tax_amount), summaryValueX, y, { align: 'right' });
+	doc.text(formatPdfCurrencyWithCode(data.taxAmount, cc), summaryValueX, y, { align: 'right' });
 
 	y += 3;
 	doc.setDrawColor(209, 213, 219);
@@ -223,20 +255,20 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 	doc.setFontSize(12);
 	doc.setTextColor(17, 24, 39);
 	doc.setFont(undefined!, 'bold');
-	doc.text('Total:', summaryX, y);
-	doc.text(formatPdfCurrency(invoice.total), summaryValueX, y, { align: 'right' });
+	doc.text(i18n.t('pdf.total'), summaryX, y);
+	doc.text(formatPdfCurrencyWithCode(data.total, cc), summaryValueX, y, { align: 'right' });
 	doc.setFont(undefined!, 'normal');
 
 	// Notes
-	if (invoice.notes) {
+	if (data.notes) {
 		y += 16;
 		doc.setFontSize(9);
 		doc.setTextColor(107, 114, 128);
-		doc.text('NOTES', 14, y);
+		doc.text(i18n.t('pdf.notes'), 14, y);
 		y += 6;
 		doc.setFontSize(10);
 		doc.setTextColor(55, 65, 81);
-		const noteLines = doc.splitTextToSize(invoice.notes, pageWidth - 28);
+		const noteLines = doc.splitTextToSize(data.notes, pageWidth - 28);
 		doc.text(noteLines, 14, y);
 	}
 
@@ -244,16 +276,67 @@ export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void 
 	const footerY = doc.internal.pageSize.getHeight() - 20;
 	doc.setFontSize(10);
 	doc.setTextColor(156, 163, 175);
-	doc.text('Thank you for your business', pageWidth / 2, footerY, { align: 'center' });
+	doc.text(i18n.t('pdf.thankYou'), pageWidth / 2, footerY, { align: 'center' });
 
-	doc.save(`invoice-${invoice.invoice_number}.pdf`);
+	doc.save(data.fileName);
 }
 
-function formatPdfCurrency(amount: number): string {
-	return new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD'
-	}).format(amount);
+export function exportInvoicePdf(invoice: Invoice, lineItems: LineItem[]): void {
+	renderPdf({
+		title: i18n.t('pdf.invoice'),
+		number: invoice.invoice_number,
+		clientName: invoice.client_name,
+		date: invoice.date,
+		secondDateLabel: i18n.t('pdf.due'),
+		secondDate: invoice.due_date,
+		status: invoice.status,
+		currencyCode: invoice.currency_code || 'USD',
+		subtotal: invoice.subtotal,
+		taxRate: invoice.tax_rate,
+		taxAmount: invoice.tax_amount,
+		total: invoice.total,
+		notes: invoice.notes,
+		businessSnapshot: invoice.business_snapshot,
+		clientSnapshot: invoice.client_snapshot,
+		payerSnapshot: invoice.payer_snapshot,
+		lineItems: lineItems.map((item) => ({
+			description: item.description,
+			quantity: item.quantity,
+			rate: item.rate,
+			amount: item.amount,
+			notes: item.notes
+		})),
+		fileName: `invoice-${invoice.invoice_number}.pdf`
+	});
+}
+
+export function exportEstimatePdf(estimate: Estimate, lineItems: EstimateLineItem[]): void {
+	renderPdf({
+		title: i18n.t('pdf.estimate'),
+		number: estimate.estimate_number,
+		clientName: estimate.client_name,
+		date: estimate.date,
+		secondDateLabel: i18n.t('pdf.validUntil'),
+		secondDate: estimate.valid_until,
+		status: estimate.status,
+		currencyCode: estimate.currency_code || 'USD',
+		subtotal: estimate.subtotal,
+		taxRate: estimate.tax_rate,
+		taxAmount: estimate.tax_amount,
+		total: estimate.total,
+		notes: estimate.notes,
+		businessSnapshot: estimate.business_snapshot,
+		clientSnapshot: estimate.client_snapshot,
+		payerSnapshot: estimate.payer_snapshot,
+		lineItems: lineItems.map((item) => ({
+			description: item.description,
+			quantity: item.quantity,
+			rate: item.rate,
+			amount: item.amount,
+			notes: item.notes
+		})),
+		fileName: `estimate-${estimate.estimate_number}.pdf`
+	});
 }
 
 function formatPdfDate(dateStr: string): string {

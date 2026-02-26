@@ -2,7 +2,14 @@ export const CLIENT_COLUMNS = ['uuid', 'name', 'email', 'phone', 'address', 'met
 export const CATALOG_COLUMNS = ['uuid', 'name', 'rate', 'unit', 'category', 'sku'] as const;
 export const INVOICE_COLUMNS = [
 	'invoice_uuid', 'invoice_number', 'client_name', 'client_email',
-	'date', 'due_date', 'tax_rate', 'notes', 'status',
+	'date', 'due_date', 'tax_rate', 'notes', 'status', 'currency_code',
+	'line_description', 'line_quantity', 'line_rate', 'line_amount', 'line_sort_order', 'line_notes',
+	'business_snapshot', 'client_snapshot', 'payer_snapshot'
+] as const;
+
+export const ESTIMATE_COLUMNS = [
+	'estimate_uuid', 'estimate_number', 'client_name', 'client_email',
+	'date', 'valid_until', 'tax_rate', 'notes', 'status', 'currency_code',
 	'line_description', 'line_quantity', 'line_rate', 'line_amount', 'line_sort_order', 'line_notes',
 	'business_snapshot', 'client_snapshot', 'payer_snapshot'
 ] as const;
@@ -10,3 +17,4 @@ export const INVOICE_COLUMNS = [
 export const REQUIRED_CLIENT_FIELDS = ['name'] as const;
 export const REQUIRED_CATALOG_FIELDS = ['name'] as const;
 export const REQUIRED_INVOICE_FIELDS = ['invoice_number', 'client_name', 'date', 'line_description'] as const;
+export const REQUIRED_ESTIMATE_FIELDS = ['estimate_number', 'client_name', 'date', 'line_description'] as const;

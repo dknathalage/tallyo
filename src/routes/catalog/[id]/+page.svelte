@@ -11,6 +11,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let itemId = $derived(Number(page.params.id));
 	let refreshTrigger = $state(0);
@@ -120,9 +121,9 @@
 </script>
 
 {#if !item}
-	<EmptyState title="Item not found" message="This catalog item does not exist or has been deleted.">
+	<EmptyState title={i18n.t('catalog.itemNotFound')} message={i18n.t('catalog.itemNotFoundMessage')}>
 		<a href="{base}/catalog">
-			<Button variant="secondary">Back to Catalog</Button>
+			<Button variant="secondary">{i18n.t('catalog.backToCatalog')}</Button>
 		</a>
 	</EmptyState>
 {:else}
@@ -130,38 +131,38 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/catalog" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; Back to Catalog</a>
+				<a href="{base}/catalog" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('catalog.backToCatalog')}</a>
 				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{item.name}</h1>
 			</div>
 			<div class="flex gap-2">
 				{#if !editing}
-					<Button variant="secondary" onclick={() => (editing = true)}>Edit</Button>
+					<Button variant="secondary" onclick={() => (editing = true)}>{i18n.t('common.edit')}</Button>
 				{/if}
-				<Button variant="danger" onclick={() => (showDeleteConfirm = true)}>Delete</Button>
+				<Button variant="danger" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
 			</div>
 		</div>
 
 		<!-- Item details / Edit form -->
 		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 			{#if editing}
-				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Edit Item</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('catalog.editItem')}</h2>
 				<CatalogForm initialData={item} onsubmit={handleUpdate} />
 			{:else}
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Default Rate</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('catalog.defaultRate')}</dt>
 						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{formatCurrency(item.rate)}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Unit</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('catalog.unit')}</dt>
 						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{item.unit || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Category</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('catalog.category')}</dt>
 						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{item.category || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">SKU</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('catalog.sku')}</dt>
 						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{item.sku || '-'}</dd>
 					</div>
 				</dl>
@@ -171,7 +172,7 @@
 		<!-- Tier Rates -->
 		{#if !editing && tiers.length > 0 && itemWithRates}
 			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Tier Rates</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('catalog.tierRates')}</h2>
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each tiers as tier}
 						<div>
@@ -180,7 +181,7 @@
 								{#if itemWithRates.rates[tier.id] !== undefined}
 									{formatCurrency(itemWithRates.rates[tier.id])}
 								{:else}
-									<span class="text-gray-400 dark:text-gray-500">{formatCurrency(item.rate)} (default)</span>
+									<span class="text-gray-400 dark:text-gray-500">{formatCurrency(item.rate)} {i18n.t('common.default')}</span>
 								{/if}
 							</dd>
 						</div>
@@ -192,7 +193,7 @@
 		<!-- Metadata -->
 		{#if !editing && hasMetadata(item.metadata)}
 			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Metadata</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('catalog.metadata')}</h2>
 				<pre class="overflow-x-auto rounded-lg bg-gray-50 p-4 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">{formatMetadata(item.metadata)}</pre>
 			</div>
 		{/if}
@@ -200,7 +201,7 @@
 		<!-- Change History -->
 		{#if history.length > 0}
 			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Change History</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('catalog.changeHistory')}</h2>
 				<div class="space-y-4">
 					{#each history as entry}
 						{@const changes = parseChanges(entry.changes)}
@@ -237,9 +238,9 @@
 	<!-- Delete confirmation -->
 	<ConfirmDialog
 		open={showDeleteConfirm}
-		title="Delete Item"
-		message="Are you sure you want to delete {item.name}? This action cannot be undone."
-		confirmLabel="Delete"
+		title={i18n.t('catalog.deleteConfirmTitle')}
+		message={i18n.t('catalog.deleteConfirmMessage', { name: item.name })}
+		confirmLabel={i18n.t('common.delete')}
 		confirmVariant="danger"
 		onconfirm={handleDelete}
 		oncancel={() => (showDeleteConfirm = false)}

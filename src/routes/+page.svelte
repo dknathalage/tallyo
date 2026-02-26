@@ -1,30 +1,36 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { getDashboardStats } from '$lib/db/queries/dashboard';
+	import { getBusinessProfile } from '$lib/db/queries/business-profile';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let stats = $derived(getDashboardStats());
+	let defaultCurrency = $derived(getBusinessProfile()?.default_currency || 'USD');
 </script>
 
 <div class="space-y-6">
 	<!-- Header with quick actions -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('dashboard.title')}</h1>
 		<div class="flex gap-2">
 			<a href="{base}/invoices/new">
-				<Button>New Invoice</Button>
+				<Button>{i18n.t('dashboard.newInvoice')}</Button>
+			</a>
+			<a href="{base}/estimates/new">
+				<Button variant="secondary">{i18n.t('dashboard.newEstimate')}</Button>
 			</a>
 			<a href="{base}/clients/new">
-				<Button variant="secondary">New Client</Button>
+				<Button variant="secondary">{i18n.t('dashboard.newClient')}</Button>
 			</a>
 		</div>
 	</div>
 
 	<!-- Stats cards -->
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
 		<!-- Total Revenue -->
 		<div class="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
 			<div class="flex items-center gap-3">
@@ -34,8 +40,8 @@
 					</svg>
 				</div>
 				<div>
-					<p class="text-sm text-gray-500 dark:text-gray-400">Total Revenue</p>
-					<p class="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(stats.total_revenue)}</p>
+					<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('dashboard.totalRevenue')}</p>
+					<p class="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(stats.total_revenue, defaultCurrency)}</p>
 				</div>
 			</div>
 		</div>
@@ -49,8 +55,8 @@
 					</svg>
 				</div>
 				<div>
-					<p class="text-sm text-gray-500 dark:text-gray-400">Outstanding</p>
-					<p class="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(stats.outstanding_amount)}</p>
+					<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('dashboard.outstanding')}</p>
+					<p class="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(stats.outstanding_amount, defaultCurrency)}</p>
 				</div>
 			</div>
 		</div>
@@ -64,7 +70,7 @@
 					</svg>
 				</div>
 				<div>
-					<p class="text-sm text-gray-500 dark:text-gray-400">Overdue</p>
+					<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('dashboard.overdue')}</p>
 					<p class="text-xl font-bold text-gray-900 dark:text-white">{stats.overdue_count}</p>
 				</div>
 			</div>
@@ -79,40 +85,62 @@
 					</svg>
 				</div>
 				<div>
-					<p class="text-sm text-gray-500 dark:text-gray-400">Total Clients</p>
+					<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('dashboard.totalClients')}</p>
 					<p class="text-xl font-bold text-gray-900 dark:text-white">{stats.total_clients}</p>
+				</div>
+			</div>
+		</div>
+
+		<!-- Pending Estimates -->
+		<div class="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+			<div class="flex items-center gap-3">
+				<div class="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+					<svg class="h-5 w-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+					</svg>
+				</div>
+				<div>
+					<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('dashboard.pendingEstimates')}</p>
+					<p class="text-xl font-bold text-gray-900 dark:text-white">{stats.pending_estimates}</p>
 				</div>
 			</div>
 		</div>
 	</div>
 
+	{#if stats.excluded_currency_count > 0}
+		<p class="text-xs text-gray-500 dark:text-gray-400">
+			{i18n.t('dashboard.excludedCurrencyNote', { count: stats.excluded_currency_count, plural: stats.excluded_currency_count === 1 ? '' : 's' })}
+		</p>
+	{/if}
+
 	<!-- Recent Invoices -->
 	<div>
 		<div class="flex items-center justify-between">
-			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Recent Invoices</h2>
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('dashboard.recentInvoices')}</h2>
 			{#if stats.total_invoices > 0}
-				<a href="{base}/invoices" class="text-sm text-primary-600 hover:text-primary-700">View all</a>
+				<a href="{base}/invoices" class="text-sm text-primary-600 hover:text-primary-700">{i18n.t('dashboard.viewAll')}</a>
 			{/if}
 		</div>
 
 		{#if stats.recent_invoices.length === 0}
 			<div class="mt-4">
-				<EmptyState title="No invoices yet" message="Create your first invoice to start tracking your business.">
+				<EmptyState title={i18n.t('dashboard.noInvoicesYet')} message={i18n.t('dashboard.noInvoicesMessage')}>
 					<a href="{base}/invoices/new">
-						<Button>Create Invoice</Button>
+						<Button>{i18n.t('dashboard.createInvoice')}</Button>
 					</a>
 				</EmptyState>
 			</div>
 		{:else}
 			<div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+					<caption class="sr-only">{i18n.t('a11y.recentInvoicesTable')}</caption>
 					<thead class="bg-gray-50 dark:bg-gray-900">
 						<tr>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Invoice</th>
-							<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Client</th>
-							<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">Date</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('dashboard.invoice')}</th>
+							<th scope="col" class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">{i18n.t('dashboard.client')}</th>
+							<th scope="col" class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">{i18n.t('dashboard.date')}</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('dashboard.status')}</th>
+							<th scope="col" class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('dashboard.total')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -133,7 +161,65 @@
 									<StatusBadge status={invoice.status} />
 								</td>
 								<td class="px-6 py-4 text-right text-sm font-medium text-gray-900 dark:text-white">
-									{formatCurrency(invoice.total)}
+									{formatCurrency(invoice.total, invoice.currency_code)}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</div>
+
+	<!-- Recent Estimates -->
+	<div>
+		<div class="flex items-center justify-between">
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('dashboard.recentEstimates')}</h2>
+			{#if stats.total_estimates > 0}
+				<a href="{base}/estimates" class="text-sm text-primary-600 hover:text-primary-700">{i18n.t('dashboard.viewAll')}</a>
+			{/if}
+		</div>
+
+		{#if stats.recent_estimates.length === 0}
+			<div class="mt-4">
+				<EmptyState title={i18n.t('dashboard.noEstimatesYet')} message={i18n.t('dashboard.noEstimatesMessage')}>
+					<a href="{base}/estimates/new">
+						<Button>{i18n.t('dashboard.createEstimate')}</Button>
+					</a>
+				</EmptyState>
+			</div>
+		{:else}
+			<div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+					<caption class="sr-only">{i18n.t('a11y.recentEstimatesTable')}</caption>
+					<thead class="bg-gray-50 dark:bg-gray-900">
+						<tr>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('dashboard.estimate')}</th>
+							<th scope="col" class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">{i18n.t('dashboard.client')}</th>
+							<th scope="col" class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">{i18n.t('dashboard.date')}</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('dashboard.status')}</th>
+							<th scope="col" class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('dashboard.total')}</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+						{#each stats.recent_estimates as estimate}
+							<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
+								<td class="px-6 py-4">
+									<a href="{base}/estimates/{estimate.id}" class="font-medium text-primary-600 hover:text-primary-700">
+										{estimate.estimate_number}
+									</a>
+								</td>
+								<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
+									{estimate.client_name ?? '-'}
+								</td>
+								<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 md:table-cell">
+									{formatDate(estimate.date)}
+								</td>
+								<td class="px-6 py-4">
+									<StatusBadge status={estimate.status} />
+								</td>
+								<td class="px-6 py-4 text-right text-sm font-medium text-gray-900 dark:text-white">
+									{formatCurrency(estimate.total, estimate.currency_code)}
 								</td>
 							</tr>
 						{/each}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '$lib/components/shared/Button.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		onselect
@@ -11,7 +12,7 @@
 </script>
 
 <div class="space-y-4">
-	<p class="text-sm text-gray-600 dark:text-gray-300">Choose how to handle items that already exist in the catalog (matched by SKU).</p>
+	<p class="text-sm text-gray-600 dark:text-gray-300">{i18n.t('importWizard.importModeDesc')}</p>
 
 	<div class="space-y-3">
 		<!-- Insert Only -->
@@ -25,9 +26,9 @@
 				class="mt-0.5 h-4 w-4 cursor-pointer text-primary-600 focus:ring-primary-500"
 			/>
 			<div>
-				<div class="font-medium text-gray-900 dark:text-white">Insert only</div>
+				<div class="font-medium text-gray-900 dark:text-white">{i18n.t('importWizard.insertOnly')}</div>
 				<div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-					Only add new items to the catalog. Existing items with matching SKUs will be skipped.
+					{i18n.t('importWizard.insertOnlyDesc')}
 				</div>
 			</div>
 		</label>
@@ -43,9 +44,9 @@
 				class="mt-0.5 h-4 w-4 cursor-pointer text-primary-600 focus:ring-primary-500"
 			/>
 			<div>
-				<div class="font-medium text-gray-900 dark:text-white">Insert + Update</div>
+				<div class="font-medium text-gray-900 dark:text-white">{i18n.t('importWizard.insertUpdate')}</div>
 				<div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-					Add new items and update existing ones matched by SKU. Changes will be shown in the preview before committing.
+					{i18n.t('importWizard.insertUpdateDesc')}
 				</div>
 			</div>
 		</label>
@@ -54,7 +55,7 @@
 	<!-- Footer -->
 	<div class="flex justify-end border-t border-gray-200 dark:border-gray-700 pt-4">
 		<Button onclick={() => onselect(mode)}>
-			Next
+			{i18n.t('common.next')}
 		</Button>
 	</div>
 </div>

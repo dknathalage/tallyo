@@ -13,6 +13,7 @@
 	import { parseClientsCsv, commitClientImport } from '$lib/csv/import-clients.js';
 	import { CLIENT_COLUMNS } from '$lib/csv/columns.js';
 	import type { ParsedImport, CsvClientRow } from '$lib/csv/types.js';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let search = $state('');
 	let showPreview = $state(false);
@@ -85,33 +86,33 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Clients</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('client.title')}</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportClients} onimport={handleImport} />
 			<a href="{base}/clients/new">
-				<Button>New Client</Button>
+				<Button>{i18n.t('client.newClient')}</Button>
 			</a>
 		</div>
 	</div>
 
 	<!-- Search -->
 	<div class="max-w-sm">
-		<SearchInput bind:value={search} placeholder="Search clients..." />
+		<SearchInput bind:value={search} placeholder={i18n.t('client.searchPlaceholder')} />
 	</div>
 
 	<!-- Bulk action bar -->
 	<BulkActionBar count={selectedIds.size} ondeselect={() => (selectedIds = new Set())}>
-		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>Delete</Button>
+		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
 	</BulkActionBar>
 
 	<!-- Client list -->
 	{#if clients.length === 0}
 		{#if search}
-			<EmptyState title="No results" message="No clients match your search. Try a different term." />
+			<EmptyState title={i18n.t('common.noResults')} message={i18n.t('client.noResultsMessage')} />
 		{:else}
-			<EmptyState title="No clients yet" message="Create your first client to get started.">
+			<EmptyState title={i18n.t('client.noClients')} message={i18n.t('client.noClientsMessage')}>
 				<a href="{base}/clients/new">
-					<Button>New Client</Button>
+					<Button>{i18n.t('client.newClient')}</Button>
 				</a>
 			</EmptyState>
 		{/if}
@@ -128,10 +129,10 @@
 								class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 							/>
 						</th>
-						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Email</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">Phone</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 lg:table-cell">Tier</th>
+						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.name')}</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">{i18n.t('client.email')}</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">{i18n.t('client.phone')}</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 lg:table-cell">{i18n.t('client.tier')}</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -165,7 +166,7 @@
 									}}
 									class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
 								>
-									<option value="">No tier</option>
+									<option value="">{i18n.t('client.noTier')}</option>
 									{#each tiers as tier}
 										<option value={tier.id}>{tier.name}</option>
 									{/each}
@@ -179,13 +180,13 @@
 	{/if}
 </div>
 
-<Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title="Delete Clients">
+<Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title={i18n.t('client.bulkDeleteTitle')}>
 	<p class="text-sm text-gray-600 dark:text-gray-300">
-		Are you sure you want to delete {selectedIds.size} client{selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
+		{i18n.t('client.bulkDeleteMessage', { count: selectedIds.size, plural: selectedIds.size === 1 ? '' : 's' })}
 	</p>
 	<div class="mt-4 flex justify-end gap-3">
-		<Button variant="secondary" size="sm" onclick={() => (showDeleteConfirm = false)}>Cancel</Button>
-		<Button variant="danger" size="sm" onclick={handleBulkDelete}>Delete</Button>
+		<Button variant="secondary" size="sm" onclick={() => (showDeleteConfirm = false)}>{i18n.t('common.cancel')}</Button>
+		<Button variant="danger" size="sm" onclick={handleBulkDelete}>{i18n.t('common.delete')}</Button>
 	</div>
 </Modal>
 
@@ -194,7 +195,7 @@
 		open={showPreview}
 		onclose={() => { showPreview = false; }}
 		onconfirm={handleConfirm}
-		title="Import Clients"
+		title={i18n.t('client.importTitle')}
 		totalRows={previewData.totalRows}
 		validRows={previewData.validRows.length}
 		skippedDuplicates={previewData.skippedDuplicates}

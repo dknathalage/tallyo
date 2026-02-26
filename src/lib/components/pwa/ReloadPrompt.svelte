@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useRegisterSW } from 'virtual:pwa-register/svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	const intervalMS = 60 * 60 * 1000; // check for updates every hour
 
@@ -38,9 +39,9 @@
 		role="alert"
 	>
 		{#if $offlineReady}
-			<p class="text-sm text-gray-700 dark:text-gray-300">Ready to work offline</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300">{i18n.t('pwa.offlineReady')}</p>
 		{:else}
-			<p class="text-sm text-gray-700 dark:text-gray-300">New version available</p>
+			<p class="text-sm text-gray-700 dark:text-gray-300">{i18n.t('pwa.newVersionAvailable')}</p>
 		{/if}
 
 		<div class="flex gap-2">
@@ -49,14 +50,14 @@
 					onclick={handleUpdate}
 					class="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
 				>
-					Reload
+					{i18n.t('pwa.reload')}
 				</button>
 			{/if}
 			<button
 				onclick={close}
 				class="rounded border border-gray-300 dark:border-gray-600 px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
 			>
-				Dismiss
+				{i18n.t('pwa.dismiss')}
 			</button>
 		</div>
 	</div>

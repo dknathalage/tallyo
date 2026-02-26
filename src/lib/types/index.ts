@@ -28,6 +28,7 @@ export interface Invoice {
 	total: number;
 	notes: string;
 	status: 'draft' | 'sent' | 'paid' | 'overdue';
+	currency_code: string;
 	business_snapshot: string;
 	client_snapshot: string;
 	payer_snapshot: string;
@@ -39,6 +40,45 @@ export interface LineItem {
 	id: number;
 	uuid: string;
 	invoice_id: number;
+	description: string;
+	quantity: number;
+	rate: number;
+	amount: number;
+	notes: string;
+	sort_order: number;
+	catalog_item_id: number | null;
+	rate_tier_id: number | null;
+}
+
+export type EstimateStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+
+export interface Estimate {
+	id: number;
+	uuid: string;
+	estimate_number: string;
+	client_id: number;
+	client_name?: string;
+	date: string;
+	valid_until: string;
+	subtotal: number;
+	tax_rate: number;
+	tax_amount: number;
+	total: number;
+	notes: string;
+	status: EstimateStatus;
+	currency_code: string;
+	converted_invoice_id: number | null;
+	business_snapshot: string;
+	client_snapshot: string;
+	payer_snapshot: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface EstimateLineItem {
+	id: number;
+	uuid: string;
+	estimate_id: number;
 	description: string;
 	quantity: number;
 	rate: number;
@@ -116,7 +156,11 @@ export interface DashboardStats {
 	overdue_count: number;
 	total_clients: number;
 	total_invoices: number;
+	excluded_currency_count: number;
 	recent_invoices: Invoice[];
+	total_estimates: number;
+	pending_estimates: number;
+	recent_estimates: Estimate[];
 }
 
 export interface BusinessProfile {
@@ -128,6 +172,7 @@ export interface BusinessProfile {
 	address: string;
 	logo: string;
 	metadata: string; // JSON string of Record<string, string>
+	default_currency: string;
 	created_at: string;
 	updated_at: string;
 }

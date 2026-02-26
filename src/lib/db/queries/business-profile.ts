@@ -14,10 +14,11 @@ export async function saveBusinessProfile(data: {
 	address?: string;
 	logo?: string;
 	metadata?: string;
+	default_currency?: string;
 }): Promise<void> {
 	const existing = getBusinessProfile();
 	execute(
-		`INSERT OR REPLACE INTO business_profile (id, uuid, name, email, phone, address, logo, metadata, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		`INSERT OR REPLACE INTO business_profile (id, uuid, name, email, phone, address, logo, metadata, default_currency, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
 		[
 			existing?.uuid ?? crypto.randomUUID(),
 			data.name,
@@ -25,7 +26,8 @@ export async function saveBusinessProfile(data: {
 			data.phone ?? '',
 			data.address ?? '',
 			data.logo ?? '',
-			data.metadata ?? '{}'
+			data.metadata ?? '{}',
+			data.default_currency ?? existing?.default_currency ?? 'USD'
 		]
 	);
 	logAudit({

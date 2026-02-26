@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from '$lib/components/shared/Button.svelte';
 	import { parseFile, getSheetWithHeaderRow, type ParsedFile, type ParsedSheet } from '$lib/import/parse-file.js';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		onparsed
@@ -38,7 +39,7 @@
 			selectedSheetIndex = 0;
 			headerRow = 1;
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to parse file';
+			error = err instanceof Error ? err.message : i18n.t('common.error');
 			parsedFile = null;
 		} finally {
 			loading = false;
@@ -55,15 +56,15 @@
 <div class="space-y-4">
 	<!-- File input -->
 	<div>
-		<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select file to import</label>
+		<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{i18n.t('importWizard.selectFileLabel')}</label>
 		<div class="flex items-center gap-3">
 			<Button variant="secondary" size="sm" onclick={() => fileInput.click()}>
-				Choose File
+				{i18n.t('importWizard.chooseFile')}
 			</Button>
 			{#if parsedFile}
 				<span class="text-sm text-gray-600 dark:text-gray-300">{parsedFile.fileName}</span>
 			{:else}
-				<span class="text-sm text-gray-400 dark:text-gray-500">No file selected</span>
+				<span class="text-sm text-gray-400 dark:text-gray-500">{i18n.t('importWizard.noFileSelected')}</span>
 			{/if}
 		</div>
 		<input
@@ -76,7 +77,7 @@
 	</div>
 
 	{#if loading}
-		<div class="text-sm text-gray-500 dark:text-gray-400">Parsing file...</div>
+		<div class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('importWizard.parsingFile')}</div>
 	{/if}
 
 	{#if error}
@@ -87,7 +88,7 @@
 		<!-- Sheet selector (Excel only) -->
 		{#if parsedFile.fileType === 'xlsx' && parsedFile.sheets.length > 1}
 			<div>
-				<label for="sheet-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sheet</label>
+				<label for="sheet-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{i18n.t('importWizard.sheet')}</label>
 				<select
 					id="sheet-select"
 					bind:value={selectedSheetIndex}
@@ -103,7 +104,7 @@
 		<!-- Header row (Excel only) -->
 		{#if parsedFile.fileType === 'xlsx'}
 			<div>
-				<label for="header-row" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Header row</label>
+				<label for="header-row" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{i18n.t('importWizard.headerRow')}</label>
 				<input
 					id="header-row"
 					type="number"
@@ -111,7 +112,7 @@
 					bind:value={headerRow}
 					class="w-24 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				/>
-				<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Row number containing column headers</span>
+				<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">{i18n.t('importWizard.headerRowHint')}</span>
 			</div>
 		{/if}
 
@@ -119,9 +120,9 @@
 		{#if activeSheet}
 			<div>
 				<p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-					Preview: {activeSheet.headers.length} columns, {activeSheet.rows.length} rows
+					{i18n.t('importWizard.previewColumns', { columns: String(activeSheet.headers.length), rows: String(activeSheet.rows.length) })}
 					{#if activeSheet.rows.length > 5}
-						(showing first 5)
+						{i18n.t('importWizard.showingFirst', { count: '5' })}
 					{/if}
 				</p>
 				<div class="max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
@@ -155,7 +156,7 @@
 	<!-- Footer -->
 	<div class="flex justify-end border-t border-gray-200 dark:border-gray-700 pt-4">
 		<Button disabled={!activeSheet || activeSheet.rows.length === 0} onclick={handleNext}>
-			Next
+			{i18n.t('common.next')}
 		</Button>
 	</div>
 </div>

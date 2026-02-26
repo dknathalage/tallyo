@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '$lib/components/shared/Button.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let { onexport, onimport }: { onexport: () => void; onimport: (file: File) => void } = $props();
 
@@ -15,7 +16,7 @@
 </script>
 
 <div class="flex items-center gap-2">
-	<Button variant="secondary" size="sm" onclick={onexport}>Export CSV</Button>
-	<Button variant="secondary" size="sm" onclick={() => fileInput.click()}>Import</Button>
+	<Button variant="secondary" size="sm" onclick={onexport}>{i18n.t('csv.exportCsv')}</Button>
+	<Button variant="secondary" size="sm" onclick={() => fileInput.click()}>{i18n.t('csv.import')}</Button>
 	<input bind:this={fileInput} type="file" accept=".csv,.xlsx,.xls" class="hidden" onchange={handleFileSelect} />
 </div>

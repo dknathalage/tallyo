@@ -105,6 +105,7 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 			taxRate: Number(first.tax_rate) || 0,
 			notes: first.notes?.trim() || '',
 			status: first.status?.trim().toLowerCase() || 'draft',
+			currencyCode: (first as any).currency_code?.trim() || 'USD',
 			businessSnapshot: first.business_snapshot?.trim() || '{}',
 			clientSnapshot: first.client_snapshot?.trim() || '{}',
 			payerSnapshot: first.payer_snapshot?.trim() || '{}',
@@ -161,7 +162,7 @@ export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClien
 			const total = subtotal + taxAmount;
 
 			execute(
-				'INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 				[
 					group.invoiceUuid,
 					invoiceNumber,
@@ -174,6 +175,7 @@ export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClien
 					total,
 					group.notes,
 					group.status,
+					group.currencyCode || 'USD',
 					group.businessSnapshot,
 					group.clientSnapshot,
 					group.payerSnapshot

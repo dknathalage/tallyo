@@ -16,6 +16,7 @@
 	import type { ParsedInvoiceImport } from '$lib/csv/types.js';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let search = $state('');
 	let statusFilter = $state('');
@@ -28,13 +29,6 @@
 	let showDeleteConfirm = $state(false);
 
 	const statuses = ['', 'draft', 'sent', 'paid', 'overdue'] as const;
-	const statusLabels: Record<string, string> = {
-		'': 'All',
-		draft: 'Draft',
-		sent: 'Sent',
-		paid: 'Paid',
-		overdue: 'Overdue'
-	};
 
 	$effect(() => {
 		importTrigger;
@@ -93,16 +87,16 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Invoices</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('invoice.title')}</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportInvoices} onimport={handleImport} />
-			<Button onclick={() => goto(`${base}/invoices/new`)}>New Invoice</Button>
+			<Button onclick={() => goto(`${base}/invoices/new`)}>{i18n.t('invoice.newInvoice')}</Button>
 		</div>
 	</div>
 
 	<!-- Search and filters -->
 	<div class="space-y-3">
-		<SearchInput bind:value={search} placeholder="Search invoices..." />
+		<SearchInput bind:value={search} placeholder={i18n.t('invoice.searchPlaceholder')} />
 
 		<div class="flex flex-wrap gap-2">
 			{#each statuses as s}
@@ -112,7 +106,7 @@
 						? 'bg-primary-600 text-white'
 						: 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}"
 				>
-					{statusLabels[s]}
+					{s === '' ? i18n.t('status.all') : i18n.t(`status.${s}`)}
 				</button>
 			{/each}
 		</div>
@@ -130,38 +124,40 @@
 			}}
 			class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
 		>
-			<option value="">Change status...</option>
-			<option value="draft">Draft</option>
-			<option value="sent">Sent</option>
-			<option value="paid">Paid</option>
-			<option value="overdue">Overdue</option>
+			<option value="">{i18n.t('status.changeStatus')}</option>
+			<option value="draft">{i18n.t('status.draft')}</option>
+			<option value="sent">{i18n.t('status.sent')}</option>
+			<option value="paid">{i18n.t('status.paid')}</option>
+			<option value="overdue">{i18n.t('status.overdue')}</option>
 		</select>
-		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>Delete</Button>
+		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
 	</BulkActionBar>
 
 	<!-- Invoice list -->
 	{#if invoices.length === 0}
-		<EmptyState title="No invoices found" message="Create your first invoice to get started.">
-			<Button onclick={() => goto(`${base}/invoices/new`)}>New Invoice</Button>
+		<EmptyState title={i18n.t('invoice.noInvoicesFound')} message={i18n.t('invoice.noInvoicesMessage')}>
+			<Button onclick={() => goto(`${base}/invoices/new`)}>{i18n.t('invoice.newInvoice')}</Button>
 		</EmptyState>
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 			<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+				<caption class="sr-only">{i18n.t('a11y.invoicesTable')}</caption>
 				<thead class="bg-gray-50 dark:bg-gray-900">
 					<tr>
-						<th class="w-10 px-4 py-3">
+						<th scope="col" class="w-10 px-4 py-3">
 							<input
 								type="checkbox"
 								checked={allSelected}
 								onchange={toggleAll}
+								aria-label={i18n.t('a11y.selectAll')}
 								class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 							/>
 						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Client</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Date</th>
-						<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
-						<th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total</th>
+						<th scope="col" class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('dashboard.invoice')}</th>
+						<th scope="col" class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.client')}</th>
+						<th scope="col" class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.date')}</th>
+						<th scope="col" class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.status')}</th>
+						<th scope="col" class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.total')}</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -175,6 +171,7 @@
 									checked={selectedIds.has(invoice.id)}
 									onchange={() => toggleOne(invoice.id)}
 									onclick={(e) => e.stopPropagation()}
+									aria-label={i18n.t('a11y.selectInvoice', { number: invoice.invoice_number })}
 									class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 								/>
 							</td>
@@ -188,7 +185,7 @@
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-900 dark:text-white"
 								onclick={() => goto(`${base}/invoices/${invoice.id}`)}
 							>
-								{invoice.client_name ?? 'Unknown'}
+								{invoice.client_name ?? i18n.t('common.unknown')}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
@@ -206,7 +203,7 @@
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900"
 								onclick={() => goto(`${base}/invoices/${invoice.id}`)}
 							>
-								{formatCurrency(invoice.total)}
+								{formatCurrency(invoice.total, invoice.currency_code)}
 							</td>
 						</tr>
 					{/each}
@@ -216,13 +213,13 @@
 	{/if}
 </div>
 
-<Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title="Delete Invoices">
+<Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title={i18n.t('invoice.bulkDeleteTitle')}>
 	<p class="text-sm text-gray-600 dark:text-gray-300">
-		Are you sure you want to delete {selectedIds.size} invoice{selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
+		{i18n.t('invoice.bulkDeleteMessage', { count: selectedIds.size, plural: selectedIds.size === 1 ? '' : 's' })}
 	</p>
 	<div class="mt-4 flex justify-end gap-3">
-		<Button variant="secondary" size="sm" onclick={() => (showDeleteConfirm = false)}>Cancel</Button>
-		<Button variant="danger" size="sm" onclick={handleBulkDelete}>Delete</Button>
+		<Button variant="secondary" size="sm" onclick={() => (showDeleteConfirm = false)}>{i18n.t('common.cancel')}</Button>
+		<Button variant="danger" size="sm" onclick={handleBulkDelete}>{i18n.t('common.delete')}</Button>
 	</div>
 </Modal>
 
@@ -231,7 +228,7 @@
 		open={showPreview}
 		onclose={() => { showPreview = false; }}
 		onconfirm={handleConfirm}
-		title="Import Invoices"
+		title={i18n.t('invoice.importTitle')}
 		totalRows={previewData.totalRows}
 		validRows={previewData.validRows.length}
 		skippedDuplicates={previewData.skippedDuplicates}

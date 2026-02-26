@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import Button from './Button.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		count,
@@ -20,13 +21,13 @@
 		transition:fly={{ y: -8, duration: 150 }}
 	>
 		<span class="text-sm font-medium text-primary-700 dark:text-primary-300">
-			{count} selected
+			{i18n.t('common.selected', { count })}
 		</span>
 		<button
 			onclick={ondeselect}
 			class="cursor-pointer text-sm text-primary-600 underline hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200"
 		>
-			Deselect
+			{i18n.t('common.deselect')}
 		</button>
 		<div class="ml-auto flex items-center gap-2">
 			{@render children()}

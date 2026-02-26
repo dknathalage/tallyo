@@ -3,15 +3,17 @@
 	import { base } from '$app/paths';
 	import { db, close } from '$lib/db/connection.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let mobileMenuOpen = $state(false);
 
 	const navLinks = [
-		{ href: `${base}/`, label: 'Dashboard' },
-		{ href: `${base}/invoices`, label: 'Invoices' },
-		{ href: `${base}/clients`, label: 'Clients' },
-		{ href: `${base}/catalog`, label: 'Catalog' },
-		{ href: `${base}/settings`, label: 'Settings' }
+		{ href: `${base}/`, key: 'nav.dashboard' },
+		{ href: `${base}/invoices`, key: 'nav.invoices' },
+		{ href: `${base}/estimates`, key: 'nav.estimates' },
+		{ href: `${base}/clients`, key: 'nav.clients' },
+		{ href: `${base}/catalog`, key: 'nav.catalog' },
+		{ href: `${base}/settings`, key: 'nav.settings' }
 	];
 
 	function isActive(href: string): boolean {
@@ -21,7 +23,7 @@
 	}
 </script>
 
-<nav class="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+<nav class="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" aria-label={i18n.t('a11y.mainNavigation')}>
 	<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 		<div class="flex h-16 items-center justify-between">
 			<!-- Left: Logo + Nav Links -->
@@ -30,7 +32,7 @@
 					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
 						IM
 					</div>
-					<span class="text-lg font-semibold text-gray-900 dark:text-white">Invoice Manager</span>
+					<span class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('nav.appName')}</span>
 				</a>
 
 				<!-- Desktop nav -->
@@ -42,7 +44,7 @@
 								? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
 								: 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'}"
 						>
-							{link.label}
+							{i18n.t(link.key)}
 						</a>
 					{/each}
 				</div>
@@ -53,7 +55,7 @@
 				<button
 					onclick={() => theme.toggle()}
 					class="cursor-pointer rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-					aria-label="Toggle dark mode"
+					aria-label={i18n.t('a11y.toggleDarkMode')}
 				>
 					{#if theme.isDark}
 						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -70,7 +72,7 @@
 					onclick={close}
 					class="cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
 				>
-					Close
+					{i18n.t('nav.close')}
 				</button>
 			</div>
 
@@ -79,7 +81,7 @@
 				<button
 					onclick={() => theme.toggle()}
 					class="cursor-pointer rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-					aria-label="Toggle dark mode"
+					aria-label={i18n.t('a11y.toggleDarkMode')}
 				>
 					{#if theme.isDark}
 						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -94,7 +96,9 @@
 				<button
 					onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
 					class="inline-flex cursor-pointer items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
-					aria-label="Toggle menu"
+					aria-label={i18n.t('a11y.toggleMenu')}
+					aria-expanded={mobileMenuOpen}
+					aria-controls="mobile-navigation"
 				>
 					<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 						{#if mobileMenuOpen}
@@ -110,7 +114,7 @@
 
 	<!-- Mobile menu -->
 	{#if mobileMenuOpen}
-		<div class="border-t border-gray-200 dark:border-gray-700 sm:hidden">
+		<div id="mobile-navigation" class="border-t border-gray-200 dark:border-gray-700 sm:hidden" aria-label={i18n.t('a11y.mobileNavigation')}>
 			<div class="space-y-1 px-4 py-3">
 				{#each navLinks as link}
 					<a
@@ -120,7 +124,7 @@
 							? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
 							: 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'}"
 					>
-						{link.label}
+						{i18n.t(link.key)}
 					</a>
 				{/each}
 			</div>
@@ -130,7 +134,7 @@
 					onclick={() => { mobileMenuOpen = false; close(); }}
 					class="mt-2 cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
 				>
-					Close Database
+					{i18n.t('nav.closeDatabase')}
 				</button>
 			</div>
 		</div>

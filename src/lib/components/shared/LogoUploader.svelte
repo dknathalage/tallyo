@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { i18n } from '$lib/stores/i18n.svelte.js';
+
 	let {
 		logo = $bindable()
 	}: {
@@ -15,12 +17,12 @@
 		error = '';
 
 		if (!file.type.startsWith('image/')) {
-			error = 'Please select an image file';
+			error = i18n.t('validation.invalidImage');
 			return;
 		}
 
 		if (file.size > 500 * 1024) {
-			error = 'Image must be under 500KB';
+			error = i18n.t('validation.imageTooLarge');
 			return;
 		}
 
@@ -39,13 +41,13 @@
 <div class="space-y-2">
 	{#if logo}
 		<div class="flex items-start gap-3">
-			<img src={logo} alt="Logo preview" class="h-16 w-16 rounded-lg border border-gray-200 object-contain dark:border-gray-700" />
+			<img src={logo} alt={i18n.t('a11y.logoPreview')} class="h-16 w-16 rounded-lg border border-gray-200 object-contain dark:border-gray-700" />
 			<button
 				type="button"
 				onclick={removeLogo}
 				class="cursor-pointer text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
 			>
-				Remove
+				{i18n.t('common.remove')}
 			</button>
 		</div>
 	{:else}
@@ -53,7 +55,7 @@
 			<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
 			</svg>
-			Upload logo (max 500KB)
+			{i18n.t('a11y.uploadLogo')}
 			<input type="file" accept="image/*" onchange={handleFileSelect} class="hidden" />
 		</label>
 	{/if}

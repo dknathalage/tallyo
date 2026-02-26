@@ -7,6 +7,7 @@ export function exportInvoices(): void {
 		SELECT i.uuid as invoice_uuid, i.invoice_number, c.name as client_name,
 		       COALESCE(c.email,'') as client_email, i.date, i.due_date, i.tax_rate,
 		       COALESCE(i.notes,'') as notes, i.status,
+		       COALESCE(i.currency_code, 'USD') as currency_code,
 		       li.description as line_description, li.quantity as line_quantity,
 		       li.rate as line_rate, li.amount as line_amount, li.sort_order as line_sort_order,
 		       COALESCE(li.notes,'') as line_notes,

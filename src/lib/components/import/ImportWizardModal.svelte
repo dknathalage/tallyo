@@ -11,6 +11,7 @@
 	import { getCatalogItems } from '$lib/db/queries/catalog.js';
 	import { createRateTier } from '$lib/db/queries/rate-tiers.js';
 	import type { ParsedFile, ParsedSheet } from '$lib/import/parse-file.js';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		open,
@@ -31,15 +32,15 @@
 	let committing = $state(false);
 	let error = $state('');
 
-	const STEPS = ['File', 'Mapping', 'Mode', 'Preview'] as const;
+	let STEPS = $derived([i18n.t('importWizard.file'), i18n.t('importWizard.mapping'), i18n.t('importWizard.mode'), i18n.t('importWizard.preview')] as const);
 
 	function stepTitle(): string {
 		switch (currentStep) {
-			case 1: return 'Import Catalog - Select File';
-			case 2: return 'Import Catalog - Map Columns';
-			case 3: return 'Import Catalog - Import Mode';
-			case 4: return 'Import Catalog - Preview';
-			default: return 'Import Catalog';
+			case 1: return i18n.t('importWizard.selectFile');
+			case 2: return i18n.t('importWizard.mapColumns');
+			case 3: return i18n.t('importWizard.importMode');
+			case 4: return i18n.t('importWizard.preview');
+			default: return i18n.t('importWizard.title');
 		}
 	}
 
@@ -173,7 +174,7 @@
 			<div>
 				<div class="mb-4">
 					<Button variant="ghost" size="sm" onclick={goBack}>
-						&larr; Back
+						&larr; {i18n.t('common.back')}
 					</Button>
 				</div>
 				<StepColumnMapping
@@ -189,7 +190,7 @@
 			<div>
 				<div class="mb-4">
 					<Button variant="ghost" size="sm" onclick={goBack}>
-						&larr; Back
+						&larr; {i18n.t('common.back')}
 					</Button>
 				</div>
 				<StepImportMode onselect={handleModeSelected} />
@@ -198,7 +199,7 @@
 			<div>
 				<div class="mb-4">
 					<Button variant="ghost" size="sm" onclick={goBack}>
-						&larr; Back
+						&larr; {i18n.t('common.back')}
 					</Button>
 				</div>
 				<StepPreviewDiff

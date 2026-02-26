@@ -2,6 +2,7 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { getCatalogItems, getCatalogCategories, getEffectiveRate } from '$lib/db/queries/catalog.js';
 	import type { CatalogItem } from '$lib/types/index.js';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		open = false,
@@ -27,7 +28,7 @@
 	}
 </script>
 
-<Modal {open} {onclose} title="Browse Catalog" maxWidth="max-w-2xl">
+<Modal {open} {onclose} title={i18n.t('catalog.browseTitle')} maxWidth="max-w-2xl">
 	<div class="space-y-4">
 		<!-- Search and filter -->
 		<div class="flex gap-3">
@@ -35,7 +36,7 @@
 				<input
 					type="text"
 					bind:value={search}
-					placeholder="Search catalog..."
+					placeholder={i18n.t('catalog.searchCatalogPlaceholder')}
 					class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				/>
 			</div>
@@ -44,7 +45,7 @@
 					bind:value={selectedCategory}
 					class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				>
-					<option value="">All categories</option>
+					<option value="">{i18n.t('catalog.allCategories')}</option>
 					{#each categories as category}
 						<option value={category}>{category}</option>
 					{/each}
@@ -56,7 +57,7 @@
 		<div class="max-h-96 overflow-y-auto">
 			{#if items.length === 0}
 				<div class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-					No catalog items found.
+					{i18n.t('catalog.noCatalogItems')}
 				</div>
 			{:else}
 				<div class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -77,7 +78,7 @@
 									${tierId ? getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
 								</div>
 								{#if item.unit}
-									<div class="text-xs text-gray-400 dark:text-gray-500">per {item.unit}</div>
+									<div class="text-xs text-gray-400 dark:text-gray-500">{i18n.t('common.per', { unit: item.unit })}</div>
 								{/if}
 							</div>
 						</button>

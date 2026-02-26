@@ -4,6 +4,7 @@
 	import { base } from '$app/paths';
 	import { getClient, updateClient, deleteClient } from '$lib/db/queries/clients';
 	import { getClientInvoices } from '$lib/db/queries/invoices';
+	import { getClientEstimates } from '$lib/db/queries/estimates';
 	import { getEntityHistory } from '$lib/db/queries/audit';
 	import { getPayer } from '$lib/db/queries/payers';
 	import type { AuditLogEntry } from '$lib/types/index.js';
@@ -13,10 +14,12 @@
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let clientId = $derived(Number(page.params.id));
 	let client = $derived(getClient(clientId));
 	let invoices = $derived(getClientInvoices(clientId));
+	let estimates = $derived(getClientEstimates(clientId));
 	let history = $derived(getEntityHistory('client', clientId));
 	let payer = $derived(client?.payer_id ? getPayer(client.payer_id) : null);
 
@@ -84,9 +87,9 @@
 </script>
 
 {#if !client}
-	<EmptyState title="Client not found" message="This client does not exist or has been deleted.">
+	<EmptyState title={i18n.t('client.notFound')} message={i18n.t('client.notFoundMessage')}>
 		<a href="{base}/clients">
-			<Button variant="secondary">Back to Clients</Button>
+			<Button variant="secondary">{i18n.t('client.backToClients')}</Button>
 		</a>
 	</EmptyState>
 {:else}
@@ -94,39 +97,39 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/clients" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; Back to Clients</a>
+				<a href="{base}/clients" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('client.backToClients')}</a>
 				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{client.name}</h1>
 			</div>
 			<div class="flex gap-2">
 				{#if !editing}
-					<Button variant="secondary" onclick={() => (editing = true)}>Edit</Button>
+					<Button variant="secondary" onclick={() => (editing = true)}>{i18n.t('common.edit')}</Button>
 				{/if}
-				<Button variant="danger" onclick={() => (showDeleteConfirm = true)}>Delete</Button>
+				<Button variant="danger" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
 			</div>
 		</div>
 
 		<!-- Client details / Edit form -->
 		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 			{#if editing}
-				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Edit Client</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.editClient')}</h2>
 				<ClientForm initialData={client} onsubmit={handleUpdate} />
 			{:else}
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Email</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.email')}</dt>
 						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{client.email || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Phone</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.phone')}</dt>
 						<dd class="mt-1 text-sm text-gray-900 dark:text-white">{client.phone || '-'}</dd>
 					</div>
 					<div class="sm:col-span-2">
-						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Address</dt>
+						<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.address')}</dt>
 						<dd class="mt-1 whitespace-pre-line text-sm text-gray-900 dark:text-white">{client.address || '-'}</dd>
 					</div>
 					{#if Object.keys(parseMetadataObj(client.metadata)).length > 0}
 						<div class="sm:col-span-2">
-							<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Additional Fields</dt>
+							<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.additionalFields')}</dt>
 							<dd class="mt-1">
 								<div class="space-y-1">
 									{#each Object.entries(parseMetadataObj(client.metadata)) as [key, value]}
@@ -142,7 +145,7 @@
 				</dl>
 				{#if payer}
 					<div class="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
-						<h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Bill-To Payer</h3>
+						<h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.billToPayer')}</h3>
 						<div class="mt-2">
 							<p class="text-sm font-medium text-gray-900 dark:text-white">{payer.name}</p>
 							{#if payer.email}<p class="text-sm text-gray-500 dark:text-gray-400">{payer.email}</p>{/if}
@@ -167,25 +170,25 @@
 		<!-- Client invoices -->
 		<div>
 			<div class="flex items-center justify-between">
-				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Invoices</h2>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.invoices')}</h2>
 				<a href="{base}/invoices/new?client_id={clientId}">
-					<Button size="sm">New Invoice</Button>
+					<Button size="sm">{i18n.t('client.newInvoice')}</Button>
 				</a>
 			</div>
 
 			{#if invoices.length === 0}
 				<div class="mt-4">
-					<EmptyState title="No invoices" message="This client has no invoices yet." />
+					<EmptyState title={i18n.t('client.noInvoices')} message={i18n.t('client.noInvoicesMessage')} />
 				</div>
 			{:else}
 				<div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 					<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
 						<thead class="bg-gray-50 dark:bg-gray-900">
 							<tr>
-								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Invoice #</th>
-								<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Date</th>
-								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
-								<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total</th>
+								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.invoiceNumber')}</th>
+								<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">{i18n.t('client.date')}</th>
+								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.status')}</th>
+								<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.total')}</th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -203,7 +206,56 @@
 										<StatusBadge status={invoice.status} />
 									</td>
 									<td class="px-6 py-4 text-right text-sm font-medium text-gray-900 dark:text-white">
-										{formatCurrency(invoice.total)}
+										{formatCurrency(invoice.total, invoice.currency_code)}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</div>
+
+		<!-- Client estimates -->
+		<div>
+			<div class="flex items-center justify-between">
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.estimates')}</h2>
+				<a href="{base}/estimates/new">
+					<Button size="sm">{i18n.t('client.newEstimate')}</Button>
+				</a>
+			</div>
+
+			{#if estimates.length === 0}
+				<div class="mt-4">
+					<EmptyState title={i18n.t('client.noEstimates')} message={i18n.t('client.noEstimatesMessage')} />
+				</div>
+			{:else}
+				<div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+					<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+						<thead class="bg-gray-50 dark:bg-gray-900">
+							<tr>
+								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.estimateNumber')}</th>
+								<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">{i18n.t('client.date')}</th>
+								<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.status')}</th>
+								<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.total')}</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+							{#each estimates as estimate}
+								<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
+									<td class="px-6 py-4">
+										<a href="{base}/estimates/{estimate.id}" class="font-medium text-primary-600 hover:text-primary-700">
+											{estimate.estimate_number}
+										</a>
+									</td>
+									<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
+										{formatDate(estimate.date)}
+									</td>
+									<td class="px-6 py-4">
+										<StatusBadge status={estimate.status} />
+									</td>
+									<td class="px-6 py-4 text-right text-sm font-medium text-gray-900 dark:text-white">
+										{formatCurrency(estimate.total, estimate.currency_code)}
 									</td>
 								</tr>
 							{/each}
@@ -216,7 +268,7 @@
 		<!-- Change History -->
 		{#if history.length > 0}
 			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Change History</h2>
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.changeHistory')}</h2>
 				<div class="space-y-4">
 					{#each history as entry}
 						{@const changes = parseChanges(entry.changes)}
@@ -253,9 +305,9 @@
 	<!-- Delete confirmation -->
 	<ConfirmDialog
 		open={showDeleteConfirm}
-		title="Delete Client"
-		message="Are you sure you want to delete {client.name}? This action cannot be undone."
-		confirmLabel="Delete"
+		title={i18n.t('client.deleteConfirmTitle')}
+		message={i18n.t('client.deleteConfirmMessage', { name: client.name })}
+		confirmLabel={i18n.t('common.delete')}
 		confirmVariant="danger"
 		onconfirm={handleDelete}
 		oncancel={() => (showDeleteConfirm = false)}

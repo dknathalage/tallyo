@@ -6,11 +6,14 @@
 	import { getPayer } from '$lib/db/queries/payers.js';
 	import { getRateTiers } from '$lib/db/queries/rate-tiers.js';
 	import { generateInvoiceNumber } from '$lib/utils/invoice-number.js';
-	import { today } from '$lib/utils/format.js';
+	import { today, formatCurrency } from '$lib/utils/format.js';
+	import { getBusinessProfile } from '$lib/db/queries/business-profile.js';
 	import type { Client, Invoice, LineItem, KeyValuePair, PartySnapshot } from '$lib/types/index.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
+	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
 	import LineItemRow from './LineItemRow.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		initialData,
@@ -31,6 +34,7 @@
 				total: number;
 				notes: string;
 				status: string;
+				currency_code: string;
 				business_snapshot: string;
 				client_snapshot: string;
 				payer_snapshot: string;
@@ -47,6 +51,7 @@
 	let taxRate = $state(initialData?.tax_rate ?? 0);
 	let notes = $state(initialData?.notes ?? '');
 	let status = $state(initialData?.status ?? 'draft');
+	let currencyCode = $state(initialData?.currency_code ?? '');
 
 	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string; notes?: string }>>(
 		initialLineItems?.map((li) => ({
@@ -115,7 +120,13 @@
 		clients = getClients();
 		if (!initialData) {
 			invoiceNumber = generateInvoiceNumber();
+			// Set default currency from business profile
+			const profile = getBusinessProfile();
+			if (profile && !currencyCode) {
+				currencyCode = profile.default_currency || 'USD';
+			}
 		}
+		if (!currencyCode) currencyCode = 'USD';
 
 		// Load business snapshot
 		businessSnapshot = buildBusinessSnapshot();
@@ -210,6 +221,7 @@
 				total,
 				notes,
 				status,
+				currency_code: currencyCode,
 				business_snapshot: JSON.stringify(businessSnapshot),
 				client_snapshot: JSON.stringify(clientSnapshotObj),
 				payer_snapshot: JSON.stringify(payerSnapshotObj)
@@ -230,7 +242,7 @@
 	<!-- Business Profile (read-only) -->
 	{#if businessSnapshot.name}
 		<div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
-			<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">From</h3>
+			<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.from')}</h3>
 			<p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{businessSnapshot.name}</p>
 			{#if businessSnapshot.email}<p class="text-sm text-gray-500 dark:text-gray-400">{businessSnapshot.email}</p>{/if}
 			{#if businessSnapshot.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{businessSnapshot.phone}</p>{/if}
@@ -246,75 +258,85 @@
 	{/if}
 
 	<!-- Header fields -->
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<div>
-			<label for="invoice-number" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Invoice Number</label>
-			<input
-				id="invoice-number"
-				type="text"
-				bind:value={invoiceNumber}
-				readonly
-				class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none"
-			/>
-		</div>
+	<fieldset class="border-0 p-0 m-0">
+		<legend class="sr-only">{i18n.t('a11y.invoiceDetails')}</legend>
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<div>
+				<label for="invoice-number" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.invoiceNumber')}</label>
+				<input
+					id="invoice-number"
+					type="text"
+					bind:value={invoiceNumber}
+					readonly
+					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none"
+				/>
+			</div>
 
-		<div>
-			<label for="client" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Client</label>
-			<select
-				id="client"
-				bind:value={clientId}
-				required
-				class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-			>
-				<option value={0} disabled>Select a client</option>
-				{#each clients as client}
-					<option value={client.id}>{client.name}</option>
-				{/each}
-			</select>
-			{#if activeTierName}
-				<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Pricing: {activeTierName}</p>
-			{/if}
-		</div>
+			<div>
+				<label for="client" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.client')}</label>
+				<select
+					id="client"
+					bind:value={clientId}
+					required
+					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				>
+					<option value={0} disabled>{i18n.t('invoice.selectClient')}</option>
+					{#each clients as client}
+						<option value={client.id}>{client.name}</option>
+					{/each}
+				</select>
+				{#if activeTierName}
+					<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{i18n.t('invoice.pricing', { tier: activeTierName ?? '' })}</p>
+				{/if}
+			</div>
 
-		<div>
-			<label for="date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
-			<input
-				id="date"
-				type="date"
-				bind:value={date}
-				required
-				class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-			/>
-		</div>
+			<div>
+				<label for="date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.date')}</label>
+				<input
+					id="date"
+					type="date"
+					bind:value={date}
+					required
+					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				/>
+			</div>
 
-		<div>
-			<label for="due-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Due Date</label>
-			<input
-				id="due-date"
-				type="date"
-				bind:value={dueDate}
-				required
-				class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-			/>
+			<div>
+				<label for="due-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.dueDate')}</label>
+				<input
+					id="due-date"
+					type="date"
+					bind:value={dueDate}
+					required
+					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				/>
+			</div>
+
+			<div>
+				<label for="currency" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.currency')}</label>
+				<div class="mt-1">
+					<CurrencySelect id="currency" bind:value={currencyCode} />
+				</div>
+			</div>
 		</div>
-	</div>
+	</fieldset>
 
 	<!-- Line Items -->
-	<div>
-		<h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Line Items</h3>
+	<fieldset class="border-0 p-0 m-0">
+		<legend class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.lineItems')}</legend>
 
 		<!-- Header -->
-		<div class="mb-2 flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-			<div class="flex-1">Description</div>
-			<div class="w-24">Qty</div>
-			<div class="w-28">Rate</div>
-			<div class="w-28 text-right">Amount</div>
+		<div class="mb-2 flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400" aria-hidden="true">
+			<div class="flex-1">{i18n.t('invoice.description')}</div>
+			<div class="w-24">{i18n.t('invoice.qty')}</div>
+			<div class="w-28">{i18n.t('invoice.rate')}</div>
+			<div class="w-28 text-right">{i18n.t('invoice.amount')}</div>
 			<div class="w-8"></div>
 		</div>
 
 		<div class="space-y-2">
 			{#each lineItems as _, i}
-				<LineItemRow bind:item={lineItems[i]} onremove={() => removeLineItem(i)} tierId={activeTierId} />
+				<LineItemRow bind:item={lineItems[i]} onremove={() => removeLineItem(i)} tierId={activeTierId} {currencyCode} />
 			{/each}
 		</div>
 
@@ -323,83 +345,83 @@
 			onclick={addLineItem}
 			class="mt-3 cursor-pointer text-sm font-medium text-primary-600 hover:text-primary-700"
 		>
-			+ Add Line Item
+			{i18n.t('invoice.addLineItem')}
 		</button>
-	</div>
+	</fieldset>
 
 	<!-- Client Metadata -->
 	{#if clientId}
-		<div>
-			<h3 class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Client Additional Fields</h3>
-			<KeyValueEditor bind:pairs={clientMetadataPairs} addLabel="Add Field" />
-		</div>
+		<fieldset class="border-0 p-0 m-0">
+			<legend class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.clientAdditionalFields')}</legend>
+			<KeyValueEditor bind:pairs={clientMetadataPairs} addLabel={i18n.t('common.addField')} />
+		</fieldset>
 	{/if}
 
 	<!-- Payer / Bill-To -->
 	{#if clientId}
-		<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-			<h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Bill To (Payer)</h3>
+		<fieldset class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 m-0">
+			<legend class="text-sm font-medium text-gray-700 dark:text-gray-300 px-1">{i18n.t('invoice.billToPayer')}</legend>
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<div>
-					<label for="payer-name" class="block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
+					<label for="payer-name" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.name')}</label>
 					<input
 						id="payer-name"
 						type="text"
 						bind:value={payerName}
-						placeholder="Payer name (optional)"
+						placeholder={i18n.t('invoice.payerNamePlaceholder')}
 						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 					/>
 				</div>
 				<div>
-					<label for="payer-email" class="block text-xs font-medium text-gray-500 dark:text-gray-400">Email</label>
+					<label for="payer-email" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.email')}</label>
 					<input
 						id="payer-email"
 						type="email"
 						bind:value={payerEmail}
-						placeholder="Payer email"
+						placeholder={i18n.t('invoice.payerEmailPlaceholder')}
 						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 					/>
 				</div>
 				<div>
-					<label for="payer-phone" class="block text-xs font-medium text-gray-500 dark:text-gray-400">Phone</label>
+					<label for="payer-phone" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.phone')}</label>
 					<input
 						id="payer-phone"
 						type="tel"
 						bind:value={payerPhone}
-						placeholder="Payer phone"
+						placeholder={i18n.t('invoice.payerPhonePlaceholder')}
 						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 					/>
 				</div>
 				<div>
-					<label for="payer-address" class="block text-xs font-medium text-gray-500 dark:text-gray-400">Address</label>
+					<label for="payer-address" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.address')}</label>
 					<input
 						id="payer-address"
 						type="text"
 						bind:value={payerAddress}
-						placeholder="Payer address"
+						placeholder={i18n.t('invoice.payerAddressPlaceholder')}
 						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 					/>
 				</div>
 			</div>
 			<div class="mt-3">
-				<label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Additional Fields</label>
+				<label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('common.additionalFields')}</label>
 				<div class="mt-1">
-					<KeyValueEditor bind:pairs={payerMetadataPairs} addLabel="Add Field" />
+					<KeyValueEditor bind:pairs={payerMetadataPairs} addLabel={i18n.t('common.addField')} />
 				</div>
 			</div>
-		</div>
+		</fieldset>
 	{/if}
 
 	<!-- Tax and totals -->
 	<div class="flex justify-end">
 		<div class="w-72 space-y-2">
 			<div class="flex justify-between text-sm">
-				<span class="text-gray-600 dark:text-gray-300">Subtotal</span>
-				<span class="font-medium text-gray-900 dark:text-white">${subtotal.toFixed(2)}</span>
+				<span class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.subtotal')}</span>
+				<span class="font-medium text-gray-900 dark:text-white">{formatCurrency(subtotal, currencyCode)}</span>
 			</div>
 
 			<div class="flex items-center justify-between gap-3 text-sm">
-				<label for="tax-rate" class="text-gray-600 dark:text-gray-300">Tax Rate (%)</label>
+				<label for="tax-rate" class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.taxRate')}</label>
 				<input
 					id="tax-rate"
 					type="number"
@@ -411,25 +433,25 @@
 			</div>
 
 			<div class="flex justify-between text-sm">
-				<span class="text-gray-600 dark:text-gray-300">Tax</span>
-				<span class="font-medium text-gray-900 dark:text-white">${taxAmount.toFixed(2)}</span>
+				<span class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.tax')}</span>
+				<span class="font-medium text-gray-900 dark:text-white">{formatCurrency(taxAmount, currencyCode)}</span>
 			</div>
 
 			<div class="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-2 text-base">
-				<span class="font-semibold text-gray-900 dark:text-white">Total</span>
-				<span class="font-semibold text-gray-900 dark:text-white">${total.toFixed(2)}</span>
+				<span class="font-semibold text-gray-900 dark:text-white">{i18n.t('invoice.total')}</span>
+				<span class="font-semibold text-gray-900 dark:text-white">{formatCurrency(total, currencyCode)}</span>
 			</div>
 		</div>
 	</div>
 
 	<!-- Notes -->
 	<div>
-		<label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
+		<label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.notes')}</label>
 		<textarea
 			id="notes"
 			bind:value={notes}
 			rows={3}
-			placeholder="Additional notes..."
+			placeholder={i18n.t('invoice.notesPlaceholder')}
 			class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 		></textarea>
 	</div>
@@ -437,7 +459,7 @@
 	<!-- Actions -->
 	<div class="flex justify-end gap-3">
 		<Button type="submit">
-			{initialData ? 'Update Invoice' : 'Create Invoice'}
+			{initialData ? i18n.t('invoice.updateInvoice') : i18n.t('invoice.createInvoice')}
 		</Button>
 	</div>
 </form>

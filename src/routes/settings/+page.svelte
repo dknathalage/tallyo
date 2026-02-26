@@ -9,7 +9,9 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import LogoUploader from '$lib/components/shared/LogoUploader.svelte';
+	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
 	import PayerForm from '$lib/components/payer/PayerForm.svelte';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	// ── Rate Tiers ──────────────────────────────────────────
 	let refreshTrigger = $state(0);
@@ -102,6 +104,7 @@
 	let bpPhone = $state('');
 	let bpAddress = $state('');
 	let bpLogo = $state('');
+	let bpDefaultCurrency = $state('USD');
 	let bpMetadata: KeyValuePair[] = $state([]);
 	let bpSaving = $state(false);
 	let bpError = $state('');
@@ -123,6 +126,7 @@
 			bpPhone = profile.phone;
 			bpAddress = profile.address;
 			bpLogo = profile.logo;
+			bpDefaultCurrency = profile.default_currency || 'USD';
 			bpMetadata = parseMetadata(profile.metadata);
 		}
 	});
@@ -143,7 +147,8 @@
 				phone: bpPhone,
 				address: bpAddress,
 				logo: bpLogo,
-				metadata: JSON.stringify(metaObj)
+				metadata: JSON.stringify(metaObj),
+				default_currency: bpDefaultCurrency
 			});
 		} catch (err: any) {
 			bpError = err.message || 'Failed to save';
@@ -220,14 +225,14 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('settings.title')}</h1>
 	</div>
 
 	<!-- Business Profile Section -->
 	<div class="space-y-4">
 		<div>
-			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Business Profile</h2>
-			<p class="text-sm text-gray-500 dark:text-gray-400">Your business details that appear on invoices.</p>
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('settings.businessProfile')}</h2>
+			<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('settings.businessProfileDesc')}</p>
 		</div>
 
 		{#if bpError}
@@ -239,7 +244,7 @@
 		<div class="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
 			<div class="space-y-4">
 				<div>
-					<label for="bp-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Business Name <span class="text-red-500">*</span></label>
+					<label for="bp-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.businessName')} <span class="text-red-500">*</span></label>
 					<input
 						id="bp-name"
 						type="text"
@@ -252,7 +257,7 @@
 
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<label for="bp-email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+						<label for="bp-email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.email')}</label>
 						<input
 							id="bp-email"
 							type="email"
@@ -262,7 +267,7 @@
 						/>
 					</div>
 					<div>
-						<label for="bp-phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label>
+						<label for="bp-phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.phone')}</label>
 						<input
 							id="bp-phone"
 							type="tel"
@@ -274,7 +279,7 @@
 				</div>
 
 				<div>
-					<label for="bp-address" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
+					<label for="bp-address" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.address')}</label>
 					<textarea
 						id="bp-address"
 						bind:value={bpAddress}
@@ -285,23 +290,30 @@
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Logo</label>
+					<label for="bp-currency" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.defaultCurrency')}</label>
+					<div class="mt-1">
+						<CurrencySelect id="bp-currency" bind:value={bpDefaultCurrency} />
+					</div>
+				</div>
+
+				<div>
+					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.logo')}</label>
 					<div class="mt-1">
 						<LogoUploader bind:logo={bpLogo} />
 					</div>
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Additional Fields</label>
-					<p class="text-xs text-gray-500 dark:text-gray-400">e.g., ABN, registration numbers, tax IDs</p>
+					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.additionalFields')}</label>
+					<p class="text-xs text-gray-500 dark:text-gray-400">{i18n.t('settings.additionalFieldsHint')}</p>
 					<div class="mt-1">
-						<KeyValueEditor bind:pairs={bpMetadata} addLabel="Add Field" />
+						<KeyValueEditor bind:pairs={bpMetadata} addLabel={i18n.t('common.addField')} />
 					</div>
 				</div>
 
 				<div class="flex justify-end pt-2">
 					<Button onclick={saveProfile} disabled={bpSaving}>
-						{bpSaving ? 'Saving...' : 'Save Profile'}
+						{bpSaving ? i18n.t('settings.saving') : i18n.t('settings.saveProfile')}
 					</Button>
 				</div>
 			</div>
@@ -312,10 +324,10 @@
 	<div class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div>
-				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Payers</h2>
-				<p class="text-sm text-gray-500 dark:text-gray-400">Manage payers (bill-to parties) that can be assigned to clients.</p>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('settings.payers')}</h2>
+				<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('settings.payersDesc')}</p>
 			</div>
-			<Button onclick={openAddPayer}>Add Payer</Button>
+			<Button onclick={openAddPayer}>{i18n.t('settings.addPayer')}</Button>
 		</div>
 
 		{#if payerError && !showPayerForm}
@@ -325,18 +337,19 @@
 		{/if}
 
 		{#if payers.length === 0}
-			<EmptyState title="No payers" message="Create your first payer to assign bill-to parties to clients.">
-				<Button onclick={openAddPayer}>Add Payer</Button>
+			<EmptyState title={i18n.t('settings.noPayers')} message={i18n.t('settings.noPayersMessage')}>
+				<Button onclick={openAddPayer}>{i18n.t('settings.addPayer')}</Button>
 			</EmptyState>
 		{:else}
 			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+					<caption class="sr-only">{i18n.t('a11y.payersTable')}</caption>
 					<thead class="bg-gray-50 dark:bg-gray-900">
 						<tr>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Email</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Phone</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('client.name')}</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('settings.email')}</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('settings.phone')}</th>
+							<th scope="col" class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('common.actions')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -347,8 +360,8 @@
 								<td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{payer.phone || '-'}</td>
 								<td class="px-6 py-4 text-right">
 									<div class="flex justify-end gap-2">
-										<Button variant="ghost" size="sm" onclick={() => openEditPayer(payer)}>Edit</Button>
-										<Button variant="ghost" size="sm" onclick={() => confirmDeletePayer(payer)}>Delete</Button>
+										<Button variant="ghost" size="sm" onclick={() => openEditPayer(payer)}>{i18n.t('common.edit')}</Button>
+										<Button variant="ghost" size="sm" onclick={() => confirmDeletePayer(payer)}>{i18n.t('common.delete')}</Button>
 									</div>
 								</td>
 							</tr>
@@ -363,10 +376,10 @@
 	<div class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div>
-				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Rate Tiers</h2>
-				<p class="text-sm text-gray-500 dark:text-gray-400">Manage pricing tiers for catalog items. Clients can be assigned a tier to get tier-specific rates.</p>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('settings.rateTiers')}</h2>
+				<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('settings.rateTiersDesc')}</p>
 			</div>
-			<Button onclick={openAdd}>Add Tier</Button>
+			<Button onclick={openAdd}>{i18n.t('settings.addTier')}</Button>
 		</div>
 
 		{#if error && !showForm}
@@ -376,18 +389,19 @@
 		{/if}
 
 		{#if tiers.length === 0}
-			<EmptyState title="No rate tiers" message="Create your first rate tier to set up tier-based pricing for catalog items.">
-				<Button onclick={openAdd}>Add Tier</Button>
+			<EmptyState title={i18n.t('settings.noTiers')} message={i18n.t('settings.noTiersMessage')}>
+				<Button onclick={openAdd}>{i18n.t('settings.addTier')}</Button>
 			</EmptyState>
 		{:else}
 			<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+					<caption class="sr-only">{i18n.t('a11y.tiersTable')}</caption>
 					<thead class="bg-gray-50 dark:bg-gray-900">
 						<tr>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
-							<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Description</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Sort Order</th>
-							<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('settings.tierName')}</th>
+							<th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('settings.description')}</th>
+							<th scope="col" class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('settings.sortOrder')}</th>
+							<th scope="col" class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('common.actions')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -398,14 +412,14 @@
 								<td class="px-6 py-4 text-right text-sm text-gray-500 dark:text-gray-400">{tier.sort_order}</td>
 								<td class="px-6 py-4 text-right">
 									<div class="flex justify-end gap-2">
-										<Button variant="ghost" size="sm" onclick={() => openEdit(tier)}>Edit</Button>
+										<Button variant="ghost" size="sm" onclick={() => openEdit(tier)}>{i18n.t('common.edit')}</Button>
 										<Button
 											variant="ghost"
 											size="sm"
 											onclick={() => confirmDelete(tier)}
 											disabled={tiers.length <= 1}
 										>
-											Delete
+											{i18n.t('common.delete')}
 										</Button>
 									</div>
 								</td>
@@ -419,7 +433,7 @@
 </div>
 
 <!-- Add/Edit Tier Modal -->
-<Modal open={showForm} onclose={closeForm} title={editingTier ? 'Edit Tier' : 'Add Tier'}>
+<Modal open={showForm} onclose={closeForm} title={editingTier ? i18n.t('settings.editTier') : i18n.t('settings.addTier')}>
 	<form onsubmit={handleSubmit} class="space-y-4">
 		{#if error}
 			<div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -428,7 +442,7 @@
 		{/if}
 
 		<div>
-			<label for="tier-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name <span class="text-red-500">*</span></label>
+			<label for="tier-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.tierName')} <span class="text-red-500">*</span></label>
 			<input
 				id="tier-name"
 				type="text"
@@ -440,18 +454,18 @@
 		</div>
 
 		<div>
-			<label for="tier-description" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+			<label for="tier-description" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.tierDescription')}</label>
 			<input
 				id="tier-description"
 				type="text"
 				bind:value={formDescription}
 				class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
-				placeholder="Optional description"
+				placeholder={i18n.t('settings.tierDescriptionPlaceholder')}
 			/>
 		</div>
 
 		<div>
-			<label for="tier-sort-order" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sort Order</label>
+			<label for="tier-sort-order" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.tierSortOrder')}</label>
 			<input
 				id="tier-sort-order"
 				type="number"
@@ -464,8 +478,8 @@
 		</div>
 
 		<div class="flex justify-end gap-3 pt-2">
-			<Button variant="secondary" onclick={closeForm}>Cancel</Button>
-			<Button type="submit">{editingTier ? 'Save Changes' : 'Create Tier'}</Button>
+			<Button variant="secondary" onclick={closeForm}>{i18n.t('common.cancel')}</Button>
+			<Button type="submit">{editingTier ? i18n.t('common.saveChanges') : i18n.t('settings.createTier')}</Button>
 		</div>
 	</form>
 </Modal>
@@ -473,16 +487,16 @@
 <!-- Delete Tier Confirmation -->
 <ConfirmDialog
 	open={showDeleteConfirm}
-	title="Delete Tier"
-	message="Are you sure you want to delete {deletingTier?.name ?? 'this tier'}? This will remove all tier-specific rates associated with it."
-	confirmLabel="Delete"
+	title={i18n.t('settings.deleteTier')}
+	message={i18n.t('settings.deleteTierMessage', { name: deletingTier?.name ?? 'this tier' })}
+	confirmLabel={i18n.t('common.delete')}
 	confirmVariant="danger"
 	onconfirm={handleDelete}
 	oncancel={() => { showDeleteConfirm = false; deletingTier = null; }}
 />
 
 <!-- Add/Edit Payer Modal -->
-<Modal open={showPayerForm} onclose={closePayerForm} title={editingPayer ? 'Edit Payer' : 'Add Payer'}>
+<Modal open={showPayerForm} onclose={closePayerForm} title={editingPayer ? i18n.t('settings.editPayer') : i18n.t('settings.addPayer')}>
 	{#if payerError}
 		<div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
 			{payerError}
@@ -494,9 +508,9 @@
 <!-- Delete Payer Confirmation -->
 <ConfirmDialog
 	open={showPayerDeleteConfirm}
-	title="Delete Payer"
-	message="Are you sure you want to delete {deletingPayer?.name ?? 'this payer'}? Clients assigned to this payer will need to be updated."
-	confirmLabel="Delete"
+	title={i18n.t('settings.deletePayer')}
+	message={i18n.t('settings.deletePayerMessage', { name: deletingPayer?.name ?? 'this payer' })}
+	confirmLabel={i18n.t('common.delete')}
 	confirmVariant="danger"
 	onconfirm={handleDeletePayer}
 	oncancel={() => { showPayerDeleteConfirm = false; deletingPayer = null; }}

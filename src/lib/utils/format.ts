@@ -1,13 +1,28 @@
-export function formatCurrency(amount: number): string {
-	return new Intl.NumberFormat('en-US', {
+import { i18n } from '$lib/stores/i18n.svelte.js';
+
+const LOCALE_MAP: Record<string, string> = {
+	en: 'en-US',
+	es: 'es-ES',
+	fr: 'fr-FR',
+	de: 'de-DE',
+	ja: 'ja-JP'
+};
+
+function getIntlLocale(locale?: string): string {
+	const loc = locale ?? i18n.locale;
+	return LOCALE_MAP[loc] ?? 'en-US';
+}
+
+export function formatCurrency(amount: number, currencyCode: string = 'USD', locale?: string): string {
+	return new Intl.NumberFormat(getIntlLocale(locale), {
 		style: 'currency',
-		currency: 'USD'
+		currency: currencyCode
 	}).format(amount);
 }
 
-export function formatDate(dateStr: string): string {
+export function formatDate(dateStr: string, locale?: string): string {
 	const date = new Date(dateStr + 'T00:00:00');
-	return new Intl.DateTimeFormat('en-US', {
+	return new Intl.DateTimeFormat(getIntlLocale(locale), {
 		month: 'short',
 		day: 'numeric',
 		year: 'numeric'

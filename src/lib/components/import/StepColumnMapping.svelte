@@ -4,6 +4,7 @@
 	import { getColumnMappings, createColumnMapping, deleteColumnMapping } from '$lib/db/queries/column-mappings.js';
 	import { autoDetectMapping, type ColumnMappingConfig, type TargetField } from '$lib/import/map-columns.js';
 	import type { RateTier, ColumnMapping } from '$lib/types/index.js';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		headers,
@@ -169,7 +170,7 @@
 	<!-- Saved presets -->
 	{#if savedMappings.length > 0}
 		<div>
-			<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Saved mappings</label>
+			<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{i18n.t('importWizard.savedMappings')}</label>
 			<div class="flex flex-wrap gap-2">
 				{#each savedMappings as mapping}
 					<div class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-sm">
@@ -179,7 +180,7 @@
 						<button
 							class="cursor-pointer ml-1 text-gray-400 dark:text-gray-500 hover:text-red-500"
 							onclick={() => handleDeletePreset(mapping.id)}
-							aria-label="Delete mapping"
+							aria-label={i18n.t('importWizard.deleteMapping')}
 						>
 							&times;
 						</button>
@@ -194,9 +195,9 @@
 		<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
 			<thead class="sticky top-0 bg-gray-50 dark:bg-gray-900">
 				<tr>
-					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Source Column</th>
-					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Map To</th>
-					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Sample Values</th>
+					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('importWizard.sourceColumn')}</th>
+					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('importWizard.mapTo')}</th>
+					<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('importWizard.sampleValues')}</th>
 				</tr>
 			</thead>
 			<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -210,22 +211,22 @@
 								onchange={(e) => setMapping(header, (e.target as HTMLSelectElement).value)}
 								class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm dark:text-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
 							>
-								<option value="skip">-- Skip --</option>
-								<optgroup label="Standard Fields">
-									<option value="name">Name</option>
-									<option value="sku">SKU / Code</option>
-									<option value="unit">Unit</option>
-									<option value="category">Category</option>
-									<option value="rate">Rate (Default)</option>
+								<option value="skip">{i18n.t('importWizard.skip')}</option>
+								<optgroup label={i18n.t('importWizard.standardFields')}>
+									<option value="name">{i18n.t('catalog.name')}</option>
+									<option value="sku">{i18n.t('catalog.sku')} / Code</option>
+									<option value="unit">{i18n.t('catalog.unit')}</option>
+									<option value="category">{i18n.t('catalog.category')}</option>
+									<option value="rate">{i18n.t('catalog.rate')} ({i18n.t('common.default')})</option>
 								</optgroup>
-								<optgroup label="Rate Tiers">
-									<option value="new_tier">+ Create as New Tier ("{header}")</option>
+								<optgroup label={i18n.t('importWizard.rateTiersGroup')}>
+									<option value="new_tier">{i18n.t('importWizard.createAsNewTier', { name: header })}</option>
 									{#each tiers as tier}
-										<option value="tier:{tier.id}">{tier.name} Rate</option>
+										<option value="tier:{tier.id}">{tier.name} {i18n.t('catalog.rate')}</option>
 									{/each}
 								</optgroup>
-								<optgroup label="Other">
-									<option value="metadata">Store as Metadata</option>
+								<optgroup label={i18n.t('importWizard.otherGroup')}>
+									<option value="metadata">{i18n.t('importWizard.storeAsMetadata')}</option>
 								</optgroup>
 							</select>
 						</td>
@@ -240,14 +241,13 @@
 
 	{#if !hasNameMapping}
 		<div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-			A "Name" mapping is required. Please map at least one column to Name.
+			{i18n.t('importWizard.nameRequired')}
 		</div>
 	{/if}
 
 	{#if newTierCount > 0}
 		<div class="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-			<strong>{newTierCount} new rate tier{newTierCount === 1 ? '' : 's'}</strong> will be created on import:
-			{newTierColumns.join(', ')}
+			{i18n.t('importWizard.newTiersCreated', { count: String(newTierCount), plural: newTierCount === 1 ? '' : 's', names: newTierColumns.join(', ') })}
 		</div>
 	{/if}
 
@@ -257,20 +257,20 @@
 			<input
 				type="text"
 				bind:value={saveName}
-				placeholder="Mapping name..."
+				placeholder={i18n.t('importWizard.mappingNamePlaceholder')}
 				class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			/>
-			<Button variant="secondary" size="sm" onclick={savePreset} disabled={!saveName.trim()}>Save</Button>
-			<Button variant="ghost" size="sm" onclick={() => (showSave = false)}>Cancel</Button>
+			<Button variant="secondary" size="sm" onclick={savePreset} disabled={!saveName.trim()}>{i18n.t('common.save')}</Button>
+			<Button variant="ghost" size="sm" onclick={() => (showSave = false)}>{i18n.t('common.cancel')}</Button>
 		{:else}
-			<Button variant="ghost" size="sm" onclick={() => (showSave = true)}>Save mapping as preset</Button>
+			<Button variant="ghost" size="sm" onclick={() => (showSave = true)}>{i18n.t('importWizard.saveMappingPreset')}</Button>
 		{/if}
 	</div>
 
 	<!-- Footer -->
 	<div class="flex justify-end border-t border-gray-200 dark:border-gray-700 pt-4">
 		<Button disabled={!hasNameMapping} onclick={handleNext}>
-			Next
+			{i18n.t('common.next')}
 		</Button>
 	</div>
 </div>

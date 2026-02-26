@@ -11,6 +11,7 @@
 	import ImportWizardModal from '$lib/components/import/ImportWizardModal.svelte';
 	import { exportCatalog } from '$lib/csv/export-catalog.js';
 	import type { CatalogItem } from '$lib/types';
+	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let search = $state('');
 	let selectedCategory = $state('');
@@ -95,12 +96,12 @@
 <div class="space-y-6">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Catalog</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('catalog.title')}</h1>
 		<div class="flex items-center gap-3">
-			<Button variant="secondary" size="sm" onclick={exportCatalog}>Export CSV</Button>
-			<Button variant="secondary" size="sm" onclick={handleImport}>Import</Button>
+			<Button variant="secondary" size="sm" onclick={exportCatalog}>{i18n.t('csv.exportCsv')}</Button>
+			<Button variant="secondary" size="sm" onclick={handleImport}>{i18n.t('csv.import')}</Button>
 			<a href="{base}/catalog/new">
-				<Button>New Item</Button>
+				<Button>{i18n.t('catalog.newItem')}</Button>
 			</a>
 		</div>
 	</div>
@@ -108,13 +109,13 @@
 	<!-- Search & Filter -->
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
 		<div class="max-w-sm flex-1">
-			<SearchInput bind:value={search} placeholder="Search catalog..." />
+			<SearchInput bind:value={search} placeholder={i18n.t('catalog.searchPlaceholder')} />
 		</div>
 		<select
 			bind:value={selectedCategory}
 			class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
 		>
-			<option value="">All Categories</option>
+			<option value="">{i18n.t('catalog.allCategories')}</option>
 			{#each categories as cat}
 				<option value={cat}>{cat}</option>
 			{/each}
@@ -124,7 +125,7 @@
 				bind:value={selectedTierId}
 				class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
 			>
-				<option value="">Default Rates</option>
+				<option value="">{i18n.t('catalog.defaultRates')}</option>
 				{#each tiers as tier}
 					<option value={String(tier.id)}>{tier.name}</option>
 				{/each}
@@ -134,17 +135,17 @@
 
 	<!-- Bulk action bar -->
 	<BulkActionBar count={selectedIds.size} ondeselect={() => (selectedIds = new Set())}>
-		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>Delete</Button>
+		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
 	</BulkActionBar>
 
 	<!-- Item list -->
 	{#if items.length === 0}
 		{#if search || selectedCategory}
-			<EmptyState title="No results" message="No catalog items match your search. Try a different term or category." />
+			<EmptyState title={i18n.t('common.noResults')} message={i18n.t('catalog.noResultsMessage')} />
 		{:else}
-			<EmptyState title="No catalog items yet" message="Add your first catalog item to get started.">
+			<EmptyState title={i18n.t('catalog.noItems')} message={i18n.t('catalog.noItemsMessage')}>
 				<a href="{base}/catalog/new">
-					<Button>New Item</Button>
+					<Button>{i18n.t('catalog.newItem')}</Button>
 				</a>
 			</EmptyState>
 		{/if}
@@ -161,11 +162,11 @@
 								class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
 							/>
 						</th>
-						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Name</th>
-						<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Rate</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">Unit</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">Category</th>
-						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 lg:table-cell">SKU</th>
+						<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('catalog.name')}</th>
+						<th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{i18n.t('catalog.rate')}</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">{i18n.t('catalog.unit')}</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">{i18n.t('catalog.category')}</th>
+						<th class="hidden px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 lg:table-cell">{i18n.t('catalog.sku')}</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -187,7 +188,7 @@
 							<td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">
 								{formatCurrency(getDisplayRate(item))}
 								{#if selectedTierId && item.tier_rate == null}
-									<span class="text-xs text-gray-400 dark:text-gray-500">(default)</span>
+									<span class="text-xs text-gray-400 dark:text-gray-500">{i18n.t('common.default')}</span>
 								{/if}
 							</td>
 							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
@@ -207,13 +208,13 @@
 	{/if}
 </div>
 
-<Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title="Delete Catalog Items">
+<Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title={i18n.t('catalog.bulkDeleteTitle')}>
 	<p class="text-sm text-gray-600 dark:text-gray-300">
-		Are you sure you want to delete {selectedIds.size} catalog item{selectedIds.size === 1 ? '' : 's'}? This action cannot be undone.
+		{i18n.t('catalog.bulkDeleteMessage', { count: selectedIds.size, plural: selectedIds.size === 1 ? '' : 's' })}
 	</p>
 	<div class="mt-4 flex justify-end gap-3">
-		<Button variant="secondary" size="sm" onclick={() => (showDeleteConfirm = false)}>Cancel</Button>
-		<Button variant="danger" size="sm" onclick={handleBulkDelete}>Delete</Button>
+		<Button variant="secondary" size="sm" onclick={() => (showDeleteConfirm = false)}>{i18n.t('common.cancel')}</Button>
+		<Button variant="danger" size="sm" onclick={handleBulkDelete}>{i18n.t('common.delete')}</Button>
 	</div>
 </Modal>
 

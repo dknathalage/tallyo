@@ -51,6 +51,7 @@ export async function createInvoice(
 		total: number;
 		notes?: string;
 		status?: string;
+		currency_code?: string;
 		business_snapshot?: string;
 		client_snapshot?: string;
 		payer_snapshot?: string;
@@ -60,7 +61,7 @@ export async function createInvoice(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				crypto.randomUUID(),
 				data.invoice_number,
@@ -73,6 +74,7 @@ export async function createInvoice(
 				data.total,
 				data.notes ?? '',
 				data.status ?? 'draft',
+				data.currency_code ?? 'USD',
 				data.business_snapshot ?? '{}',
 				data.client_snapshot ?? '{}',
 				data.payer_snapshot ?? '{}'
@@ -118,6 +120,7 @@ export async function updateInvoice(
 		total: number;
 		notes?: string;
 		status?: string;
+		currency_code?: string;
 		business_snapshot?: string;
 		client_snapshot?: string;
 		payer_snapshot?: string;
@@ -128,7 +131,7 @@ export async function updateInvoice(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
+			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
 			[
 				data.invoice_number,
 				data.client_id,
@@ -140,6 +143,7 @@ export async function updateInvoice(
 				data.total,
 				data.notes ?? '',
 				data.status ?? 'draft',
+				data.currency_code ?? 'USD',
 				data.business_snapshot ?? '{}',
 				data.client_snapshot ?? '{}',
 				data.payer_snapshot ?? '{}',
@@ -159,8 +163,8 @@ export async function updateInvoice(
 		if (oldInvoice) {
 			const changes = computeChanges(
 				oldInvoice as unknown as Record<string, unknown>,
-				{ ...data, notes: data.notes ?? '', status: data.status ?? 'draft' },
-				['invoice_number', 'client_id', 'date', 'due_date', 'subtotal', 'tax_rate', 'total', 'notes', 'status']
+				{ ...data, notes: data.notes ?? '', status: data.status ?? 'draft', currency_code: data.currency_code ?? 'USD' },
+				['invoice_number', 'client_id', 'date', 'due_date', 'subtotal', 'tax_rate', 'total', 'notes', 'status', 'currency_code']
 			);
 			if (Object.keys(changes).length > 0) {
 				logAudit({ entity_type: 'invoice', entity_id: id, action: 'update', changes, context: data.invoice_number });
