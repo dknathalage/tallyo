@@ -13,7 +13,7 @@ export default defineConfig({
 		SvelteKitPWA({
 			strategies: 'generateSW',
 			registerType: 'prompt',
-			kit: { adapterFallback: 'index.html' },
+			kit: { adapterFallback: 'index.html', spa: true },
 			workbox: {
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,wasm,webmanifest}'],
 				navigateFallback: `${basePath}/index.html`,
