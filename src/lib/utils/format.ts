@@ -14,9 +14,10 @@ function getIntlLocale(locale?: string): string {
 }
 
 export function formatCurrency(amount: number, currencyCode: string = 'USD', locale?: string): string {
+	const code = currencyCode || 'USD';
 	return new Intl.NumberFormat(getIntlLocale(locale), {
 		style: 'currency',
-		currency: currencyCode
+		currency: code
 	}).format(amount);
 }
 
