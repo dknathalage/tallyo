@@ -1,39 +1,33 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
-	import { db, close } from '$lib/db/connection.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
-	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let mobileMenuOpen = $state(false);
 
 	const navLinks = [
-		{ href: `${base}/console`, key: 'nav.dashboard' },
-		{ href: `${base}/console/invoices`, key: 'nav.invoices' },
-		{ href: `${base}/console/estimates`, key: 'nav.estimates' },
-		{ href: `${base}/console/clients`, key: 'nav.clients' },
-		{ href: `${base}/console/catalog`, key: 'nav.catalog' },
-		{ href: `${base}/console/settings`, key: 'nav.settings' },
-		{ href: `${base}/docs`, key: 'nav.docs' }
+		{ href: `${base}/docs`, label: 'Home' },
+		{ href: `${base}/docs/getting-started`, label: 'Getting Started' },
+		{ href: `${base}/docs/guides/invoices`, label: 'Guides' }
 	];
 
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
-		if (href === `${base}/console`) return path === `${base}/console` || path === `${base}/console/`;
+		if (href === `${base}/docs`) return path === `${base}/docs` || path === `${base}/docs/`;
 		return path.startsWith(href);
 	}
 </script>
 
-<nav class="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" aria-label={i18n.t('a11y.mainNavigation')}>
+<nav class="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" aria-label="Documentation top navigation">
 	<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 		<div class="flex h-16 items-center justify-between">
 			<!-- Left: Logo + Nav Links -->
 			<div class="flex items-center gap-8">
-				<a href="{base}/console" class="flex items-center gap-2">
+				<a href="{base}/docs" class="flex items-center gap-2">
 					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
 						IM
 					</div>
-					<span class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('nav.appName')}</span>
+					<span class="text-lg font-semibold text-gray-900 dark:text-white">Invoice Manager</span>
 				</a>
 
 				<!-- Desktop nav -->
@@ -45,18 +39,18 @@
 								? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
 								: 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'}"
 						>
-							{i18n.t(link.key)}
+							{link.label}
 						</a>
 					{/each}
 				</div>
 			</div>
 
-			<!-- Right: Theme toggle + File name + Close -->
+			<!-- Right: Open App + Theme toggle -->
 			<div class="hidden items-center gap-4 sm:flex">
 				<button
 					onclick={() => theme.toggle()}
 					class="cursor-pointer rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-					aria-label={i18n.t('a11y.toggleDarkMode')}
+					aria-label="Toggle dark mode"
 				>
 					{#if theme.isDark}
 						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -68,13 +62,12 @@
 						</svg>
 					{/if}
 				</button>
-				<span class="text-sm text-gray-500 dark:text-gray-400">{db.fileName}</span>
-				<button
-					onclick={close}
-					class="cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+				<a
+					href="{base}/console"
+					class="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-700"
 				>
-					{i18n.t('nav.close')}
-				</button>
+					Open App
+				</a>
 			</div>
 
 			<!-- Mobile hamburger -->
@@ -82,7 +75,7 @@
 				<button
 					onclick={() => theme.toggle()}
 					class="cursor-pointer rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-					aria-label={i18n.t('a11y.toggleDarkMode')}
+					aria-label="Toggle dark mode"
 				>
 					{#if theme.isDark}
 						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -97,9 +90,9 @@
 				<button
 					onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
 					class="inline-flex cursor-pointer items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
-					aria-label={i18n.t('a11y.toggleMenu')}
+					aria-label="Toggle menu"
 					aria-expanded={mobileMenuOpen}
-					aria-controls="mobile-navigation"
+					aria-controls="docs-mobile-navigation"
 				>
 					<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 						{#if mobileMenuOpen}
@@ -115,7 +108,7 @@
 
 	<!-- Mobile menu -->
 	{#if mobileMenuOpen}
-		<div id="mobile-navigation" class="border-t border-gray-200 dark:border-gray-700 sm:hidden" aria-label={i18n.t('a11y.mobileNavigation')}>
+		<div id="docs-mobile-navigation" class="border-t border-gray-200 dark:border-gray-700 sm:hidden" aria-label="Mobile documentation navigation">
 			<div class="space-y-1 px-4 py-3">
 				{#each navLinks as link}
 					<a
@@ -125,18 +118,16 @@
 							? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
 							: 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white'}"
 					>
-						{i18n.t(link.key)}
+						{link.label}
 					</a>
 				{/each}
-			</div>
-			<div class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-				<p class="text-sm text-gray-500 dark:text-gray-400">{db.fileName}</p>
-				<button
-					onclick={() => { mobileMenuOpen = false; close(); }}
-					class="mt-2 cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+				<a
+					href="{base}/console"
+					onclick={() => (mobileMenuOpen = false)}
+					class="block rounded-md px-3 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/50"
 				>
-					{i18n.t('nav.closeDatabase')}
-				</button>
+					Open App
+				</a>
 			</div>
 		</div>
 	{/if}

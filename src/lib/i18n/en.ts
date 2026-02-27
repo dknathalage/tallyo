@@ -10,7 +10,8 @@ const en: Messages = {
 		settings: 'Settings',
 		appName: 'Invoice Manager',
 		close: 'Close',
-		closeDatabase: 'Close Database'
+		closeDatabase: 'Close Database',
+		docs: 'Docs'
 	},
 	dashboard: {
 		title: 'Dashboard',

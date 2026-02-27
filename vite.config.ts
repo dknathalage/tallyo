@@ -17,8 +17,7 @@ export default defineConfig({
 			workbox: {
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,wasm,webmanifest}'],
 				navigateFallback: `${basePath}/index.html`,
-				navigateFallbackDenylist: [/^\/invoices\/docs\//],
-				cleanupOutdatedCaches: true,
+					cleanupOutdatedCaches: true,
 				clientsClaim: true,
 				skipWaiting: false
 			},
@@ -36,7 +35,7 @@ export default defineConfig({
 				theme_color: '#2563eb',
 				background_color: '#ffffff',
 				display: 'standalone',
-				start_url: '.',
+				start_url: './console',
 				scope: '.',
 				icons: [
 					{ src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },

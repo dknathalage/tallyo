@@ -6,7 +6,7 @@
 </script>
 
 <a
-	href="{base}/clients/{client.id}"
+	href="{base}/console/clients/{client.id}"
 	class="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 transition-shadow hover:shadow-md"
 >
 	<h3 class="font-semibold text-gray-900 dark:text-white">{client.name}</h3>

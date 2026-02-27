@@ -37,16 +37,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run docs:build
       - name: Assemble deploy directory
         run: |
-          mkdir -p deploy/docs
+          mkdir -p deploy
           cp -r build/* deploy/
-          cp -r src/docs/.vitepress/dist/* deploy/docs/
           touch deploy/.nojekyll
-      - name: Create SPA redirect 404.html
-        run: |
-          printf '%s\n' '<!DOCTYPE html>' '<html>' '<head>' '<meta charset="utf-8" />' '<title>Redirecting...</title>' '<script>' 'var path = window.location.pathname;' 'if (path.startsWith("/invoices/docs")) {' '  // Let VitePress handle docs 404s' '} else if (path.startsWith("/invoices")) {' '  sessionStorage.setItem("spa-redirect", path + window.location.search);' '  window.location.replace("/invoices/");' '}' '</script>' '</head>' '<body></body>' '</html>' > deploy/404.html
+          cp deploy/index.html deploy/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: deploy

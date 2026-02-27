@@ -9,6 +9,7 @@ export interface Messages {
 		appName: string;
 		close: string;
 		closeDatabase: string;
+		docs: string;
 	};
 	dashboard: {
 		title: string;
