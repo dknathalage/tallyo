@@ -5,6 +5,7 @@ export interface Messages {
 		estimates: string;
 		clients: string;
 		catalog: string;
+		rateTiers: string;
 		settings: string;
 		appName: string;
 		close: string;
@@ -370,6 +371,8 @@ export interface Messages {
 	a11y: {
 		skipToContent: string;
 		mainNavigation: string;
+		sidebarNavigation: string;
+		closeSidebar: string;
 		mobileNavigation: string;
 		toggleDarkMode: string;
 		toggleMenu: string;

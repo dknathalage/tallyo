@@ -111,7 +111,7 @@
 {:else}
 	<div class="space-y-6">
 		<!-- Header -->
-		<div class="flex items-center justify-between">
+		<div class="flex items-start justify-between gap-4">
 			<div class="flex items-center gap-3">
 				<a href="{base}/console/invoices" class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToInvoices')}>
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -122,7 +122,7 @@
 				<StatusBadge status={invoice.status} />
 			</div>
 
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
 				<!-- Status dropdown -->
 				<div class="relative">
 					<Button variant="secondary" size="sm" onclick={() => (showStatusMenu = !showStatusMenu)}>

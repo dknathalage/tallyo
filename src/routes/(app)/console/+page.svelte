@@ -14,9 +14,9 @@
 
 <div class="space-y-6">
 	<!-- Header with quick actions -->
-	<div class="flex items-center justify-between">
+	<div class="flex flex-wrap items-center justify-between gap-4">
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('dashboard.title')}</h1>
-		<div class="flex gap-2">
+		<div class="flex flex-wrap gap-2">
 			<a href="{base}/console/invoices/new">
 				<Button>{i18n.t('dashboard.newInvoice')}</Button>
 			</a>

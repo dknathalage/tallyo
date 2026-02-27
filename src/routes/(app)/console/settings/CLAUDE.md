@@ -1,3 +1,3 @@
 # routes/settings/
 
-- `+page.svelte` — Business profile settings, logo upload, custom metadata, database export/import
+- `+page.svelte` — Business profile settings, payer management, logo upload, custom metadata

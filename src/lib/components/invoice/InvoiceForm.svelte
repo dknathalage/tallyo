@@ -343,7 +343,7 @@
 		<legend class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.lineItems')}</legend>
 
 		<!-- Header -->
-		<div class="mb-2 flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400" aria-hidden="true">
+		<div class="mb-2 hidden items-center gap-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:flex" aria-hidden="true">
 			<div class="flex-1">{i18n.t('invoice.description')}</div>
 			<div class="w-24">{i18n.t('invoice.qty')}</div>
 			<div class="w-28">{i18n.t('invoice.rate')}</div>
@@ -431,7 +431,7 @@
 
 	<!-- Tax and totals -->
 	<div class="flex justify-end">
-		<div class="w-72 space-y-2">
+		<div class="w-full space-y-2 sm:w-72">
 			<div class="flex justify-between text-sm">
 				<span class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.subtotal')}</span>
 				<span class="font-medium text-gray-900 dark:text-white">{formatCurrency(subtotal, currencyCode)}</span>

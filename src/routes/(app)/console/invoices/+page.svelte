@@ -86,7 +86,7 @@
 
 <div class="space-y-6">
 	<!-- Header -->
-	<div class="flex items-center justify-between">
+	<div class="flex flex-wrap items-center justify-between gap-4">
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('invoice.title')}</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportInvoices} onimport={handleImport} />

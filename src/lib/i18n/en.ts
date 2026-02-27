@@ -7,6 +7,7 @@ const en: Messages = {
 		estimates: 'Estimates',
 		clients: 'Clients',
 		catalog: 'Catalog',
+		rateTiers: 'Rate Tiers',
 		settings: 'Settings',
 		appName: 'Invoice Manager',
 		close: 'Close',
@@ -372,6 +373,8 @@ const en: Messages = {
 	a11y: {
 		skipToContent: 'Skip to main content',
 		mainNavigation: 'Main navigation',
+		sidebarNavigation: 'Sidebar navigation',
+		closeSidebar: 'Close sidebar',
 		mobileNavigation: 'Mobile navigation',
 		toggleDarkMode: 'Toggle dark mode',
 		toggleMenu: 'Toggle menu',
