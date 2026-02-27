@@ -1,6 +1,6 @@
 # src/docs/
 
-VitePress documentation site source. Builds to `.vitepress/dist/`, deployed at `/invoices/web/`.
+VitePress documentation site source. Builds to `.vitepress/dist/`, deployed at `/invoices/docs/`.
 
 ## Files
 
