@@ -98,6 +98,6 @@
 	</fieldset>
 
 	<div class="flex justify-end gap-3 pt-2">
-		<Button type="submit">{initialData ? i18n.t('common.saveChanges') : i18n.t('client.createPayer')}</Button>
+		<Button type="submit">{initialData ? i18n.t('common.saveChanges') : i18n.t('payer.createPayer')}</Button>
 	</div>
 </form>

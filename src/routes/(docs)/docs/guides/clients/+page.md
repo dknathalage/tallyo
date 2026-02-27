@@ -24,7 +24,7 @@ Each client can be assigned a **pricing tier**. When a tier is set, line items a
 
 ## Payer Linking
 
-A client can have a linked **payer** (Bill-To party). When you create an invoice or estimate for that client, the payer fields are pre-populated automatically. You can still override payer details on each document. Manage payers from the **Settings** page.
+A client can have a linked **payer** (Bill-To party). When you create an invoice or estimate for that client, the payer fields are pre-populated automatically. You can still override payer details on each document. Manage payers from the **Payers** page.
 
 ## Bulk Actions
 

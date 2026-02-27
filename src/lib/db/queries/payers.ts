@@ -1,6 +1,6 @@
 import { execute, query, save } from '../connection.svelte.js';
 import { logAudit, computeChanges } from '../audit.js';
-import type { Payer, PartySnapshot } from '../../types/index.js';
+import type { Payer, Client, PartySnapshot } from '../../types/index.js';
 
 export function getPayers(search?: string): Payer[] {
 	if (search) {
@@ -75,6 +75,22 @@ export async function deletePayer(id: number): Promise<void> {
 	execute('DELETE FROM payers WHERE id = ?', [id]);
 	logAudit({ entity_type: 'payer', entity_id: id, action: 'delete', context: payer?.name ?? '' });
 	await save();
+}
+
+export async function bulkDeletePayers(ids: number[]): Promise<void> {
+	if (ids.length === 0) return;
+	const batch_id = crypto.randomUUID();
+	const payers = ids.map((id) => getPayer(id));
+	const placeholders = ids.map(() => '?').join(',');
+	execute(`DELETE FROM payers WHERE id IN (${placeholders})`, ids);
+	for (let i = 0; i < ids.length; i++) {
+		logAudit({ entity_type: 'payer', entity_id: ids[i], action: 'delete', context: payers[i]?.name ?? '', batch_id });
+	}
+	await save();
+}
+
+export function getPayerClients(payerId: number): Client[] {
+	return query<Client>('SELECT * FROM clients WHERE payer_id = ? ORDER BY name', [payerId]);
 }
 
 export function buildPayerSnapshot(payerId: number | null): PartySnapshot {

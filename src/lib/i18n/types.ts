@@ -4,6 +4,7 @@ export interface Messages {
 		invoices: string;
 		estimates: string;
 		clients: string;
+		payers: string;
 		catalog: string;
 		rateTiers: string;
 		settings: string;
@@ -172,14 +173,6 @@ export interface Messages {
 		additionalFieldsHint: string;
 		saveProfile: string;
 		saving: string;
-		payers: string;
-		payersDesc: string;
-		addPayer: string;
-		editPayer: string;
-		noPayers: string;
-		noPayersMessage: string;
-		deletePayer: string;
-		deletePayerMessage: string;
 		rateTiers: string;
 		rateTiersDesc: string;
 		addTier: string;
@@ -237,7 +230,6 @@ export interface Messages {
 		noTier: string;
 		selectClient: string;
 		createClient: string;
-		createPayer: string;
 		invoiceNumber: string;
 		date: string;
 		status: string;
@@ -246,6 +238,28 @@ export interface Messages {
 		changeHistory: string;
 		newInvoice: string;
 		newEstimate: string;
+	};
+	payer: {
+		title: string;
+		newPayer: string;
+		editPayer: string;
+		noPayers: string;
+		noPayersMessage: string;
+		noResultsMessage: string;
+		deleteConfirmTitle: string;
+		deleteConfirmMessage: string;
+		linkedClients: string;
+		noLinkedClients: string;
+		noLinkedClientsMessage: string;
+		notFound: string;
+		notFoundMessage: string;
+		backToPayers: string;
+		addNewPayerDesc: string;
+		searchPlaceholder: string;
+		bulkDeleteTitle: string;
+		bulkDeleteMessage: string;
+		createPayer: string;
+		changeHistory: string;
 	};
 	catalog: {
 		title: string;

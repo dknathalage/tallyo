@@ -26,11 +26,7 @@ Add arbitrary key-value pairs for any additional business information you want t
 
 ## Payers
 
-Manage your **Payer / Bill-To** directory from the Settings page. Payers represent the party responsible for payment, which may differ from the client receiving the service.
-
-- Add, edit, and delete payer records (name, email, phone, address, custom metadata)
-- Link a payer to a client so invoices and estimates auto-populate the Bill-To section
-- Payer details are captured as a snapshot on each document, so later edits to the payer record don't change existing invoices
+Payers are now managed from their own dedicated **[Payers](/console/payers)** page in the sidebar. See the Payers guide for details.
 
 ## Rate Tiers
 
