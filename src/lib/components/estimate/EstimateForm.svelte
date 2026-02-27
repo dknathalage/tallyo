@@ -45,7 +45,7 @@
 
 	let clients: Client[] = $state([]);
 	let estimateNumber = $derived(initialData?.estimate_number ?? '');
-	let clientId = $state(initialData?.client_id ?? 0);
+	let clientId: number | '' = $state(initialData?.client_id ?? '');
 	let date = $state(initialData?.date ?? today());
 	let validUntil = $state(initialData?.valid_until ?? today());
 	let taxRate = $state(initialData?.tax_rate ?? 0);
@@ -206,6 +206,8 @@
 	function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
 
+		if (!clientId) return;
+
 		// Build client snapshot
 		const clientSnapshotObj: PartySnapshot = {
 			name: selectedClient?.name ?? '',
@@ -295,7 +297,7 @@
 					required
 					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				>
-					<option value={0} disabled>{i18n.t('invoice.selectClient')}</option>
+					<option value="" disabled>{i18n.t('invoice.selectClient')}</option>
 					{#each clients as client}
 						<option value={client.id}>{client.name}</option>
 					{/each}
