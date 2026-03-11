@@ -8,6 +8,7 @@ import { SqliteBusinessProfileRepository } from './SqliteBusinessProfileReposito
 import { SqliteDashboardRepository } from './SqliteDashboardRepository.js';
 import { SqliteAuditRepository } from './SqliteAuditRepository.js';
 import { SqliteColumnMappingsRepository } from './SqliteColumnMappingsRepository.js';
+import { SqliteTransactionFactory } from './SqliteTransactionFactory.js';
 import type {
 	InvoiceRepository,
 	EstimateRepository,
@@ -21,16 +22,20 @@ import type {
 	ColumnMappingsRepository
 } from '../interfaces/index.js';
 
+// Shared infrastructure singletons
+const auditRepo = new SqliteAuditRepository();
+const txFactory = new SqliteTransactionFactory();
+
 export const repositories = {
-	invoices: new SqliteInvoiceRepository() as InvoiceRepository,
-	estimates: new SqliteEstimateRepository() as EstimateRepository,
-	clients: new SqliteClientRepository() as ClientRepository,
-	payers: new SqlitePayerRepository() as PayerRepository,
-	catalog: new SqliteCatalogRepository() as CatalogRepository,
+	invoices: new SqliteInvoiceRepository(auditRepo, txFactory.create()) as InvoiceRepository,
+	estimates: new SqliteEstimateRepository(auditRepo, txFactory.create()) as EstimateRepository,
+	clients: new SqliteClientRepository(auditRepo, txFactory.create()) as ClientRepository,
+	payers: new SqlitePayerRepository(auditRepo, txFactory.create()) as PayerRepository,
+	catalog: new SqliteCatalogRepository(auditRepo, txFactory.create()) as CatalogRepository,
 	rateTiers: new SqliteRateTierRepository() as RateTierRepository,
 	businessProfile: new SqliteBusinessProfileRepository() as BusinessProfileRepository,
 	dashboard: new SqliteDashboardRepository() as DashboardRepository,
-	audit: new SqliteAuditRepository() as AuditRepository,
+	audit: auditRepo as AuditRepository,
 	columnMappings: new SqliteColumnMappingsRepository() as ColumnMappingsRepository
 };
 

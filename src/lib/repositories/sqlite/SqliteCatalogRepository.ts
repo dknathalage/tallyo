@@ -13,10 +13,17 @@ import {
 	setCatalogItemRate
 } from '$lib/db/queries/catalog.js';
 import type { CatalogRepository } from '../interfaces/CatalogRepository.js';
+import type { AuditRepository } from '../interfaces/AuditRepository.js';
+import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateCatalogItemInput, UpdateCatalogItemInput } from '../interfaces/types.js';
 import type { CatalogItem, CatalogItemWithRates } from '$lib/types/index.js';
 
 export class SqliteCatalogRepository implements CatalogRepository {
+	constructor(
+		private readonly _audit?: AuditRepository,
+		private readonly _tx?: StorageTransaction
+	) {}
+
 	getCatalogItems(search?: string, category?: string): CatalogItem[] {
 		return getCatalogItems(search, category);
 	}

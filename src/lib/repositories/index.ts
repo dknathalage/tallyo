@@ -1,7 +1,10 @@
 export { repositories } from './sqlite/index.js';
 export type { Repositories } from './sqlite/index.js';
+export { SqliteTransactionFactory } from './sqlite/SqliteTransactionFactory.js';
 export type {
 	StorageRepository,
+	StorageTransaction,
+	LogAuditParams,
 	InvoiceRepository,
 	EstimateRepository,
 	ClientRepository,
