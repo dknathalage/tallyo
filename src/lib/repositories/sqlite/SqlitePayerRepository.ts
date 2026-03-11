@@ -9,10 +9,17 @@ import {
 	buildPayerSnapshot
 } from '$lib/db/queries/payers.js';
 import type { PayerRepository } from '../interfaces/PayerRepository.js';
+import type { AuditRepository } from '../interfaces/AuditRepository.js';
+import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreatePayerInput, UpdatePayerInput } from '../interfaces/types.js';
 import type { Payer, Client, PartySnapshot } from '$lib/types/index.js';
 
 export class SqlitePayerRepository implements PayerRepository {
+	constructor(
+		private readonly _audit?: AuditRepository,
+		private readonly _tx?: StorageTransaction
+	) {}
+
 	getPayers(search?: string): Payer[] {
 		return getPayers(search);
 	}

@@ -12,10 +12,17 @@ import {
 	convertEstimateToInvoice
 } from '$lib/db/queries/estimates.js';
 import type { EstimateRepository } from '../interfaces/EstimateRepository.js';
+import type { AuditRepository } from '../interfaces/AuditRepository.js';
+import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../interfaces/types.js';
 import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
 
 export class SqliteEstimateRepository implements EstimateRepository {
+	constructor(
+		private readonly _audit?: AuditRepository,
+		private readonly _tx?: StorageTransaction
+	) {}
+
 	getEstimates(search?: string, status?: string): Estimate[] {
 		return getEstimates(search, status);
 	}

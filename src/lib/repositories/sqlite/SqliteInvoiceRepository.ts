@@ -11,10 +11,17 @@ import {
 	bulkUpdateInvoiceStatus
 } from '$lib/db/queries/invoices.js';
 import type { InvoiceRepository } from '../interfaces/InvoiceRepository.js';
+import type { AuditRepository } from '../interfaces/AuditRepository.js';
+import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../interfaces/types.js';
 import type { Invoice, LineItem } from '$lib/types/index.js';
 
 export class SqliteInvoiceRepository implements InvoiceRepository {
+	constructor(
+		private readonly _audit?: AuditRepository,
+		private readonly _tx?: StorageTransaction
+	) {}
+
 	getInvoices(search?: string, status?: string): Invoice[] {
 		return getInvoices(search, status);
 	}
