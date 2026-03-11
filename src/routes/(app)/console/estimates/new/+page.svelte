@@ -1,6 +1,6 @@
 <script lang="ts">
-	import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
-	import { createEstimate } from '$lib/db/queries/estimates.js';
+	import { repositories } from '$lib/repositories';
+		import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -24,7 +24,7 @@
 		},
 		lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
-		await createEstimate(data, lineItems);
+		await repositories.estimates.createEstimate(data, lineItems);
 		goto(`${base}/console/estimates`);
 	}
 </script>

@@ -1,7 +1,6 @@
 <script lang="ts">
-	import type { CatalogItem, CatalogItemWithRates } from '$lib/types';
-	import { getCatalogCategories, getCatalogItemWithRates } from '$lib/db/queries/catalog';
-	import { getRateTiers } from '$lib/db/queries/rate-tiers';
+	import { repositories } from '$lib/repositories';
+		import type { CatalogItem, CatalogItemWithRates } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -28,13 +27,13 @@
 	let sku = $state(initialData?.sku ?? '');
 	let metadata = $state(initialData?.metadata ?? '{}');
 
-	let categories = $derived(getCatalogCategories());
-	let tiers = $derived(getRateTiers());
+	let categories = $derived(repositories.catalog.getCatalogCategories());
+	let tiers = $derived(repositories.rateTiers.getRateTiers());
 
 	// Load existing tier rates if editing
 	let itemWithRates: CatalogItemWithRates | null = $derived.by(() => {
 		if (initialData?.id) {
-			return getCatalogItemWithRates(initialData.id);
+			return repositories.catalog.getCatalogItemWithRates(initialData.id);
 		}
 		return null;
 	});

@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getEstimate, getEstimateLineItems, deleteEstimate, updateEstimateStatus, convertEstimateToInvoice } from '$lib/db/queries/estimates.js';
-	import { getEntityHistory } from '$lib/db/queries/audit.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportEstimatePdf } from '$lib/utils/pdf.js';
 	import type { Estimate, EstimateLineItem, AuditLogEntry } from '$lib/types/index.js';
@@ -29,24 +28,24 @@
 	$effect(() => {
 		refreshTrigger;
 		const id = Number(page.params.id);
-		const est = getEstimate(id);
+		const est = repositories.estimates.getEstimate(id);
 		estimate = est;
 		if (est) {
-			lineItems = getEstimateLineItems(est.id);
-			history = getEntityHistory('estimate', est.id);
+			lineItems = repositories.estimates.getEstimateLineItems(est.id);
+			history = repositories.audit.getEntityHistory('estimate', est.id);
 		}
 	});
 
 	async function handleDelete() {
 		if (!estimate) return;
-		await deleteEstimate(estimate.id);
+		await repositories.estimates.deleteEstimate(estimate.id);
 		goto(`${base}/console/estimates`);
 	}
 
 	async function handleStatusChange(status: string) {
 		if (!estimate) return;
-		await updateEstimateStatus(estimate.id, status);
-		estimate = getEstimate(estimate.id);
+		await repositories.estimates.updateEstimateStatus(estimate.id, status);
+		estimate = repositories.estimates.getEstimate(estimate.id);
 		showStatusMenu = false;
 	}
 
@@ -54,7 +53,7 @@
 		if (!estimate) return;
 		converting = true;
 		try {
-			const invoiceId = await convertEstimateToInvoice(estimate.id);
+			const invoiceId = await repositories.estimates.convertEstimateToInvoice(estimate.id);
 			goto(`${base}/console/invoices/${invoiceId}`);
 		} catch (e: any) {
 			alert(e.message || 'Failed to convert estimate to invoice');

@@ -1,10 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getCatalogItem, updateCatalogItem, deleteCatalogItem, getCatalogItemWithRates, setCatalogItemRate } from '$lib/db/queries/catalog';
-	import { getRateTiers } from '$lib/db/queries/rate-tiers';
-	import { getEntityHistory } from '$lib/db/queries/audit';
 	import { formatCurrency } from '$lib/utils/format';
 	import type { AuditLogEntry } from '$lib/types/index.js';
 	import CatalogForm from '$lib/components/catalog/CatalogForm.svelte';
@@ -17,17 +15,17 @@
 	let refreshTrigger = $state(0);
 	let item = $derived.by(() => {
 		refreshTrigger;
-		return getCatalogItem(itemId);
+		return repositories.catalog.getCatalogItem(itemId);
 	});
 	let itemWithRates = $derived.by(() => {
 		refreshTrigger;
-		return getCatalogItemWithRates(itemId);
+		return repositories.catalog.getCatalogItemWithRates(itemId);
 	});
-	let tiers = $derived(getRateTiers());
+	let tiers = $derived(repositories.rateTiers.getRateTiers());
 
 	let history = $derived.by(() => {
 		refreshTrigger;
-		return getEntityHistory('catalog', itemId);
+		return repositories.audit.getEntityHistory('catalog', itemId);
 	});
 
 	let editing = $state(false);
@@ -42,12 +40,12 @@
 		tierRates?: Record<number, number>;
 		metadata?: string;
 	}) {
-		await updateCatalogItem(itemId, data);
+		await repositories.catalog.updateCatalogItem(itemId, data);
 
 		// Save tier rates
 		if (data.tierRates) {
 			for (const [tierId, rate] of Object.entries(data.tierRates)) {
-				await setCatalogItemRate(itemId, Number(tierId), rate);
+				await repositories.catalog.setCatalogItemRate(itemId, Number(tierId), rate);
 			}
 		}
 
@@ -56,7 +54,7 @@
 	}
 
 	async function handleDelete() {
-		await deleteCatalogItem(itemId);
+		await repositories.catalog.deleteCatalogItem(itemId);
 		goto(`${base}/console/catalog`);
 	}
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Modal from '$lib/components/shared/Modal.svelte';
-	import { getCatalogItems, getCatalogCategories, getEffectiveRate } from '$lib/db/queries/catalog.js';
+	import { repositories } from '$lib/repositories';
+		import Modal from '$lib/components/shared/Modal.svelte';
 	import type { CatalogItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -19,8 +19,8 @@
 	let search = $state('');
 	let selectedCategory = $state('');
 
-	let categories = $derived(open ? getCatalogCategories() : []);
-	let items = $derived(open ? getCatalogItems(search || undefined, selectedCategory || undefined) : []);
+	let categories = $derived(open ? repositories.catalog.getCatalogCategories() : []);
+	let items = $derived(open ? repositories.catalog.getCatalogItems(search || undefined, selectedCategory || undefined) : []);
 
 	function handleSelect(item: CatalogItem) {
 		onselect(item);
@@ -75,7 +75,7 @@
 							</div>
 							<div class="text-right">
 								<div class="text-sm font-medium text-gray-900 dark:text-white">
-									${tierId ? getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
+									${tierId ? repositories.catalog.getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
 								</div>
 								{#if item.unit}
 									<div class="text-xs text-gray-400 dark:text-gray-500">{i18n.t('common.per', { unit: item.unit })}</div>

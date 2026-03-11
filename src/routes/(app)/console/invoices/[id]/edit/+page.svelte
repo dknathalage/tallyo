@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getInvoice, getInvoiceLineItems, updateInvoice } from '$lib/db/queries/invoices.js';
 	import InvoiceForm from '$lib/components/invoice/InvoiceForm.svelte';
 	import type { Invoice, LineItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -12,10 +12,10 @@
 
 	$effect(() => {
 		const id = Number(page.params.id);
-		const inv = getInvoice(id);
+		const inv = repositories.invoices.getInvoice(id);
 		invoice = inv;
 		if (inv) {
-			lineItems = getInvoiceLineItems(inv.id);
+			lineItems = repositories.invoices.getInvoiceLineItems(inv.id);
 		}
 	});
 
@@ -38,7 +38,7 @@
 		items: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
 		if (!invoice) return;
-		await updateInvoice(invoice.id, data, items);
+		await repositories.invoices.updateInvoice(invoice.id, data, items);
 		goto(`${base}/console/invoices/${invoice.id}`);
 	}
 </script>

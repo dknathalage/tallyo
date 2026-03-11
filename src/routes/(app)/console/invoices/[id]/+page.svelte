@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getInvoice, getInvoiceLineItems, deleteInvoice, updateInvoiceStatus } from '$lib/db/queries/invoices.js';
-	import { getEntityHistory } from '$lib/db/queries/audit.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportInvoicePdf } from '$lib/utils/pdf.js';
 	import type { Invoice, LineItem, AuditLogEntry } from '$lib/types/index.js';
@@ -26,24 +25,24 @@
 
 	$effect(() => {
 		const id = Number(page.params.id);
-		const inv = getInvoice(id);
+		const inv = repositories.invoices.getInvoice(id);
 		invoice = inv;
 		if (inv) {
-			lineItems = getInvoiceLineItems(inv.id);
-			history = getEntityHistory('invoice', inv.id);
+			lineItems = repositories.invoices.getInvoiceLineItems(inv.id);
+			history = repositories.audit.getEntityHistory('invoice', inv.id);
 		}
 	});
 
 	async function handleDelete() {
 		if (!invoice) return;
-		await deleteInvoice(invoice.id);
+		await repositories.invoices.deleteInvoice(invoice.id);
 		goto(`${base}/console/invoices`);
 	}
 
 	async function handleStatusChange(status: string) {
 		if (!invoice) return;
-		await updateInvoiceStatus(invoice.id, status);
-		invoice = getInvoice(invoice.id);
+		await repositories.invoices.updateInvoiceStatus(invoice.id, status);
+		invoice = repositories.invoices.getInvoice(invoice.id);
 		showStatusMenu = false;
 	}
 

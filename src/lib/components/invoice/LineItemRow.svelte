@@ -1,7 +1,7 @@
 <script lang="ts">
-	import CatalogAutocomplete from '$lib/components/catalog/CatalogAutocomplete.svelte';
+	import { repositories } from '$lib/repositories';
+		import CatalogAutocomplete from '$lib/components/catalog/CatalogAutocomplete.svelte';
 	import CatalogBrowseModal from '$lib/components/catalog/CatalogBrowseModal.svelte';
-	import { getEffectiveRate } from '$lib/db/queries/catalog.js';
 	import type { CatalogItem } from '$lib/types/index.js';
 
 	import { formatCurrency } from '$lib/utils/format.js';
@@ -28,7 +28,7 @@
 
 	function handleCatalogSelect(catalogItem: CatalogItem) {
 		item.description = catalogItem.name;
-		item.rate = tierId ? getEffectiveRate(catalogItem.id, tierId) : catalogItem.rate;
+		item.rate = tierId ? repositories.catalog.getEffectiveRate(catalogItem.id, tierId) : catalogItem.rate;
 		item.unit = catalogItem.unit;
 		recalculate();
 	}

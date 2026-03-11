@@ -1,5 +1,6 @@
 <script lang="ts">
-	import Modal from '$lib/components/shared/Modal.svelte';
+	import { repositories } from '$lib/repositories';
+		import Modal from '$lib/components/shared/Modal.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import StepFileSelect from './StepFileSelect.svelte';
 	import StepColumnMapping from './StepColumnMapping.svelte';
@@ -8,8 +9,6 @@
 	import { applyMapping, type ColumnMappingConfig } from '$lib/import/map-columns.js';
 	import { diffCatalog, type DiffResult } from '$lib/import/diff-catalog.js';
 	import { commitCatalogImport } from '$lib/import/commit-catalog.js';
-	import { getCatalogItems } from '$lib/db/queries/catalog.js';
-	import { createRateTier } from '$lib/db/queries/rate-tiers.js';
 	import type { ParsedFile, ParsedSheet } from '$lib/import/parse-file.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -80,7 +79,7 @@
 		if (mappingConfig.newTierColumns.length > 0) {
 			const resolvedTierColumns = { ...mappingConfig.tierColumns };
 			for (const colName of mappingConfig.newTierColumns) {
-				const tierId = await createRateTier({
+				const tierId = await repositories.rateTiers.createRateTier({
 					name: colName,
 					description: `Auto-created from import column "${colName}"`
 				});
@@ -95,7 +94,7 @@
 
 		// Run diff
 		const mapped = applyMapping(activeSheet.rows, mappingConfig);
-		const existing = getCatalogItems().map((item) => ({
+		const existing = repositories.catalog.getCatalogItems().map((item) => ({
 			id: item.id,
 			name: item.name,
 			sku: item.sku,

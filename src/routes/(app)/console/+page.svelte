@@ -1,15 +1,14 @@
 <script lang="ts">
-	import { base } from '$app/paths';
-	import { getDashboardStats } from '$lib/db/queries/dashboard';
-	import { getBusinessProfile } from '$lib/db/queries/business-profile';
+	import { repositories } from '$lib/repositories';
+		import { base } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let stats = $derived(getDashboardStats());
-	let defaultCurrency = $derived(getBusinessProfile()?.default_currency || 'USD');
+	let stats = $derived(repositories.dashboard.getDashboardStats());
+	let defaultCurrency = $derived(repositories.businessProfile.getBusinessProfile()?.default_currency || 'USD');
 </script>
 
 <div class="space-y-6">
@@ -126,7 +125,7 @@
 			<div class="mt-4">
 				<EmptyState title={i18n.t('dashboard.noInvoicesYet')} message={i18n.t('dashboard.noInvoicesMessage')}>
 					<a href="{base}/console/invoices/new">
-						<Button>{i18n.t('dashboard.createInvoice')}</Button>
+						<Button>{i18n.t('dashboard.repositories.invoices.createInvoice')}</Button>
 					</a>
 				</EmptyState>
 			</div>
@@ -184,7 +183,7 @@
 			<div class="mt-4">
 				<EmptyState title={i18n.t('dashboard.noEstimatesYet')} message={i18n.t('dashboard.noEstimatesMessage')}>
 					<a href="{base}/console/estimates/new">
-						<Button>{i18n.t('dashboard.createEstimate')}</Button>
+						<Button>{i18n.t('dashboard.repositories.estimates.createEstimate')}</Button>
 					</a>
 				</EmptyState>
 			</div>

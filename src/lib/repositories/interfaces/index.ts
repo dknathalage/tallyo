@@ -9,6 +9,11 @@ export type { BusinessProfileRepository } from './BusinessProfileRepository.js';
 export type { DashboardRepository } from './DashboardRepository.js';
 export type { AuditRepository } from './AuditRepository.js';
 export type {
+	ColumnMappingsRepository,
+	CreateColumnMappingInput,
+	UpdateColumnMappingInput
+} from './ColumnMappingsRepository.js';
+export type {
 	LineItemInput,
 	CreateInvoiceInput,
 	UpdateInvoiceInput,

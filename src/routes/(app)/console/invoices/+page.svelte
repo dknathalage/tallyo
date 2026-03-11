@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { getInvoices, bulkDeleteInvoices, bulkUpdateInvoiceStatus } from '$lib/db/queries/invoices.js';
-	import type { Invoice } from '$lib/types/index.js';
+	import { repositories } from '$lib/repositories';
+		import type { Invoice } from '$lib/types/index.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
@@ -32,7 +32,7 @@
 
 	$effect(() => {
 		importTrigger;
-		invoices = getInvoices(search || undefined, statusFilter || undefined);
+		invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
 		selectedIds = new Set();
 	});
 
@@ -57,14 +57,14 @@
 	}
 
 	async function handleBulkDelete() {
-		await bulkDeleteInvoices([...selectedIds]);
+		await repositories.invoices.bulkDeleteInvoices([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
 		importTrigger++;
 	}
 
 	async function handleBulkStatus(status: string) {
-		await bulkUpdateInvoiceStatus([...selectedIds], status);
+		await repositories.invoices.bulkUpdateInvoiceStatus([...selectedIds], status);
 		selectedIds = new Set();
 		importTrigger++;
 	}

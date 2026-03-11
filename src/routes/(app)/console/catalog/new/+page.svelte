@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { repositories } from '$lib/repositories';
+		import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { createCatalogItem } from '$lib/db/queries/catalog';
 	import CatalogForm from '$lib/components/catalog/CatalogForm.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	async function handleSubmit(data: { name: string; rate: number; unit: string; category: string; sku: string }) {
-		await createCatalogItem(data);
+		await repositories.catalog.createCatalogItem(data);
 		goto(`${base}/console/catalog`);
 	}
 </script>

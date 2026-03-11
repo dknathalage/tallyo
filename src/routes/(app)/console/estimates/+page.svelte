@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { getEstimates, bulkDeleteEstimates, bulkUpdateEstimateStatus } from '$lib/db/queries/estimates.js';
-	import type { Estimate } from '$lib/types/index.js';
+	import { repositories } from '$lib/repositories';
+		import type { Estimate } from '$lib/types/index.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
@@ -32,7 +32,7 @@
 
 	$effect(() => {
 		importTrigger;
-		estimates = getEstimates(search || undefined, statusFilter || undefined);
+		estimates = repositories.estimates.getEstimates(search || undefined, statusFilter || undefined);
 		selectedIds = new Set();
 	});
 
@@ -57,14 +57,14 @@
 	}
 
 	async function handleBulkDelete() {
-		await bulkDeleteEstimates([...selectedIds]);
+		await repositories.estimates.bulkDeleteEstimates([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
 		importTrigger++;
 	}
 
 	async function handleBulkStatus(status: string) {
-		await bulkUpdateEstimateStatus([...selectedIds], status);
+		await repositories.estimates.bulkUpdateEstimateStatus([...selectedIds], status);
 		selectedIds = new Set();
 		importTrigger++;
 	}

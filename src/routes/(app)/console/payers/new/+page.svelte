@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { repositories } from '$lib/repositories';
+		import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { createPayer } from '$lib/db/queries/payers';
 	import PayerForm from '$lib/components/payer/PayerForm.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	async function handleSubmit(data: { name: string; email: string; phone: string; address: string; metadata: string }) {
-		await createPayer(data);
+		await repositories.payers.createPayer(data);
 		goto(`${base}/console/payers`);
 	}
 </script>

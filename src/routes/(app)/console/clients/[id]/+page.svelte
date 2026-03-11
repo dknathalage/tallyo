@@ -1,12 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getClient, updateClient, deleteClient } from '$lib/db/queries/clients';
-	import { getClientInvoices } from '$lib/db/queries/invoices';
-	import { getClientEstimates } from '$lib/db/queries/estimates';
-	import { getEntityHistory } from '$lib/db/queries/audit';
-	import { getPayer } from '$lib/db/queries/payers';
 	import type { AuditLogEntry } from '$lib/types/index.js';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -17,11 +13,11 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let clientId = $derived(Number(page.params.id));
-	let client = $derived(getClient(clientId));
-	let invoices = $derived(getClientInvoices(clientId));
-	let estimates = $derived(getClientEstimates(clientId));
-	let history = $derived(getEntityHistory('client', clientId));
-	let payer = $derived(client?.payer_id ? getPayer(client.payer_id) : null);
+	let client = $derived(repositories.clients.getClient(clientId));
+	let invoices = $derived(repositories.invoices.getClientInvoices(clientId));
+	let estimates = $derived(repositories.estimates.getClientEstimates(clientId));
+	let history = $derived(repositories.audit.getEntityHistory('client', clientId));
+	let payer = $derived(client?.payer_id ? repositories.payers.getPayer(client.payer_id) : null);
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
@@ -36,12 +32,12 @@
 	}
 
 	async function handleUpdate(data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) {
-		await updateClient(clientId, data);
+		await repositories.clients.updateClient(clientId, data);
 		editing = false;
 	}
 
 	async function handleDelete() {
-		await deleteClient(clientId);
+		await repositories.clients.deleteClient(clientId);
 		goto(`${base}/console/clients`);
 	}
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { getBusinessProfile, saveBusinessProfile } from '$lib/db/queries/business-profile';
-	import type { KeyValuePair } from '$lib/types';
+	import { repositories } from '$lib/repositories';
+		import type { KeyValuePair } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import LogoUploader from '$lib/components/shared/LogoUploader.svelte';
@@ -28,7 +28,7 @@
 	}
 
 	$effect(() => {
-		const profile = getBusinessProfile();
+		const profile = repositories.businessProfile.getBusinessProfile();
 		if (profile) {
 			bpName = profile.name;
 			bpEmail = profile.email;
@@ -50,7 +50,7 @@
 					metaObj[pair.key.trim()] = pair.value;
 				}
 			}
-			await saveBusinessProfile({
+			await repositories.businessProfile.saveBusinessProfile({
 				name: bpName,
 				email: bpEmail,
 				phone: bpPhone,

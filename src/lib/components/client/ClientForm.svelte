@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Client, Payer, KeyValuePair } from '$lib/types';
+	import { repositories } from '$lib/repositories';
+		import type { Client, Payer, KeyValuePair } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
-	import { getPayers } from '$lib/db/queries/payers';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
@@ -31,7 +31,7 @@
 	}
 
 	$effect(() => {
-		payers = getPayers();
+		payers = repositories.payers.getPayers();
 	});
 
 	function handleSubmit(e: SubmitEvent) {
@@ -118,6 +118,6 @@
 
 	<div class="flex justify-end gap-3 pt-2">
 		<Button variant="secondary" onclick={() => history.back()}>{i18n.t('common.cancel')}</Button>
-		<Button type="submit">{initialData ? i18n.t('common.saveChanges') : i18n.t('client.createClient')}</Button>
+		<Button type="submit">{initialData ? i18n.t('common.saveChanges') : i18n.t('client.repositories.clients.createClient')}</Button>
 	</div>
 </form>
