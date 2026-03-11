@@ -30,11 +30,13 @@ import {
 	convertEstimateToInvoice
 } from './estimates.js';
 import { query, execute, save, runRaw } from '../connection.svelte.js';
+import { logAudit } from '../audit.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);
 const mockSave = vi.mocked(save);
 const mockRunRaw = vi.mocked(runRaw);
+const mockLogAudit = vi.mocked(logAudit);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -259,11 +261,31 @@ describe('updateEstimate', () => {
 });
 
 describe('deleteEstimate', () => {
-	it('deletes estimate and saves', async () => {
+	it('deletes estimate and audit logs inside a transaction', async () => {
 		await deleteEstimate(3);
 
+		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM estimates WHERE id = ?', [3]);
+		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
 		expect(mockSave).toHaveBeenCalled();
+	});
+
+	it('rolls back when the delete fails', async () => {
+		mockExecute.mockImplementationOnce(() => {
+			throw new Error('DELETE failed');
+		});
+
+		await expect(deleteEstimate(3)).rejects.toThrow('DELETE failed');
+		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+
+	it('rolls back when the audit log write fails', async () => {
+		mockLogAudit.mockImplementationOnce(() => { throw new Error('audit write failed'); });
+
+		await expect(deleteEstimate(3)).rejects.toThrow('audit write failed');
+		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
+		expect(mockSave).not.toHaveBeenCalled();
 	});
 });
 

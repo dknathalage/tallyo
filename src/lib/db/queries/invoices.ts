@@ -181,8 +181,15 @@ export async function updateInvoice(
 
 export async function deleteInvoice(id: number): Promise<void> {
 	const invoice = getInvoice(id);
-	execute(`DELETE FROM invoices WHERE id = ?`, [id]);
-	logAudit({ entity_type: 'invoice', entity_id: id, action: 'delete', context: invoice?.invoice_number ?? '' });
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(`DELETE FROM invoices WHERE id = ?`, [id]);
+		logAudit({ entity_type: 'invoice', entity_id: id, action: 'delete', context: invoice?.invoice_number ?? '' });
+		runRaw('COMMIT');
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
+	}
 	await save();
 }
 

@@ -1,4 +1,4 @@
-import { execute, query, save } from '../connection.svelte.js';
+import { execute, query, save, runRaw } from '../connection.svelte.js';
 import { logAudit, computeChanges } from '../audit.js';
 import type { Client, PartySnapshot } from '../../types/index.js';
 
@@ -74,8 +74,15 @@ export async function updateClient(
 
 export async function deleteClient(id: number): Promise<void> {
 	const client = getClient(id);
-	execute(`DELETE FROM clients WHERE id = ?`, [id]);
-	logAudit({ entity_type: 'client', entity_id: id, action: 'delete', context: client?.name ?? '' });
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(`DELETE FROM clients WHERE id = ?`, [id]);
+		logAudit({ entity_type: 'client', entity_id: id, action: 'delete', context: client?.name ?? '' });
+		runRaw('COMMIT');
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
+	}
 	await save();
 }
 
@@ -84,9 +91,16 @@ export async function bulkDeleteClients(ids: number[]): Promise<void> {
 	const batch_id = crypto.randomUUID();
 	const clients = ids.map((id) => getClient(id));
 	const placeholders = ids.map(() => '?').join(',');
-	execute(`DELETE FROM clients WHERE id IN (${placeholders})`, ids);
-	for (let i = 0; i < ids.length; i++) {
-		logAudit({ entity_type: 'client', entity_id: ids[i], action: 'delete', context: clients[i]?.name ?? '', batch_id });
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(`DELETE FROM clients WHERE id IN (${placeholders})`, ids);
+		for (let i = 0; i < ids.length; i++) {
+			logAudit({ entity_type: 'client', entity_id: ids[i], action: 'delete', context: clients[i]?.name ?? '', batch_id });
+		}
+		runRaw('COMMIT');
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
 	}
 	await save();
 }
