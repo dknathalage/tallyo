@@ -1,5 +1,7 @@
 # Invoice Manager
 
+[![CI](https://github.com/dknathalage/invoices/actions/workflows/ci.yml/badge.svg)](https://github.com/dknathalage/invoices/actions/workflows/ci.yml)
+
 A local-first invoice management app that runs entirely in your browser. No backend, no cloud — your data stays on your device.
 
 Built with SvelteKit, SQLite (via WebAssembly), and Tailwind CSS. Installable as a PWA for a native-like experience on any platform.
