@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
-	import { getPayers, bulkDeletePayers } from '$lib/db/queries/payers';
+	import { repositories } from '$lib/repositories';
+		import { base } from '$app/paths';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -16,7 +16,7 @@
 
 	let payers = $derived.by(() => {
 		refreshTrigger;
-		return getPayers(search || undefined);
+		return repositories.payers.getPayers(search || undefined);
 	});
 
 	$effect(() => {
@@ -45,7 +45,7 @@
 	}
 
 	async function handleBulkDelete() {
-		await bulkDeletePayers([...selectedIds]);
+		await repositories.payers.bulkDeletePayers([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
 		refreshTrigger++;

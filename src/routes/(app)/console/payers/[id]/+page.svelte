@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getPayer, updatePayer, deletePayer, getPayerClients } from '$lib/db/queries/payers';
-	import { getEntityHistory } from '$lib/db/queries/audit';
 	import PayerForm from '$lib/components/payer/PayerForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
@@ -11,9 +10,9 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let payerId = $derived(Number(page.params.id));
-	let payer = $derived(getPayer(payerId));
-	let linkedClients = $derived(getPayerClients(payerId));
-	let history = $derived(getEntityHistory('payer', payerId));
+	let payer = $derived(repositories.payers.getPayer(payerId));
+	let linkedClients = $derived(repositories.payers.getPayerClients(payerId));
+	let history = $derived(repositories.audit.getEntityHistory('payer', payerId));
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
@@ -28,12 +27,12 @@
 	}
 
 	async function handleUpdate(data: { name: string; email: string; phone: string; address: string; metadata: string }) {
-		await updatePayer(payerId, data);
+		await repositories.payers.updatePayer(payerId, data);
 		editing = false;
 	}
 
 	async function handleDelete() {
-		await deletePayer(payerId);
+		await repositories.payers.deletePayer(payerId);
 		goto(`${base}/console/payers`);
 	}
 

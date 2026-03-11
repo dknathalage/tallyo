@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
-	import { getCatalogItems, getCatalogCategories, bulkDeleteCatalogItems, getCatalogItemsWithTierRate } from '$lib/db/queries/catalog';
-	import { getRateTiers } from '$lib/db/queries/rate-tiers';
+	import { repositories } from '$lib/repositories';
+		import { base } from '$app/paths';
 	import { formatCurrency } from '$lib/utils/format';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -24,21 +23,21 @@
 
 	let tiers = $derived.by(() => {
 		refreshTrigger;
-		return getRateTiers();
+		return repositories.rateTiers.getRateTiers();
 	});
 
 	let categories = $derived.by(() => {
 		refreshTrigger;
-		return getCatalogCategories();
+		return repositories.catalog.getCatalogCategories();
 	});
 
 	let items = $derived.by((): (CatalogItem & { tier_rate?: number })[] => {
 		refreshTrigger;
 		const tierId = selectedTierId ? Number(selectedTierId) : undefined;
 		if (tierId) {
-			return getCatalogItemsWithTierRate(search || undefined, selectedCategory || undefined, tierId);
+			return repositories.catalog.getCatalogItemsWithTierRate(search || undefined, selectedCategory || undefined, tierId);
 		}
-		return getCatalogItems(search || undefined, selectedCategory || undefined);
+		return repositories.catalog.getCatalogItems(search || undefined, selectedCategory || undefined);
 	});
 
 	$effect(() => {
@@ -70,7 +69,7 @@
 	}
 
 	async function handleBulkDelete() {
-		await bulkDeleteCatalogItems([...selectedIds]);
+		await repositories.catalog.bulkDeleteCatalogItems([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
 		refreshTrigger++;

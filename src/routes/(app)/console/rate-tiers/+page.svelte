@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { getRateTiers, createRateTier, updateRateTier, deleteRateTier } from '$lib/db/queries/rate-tiers';
-	import type { RateTier } from '$lib/types';
+	import { repositories } from '$lib/repositories';
+		import type { RateTier } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -11,7 +11,7 @@
 	let refreshTrigger = $state(0);
 	let tiers = $derived.by(() => {
 		refreshTrigger;
-		return getRateTiers();
+		return repositories.rateTiers.getRateTiers();
 	});
 
 	let showForm = $state(false);
@@ -55,13 +55,13 @@
 
 		try {
 			if (editingTier) {
-				await updateRateTier(editingTier.id, {
+				await repositories.rateTiers.updateRateTier(editingTier.id, {
 					name: formName,
 					description: formDescription,
 					sort_order: formSortOrder
 				});
 			} else {
-				await createRateTier({
+				await repositories.rateTiers.createRateTier({
 					name: formName,
 					description: formDescription,
 					sort_order: formSortOrder
@@ -82,7 +82,7 @@
 	async function handleDelete() {
 		if (!deletingTier) return;
 		try {
-			await deleteRateTier(deletingTier.id);
+			await repositories.rateTiers.deleteRateTier(deletingTier.id);
 			showDeleteConfirm = false;
 			deletingTier = null;
 			refreshTrigger++;

@@ -1,7 +1,6 @@
 <script lang="ts">
-	import Button from '$lib/components/shared/Button.svelte';
-	import { getRateTiers } from '$lib/db/queries/rate-tiers.js';
-	import { getColumnMappings, createColumnMapping, deleteColumnMapping } from '$lib/db/queries/column-mappings.js';
+	import { repositories } from '$lib/repositories';
+		import Button from '$lib/components/shared/Button.svelte';
 	import { autoDetectMapping, type ColumnMappingConfig, type TargetField } from '$lib/import/map-columns.js';
 	import type { RateTier, ColumnMapping } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -33,8 +32,8 @@
 
 	// Initialize
 	$effect(() => {
-		tiers = getRateTiers();
-		savedMappings = getColumnMappings('catalog');
+		tiers = repositories.rateTiers.getRateTiers();
+		savedMappings = repositories.columnMappings.getColumnMappings('catalog');
 
 		// Auto-detect mapping with smart data-driven heuristics
 		const detected = autoDetectMapping(headers, sampleRows);
@@ -132,7 +131,7 @@
 			allMappings[h] = fieldMap[h] ?? 'skip';
 		}
 
-		await createColumnMapping({
+		await repositories.columnMappings.createColumnMapping({
 			name: saveName.trim(),
 			entity_type: 'catalog',
 			mapping: allMappings,
@@ -143,14 +142,14 @@
 			header_row: headerRow
 		});
 
-		savedMappings = getColumnMappings('catalog');
+		savedMappings = repositories.columnMappings.getColumnMappings('catalog');
 		saveName = '';
 		showSave = false;
 	}
 
 	async function handleDeletePreset(id: number) {
-		await deleteColumnMapping(id);
-		savedMappings = getColumnMappings('catalog');
+		await repositories.columnMappings.deleteColumnMapping(id);
+		savedMappings = repositories.columnMappings.getColumnMappings('catalog');
 	}
 
 	let hasNameMapping = $derived(

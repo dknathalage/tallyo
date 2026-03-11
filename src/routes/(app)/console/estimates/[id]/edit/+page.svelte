@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { repositories } from '$lib/repositories';
+		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { getEstimate, getEstimateLineItems, updateEstimate } from '$lib/db/queries/estimates.js';
 	import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
 	import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -12,10 +12,10 @@
 
 	$effect(() => {
 		const id = Number(page.params.id);
-		const est = getEstimate(id);
+		const est = repositories.estimates.getEstimate(id);
 		estimate = est;
 		if (est) {
-			lineItems = getEstimateLineItems(est.id);
+			lineItems = repositories.estimates.getEstimateLineItems(est.id);
 		}
 	});
 
@@ -39,7 +39,7 @@
 		items: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
 		if (!estimate) return;
-		await updateEstimate(estimate.id, data, items);
+		await repositories.estimates.updateEstimate(estimate.id, data, items);
 		goto(`${base}/console/estimates/${estimate.id}`);
 	}
 </script>

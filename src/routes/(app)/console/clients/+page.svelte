@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
-	import { getClients, bulkDeleteClients, updateClient } from '$lib/db/queries/clients';
-	import { getRateTiers } from '$lib/db/queries/rate-tiers';
+	import { repositories } from '$lib/repositories';
+		import { base } from '$app/paths';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -23,15 +22,15 @@
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let tiers = $derived(getRateTiers());
+	let tiers = $derived(repositories.rateTiers.getRateTiers());
 
 	let clients = $derived.by(() => {
 		refreshTrigger;
-		return getClients(search || undefined);
+		return repositories.clients.getClients(search || undefined);
 	});
 
 	async function handleTierChange(client: { id: number; name: string; email: string; phone: string; address: string }, tierId: number | null) {
-		await updateClient(client.id, { name: client.name, email: client.email, phone: client.phone, address: client.address, pricing_tier_id: tierId });
+		await repositories.clients.updateClient(client.id, { name: client.name, email: client.email, phone: client.phone, address: client.address, pricing_tier_id: tierId });
 		refreshTrigger++;
 	}
 
@@ -62,7 +61,7 @@
 	}
 
 	async function handleBulkDelete() {
-		await bulkDeleteClients([...selectedIds]);
+		await repositories.clients.bulkDeleteClients([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
 		refreshTrigger++;

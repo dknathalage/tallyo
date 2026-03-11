@@ -1,13 +1,7 @@
 <script lang="ts">
-	import { getClients, getClient } from '$lib/db/queries/clients.js';
-	import { buildBusinessSnapshot } from '$lib/db/queries/business-profile.js';
-	import { buildClientSnapshot } from '$lib/db/queries/clients.js';
-	import { buildPayerSnapshot } from '$lib/db/queries/payers.js';
-	import { getPayer } from '$lib/db/queries/payers.js';
-	import { getRateTiers } from '$lib/db/queries/rate-tiers.js';
-	import { generateInvoiceNumber } from '$lib/utils/invoice-number.js';
+	import { repositories } from '$lib/repositories';
+		import { generateInvoiceNumber } from '$lib/utils/invoice-number.js';
 	import { today, formatCurrency } from '$lib/utils/format.js';
-	import { getBusinessProfile } from '$lib/db/queries/business-profile.js';
 	import type { Client, Invoice, LineItem, KeyValuePair, PartySnapshot } from '$lib/types/index.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
@@ -78,9 +72,9 @@
 		}
 	});
 
-	let selectedClient = $derived(clientId ? getClient(clientId) : null);
+	let selectedClient = $derived(clientId ? repositories.clients.getClient(clientId) : null);
 	let activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
-	let tiers = $derived(getRateTiers());
+	let tiers = $derived(repositories.rateTiers.getRateTiers());
 	let activeTierName = $derived(tiers.find(t => t.id === activeTierId)?.name ?? null);
 
 	let subtotal = $derived(
@@ -132,11 +126,11 @@
 
 	// Initialize clients, invoice number, business snapshot, and edit-mode snapshots
 	$effect(() => {
-		clients = getClients();
+		clients = repositories.clients.getClients();
 		if (!initialData) {
 			invoiceNumber = generateInvoiceNumber();
 			// Set default currency from business profile
-			const profile = getBusinessProfile();
+			const profile = repositories.businessProfile.getBusinessProfile();
 			if (profile && !currencyCode) {
 				currencyCode = profile.default_currency || 'USD';
 			}
@@ -144,7 +138,7 @@
 		if (!currencyCode) currencyCode = 'USD';
 
 		// Load business snapshot
-		businessSnapshot = buildBusinessSnapshot();
+		businessSnapshot = repositories.businessProfile.buildBusinessSnapshot();
 
 		// If editing existing invoice, load snapshots from the invoice
 		if (initialData) {
@@ -165,13 +159,13 @@
 		if (!clientId || initialData) return;
 
 		// Auto-populate client metadata from client record
-		const client = getClient(clientId);
+		const client = repositories.clients.getClient(clientId);
 		if (client) {
 			clientMetadataPairs = parseMetadata(client.metadata);
 
 			// Auto-populate payer from client's linked payer
 			if (client.payer_id) {
-				const payer = getPayer(client.payer_id);
+				const payer = repositories.payers.getPayer(client.payer_id);
 				if (payer) {
 					payerName = payer.name;
 					payerEmail = payer.email;
@@ -476,7 +470,7 @@
 	<!-- Actions -->
 	<div class="flex justify-end gap-3">
 		<Button type="submit">
-			{initialData ? i18n.t('invoice.updateInvoice') : i18n.t('invoice.createInvoice')}
+			{initialData ? i18n.t('invoice.repositories.invoices.updateInvoice') : i18n.t('invoice.repositories.invoices.createInvoice')}
 		</Button>
 	</div>
 </form>

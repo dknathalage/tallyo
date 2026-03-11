@@ -1,6 +1,6 @@
 <script lang="ts">
-	import InvoiceForm from '$lib/components/invoice/InvoiceForm.svelte';
-	import { createInvoice } from '$lib/db/queries/invoices.js';
+	import { repositories } from '$lib/repositories';
+		import InvoiceForm from '$lib/components/invoice/InvoiceForm.svelte';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -23,7 +23,7 @@
 		},
 		lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
-		await createInvoice(data, lineItems);
+		await repositories.invoices.createInvoice(data, lineItems);
 		goto(`${base}/console/invoices`);
 	}
 </script>
