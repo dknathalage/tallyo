@@ -182,8 +182,15 @@ export async function updateEstimate(
 
 export async function deleteEstimate(id: number): Promise<void> {
 	const estimate = getEstimate(id);
-	execute(`DELETE FROM estimates WHERE id = ?`, [id]);
-	logAudit({ entity_type: 'estimate', entity_id: id, action: 'delete', context: estimate?.estimate_number ?? '' });
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(`DELETE FROM estimates WHERE id = ?`, [id]);
+		logAudit({ entity_type: 'estimate', entity_id: id, action: 'delete', context: estimate?.estimate_number ?? '' });
+		runRaw('COMMIT');
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
+	}
 	await save();
 }
 

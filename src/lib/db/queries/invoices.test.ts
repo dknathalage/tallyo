@@ -23,6 +23,9 @@ import {
 	getClientInvoices
 } from './invoices.js';
 import { query, execute, save, runRaw } from '../connection.svelte.js';
+import { logAudit } from '../audit.js';
+
+const mockLogAudit = vi.mocked(logAudit);
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);
@@ -252,11 +255,33 @@ describe('updateInvoice', () => {
 });
 
 describe('deleteInvoice', () => {
-	it('deletes invoice and saves', async () => {
+	it('deletes invoice and audit logs inside a transaction', async () => {
 		await deleteInvoice(3);
 
+		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM invoices WHERE id = ?', [3]);
+		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
 		expect(mockSave).toHaveBeenCalled();
+	});
+
+	it('rolls back when the delete fails, preventing orphaned audit log entries', async () => {
+		mockExecute.mockImplementationOnce(() => {
+			throw new Error('DELETE failed');
+		});
+
+		await expect(deleteInvoice(3)).rejects.toThrow('DELETE failed');
+		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+
+	it('rolls back when the audit log write fails, preventing silent data loss', async () => {
+		// logAudit is the audit boundary — if it throws (e.g. DB constraint), the
+		// transaction must roll back so the invoice delete is also undone.
+		mockLogAudit.mockImplementationOnce(() => { throw new Error('audit write failed'); });
+
+		await expect(deleteInvoice(3)).rejects.toThrow('audit write failed');
+		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
+		expect(mockSave).not.toHaveBeenCalled();
 	});
 });
 
