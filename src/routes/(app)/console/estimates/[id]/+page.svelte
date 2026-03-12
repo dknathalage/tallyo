@@ -11,6 +11,7 @@
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { addToast } from '$lib/stores/toast.js';
 
 	let estimate: Estimate | null = $state(null);
 	let lineItems: EstimateLineItem[] = $state([]);
@@ -63,7 +64,7 @@
 			const invoiceId = await repositories.estimates.convertEstimateToInvoice(estimate.id);
 			goto(`${base}/console/invoices/${invoiceId}`);
 		} catch (e: any) {
-			alert(e.message || 'Failed to convert estimate to invoice');
+			addToast({ type: 'error', message: e.message || 'Failed to convert estimate to invoice' });
 		} finally {
 			converting = false;
 			refreshTrigger++;
