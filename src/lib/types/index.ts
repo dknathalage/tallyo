@@ -27,6 +27,7 @@ export interface Invoice {
 	payment_terms: PaymentTerms;
 	subtotal: number;
 	tax_rate: number;
+	tax_rate_id: number | null;
 	tax_amount: number;
 	total: number;
 	notes: string;
@@ -65,6 +66,7 @@ export interface Estimate {
 	valid_until: string;
 	subtotal: number;
 	tax_rate: number;
+	tax_rate_id: number | null;
 	tax_amount: number;
 	total: number;
 	notes: string;
@@ -224,4 +226,14 @@ export interface PartySnapshot {
 export interface KeyValuePair {
 	key: string;
 	value: string;
+}
+
+export interface TaxRate {
+	id: number;
+	uuid: string;
+	name: string;
+	rate: number;
+	is_default: number;
+	created_at: string;
+	updated_at: string;
 }

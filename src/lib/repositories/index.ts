@@ -11,6 +11,7 @@ export type {
 	PayerRepository,
 	CatalogRepository,
 	RateTierRepository,
+	TaxRateRepository,
 	BusinessProfileRepository,
 	DashboardRepository,
 	AuditRepository,

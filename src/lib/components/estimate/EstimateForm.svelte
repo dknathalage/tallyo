@@ -2,7 +2,7 @@
 	import { repositories } from '$lib/repositories';
 		import { generateEstimateNumber } from '$lib/utils/estimate-number.js';
 	import { today, formatCurrency } from '$lib/utils/format.js';
-	import type { Client, Estimate, EstimateLineItem, KeyValuePair, PartySnapshot } from '$lib/types/index.js';
+	import type { Client, Estimate, EstimateLineItem, KeyValuePair, PartySnapshot, TaxRate } from '$lib/types/index.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
@@ -24,6 +24,7 @@
 				valid_until: string;
 				subtotal: number;
 				tax_rate: number;
+				tax_rate_id: number | null;
 				tax_amount: number;
 				total: number;
 				notes: string;
@@ -42,7 +43,18 @@
 	let clientId: number | '' = $state(initialData?.client_id ?? '');
 	let date = $state(initialData?.date ?? today());
 	let validUntil = $state(initialData?.valid_until ?? today());
-	let taxRate = $state(initialData?.tax_rate ?? 0);
+	let taxRates = $state<TaxRate[]>([]);
+	let selectedTaxRateId = $state<number | null>(initialData?.tax_rate_id ?? null);
+	let taxRate = $derived.by(() => {
+		if (selectedTaxRateId !== null) {
+			const tr = taxRates.find((r) => r.id === selectedTaxRateId);
+			return tr ? tr.rate : 0;
+		}
+		return 0;
+	});
+	let showNewTaxRate = $state(false);
+	let newTaxRateName = $state('');
+	let newTaxRateValue = $state(0);
 	let notes = $state(initialData?.notes ?? '');
 	let status = $state(initialData?.status ?? 'draft');
 	let currencyCode = $state(initialData?.currency_code ?? '');
@@ -56,7 +68,7 @@
 			clientId = initialData.client_id ?? 0;
 			date = initialData.date ?? today();
 			validUntil = initialData.valid_until ?? today();
-			taxRate = initialData.tax_rate ?? 0;
+			selectedTaxRateId = initialData.tax_rate_id ?? null;
 			notes = initialData.notes ?? '';
 			status = initialData.status ?? 'draft';
 			currencyCode = initialData.currency_code ?? '';
@@ -127,6 +139,11 @@
 	// Initialize clients, estimate number, business snapshot, and edit-mode snapshots
 	$effect(() => {
 		clients = repositories.clients.getClients();
+		taxRates = repositories.taxRates.getTaxRates();
+		if (selectedTaxRateId === null && taxRates.length > 0) {
+			const defaultRate = taxRates.find((r) => r.is_default === 1) ?? taxRates[0];
+			selectedTaxRateId = defaultRate.id;
+		}
 		if (!initialData) {
 			estimateNumber = generateEstimateNumber();
 			// Set default currency from business profile
@@ -228,6 +245,7 @@
 				valid_until: validUntil,
 				subtotal,
 				tax_rate: taxRate,
+				tax_rate_id: selectedTaxRateId,
 				tax_amount: taxAmount,
 				total,
 				notes,
@@ -432,16 +450,39 @@
 			</div>
 
 			<div class="flex items-center justify-between gap-3 text-sm">
-				<label for="tax-rate" class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.taxRate')}</label>
-				<input
-					id="tax-rate"
-					type="number"
-					bind:value={taxRate}
-					min="0"
-					step="any"
-					class="w-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-right text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-				/>
+				<label for="est-tax-rate-select" class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.taxRate')}</label>
+				<div class="flex items-center gap-2">
+					<select
+						id="est-tax-rate-select"
+						bind:value={selectedTaxRateId}
+						class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none"
+					>
+						{#each taxRates as tr}
+							<option value={tr.id}>{tr.name} ({tr.rate}%)</option>
+						{/each}
+					</select>
+					<button
+						type="button"
+						onclick={() => (showNewTaxRate = !showNewTaxRate)}
+						class="text-xs text-primary-600 hover:text-primary-700 cursor-pointer"
+					>+ New</button>
+				</div>
 			</div>
+			{#if showNewTaxRate}
+				<div class="flex items-center gap-2 text-sm">
+					<input type="text" bind:value={newTaxRateName} placeholder="Name" class="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-white" />
+					<input type="number" bind:value={newTaxRateValue} min="0" step="any" placeholder="%" class="w-16 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-white" />
+					<button type="button" onclick={async () => {
+						if (!newTaxRateName.trim()) return;
+						const newId = await repositories.taxRates.createTaxRate({ name: newTaxRateName, rate: newTaxRateValue });
+						taxRates = repositories.taxRates.getTaxRates();
+						selectedTaxRateId = newId;
+						showNewTaxRate = false;
+						newTaxRateName = '';
+						newTaxRateValue = 0;
+					}} class="text-xs bg-primary-600 text-white px-2 py-1 rounded cursor-pointer">Add</button>
+				</div>
+			{/if}
 
 			<div class="flex justify-between text-sm">
 				<span class="text-gray-600 dark:text-gray-300">{i18n.t('invoice.tax')}</span>

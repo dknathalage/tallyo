@@ -14,6 +14,7 @@
 			payment_terms: string;
 			subtotal: number;
 			tax_rate: number;
+			tax_rate_id: number | null;
 			tax_amount: number;
 			total: number;
 			notes: string;

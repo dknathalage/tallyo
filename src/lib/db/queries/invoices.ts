@@ -48,6 +48,7 @@ export async function createInvoice(
 		payment_terms?: string;
 		subtotal: number;
 		tax_rate: number;
+		tax_rate_id?: number | null;
 		tax_amount: number;
 		total: number;
 		notes?: string;
@@ -62,7 +63,7 @@ export async function createInvoice(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				crypto.randomUUID(),
 				data.invoice_number,
@@ -72,6 +73,7 @@ export async function createInvoice(
 				data.payment_terms ?? 'custom',
 				data.subtotal,
 				data.tax_rate,
+				data.tax_rate_id ?? null,
 				data.tax_amount,
 				data.total,
 				data.notes ?? '',
@@ -119,6 +121,7 @@ export async function updateInvoice(
 		payment_terms?: string;
 		subtotal: number;
 		tax_rate: number;
+		tax_rate_id?: number | null;
 		tax_amount: number;
 		total: number;
 		notes?: string;
@@ -134,7 +137,7 @@ export async function updateInvoice(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, payment_terms = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
+			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, payment_terms = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
 			[
 				data.invoice_number,
 				data.client_id,
@@ -142,7 +145,8 @@ export async function updateInvoice(
 				data.due_date,
 				data.payment_terms ?? 'custom',
 				data.subtotal,
-				data.tax_rate,
+				data.tax_rate_id ? data.tax_rate : data.tax_rate,
+				data.tax_rate_id ?? null,
 				data.tax_amount,
 				data.total,
 				data.notes ?? '',
