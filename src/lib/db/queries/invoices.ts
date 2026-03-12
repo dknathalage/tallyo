@@ -1,5 +1,4 @@
-import { execute, query, save, runRaw } from '../connection.svelte.js';
-import { logAudit, computeChanges } from '../audit.js';
+import { execute, query, runRaw } from '../connection.svelte.js';
 import type { Invoice, LineItem, AgingBucket } from '../../types/index.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
@@ -41,67 +40,60 @@ export function getInvoiceLineItems(invoiceId: number): LineItem[] {
 	);
 }
 
+/**
+ * Pure SQL: inserts the invoice and its line items, returns the new invoice id.
+ * No transaction management, no audit logging, no save().
+ */
 export async function createInvoice(
 	data: CreateInvoiceInput,
 	lineItems: LineItemInput[]
 ): Promise<number> {
-	runRaw('BEGIN TRANSACTION');
-	try {
+	execute(
+		`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		[
+			crypto.randomUUID(),
+			data.invoice_number,
+			data.client_id,
+			data.date,
+			data.due_date,
+			data.payment_terms ?? 'custom',
+			data.subtotal,
+			data.tax_rate,
+			data.tax_rate_id ?? null,
+			data.tax_amount,
+			data.total,
+			data.notes ?? '',
+			data.status ?? 'draft',
+			data.currency_code ?? 'USD',
+			data.business_snapshot ?? '{}',
+			data.client_snapshot ?? '{}',
+			data.payer_snapshot ?? '{}'
+		]
+	);
+
+	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+	const invoiceId = result[0].id;
+
+	for (const item of lineItems) {
 		execute(
-			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				crypto.randomUUID(),
-				data.invoice_number,
-				data.client_id,
-				data.date,
-				data.due_date,
-				data.payment_terms ?? 'custom',
-				data.subtotal,
-				data.tax_rate,
-				data.tax_rate_id ?? null,
-				data.tax_amount,
-				data.total,
-				data.notes ?? '',
-				data.status ?? 'draft',
-				data.currency_code ?? 'USD',
-				data.business_snapshot ?? '{}',
-				data.client_snapshot ?? '{}',
-				data.payer_snapshot ?? '{}'
-			]
+			`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			[crypto.randomUUID(), invoiceId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
 		);
-
-		const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
-		const invoiceId = result[0].id;
-
-		for (const item of lineItems) {
-			execute(
-				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				[crypto.randomUUID(), invoiceId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
-			);
-		}
-
-		logAudit({
-			entity_type: 'invoice',
-			entity_id: invoiceId,
-			action: 'create',
-			context: data.invoice_number
-		});
-
-		runRaw('COMMIT');
-		await save();
-		return invoiceId;
-	} catch (e) {
-		runRaw('ROLLBACK');
-		throw e;
 	}
+
+	return invoiceId;
 }
 
+/**
+ * Pure SQL: updates the invoice and replaces its line items.
+ * No transaction management, no audit logging, no save().
+ * If tax_rate_id is provided, looks up the actual rate from tax_rates.
+ */
 export async function updateInvoice(
 	id: number,
 	data: UpdateInvoiceInput,
 	lineItems: LineItemInput[]
 ): Promise<void> {
-	const oldInvoice = getInvoice(id);
 	// If a tax_rate_id is provided, look up the actual rate from the tax_rates table
 	let resolvedTaxRate = data.tax_rate;
 	if (data.tax_rate_id) {
@@ -110,129 +102,81 @@ export async function updateInvoice(
 			resolvedTaxRate = taxRateRow[0].rate;
 		}
 	}
-	runRaw('BEGIN TRANSACTION');
-	try {
+
+	execute(
+		`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, payment_terms = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
+		[
+			data.invoice_number,
+			data.client_id,
+			data.date,
+			data.due_date,
+			data.payment_terms ?? 'custom',
+			data.subtotal,
+			resolvedTaxRate,
+			data.tax_rate_id ?? null,
+			data.tax_amount,
+			data.total,
+			data.notes ?? '',
+			data.status ?? 'draft',
+			data.currency_code ?? 'USD',
+			data.business_snapshot ?? '{}',
+			data.client_snapshot ?? '{}',
+			data.payer_snapshot ?? '{}',
+			id
+		]
+	);
+
+	execute(`DELETE FROM line_items WHERE invoice_id = ?`, [id]);
+
+	for (const item of lineItems) {
 		execute(
-			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, payment_terms = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
-			[
-				data.invoice_number,
-				data.client_id,
-				data.date,
-				data.due_date,
-				data.payment_terms ?? 'custom',
-				data.subtotal,
-				resolvedTaxRate,
-				data.tax_rate_id ?? null,
-				data.tax_amount,
-				data.total,
-				data.notes ?? '',
-				data.status ?? 'draft',
-				data.currency_code ?? 'USD',
-				data.business_snapshot ?? '{}',
-				data.client_snapshot ?? '{}',
-				data.payer_snapshot ?? '{}',
-				id
-			]
+			`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			[crypto.randomUUID(), id, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
 		);
-
-		execute(`DELETE FROM line_items WHERE invoice_id = ?`, [id]);
-
-		for (const item of lineItems) {
-			execute(
-				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				[crypto.randomUUID(), id, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
-			);
-		}
-
-		if (oldInvoice) {
-			const changes = computeChanges(
-				oldInvoice as unknown as Record<string, unknown>,
-				{ ...data, notes: data.notes ?? '', status: data.status ?? 'draft', currency_code: data.currency_code ?? 'USD' },
-				['invoice_number', 'client_id', 'date', 'due_date', 'subtotal', 'tax_rate', 'total', 'notes', 'status', 'currency_code']
-			);
-			if (Object.keys(changes).length > 0) {
-				logAudit({ entity_type: 'invoice', entity_id: id, action: 'update', changes, context: data.invoice_number });
-			}
-		}
-
-		runRaw('COMMIT');
-		await save();
-	} catch (e) {
-		runRaw('ROLLBACK');
-		throw e;
 	}
 }
 
+/**
+ * Pure SQL: deletes the invoice row (cascades to line_items via FK or handled separately).
+ * No transaction management, no audit logging, no save().
+ */
 export async function deleteInvoice(id: number): Promise<void> {
-	const invoice = getInvoice(id);
-	runRaw('BEGIN TRANSACTION');
-	try {
-		execute(`DELETE FROM invoices WHERE id = ?`, [id]);
-		logAudit({ entity_type: 'invoice', entity_id: id, action: 'delete', context: invoice?.invoice_number ?? '' });
-		runRaw('COMMIT');
-	} catch (e) {
-		runRaw('ROLLBACK');
-		throw e;
-	}
-	await save();
+	execute(`DELETE FROM invoices WHERE id = ?`, [id]);
 }
 
+/**
+ * Pure SQL: updates invoice status.
+ * No audit logging, no save().
+ */
 export async function updateInvoiceStatus(id: number, status: string): Promise<void> {
-	const oldInvoice = getInvoice(id);
 	execute(
 		`UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?`,
 		[status, id]
 	);
-	logAudit({
-		entity_type: 'invoice',
-		entity_id: id,
-		action: 'status_change',
-		changes: { status: { old: oldInvoice?.status ?? '', new: status } },
-		context: oldInvoice?.invoice_number ?? ''
-	});
-	await save();
 }
 
+/**
+ * Pure SQL: bulk deletes invoices and their line items.
+ * No transaction management, no audit logging, no save().
+ */
 export async function bulkDeleteInvoices(ids: number[]): Promise<void> {
 	if (ids.length === 0) return;
-	const batch_id = crypto.randomUUID();
-	const invoices = ids.map((id) => getInvoice(id));
 	const placeholders = ids.map(() => '?').join(',');
-	runRaw('BEGIN TRANSACTION');
-	try {
-		execute(`DELETE FROM line_items WHERE invoice_id IN (${placeholders})`, ids);
-		execute(`DELETE FROM invoices WHERE id IN (${placeholders})`, ids);
-		for (let i = 0; i < ids.length; i++) {
-			logAudit({ entity_type: 'invoice', entity_id: ids[i], action: 'delete', context: invoices[i]?.invoice_number ?? '', batch_id });
-		}
-		runRaw('COMMIT');
-		await save();
-	} catch (e) {
-		runRaw('ROLLBACK');
-		throw e;
-	}
+	execute(`DELETE FROM line_items WHERE invoice_id IN (${placeholders})`, ids);
+	execute(`DELETE FROM invoices WHERE id IN (${placeholders})`, ids);
 }
 
+/**
+ * Pure SQL: bulk updates invoice status.
+ * No audit logging, no save().
+ */
 export async function bulkUpdateInvoiceStatus(ids: number[], status: string): Promise<void> {
 	if (ids.length === 0) return;
-	const batch_id = crypto.randomUUID();
-	const invoices = ids.map((id) => getInvoice(id));
 	const placeholders = ids.map(() => '?').join(',');
 	execute(
 		`UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
 		[status, ...ids]
 	);
-	for (let i = 0; i < ids.length; i++) {
-		logAudit({
-			entity_type: 'invoice',
-			entity_id: ids[i],
-			action: 'status_change',
-			changes: { status: { old: invoices[i]?.status ?? '', new: status } },
-			context: invoices[i]?.invoice_number ?? '',
-			batch_id
-		});
-	}
-	await save();
 }
 
 export function getClientInvoices(clientId: number): Invoice[] {
@@ -243,38 +187,32 @@ export function getClientInvoices(clientId: number): Invoice[] {
 }
 
 /**
- * Marks any 'Sent' invoice whose due_date is before today as 'Overdue'.
- * Returns the number of invoices updated.
+ * Marks any 'sent' invoice whose due_date is before today as 'overdue'.
+ * Pure SQL: returns the list of invoices that were updated (for audit use).
+ * No audit logging, no save().
  */
-export async function markOverdueInvoices(): Promise<number> {
-	const overdueIds = query<{ id: number }>(
-		`SELECT id FROM invoices WHERE status = 'sent' AND due_date < date('now')`
+export async function markOverdueInvoices(): Promise<Array<{ id: number; invoice_number: string }>> {
+	const overdue = query<{ id: number; invoice_number: string }>(
+		`SELECT id, invoice_number FROM invoices WHERE status = 'sent' AND due_date < date('now')`
 	);
-	if (overdueIds.length === 0) return 0;
+	if (overdue.length === 0) return [];
 
-	const placeholders = overdueIds.map(() => '?').join(',');
-	const ids = overdueIds.map((r) => r.id);
+	const placeholders = overdue.map(() => '?').join(',');
+	const ids = overdue.map((r) => r.id);
 
 	execute(
 		`UPDATE invoices SET status = 'overdue', updated_at = datetime('now') WHERE id IN (${placeholders})`,
 		ids
 	);
 
-	for (const { id } of overdueIds) {
-		const inv = getInvoice(id);
-		logAudit({
-			entity_type: 'invoice',
-			entity_id: id,
-			action: 'status_change',
-			changes: { status: { old: 'sent', new: 'overdue' } },
-			context: inv?.invoice_number ?? ''
-		});
-	}
-
-	await save();
-	return overdueIds.length;
+	return overdue;
 }
 
+/**
+ * Pure SQL: duplicates an invoice and its line items.
+ * No transaction management, no audit logging, no save().
+ * Returns the new invoice id.
+ */
 export async function duplicateInvoice(id: number): Promise<number> {
 	const original = getInvoice(id);
 	if (!original) throw new Error(`Invoice ${id} not found`);
@@ -285,48 +223,39 @@ export async function duplicateInvoice(id: number): Promise<number> {
 
 	const originalLineItems = getInvoiceLineItems(id);
 
-	runRaw('BEGIN TRANSACTION');
-	try {
+	execute(
+		`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		[
+			crypto.randomUUID(),
+			newNumber,
+			original.client_id,
+			todayStr,
+			'',
+			'custom',
+			original.subtotal,
+			original.tax_rate,
+			original.tax_amount,
+			original.total,
+			original.notes ?? '',
+			'draft',
+			original.currency_code ?? 'USD',
+			original.business_snapshot ?? '{}',
+			original.client_snapshot ?? '{}',
+			original.payer_snapshot ?? '{}'
+		]
+	);
+
+	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+	const newId = result[0].id;
+
+	for (const item of originalLineItems) {
 		execute(
-			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				crypto.randomUUID(),
-				newNumber,
-				original.client_id,
-				todayStr,
-				'',
-				'custom',
-				original.subtotal,
-				original.tax_rate,
-				original.tax_amount,
-				original.total,
-				original.notes ?? '',
-				'draft',
-				original.currency_code ?? 'USD',
-				original.business_snapshot ?? '{}',
-				original.client_snapshot ?? '{}',
-				original.payer_snapshot ?? '{}'
-			]
+			`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			[crypto.randomUUID(), newId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
 		);
-
-		const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
-		const newId = result[0].id;
-
-		for (const item of originalLineItems) {
-			execute(
-				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				[crypto.randomUUID(), newId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
-			);
-		}
-
-		logAudit({ entity_type: 'invoice', entity_id: newId, action: 'create', context: `${newNumber} (duplicated from ${original.invoice_number})` });
-		runRaw('COMMIT');
-		await save();
-		return newId;
-	} catch (e) {
-		runRaw('ROLLBACK');
-		throw e;
 	}
+
+	return newId;
 }
 
 export function getAgingReport(): AgingBucket[] {

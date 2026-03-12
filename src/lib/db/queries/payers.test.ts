@@ -2,21 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../connection.svelte.js', () => ({
 	query: vi.fn(),
-	execute: vi.fn(),
-	save: vi.fn().mockResolvedValue(undefined)
-}));
-
-vi.mock('../audit.js', () => ({
-	logAudit: vi.fn(),
-	computeChanges: vi.fn().mockReturnValue({})
+	execute: vi.fn()
 }));
 
 import { getPayers, getPayer, createPayer, updatePayer, deletePayer, buildPayerSnapshot } from './payers.js';
-import { query, execute, save } from '../connection.svelte.js';
+import { query, execute } from '../connection.svelte.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);
-const mockSave = vi.mocked(save);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -69,7 +62,7 @@ describe('createPayer', () => {
 			'INSERT INTO payers (uuid, name, email, phone, address, metadata) VALUES (?, ?, ?, ?, ?, ?)',
 			[expect.any(String), 'New Payer', 'payer@test.com', '', '', '{}']
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() is now the repository's responsibility, not the query fn's
 		expect(id).toBe(10);
 	});
 
@@ -84,14 +77,14 @@ describe('createPayer', () => {
 });
 
 describe('updatePayer', () => {
-	it('updates payer and saves', async () => {
+	it('updates payer', async () => {
 		await updatePayer(1, { name: 'Updated Payer', email: 'new@test.com' });
 
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE payers SET'),
 			['Updated Payer', 'new@test.com', '', '', '{}', 1]
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() is now the repository's responsibility
 	});
 
 	it('throws when name is empty', async () => {
@@ -100,11 +93,11 @@ describe('updatePayer', () => {
 });
 
 describe('deletePayer', () => {
-	it('deletes payer and saves', async () => {
+	it('deletes payer', async () => {
 		await deletePayer(5);
 
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM payers WHERE id = ?', [5]);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 });
 

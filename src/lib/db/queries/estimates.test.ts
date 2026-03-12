@@ -2,14 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../connection.svelte.js', () => ({
 	query: vi.fn(),
-	execute: vi.fn(),
-	save: vi.fn().mockResolvedValue(undefined),
-	runRaw: vi.fn()
-}));
-
-vi.mock('../audit.js', () => ({
-	logAudit: vi.fn(),
-	computeChanges: vi.fn().mockReturnValue({})
+	execute: vi.fn()
 }));
 
 vi.mock('../../utils/invoice-number.js', () => ({
@@ -29,14 +22,10 @@ import {
 	bulkUpdateEstimateStatus,
 	convertEstimateToInvoice
 } from './estimates.js';
-import { query, execute, save, runRaw } from '../connection.svelte.js';
-import { logAudit } from '../audit.js';
+import { query, execute } from '../connection.svelte.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);
-const mockSave = vi.mocked(save);
-const mockRunRaw = vi.mocked(runRaw);
-const mockLogAudit = vi.mocked(logAudit);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -129,12 +118,11 @@ describe('createEstimate', () => {
 		{ description: 'Service A', quantity: 1, rate: 100, amount: 100, sort_order: 0, notes: 'Test note' }
 	];
 
-	it('creates estimate with line items in a transaction', async () => {
+	it('creates estimate with line items and returns id', async () => {
 		mockQuery.mockReturnValue([{ id: 7 }]);
 
 		const id = await createEstimate(estimateData, lineItems);
 
-		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO estimates'),
 			expect.arrayContaining(['EST-0001', 1])
@@ -143,19 +131,17 @@ describe('createEstimate', () => {
 			expect.stringContaining('INSERT INTO estimate_line_items'),
 			[expect.any(String), 7, 'Service A', 1, 100, 100, 'Test note', 0]
 		);
-		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
-		expect(mockSave).toHaveBeenCalled();
+		// Transaction management, audit, and save() are now the repository's responsibility
 		expect(id).toBe(7);
 	});
 
-	it('rolls back on error', async () => {
+	it('propagates execute errors', async () => {
 		mockQuery.mockReturnValue([{ id: 1 }]);
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('SQL error');
 		});
 
 		await expect(createEstimate(estimateData, lineItems)).rejects.toThrow('SQL error');
-		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
 	});
 
 	it('defaults optional fields', async () => {
@@ -213,14 +199,13 @@ describe('updateEstimate', () => {
 		status: 'sent'
 	};
 
-	it('updates estimate and replaces line items in a transaction', async () => {
+	it('updates estimate and replaces line items', async () => {
 		const newItems = [
 			{ description: 'New Service', quantity: 2, rate: 100, amount: 200, sort_order: 0, notes: 'Updated note' }
 		];
 
 		await updateEstimate(1, estimateData, newItems);
 
-		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE estimates SET'),
 			expect.arrayContaining(['EST-0001', 1])
@@ -230,17 +215,15 @@ describe('updateEstimate', () => {
 			expect.stringContaining('INSERT INTO estimate_line_items'),
 			[expect.any(String), 1, 'New Service', 2, 100, 200, 'Updated note', 0]
 		);
-		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
-		expect(mockSave).toHaveBeenCalled();
+		// Transaction management, audit, and save() are now the repository's responsibility
 	});
 
-	it('rolls back on error', async () => {
+	it('propagates execute errors', async () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('Update failed');
 		});
 
 		await expect(updateEstimate(1, estimateData, [])).rejects.toThrow('Update failed');
-		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
 	});
 
 	it('includes snapshot fields in update', async () => {
@@ -261,57 +244,43 @@ describe('updateEstimate', () => {
 });
 
 describe('deleteEstimate', () => {
-	it('deletes estimate and audit logs inside a transaction', async () => {
+	it('deletes estimate', async () => {
 		await deleteEstimate(3);
 
-		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM estimates WHERE id = ?', [3]);
-		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
-		expect(mockSave).toHaveBeenCalled();
+		// Transaction management, logAudit(), and save() are now the repository's responsibility
 	});
 
-	it('rolls back when the delete fails', async () => {
+	it('propagates execute errors', async () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('DELETE failed');
 		});
 
 		await expect(deleteEstimate(3)).rejects.toThrow('DELETE failed');
-		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
-		expect(mockSave).not.toHaveBeenCalled();
-	});
-
-	it('rolls back when the audit log write fails', async () => {
-		mockLogAudit.mockImplementationOnce(() => { throw new Error('audit write failed'); });
-
-		await expect(deleteEstimate(3)).rejects.toThrow('audit write failed');
-		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
-		expect(mockSave).not.toHaveBeenCalled();
 	});
 });
 
 describe('updateEstimateStatus', () => {
-	it('updates status and saves', async () => {
+	it('updates status', async () => {
 		await updateEstimateStatus(1, 'accepted');
 
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE estimates SET status = ?'),
 			['accepted', 1]
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 });
 
 describe('bulkDeleteEstimates', () => {
 	it('does nothing for empty array', async () => {
 		await bulkDeleteEstimates([]);
-		expect(mockRunRaw).not.toHaveBeenCalled();
+		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('deletes multiple estimates in a transaction', async () => {
-		mockQuery.mockReturnValue([]);
+	it('deletes multiple estimates and their line items', async () => {
 		await bulkDeleteEstimates([1, 2, 3]);
 
-		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('DELETE FROM estimate_line_items WHERE estimate_id IN'),
 			[1, 2, 3]
@@ -320,8 +289,7 @@ describe('bulkDeleteEstimates', () => {
 			expect.stringContaining('DELETE FROM estimates WHERE id IN'),
 			[1, 2, 3]
 		);
-		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
-		expect(mockSave).toHaveBeenCalled();
+		// Transaction management, audit, and save() are now the repository's responsibility
 	});
 });
 
@@ -332,14 +300,13 @@ describe('bulkUpdateEstimateStatus', () => {
 	});
 
 	it('updates status for multiple estimates', async () => {
-		mockQuery.mockReturnValue([]);
 		await bulkUpdateEstimateStatus([1, 2], 'sent');
 
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE estimates SET status = ?'),
 			['sent', 1, 2]
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 });
 
@@ -374,7 +341,7 @@ describe('convertEstimateToInvoice', () => {
 		await expect(convertEstimateToInvoice(1)).rejects.toThrow('already been converted');
 	});
 
-	it('converts accepted estimate to invoice', async () => {
+	it('converts accepted estimate to invoice and returns audit info', async () => {
 		const estimate = {
 			id: 1,
 			status: 'accepted',
@@ -394,17 +361,15 @@ describe('convertEstimateToInvoice', () => {
 			payer_snapshot: '{}'
 		};
 
-		// First call: getEstimate in convertEstimateToInvoice
+		// First call: getEstimate
 		mockQuery.mockReturnValueOnce([estimate]);
 		// Second call: getEstimateLineItems
 		mockQuery.mockReturnValueOnce([{ id: 1, description: 'Service', quantity: 1, rate: 100, amount: 100, notes: '', sort_order: 0 }]);
-		// Third call: generateInvoiceNumber (via mock)
-		// Fourth call: last_insert_rowid for invoice
+		// Third call: last_insert_rowid for invoice
 		mockQuery.mockReturnValueOnce([{ id: 42 }]);
 
-		const invoiceId = await convertEstimateToInvoice(1);
+		const result = await convertEstimateToInvoice(1);
 
-		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO invoices'),
 			expect.arrayContaining(['INV-0001', 2])
@@ -417,8 +382,8 @@ describe('convertEstimateToInvoice', () => {
 			expect.stringContaining('UPDATE estimates SET converted_invoice_id'),
 			[42, 1]
 		);
-		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
-		expect(mockSave).toHaveBeenCalled();
-		expect(invoiceId).toBe(42);
+		// Returns an object with ids and numbers for the repository to use for audit
+		expect(result).toMatchObject({ invoiceId: 42, invoiceNumber: 'INV-0001', estimateNumber: 'EST-0001' });
+		// Transaction management, audit, and save() are now the repository's responsibility
 	});
 });

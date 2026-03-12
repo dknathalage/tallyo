@@ -2,13 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../connection.svelte.js', () => ({
 	query: vi.fn(),
-	execute: vi.fn(),
-	save: vi.fn().mockResolvedValue(undefined)
-}));
-
-vi.mock('../audit.js', () => ({
-	logAudit: vi.fn(),
-	computeChanges: vi.fn().mockReturnValue({})
+	execute: vi.fn()
 }));
 
 import {
@@ -18,13 +12,10 @@ import {
 	updateCatalogItem,
 	deleteCatalogItem
 } from './catalog.js';
-import { query, execute, save } from '../connection.svelte.js';
-import { logAudit } from '../audit.js';
+import { query, execute } from '../connection.svelte.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);
-const mockSave = vi.mocked(save);
-const mockLogAudit = vi.mocked(logAudit);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -130,7 +121,7 @@ describe('createCatalogItem', () => {
 			expect.stringContaining('INSERT INTO catalog_items'),
 			expect.arrayContaining(['Widget Pro', 25])
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 
 	it('defaults rate, unit, category, sku to empty/zero when not provided', async () => {
@@ -141,20 +132,6 @@ describe('createCatalogItem', () => {
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO catalog_items'),
 			expect.arrayContaining(['Basic Item', 0, '', '', ''])
-		);
-	});
-
-	it('audit logs the creation with name and rate changes', async () => {
-		mockQuery.mockReturnValue([{ id: 7 }]);
-
-		await createCatalogItem({ name: 'Audit Item', rate: 50 });
-
-		expect(mockLogAudit).toHaveBeenCalledWith(
-			expect.objectContaining({
-				entity_type: 'catalog',
-				entity_id: 7,
-				action: 'create'
-			})
 		);
 	});
 
@@ -174,8 +151,7 @@ describe('createCatalogItem', () => {
 
 describe('updateCatalogItem', () => {
 	it('updates the catalog item fields', async () => {
-		// getCatalogItem called first: return existing item
-		mockQuery.mockReturnValue([{ id: 2, name: 'Old Name', rate: 10 }]);
+		mockQuery.mockReturnValue([]);
 
 		await updateCatalogItem(2, { name: 'New Name', rate: 20 });
 
@@ -183,7 +159,7 @@ describe('updateCatalogItem', () => {
 			expect.stringContaining('UPDATE catalog_items SET'),
 			expect.arrayContaining(['New Name', 20, 2])
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 
 	it('throws when new name is empty', async () => {
@@ -192,74 +168,21 @@ describe('updateCatalogItem', () => {
 		);
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
-
-	it('logs an audit entry when fields change', async () => {
-		const { computeChanges } = await import('../audit.js');
-		const mockComputeChanges = vi.mocked(computeChanges);
-		mockComputeChanges.mockReturnValue({ name: { old: 'Old', new: 'New' } });
-
-		mockQuery.mockReturnValue([{ id: 2, name: 'Old', rate: 10 }]);
-
-		await updateCatalogItem(2, { name: 'New', rate: 10 });
-
-		expect(mockLogAudit).toHaveBeenCalledWith(
-			expect.objectContaining({
-				entity_type: 'catalog',
-				entity_id: 2,
-				action: 'update'
-			})
-		);
-	});
-
-	it('does not log an audit entry when nothing changed', async () => {
-		const { computeChanges } = await import('../audit.js');
-		vi.mocked(computeChanges).mockReturnValue({});
-
-		mockQuery.mockReturnValue([{ id: 2, name: 'Same', rate: 10 }]);
-
-		await updateCatalogItem(2, { name: 'Same', rate: 10 });
-
-		expect(mockLogAudit).not.toHaveBeenCalled();
-	});
 });
 
 describe('deleteCatalogItem', () => {
-	it('deletes the item and saves', async () => {
-		mockQuery.mockReturnValue([{ id: 5, name: 'Doomed Item' }]);
-
+	it('deletes the item', async () => {
 		await deleteCatalogItem(5);
 
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM catalog_items WHERE id = ?', [5]);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 
-	it('audit logs the deletion with the item name as context', async () => {
-		mockQuery.mockReturnValue([{ id: 5, name: 'Doomed Item' }]);
+	it('propagates execute errors', async () => {
+		mockExecute.mockImplementationOnce(() => {
+			throw new Error('DELETE failed');
+		});
 
-		await deleteCatalogItem(5);
-
-		expect(mockLogAudit).toHaveBeenCalledWith(
-			expect.objectContaining({
-				entity_type: 'catalog',
-				entity_id: 5,
-				action: 'delete',
-				context: 'Doomed Item'
-			})
-		);
-	});
-
-	it('audit logs with empty context when item not found', async () => {
-		mockQuery.mockReturnValue([]);
-
-		await deleteCatalogItem(999);
-
-		expect(mockLogAudit).toHaveBeenCalledWith(
-			expect.objectContaining({
-				entity_type: 'catalog',
-				entity_id: 999,
-				action: 'delete',
-				context: ''
-			})
-		);
+		await expect(deleteCatalogItem(5)).rejects.toThrow('DELETE failed');
 	});
 });

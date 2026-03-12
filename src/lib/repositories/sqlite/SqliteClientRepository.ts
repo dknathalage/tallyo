@@ -8,6 +8,8 @@ import {
 	buildClientSnapshot,
 	getClientRevenueSummary
 } from '$lib/db/queries/clients.js';
+import { save } from '$lib/db/connection.svelte.js';
+import { computeChanges } from '$lib/db/audit.js';
 import type { ClientRepository } from '../interfaces/ClientRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
@@ -16,8 +18,8 @@ import type { Client, PartySnapshot, ClientRevenueSummary } from '$lib/types/ind
 
 export class SqliteClientRepository implements ClientRepository {
 	constructor(
-		private readonly _audit?: AuditRepository,
-		private readonly _tx?: StorageTransaction
+		private readonly _audit: AuditRepository,
+		private readonly _tx: StorageTransaction
 	) {}
 
 	getClients(search?: string): Client[] {
@@ -36,19 +38,56 @@ export class SqliteClientRepository implements ClientRepository {
 		return getClientRevenueSummary(clientId);
 	}
 
-	createClient(data: CreateClientInput): Promise<number> {
-		return createClient(data);
+	async createClient(data: CreateClientInput): Promise<number> {
+		const id = await createClient(data);
+		this._audit.logAudit({
+			entity_type: 'client',
+			entity_id: id,
+			action: 'create',
+			changes: {
+				name: { old: null, new: data.name },
+				email: { old: null, new: data.email ?? '' }
+			}
+		});
+		await save();
+		return id;
 	}
 
-	updateClient(id: number, data: UpdateClientInput): Promise<void> {
-		return updateClient(id, data);
+	async updateClient(id: number, data: UpdateClientInput): Promise<void> {
+		const oldClient = getClient(id);
+		await updateClient(id, data);
+		if (oldClient) {
+			const changes = computeChanges(
+				oldClient as unknown as Record<string, unknown>,
+				{ name: data.name, email: data.email ?? '', phone: data.phone ?? '', address: data.address ?? '', pricing_tier_id: data.pricing_tier_id ?? null, metadata: data.metadata ?? '{}', payer_id: data.payer_id ?? null },
+				['name', 'email', 'phone', 'address', 'pricing_tier_id', 'metadata', 'payer_id']
+			);
+			if (Object.keys(changes).length > 0) {
+				this._audit.logAudit({ entity_type: 'client', entity_id: id, action: 'update', changes });
+			}
+		}
+		await save();
 	}
 
-	deleteClient(id: number): Promise<void> {
-		return deleteClient(id);
+	async deleteClient(id: number): Promise<void> {
+		const client = getClient(id);
+		await this._tx.run(async () => {
+			await deleteClient(id);
+		});
+		this._audit.logAudit({ entity_type: 'client', entity_id: id, action: 'delete', context: client?.name ?? '' });
+		await save();
 	}
 
-	bulkDeleteClients(ids: number[]): Promise<void> {
-		return bulkDeleteClients(ids);
+	async bulkDeleteClients(ids: number[]): Promise<void> {
+		if (ids.length === 0) return;
+		const batch_id = crypto.randomUUID();
+		const clients = ids.map((id) => getClient(id));
+		await this._tx.run(async () => {
+			await bulkDeleteClients(ids);
+		});
+		for (let i = 0; i < ids.length; i++) {
+			this._audit.logAudit({ entity_type: 'client', entity_id: ids[i], action: 'delete', context: clients[i]?.name ?? '', batch_id });
+		}
+		await save();
 	}
 }
