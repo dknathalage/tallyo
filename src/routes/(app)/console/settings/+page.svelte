@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { repositories } from '$lib/repositories';
-		import type { KeyValuePair } from '$lib/types';
+	import type { KeyValuePair } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import LogoUploader from '$lib/components/shared/LogoUploader.svelte';
 	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
+	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { exportDatabase, importDatabase } from '$lib/db/backup.js';
 
 	// ── Business Profile ────────────────────────────────────
 	let bpName = $state('');
@@ -64,6 +66,44 @@
 		} finally {
 			bpSaving = false;
 		}
+	}
+
+	// ── Database Backup ─────────────────────────────────────
+	let restoreFile: File | null = $state(null);
+	let restoreConfirmOpen = $state(false);
+	let restoring = $state(false);
+	let restoreError = $state('');
+
+	function handleExport() {
+		exportDatabase();
+	}
+
+	function handleRestoreFileChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		restoreFile = input.files?.[0] ?? null;
+		restoreError = '';
+		if (restoreFile) {
+			restoreConfirmOpen = true;
+		}
+	}
+
+	async function confirmRestore() {
+		if (!restoreFile) return;
+		restoreConfirmOpen = false;
+		restoring = true;
+		restoreError = '';
+		try {
+			await importDatabase(restoreFile);
+		} catch (err: any) {
+			restoreError = err.message || i18n.t('settings.restoreError');
+			restoring = false;
+		}
+	}
+
+	function cancelRestore() {
+		restoreConfirmOpen = false;
+		restoreFile = null;
+		restoreError = '';
 	}
 </script>
 
@@ -164,4 +204,76 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- Database Backup Section -->
+	<div class="space-y-4">
+		<div>
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('settings.backup')}</h2>
+			<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('settings.backupDesc')}</p>
+		</div>
+
+		<div class="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
+			<div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+				<!-- Export -->
+				<div class="flex-1">
+					<h3 class="text-sm font-medium text-gray-900 dark:text-white">{i18n.t('settings.downloadBackup')}</h3>
+					<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Save a copy of your database as a <code>.sqlite</code> file.</p>
+					<div class="mt-3">
+						<Button onclick={handleExport} variant="secondary">
+							<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+							</svg>
+							{i18n.t('settings.downloadBackup')}
+						</Button>
+					</div>
+				</div>
+
+				<div class="hidden sm:block w-px bg-gray-200 dark:bg-gray-700 self-stretch"></div>
+
+				<!-- Import -->
+				<div class="flex-1">
+					<h3 class="text-sm font-medium text-gray-900 dark:text-white">{i18n.t('settings.restoreBackup')}</h3>
+					<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Upload a <code>.sqlite</code> backup file to restore your data. <strong class="text-red-600 dark:text-red-400">This overwrites all current data.</strong></p>
+
+					{#if restoreError}
+						<div class="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+							{restoreError}
+						</div>
+					{/if}
+
+					<div class="mt-3">
+						{#if restoring}
+							<p class="text-sm text-gray-500 dark:text-gray-400">{i18n.t('settings.restoring')}</p>
+						{:else}
+							<label
+								class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+							>
+								<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+								</svg>
+								{i18n.t('settings.restoreBackup')}
+								<input
+									type="file"
+									accept=".sqlite,.db"
+									class="sr-only"
+									onchange={handleRestoreFileChange}
+								/>
+							</label>
+						{/if}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
+
+<!-- Restore confirmation dialog -->
+<ConfirmDialog
+	open={restoreConfirmOpen}
+	title={i18n.t('settings.restoreConfirmTitle')}
+	message={i18n.t('settings.restoreConfirmMessage')}
+	confirmLabel={i18n.t('settings.restoreConfirm')}
+	confirmVariant="danger"
+	onconfirm={confirmRestore}
+	oncancel={cancelRestore}
+/>

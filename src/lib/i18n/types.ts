@@ -190,6 +190,17 @@ export interface Messages {
 		languageDesc: string;
 		description: string;
 		sortOrder: string;
+		backup: string;
+		backupDesc: string;
+		downloadBackup: string;
+		restoreBackup: string;
+		restoreConfirmTitle: string;
+		restoreConfirmMessage: string;
+		restoreConfirm: string;
+		restoring: string;
+		restoreSuccess: string;
+		restoreError: string;
+		noFileSelected: string;
 	};
 	client: {
 		title: string;
