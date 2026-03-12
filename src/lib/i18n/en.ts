@@ -191,7 +191,19 @@ const en: Messages = {
 		language: 'Language',
 		languageDesc: 'Select your preferred language for the interface.',
 		description: 'Description',
-		sortOrder: 'Sort Order'
+		sortOrder: 'Sort Order',
+		backup: 'Database Backup',
+		backupDesc: 'Download a copy of your database or restore from a previous backup.',
+		downloadBackup: 'Download Backup',
+		restoreBackup: 'Restore from Backup',
+		restoreConfirmTitle: 'Restore Database',
+		restoreConfirmMessage:
+			'This will overwrite ALL current data with the contents of the selected file. This action cannot be undone. Are you sure?',
+		restoreConfirm: 'Yes, Restore',
+		restoring: 'Restoring…',
+		restoreSuccess: 'Database restored — reloading…',
+		restoreError: 'Restore failed',
+		noFileSelected: 'No file selected'
 	},
 	client: {
 		title: 'Clients',
