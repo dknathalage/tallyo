@@ -193,6 +193,23 @@ function migration9_taxRates() {
 	}
 }
 
+/** Migration 10: Add payments table */
+function migration10_payments() {
+	if (!tableExists('payments')) {
+		execute(`CREATE TABLE IF NOT EXISTS payments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT NOT NULL UNIQUE,
+			invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+			amount REAL NOT NULL,
+			payment_date TEXT NOT NULL,
+			method TEXT DEFAULT '',
+			notes TEXT DEFAULT '',
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations() {
 	migration0_addUuids();
@@ -205,6 +222,7 @@ export function runMigrations() {
 	migration7_estimates();
 	migration8_paymentTerms();
 	migration9_taxRates();
+	migration10_payments();
 }
 
 // Keep backward-compatible export name

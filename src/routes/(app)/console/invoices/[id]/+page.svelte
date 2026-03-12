@@ -5,7 +5,7 @@
 	import { base } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportInvoicePdf } from '$lib/utils/pdf.js';
-	import type { Invoice, LineItem, AuditLogEntry } from '$lib/types/index.js';
+	import type { Invoice, LineItem, AuditLogEntry, Payment } from '$lib/types/index.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
@@ -14,8 +14,16 @@
 	let invoice: Invoice | null = $state(null);
 	let lineItems: LineItem[] = $state([]);
 	let history: AuditLogEntry[] = $state([]);
+	let payments: Payment[] = $state([]);
+	let totalPaid = $derived(payments.reduce((sum, p) => sum + p.amount, 0));
+	let outstanding = $derived.by(() => (invoice ? invoice.total - totalPaid : 0));
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
+	let showPaymentModal = $state(false);
+	let paymentAmount = $state(0);
+	let paymentDate = $state(new Date().toISOString().slice(0, 10));
+	let paymentMethod = $state('');
+	let paymentNotes = $state('');
 	let showNoEmailMessage = $state(false);
 
 	const allStatuses = ['draft', 'sent', 'paid', 'overdue'] as const;
@@ -31,6 +39,7 @@
 		if (inv) {
 			lineItems = repositories.invoices.getInvoiceLineItems(inv.id);
 			history = repositories.audit.getEntityHistory('invoice', inv.id);
+			payments = repositories.payments.getInvoicePayments(inv.id);
 		}
 	});
 
@@ -44,6 +53,33 @@
 		if (!invoice) return;
 		const newId = await repositories.invoices.duplicateInvoice(invoice.id);
 		goto(`${base}/console/invoices/${newId}/edit`);
+	}
+
+	async function handleRecordPayment() {
+		if (!invoice || paymentAmount <= 0) return;
+		await repositories.payments.createPayment({
+			invoice_id: invoice.id,
+			amount: paymentAmount,
+			payment_date: paymentDate,
+			method: paymentMethod,
+			notes: paymentNotes
+		});
+		payments = repositories.payments.getInvoicePayments(invoice.id);
+		// Auto-update status based on paid amount
+		const newTotalPaid = payments.reduce((s, p) => s + p.amount, 0);
+		if (newTotalPaid >= invoice.total && invoice.status !== 'paid') {
+			await repositories.invoices.updateInvoiceStatus(invoice.id, 'paid');
+			invoice = repositories.invoices.getInvoice(invoice.id);
+		}
+		showPaymentModal = false;
+		paymentAmount = 0;
+		paymentMethod = '';
+		paymentNotes = '';
+	}
+
+	async function handleDeletePayment(paymentId: number) {
+		await repositories.payments.deletePayment(paymentId);
+		payments = repositories.payments.getInvoicePayments(invoice!.id);
 	}
 
 	async function handleStatusChange(status: string) {
@@ -330,6 +366,82 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- Payments Section -->
+		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+			<div class="flex items-center justify-between mb-4">
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Payments</h2>
+				<Button variant="primary" size="sm" onclick={() => { paymentAmount = outstanding > 0 ? Math.round(outstanding * 100) / 100 : 0; showPaymentModal = true; }}>
+					Record Payment
+				</Button>
+			</div>
+			<div class="mb-4 grid grid-cols-3 gap-4 text-sm">
+				<div>
+					<span class="text-gray-500 dark:text-gray-400">Invoice Total</span>
+					<p class="font-semibold text-gray-900 dark:text-white">{formatCurrency(invoice.total, invoice.currency_code)}</p>
+				</div>
+				<div>
+					<span class="text-gray-500 dark:text-gray-400">Total Paid</span>
+					<p class="font-semibold text-green-600">{formatCurrency(totalPaid, invoice.currency_code)}</p>
+				</div>
+				<div>
+					<span class="text-gray-500 dark:text-gray-400">Outstanding</span>
+					<p class="font-semibold {outstanding > 0 ? 'text-red-600' : 'text-green-600'}">{formatCurrency(outstanding, invoice.currency_code)}</p>
+				</div>
+			</div>
+			{#if payments.length === 0}
+				<p class="text-sm text-gray-500 dark:text-gray-400">No payments recorded yet.</p>
+			{:else}
+				<div class="space-y-2">
+					{#each payments as payment}
+						<div class="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-700 px-4 py-2 text-sm">
+							<div>
+								<span class="font-medium text-gray-900 dark:text-white">{formatCurrency(payment.amount, invoice.currency_code)}</span>
+								<span class="ml-3 text-gray-500 dark:text-gray-400">{payment.payment_date}</span>
+								{#if payment.method}
+									<span class="ml-2 text-gray-500 dark:text-gray-400">· {payment.method}</span>
+								{/if}
+								{#if payment.notes}
+									<span class="ml-2 text-gray-500 dark:text-gray-400">· {payment.notes}</span>
+								{/if}
+							</div>
+							<button type="button" onclick={() => handleDeletePayment(payment.id)} class="text-xs text-red-500 hover:text-red-700 cursor-pointer">Delete</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Payment Modal -->
+		{#if showPaymentModal}
+			<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+				<div class="w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 shadow-xl">
+					<h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Record Payment</h3>
+					<div class="space-y-4">
+						<div>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="pay-amount">Amount</label>
+							<input id="pay-amount" type="number" bind:value={paymentAmount} min="0.01" step="0.01" class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/20" />
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="pay-date">Date</label>
+							<input id="pay-date" type="date" bind:value={paymentDate} class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/20" />
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="pay-method">Method</label>
+							<input id="pay-method" type="text" bind:value={paymentMethod} placeholder="e.g. Bank Transfer, Credit Card" class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none" />
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="pay-notes">Notes</label>
+							<textarea id="pay-notes" bind:value={paymentNotes} rows="2" class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none"></textarea>
+						</div>
+					</div>
+					<div class="mt-6 flex justify-end gap-3">
+						<Button variant="secondary" size="sm" onclick={() => (showPaymentModal = false)}>Cancel</Button>
+						<Button variant="primary" size="sm" onclick={handleRecordPayment}>Save Payment</Button>
+					</div>
+				</div>
+			</div>
+		{/if}
 
 		<!-- Change History -->
 		{#if history.length > 0}
