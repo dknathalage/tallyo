@@ -228,6 +228,9 @@
 					<div>
 						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.dueDate')}</h3>
 						<p class="mt-1 text-sm text-gray-900 dark:text-white">{formatDate(invoice.due_date)}</p>
+						{#if invoice.payment_terms && invoice.payment_terms !== 'custom'}
+							<p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{invoice.payment_terms.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</p>
+						{/if}
 					</div>
 					<div>
 						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.status')}</h3>

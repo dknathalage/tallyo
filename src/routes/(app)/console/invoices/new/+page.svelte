@@ -11,6 +11,7 @@
 			client_id: number;
 			date: string;
 			due_date: string;
+			payment_terms: string;
 			subtotal: number;
 			tax_rate: number;
 			tax_amount: number;

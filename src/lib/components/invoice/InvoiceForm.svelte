@@ -9,6 +9,22 @@
 	import LineItemRow from './LineItemRow.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
+	type PaymentTermsOption = {
+		value: string;
+		label: string;
+		days: number | null;
+	};
+
+	const PAYMENT_TERMS_OPTIONS: PaymentTermsOption[] = [
+		{ value: 'due_on_receipt', label: 'Due on Receipt', days: 0 },
+		{ value: 'net_7', label: 'Net 7', days: 7 },
+		{ value: 'net_14', label: 'Net 14', days: 14 },
+		{ value: 'net_30', label: 'Net 30', days: 30 },
+		{ value: 'net_60', label: 'Net 60', days: 60 },
+		{ value: 'net_90', label: 'Net 90', days: 90 },
+		{ value: 'custom', label: 'Custom', days: null }
+	];
+
 	let {
 		initialData,
 		initialLineItems,
@@ -22,6 +38,7 @@
 				client_id: number;
 				date: string;
 				due_date: string;
+				payment_terms: string;
 				subtotal: number;
 				tax_rate: number;
 				tax_amount: number;
@@ -42,6 +59,7 @@
 	let clientId: number | '' = $state(initialData?.client_id ?? '');
 	let date = $state(initialData?.date ?? today());
 	let dueDate = $state(initialData?.due_date ?? today());
+	let paymentTerms = $state(initialData?.payment_terms ?? 'custom');
 	let taxRate = $state(initialData?.tax_rate ?? 0);
 	let notes = $state(initialData?.notes ?? '');
 	let status = $state(initialData?.status ?? 'draft');
@@ -51,11 +69,22 @@
 		[{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]
 	);
 
+	// Auto-fill due date when payment terms or invoice date changes
+	$effect(() => {
+		const terms = PAYMENT_TERMS_OPTIONS.find((o) => o.value === paymentTerms);
+		if (terms && terms.days !== null) {
+			const invoiceDate = new Date(date);
+			invoiceDate.setDate(invoiceDate.getDate() + terms.days);
+			dueDate = invoiceDate.toISOString().slice(0, 10);
+		}
+	});
+
 	$effect(() => {
 		if (initialData) {
 			clientId = initialData.client_id ?? 0;
 			date = initialData.date ?? today();
 			dueDate = initialData.due_date ?? today();
+			paymentTerms = initialData.payment_terms ?? 'custom';
 			taxRate = initialData.tax_rate ?? 0;
 			notes = initialData.notes ?? '';
 			status = initialData.status ?? 'draft';
@@ -226,6 +255,7 @@
 				client_id: clientId,
 				date,
 				due_date: dueDate,
+				payment_terms: paymentTerms,
 				subtotal,
 				tax_rate: taxRate,
 				tax_amount: taxAmount,
@@ -313,13 +343,27 @@
 			</div>
 
 			<div>
+				<label for="payment-terms" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Payment Terms</label>
+				<select
+					id="payment-terms"
+					bind:value={paymentTerms}
+					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+				>
+					{#each PAYMENT_TERMS_OPTIONS as option}
+						<option value={option.value}>{option.label}</option>
+					{/each}
+				</select>
+			</div>
+
+			<div>
 				<label for="due-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('invoice.dueDate')}</label>
 				<input
 					id="due-date"
 					type="date"
 					bind:value={dueDate}
 					required
-					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+					readonly={paymentTerms !== 'custom'}
+					class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 {paymentTerms !== 'custom' ? 'opacity-60 cursor-not-allowed' : ''}"
 				/>
 			</div>
 

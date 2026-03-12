@@ -14,6 +14,8 @@ export interface Client {
 	updated_at: string;
 }
 
+export type PaymentTerms = 'due_on_receipt' | 'net_7' | 'net_14' | 'net_30' | 'net_60' | 'net_90' | 'custom';
+
 export interface Invoice {
 	id: number;
 	uuid: string;
@@ -22,6 +24,7 @@ export interface Invoice {
 	client_name?: string;
 	date: string;
 	due_date: string;
+	payment_terms: PaymentTerms;
 	subtotal: number;
 	tax_rate: number;
 	tax_amount: number;

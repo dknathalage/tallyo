@@ -157,6 +157,13 @@ function migration7_estimates() {
 	}
 }
 
+/** Migration 8: Add payment_terms to invoices */
+function migration8_paymentTerms() {
+	if (!tableHasColumn('invoices', 'payment_terms')) {
+		execute(`ALTER TABLE invoices ADD COLUMN payment_terms TEXT DEFAULT 'custom'`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations() {
 	migration0_addUuids();
@@ -167,6 +174,7 @@ export function runMigrations() {
 	migration5_metadataAndParties();
 	migration6_multiCurrency();
 	migration7_estimates();
+	migration8_paymentTerms();
 }
 
 // Keep backward-compatible export name
