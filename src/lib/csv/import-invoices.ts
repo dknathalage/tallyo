@@ -105,7 +105,7 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 			taxRate: Number(first.tax_rate) || 0,
 			notes: first.notes?.trim() || '',
 			status: first.status?.trim().toLowerCase() || 'draft',
-			currencyCode: (first as any).currency_code?.trim() || 'USD',
+			currencyCode: first.currency_code?.trim() || 'USD',
 			businessSnapshot: first.business_snapshot?.trim() || '{}',
 			clientSnapshot: first.client_snapshot?.trim() || '{}',
 			payerSnapshot: first.payer_snapshot?.trim() || '{}',

@@ -16,6 +16,8 @@ export interface Client {
 
 export type PaymentTerms = 'due_on_receipt' | 'net_7' | 'net_14' | 'net_30' | 'net_60' | 'net_90' | 'custom';
 
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue';
+
 export interface Invoice {
 	id: number;
 	uuid: string;
@@ -31,7 +33,7 @@ export interface Invoice {
 	tax_amount: number;
 	total: number;
 	notes: string;
-	status: 'draft' | 'sent' | 'paid' | 'overdue';
+	status: InvoiceStatus;
 	currency_code: string;
 	business_snapshot: string;
 	client_snapshot: string;

@@ -2,6 +2,7 @@ import { execute, query, save, runRaw } from '../connection.svelte.js';
 import { logAudit, computeChanges } from '../audit.js';
 import { generateInvoiceNumber } from '../../utils/invoice-number.js';
 import type { Estimate, EstimateLineItem } from '../../types/index.js';
+import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../../repositories/interfaces/types.js';
 
 export function getEstimates(search?: string, status?: string): Estimate[] {
 	let sql = `SELECT e.*, c.name as client_name FROM estimates e LEFT JOIN clients c ON e.client_id = c.id`;
@@ -41,24 +42,8 @@ export function getEstimateLineItems(estimateId: number): EstimateLineItem[] {
 }
 
 export async function createEstimate(
-	data: {
-		estimate_number: string;
-		client_id: number;
-		date: string;
-		valid_until: string;
-		subtotal: number;
-		tax_rate: number;
-		tax_rate_id?: number | null;
-		tax_amount: number;
-		total: number;
-		notes?: string;
-		status?: string;
-		currency_code?: string;
-		business_snapshot?: string;
-		client_snapshot?: string;
-		payer_snapshot?: string;
-	},
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
+	data: CreateEstimateInput,
+	lineItems: LineItemInput[]
 ): Promise<number> {
 	runRaw('BEGIN TRANSACTION');
 	try {
@@ -112,24 +97,8 @@ export async function createEstimate(
 
 export async function updateEstimate(
 	id: number,
-	data: {
-		estimate_number: string;
-		client_id: number;
-		date: string;
-		valid_until: string;
-		subtotal: number;
-		tax_rate: number;
-		tax_rate_id?: number | null;
-		tax_amount: number;
-		total: number;
-		notes?: string;
-		status?: string;
-		currency_code?: string;
-		business_snapshot?: string;
-		client_snapshot?: string;
-		payer_snapshot?: string;
-	},
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
+	data: UpdateEstimateInput,
+	lineItems: LineItemInput[]
 ): Promise<void> {
 	const oldEstimate = getEstimate(id);
 	runRaw('BEGIN TRANSACTION');
@@ -313,7 +282,7 @@ export async function convertEstimateToInvoice(estimateId: number): Promise<numb
 		logAudit({
 			entity_type: 'estimate',
 			entity_id: estimateId,
-			action: 'convert_to_invoice',
+			action: 'convert',
 			context: `${estimate.estimate_number} -> ${invoiceNumber}`
 		});
 

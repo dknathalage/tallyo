@@ -39,7 +39,7 @@ export async function commitCatalogImport(
 			logAudit({
 				entity_type: 'catalog',
 				entity_id: newId,
-				action: 'import_create',
+				action: 'import',
 				changes: {
 					name: { old: null, new: row.name },
 					rate: { old: null, new: row.rate },
@@ -76,7 +76,7 @@ export async function commitCatalogImport(
 				logAudit({
 					entity_type: 'catalog',
 					entity_id: item.existing.id,
-					action: 'import_update',
+					action: 'import',
 					changes: {
 						name: { old: item.existing.name, new: row.name },
 						rate: { old: item.existing.rate, new: row.rate }

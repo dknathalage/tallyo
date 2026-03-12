@@ -22,9 +22,9 @@
 
 	const allStatuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
 
-	let businessSnap = $derived.by(() => parseSnapshot((estimate as any)?.business_snapshot ?? '{}'));
-	let clientSnap = $derived.by(() => parseSnapshot((estimate as any)?.client_snapshot ?? '{}'));
-	let payerSnap = $derived.by(() => parseSnapshot((estimate as any)?.payer_snapshot ?? '{}'));
+	let businessSnap = $derived.by(() => parseSnapshot(estimate?.business_snapshot ?? '{}'));
+	let clientSnap = $derived.by(() => parseSnapshot(estimate?.client_snapshot ?? '{}'));
+	let payerSnap = $derived.by(() => parseSnapshot(estimate?.payer_snapshot ?? '{}'));
 
 	$effect(() => {
 		refreshTrigger;
@@ -95,7 +95,7 @@
 		if (action === 'update') return 'bg-blue-100 text-blue-800';
 		if (action === 'delete') return 'bg-red-100 text-red-800';
 		if (action === 'status_change') return 'bg-yellow-100 text-yellow-800';
-		if (action === 'convert_to_invoice') return 'bg-purple-100 text-purple-800';
+		if (action === 'convert') return 'bg-purple-100 text-purple-800';
 		return 'bg-gray-100 text-gray-800';
 	}
 

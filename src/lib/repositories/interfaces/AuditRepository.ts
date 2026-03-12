@@ -1,9 +1,10 @@
 import type { AuditLogEntry } from '$lib/types/index.js';
+import type { AuditEntityType, AuditAction } from '$lib/db/audit.js';
 
 export interface LogAuditParams {
-	entity_type: string;
+	entity_type: AuditEntityType;
 	entity_id?: number | null;
-	action: string;
+	action: AuditAction;
 	changes?: Record<string, { old: unknown; new: unknown }>;
 	context?: string;
 	batch_id?: string;

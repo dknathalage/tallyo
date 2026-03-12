@@ -1,6 +1,7 @@
 import { execute, query, save, runRaw } from '../connection.svelte.js';
 import { logAudit, computeChanges } from '../audit.js';
 import type { Invoice, LineItem, AgingBucket } from '../../types/index.js';
+import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
 
 export function getInvoices(search?: string, status?: string): Invoice[] {
@@ -41,25 +42,8 @@ export function getInvoiceLineItems(invoiceId: number): LineItem[] {
 }
 
 export async function createInvoice(
-	data: {
-		invoice_number: string;
-		client_id: number;
-		date: string;
-		due_date: string;
-		payment_terms?: string;
-		subtotal: number;
-		tax_rate: number;
-		tax_rate_id?: number | null;
-		tax_amount: number;
-		total: number;
-		notes?: string;
-		status?: string;
-		currency_code?: string;
-		business_snapshot?: string;
-		client_snapshot?: string;
-		payer_snapshot?: string;
-	},
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
+	data: CreateInvoiceInput,
+	lineItems: LineItemInput[]
 ): Promise<number> {
 	runRaw('BEGIN TRANSACTION');
 	try {
@@ -114,25 +98,8 @@ export async function createInvoice(
 
 export async function updateInvoice(
 	id: number,
-	data: {
-		invoice_number: string;
-		client_id: number;
-		date: string;
-		due_date: string;
-		payment_terms?: string;
-		subtotal: number;
-		tax_rate: number;
-		tax_rate_id?: number | null;
-		tax_amount: number;
-		total: number;
-		notes?: string;
-		status?: string;
-		currency_code?: string;
-		business_snapshot?: string;
-		client_snapshot?: string;
-		payer_snapshot?: string;
-	},
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
+	data: UpdateInvoiceInput,
+	lineItems: LineItemInput[]
 ): Promise<void> {
 	const oldInvoice = getInvoice(id);
 	// If a tax_rate_id is provided, look up the actual rate from the tax_rates table
