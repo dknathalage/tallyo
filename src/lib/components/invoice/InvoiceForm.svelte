@@ -2,7 +2,9 @@
 	import { repositories } from '$lib/repositories';
 		import { generateInvoiceNumber } from '$lib/utils/invoice-number.js';
 	import { today, formatCurrency } from '$lib/utils/format.js';
-	import type { Client, Invoice, LineItem, KeyValuePair, PartySnapshot, TaxRate } from '$lib/types/index.js';
+	import type { Client, Invoice, LineItem, KeyValuePair, TaxRate } from '$lib/types/index.js';
+	import { parseSnapshot } from '$lib/utils/snapshot.js';
+	import type { PartySnapshot } from '$lib/utils/snapshot.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
@@ -142,15 +144,6 @@
 			if (pair.key.trim()) obj[pair.key.trim()] = pair.value;
 		}
 		return obj;
-	}
-
-	function parseSnapshot(json: string): PartySnapshot {
-		try {
-			const p = JSON.parse(json || '{}');
-			return { name: p.name || '', email: p.email || '', phone: p.phone || '', address: p.address || '', logo: p.logo, metadata: p.metadata || {} };
-		} catch {
-			return { name: '', email: '', phone: '', address: '', metadata: {} };
-		}
 	}
 
 	// Business snapshot (read-only, always from current profile)

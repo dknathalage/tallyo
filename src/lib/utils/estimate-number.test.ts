@@ -21,17 +21,20 @@ describe('generateEstimateNumber', () => {
 	});
 
 	it('increments from the current max estimate number', () => {
-		mockQuery.mockReturnValue([{ max_num: 'EST-0005' }]);
+		// CAST(SUBSTR('EST-0005', 5) AS INTEGER) = 5
+		mockQuery.mockReturnValue([{ max_num: 5 }]);
 		expect(generateEstimateNumber()).toBe('EST-0006');
 	});
 
 	it('pads the number to 4 digits', () => {
-		mockQuery.mockReturnValue([{ max_num: 'EST-0009' }]);
+		// CAST(SUBSTR('EST-0009', 5) AS INTEGER) = 9
+		mockQuery.mockReturnValue([{ max_num: 9 }]);
 		expect(generateEstimateNumber()).toBe('EST-0010');
 	});
 
 	it('handles large estimate numbers', () => {
-		mockQuery.mockReturnValue([{ max_num: 'EST-9999' }]);
+		// CAST(SUBSTR('EST-9999', 5) AS INTEGER) = 9999
+		mockQuery.mockReturnValue([{ max_num: 9999 }]);
 		expect(generateEstimateNumber()).toBe('EST-10000');
 	});
 });
