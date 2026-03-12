@@ -7,6 +7,7 @@ export interface Messages {
 		payers: string;
 		catalog: string;
 		rateTiers: string;
+		reports: string;
 		settings: string;
 		appName: string;
 		close: string;

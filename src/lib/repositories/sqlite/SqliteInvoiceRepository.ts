@@ -10,13 +10,14 @@ import {
 	bulkDeleteInvoices,
 	bulkUpdateInvoiceStatus,
 	markOverdueInvoices,
-	duplicateInvoice
+	duplicateInvoice,
+	getAgingReport
 } from '$lib/db/queries/invoices.js';
 import type { InvoiceRepository } from '../interfaces/InvoiceRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../interfaces/types.js';
-import type { Invoice, LineItem } from '$lib/types/index.js';
+import type { Invoice, LineItem, AgingBucket } from '$lib/types/index.js';
 
 export class SqliteInvoiceRepository implements InvoiceRepository {
 	constructor(
@@ -70,5 +71,9 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 
 	duplicateInvoice(id: number): Promise<number> {
 		return duplicateInvoice(id);
+	}
+
+	getAgingReport(): AgingBucket[] {
+		return getAgingReport();
 	}
 }

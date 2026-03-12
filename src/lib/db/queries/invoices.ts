@@ -1,6 +1,7 @@
 import { execute, query, save, runRaw } from '../connection.svelte.js';
 import { logAudit, computeChanges } from '../audit.js';
-import type { Invoice, LineItem } from '../../types/index.js';
+import type { Invoice, LineItem, AgingBucket } from '../../types/index.js';
+import { getBusinessProfile } from './business-profile.js';
 
 export function getInvoices(search?: string, status?: string): Invoice[] {
 	let sql = `SELECT i.*, c.name as client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id`;
@@ -351,4 +352,49 @@ export async function duplicateInvoice(id: number): Promise<number> {
 		runRaw('ROLLBACK');
 		throw e;
 	}
+}
+
+export function getAgingReport(): AgingBucket[] {
+	const profile = getBusinessProfile();
+	const defaultCurrency = profile?.default_currency || 'USD';
+
+	// Fetch all outstanding invoices (sent + overdue) with days overdue
+	const outstanding = query<Invoice & { days_overdue: number }>(
+		`SELECT i.*, c.name as client_name,
+		        CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue
+		 FROM invoices i
+		 LEFT JOIN clients c ON i.client_id = c.id
+		 WHERE i.status IN ('sent', 'overdue')
+		   AND COALESCE(i.currency_code, 'USD') = ?
+		 ORDER BY i.due_date ASC`,
+		[defaultCurrency]
+	);
+
+	const buckets: AgingBucket[] = [
+		{ label: 'Current', total: 0, invoices: [] },
+		{ label: '1–30 days', total: 0, invoices: [] },
+		{ label: '31–60 days', total: 0, invoices: [] },
+		{ label: '61–90 days', total: 0, invoices: [] },
+		{ label: '90+ days', total: 0, invoices: [] }
+	];
+
+	for (const inv of outstanding) {
+		const days = inv.days_overdue;
+		let bucket: AgingBucket;
+		if (days <= 0) {
+			bucket = buckets[0]; // Current
+		} else if (days <= 30) {
+			bucket = buckets[1];
+		} else if (days <= 60) {
+			bucket = buckets[2];
+		} else if (days <= 90) {
+			bucket = buckets[3];
+		} else {
+			bucket = buckets[4];
+		}
+		bucket.invoices.push(inv);
+		bucket.total += inv.total;
+	}
+
+	return buckets;
 }
