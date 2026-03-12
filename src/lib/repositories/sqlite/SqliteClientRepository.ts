@@ -5,13 +5,14 @@ import {
 	updateClient,
 	deleteClient,
 	bulkDeleteClients,
-	buildClientSnapshot
+	buildClientSnapshot,
+	getClientRevenueSummary
 } from '$lib/db/queries/clients.js';
 import type { ClientRepository } from '../interfaces/ClientRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateClientInput, UpdateClientInput } from '../interfaces/types.js';
-import type { Client, PartySnapshot } from '$lib/types/index.js';
+import type { Client, PartySnapshot, ClientRevenueSummary } from '$lib/types/index.js';
 
 export class SqliteClientRepository implements ClientRepository {
 	constructor(
@@ -29,6 +30,10 @@ export class SqliteClientRepository implements ClientRepository {
 
 	buildClientSnapshot(clientId: number): PartySnapshot {
 		return buildClientSnapshot(clientId);
+	}
+
+	getClientRevenueSummary(clientId: number): ClientRevenueSummary {
+		return getClientRevenueSummary(clientId);
 	}
 
 	createClient(data: CreateClientInput): Promise<number> {

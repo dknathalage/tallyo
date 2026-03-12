@@ -18,6 +18,7 @@
 	let estimates = $derived(repositories.estimates.getClientEstimates(clientId));
 	let history = $derived(repositories.audit.getEntityHistory('client', clientId));
 	let payer = $derived(client?.payer_id ? repositories.payers.getPayer(client.payer_id) : null);
+	let revenueSummary = $derived(repositories.clients.getClientRevenueSummary(clientId));
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
@@ -101,6 +102,26 @@
 					<Button variant="secondary" onclick={() => (editing = true)}>{i18n.t('common.edit')}</Button>
 				{/if}
 				<Button variant="danger" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
+			</div>
+		</div>
+
+		<!-- Revenue Summary -->
+		<div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+			<div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+				<p class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Invoiced</p>
+				<p class="mt-1 text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(revenueSummary.total_invoiced, revenueSummary.currency_code)}</p>
+			</div>
+			<div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+				<p class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Paid</p>
+				<p class="mt-1 text-xl font-bold text-green-600 dark:text-green-400">{formatCurrency(revenueSummary.total_paid, revenueSummary.currency_code)}</p>
+			</div>
+			<div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+				<p class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Outstanding</p>
+				<p class="mt-1 text-xl font-bold text-amber-600 dark:text-amber-400">{formatCurrency(revenueSummary.outstanding_balance, revenueSummary.currency_code)}</p>
+			</div>
+			<div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+				<p class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Invoices</p>
+				<p class="mt-1 text-xl font-bold text-gray-900 dark:text-white">{revenueSummary.invoice_count}</p>
 			</div>
 		</div>
 
