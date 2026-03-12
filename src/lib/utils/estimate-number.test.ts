@@ -37,4 +37,30 @@ describe('generateEstimateNumber', () => {
 		mockQuery.mockReturnValue([{ max_num: 9999 }]);
 		expect(generateEstimateNumber()).toBe('EST-10000');
 	});
+
+	it('returns EST-0002 when EST-0001 already exists', () => {
+		// DB would return max_num = 1 (CAST('0001') = 1)
+		mockQuery.mockReturnValue([{ max_num: 1 }]);
+		expect(generateEstimateNumber()).toBe('EST-0002');
+	});
+
+	it('returns numeric max+1 (not lexicographic) for non-sequential numbers', () => {
+		// EST-0003 and EST-0010 exist: MAX(CAST) = 10, so next is 11
+		mockQuery.mockReturnValue([{ max_num: 10 }]);
+		expect(generateEstimateNumber()).toBe('EST-0011');
+	});
+
+	it('returns EST-0001 when only non-standard format numbers exist (GLOB excludes them)', () => {
+		// Non-standard like 'EST-CUSTOM' are excluded by GLOB 'EST-[0-9]*', so max_num is null
+		mockQuery.mockReturnValue([{ max_num: null }]);
+		expect(generateEstimateNumber()).toBe('EST-0001');
+	});
+
+	it('never returns NaN in the result', () => {
+		// Simulate any edge case that might produce NaN — function must return valid string
+		mockQuery.mockReturnValue([{ max_num: null }]);
+		const result = generateEstimateNumber();
+		expect(result).not.toContain('NaN');
+		expect(result).toMatch(/^EST-\d+$/);
+	});
 });
