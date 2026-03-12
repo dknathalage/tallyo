@@ -328,3 +328,56 @@ export async function convertEstimateToInvoice(estimateId: number): Promise<numb
 		throw e;
 	}
 }
+
+export async function duplicateEstimate(id: number): Promise<number> {
+	const original = getEstimate(id);
+	if (!original) throw new Error(`Estimate ${id} not found`);
+
+	const { generateEstimateNumber } = await import('../../utils/estimate-number.js');
+	const newNumber = generateEstimateNumber();
+	const todayStr = new Date().toISOString().slice(0, 10);
+
+	const originalLineItems = getEstimateLineItems(id);
+
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(
+			`INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				crypto.randomUUID(),
+				newNumber,
+				original.client_id,
+				todayStr,
+				'',
+				original.subtotal,
+				original.tax_rate,
+				original.tax_amount,
+				original.total,
+				original.notes ?? '',
+				'draft',
+				original.currency_code ?? 'USD',
+				original.business_snapshot ?? '{}',
+				original.client_snapshot ?? '{}',
+				original.payer_snapshot ?? '{}'
+			]
+		);
+
+		const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+		const newId = result[0].id;
+
+		for (const item of originalLineItems) {
+			execute(
+				`INSERT INTO estimate_line_items (uuid, estimate_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				[crypto.randomUUID(), newId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
+			);
+		}
+
+		logAudit({ entity_type: 'estimate', entity_id: newId, action: 'create', context: `${newNumber} (duplicated from ${original.estimate_number})` });
+		runRaw('COMMIT');
+		await save();
+		return newId;
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
+	}
+}

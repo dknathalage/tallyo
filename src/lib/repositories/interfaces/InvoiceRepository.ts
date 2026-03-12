@@ -11,6 +11,7 @@ export interface InvoiceRepository {
 	updateInvoice(id: number, data: UpdateInvoiceInput, lineItems: LineItemInput[]): Promise<void>;
 	deleteInvoice(id: number): Promise<void>;
 	updateInvoiceStatus(id: number, status: string): Promise<void>;
+	duplicateInvoice(id: number): Promise<number>;
 
 	bulkDeleteInvoices(ids: number[]): Promise<void>;
 	bulkUpdateInvoiceStatus(ids: number[], status: string): Promise<void>;

@@ -16,4 +16,5 @@ export interface EstimateRepository {
 	bulkUpdateEstimateStatus(ids: number[], status: string): Promise<void>;
 
 	convertEstimateToInvoice(estimateId: number): Promise<number>;
+	duplicateEstimate(id: number): Promise<number>;
 }

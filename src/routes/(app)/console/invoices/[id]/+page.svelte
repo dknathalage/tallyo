@@ -39,6 +39,12 @@
 		goto(`${base}/console/invoices`);
 	}
 
+	async function handleDuplicate() {
+		if (!invoice) return;
+		const newId = await repositories.invoices.duplicateInvoice(invoice.id);
+		goto(`${base}/console/invoices/${newId}/edit`);
+	}
+
 	async function handleStatusChange(status: string) {
 		if (!invoice) return;
 		await repositories.invoices.updateInvoiceStatus(invoice.id, status);
@@ -143,6 +149,10 @@
 
 				<Button variant="secondary" size="sm" onclick={handleExportPdf}>
 					{i18n.t('invoice.pdf')}
+				</Button>
+
+				<Button variant="secondary" size="sm" onclick={handleDuplicate}>
+					Duplicate
 				</Button>
 
 				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/console/invoices/${invoice?.id}/edit`)}>
