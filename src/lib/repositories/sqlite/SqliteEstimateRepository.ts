@@ -9,7 +9,8 @@ import {
 	updateEstimateStatus,
 	bulkDeleteEstimates,
 	bulkUpdateEstimateStatus,
-	convertEstimateToInvoice
+	convertEstimateToInvoice,
+	duplicateEstimate
 } from '$lib/db/queries/estimates.js';
 import type { EstimateRepository } from '../interfaces/EstimateRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -65,5 +66,9 @@ export class SqliteEstimateRepository implements EstimateRepository {
 
 	convertEstimateToInvoice(estimateId: number): Promise<number> {
 		return convertEstimateToInvoice(estimateId);
+	}
+
+	duplicateEstimate(id: number): Promise<number> {
+		return duplicateEstimate(id);
 	}
 }

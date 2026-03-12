@@ -42,6 +42,12 @@
 		goto(`${base}/console/estimates`);
 	}
 
+	async function handleDuplicate() {
+		if (!estimate) return;
+		const newId = await repositories.estimates.duplicateEstimate(estimate.id);
+		goto(`${base}/console/estimates/${newId}/edit`);
+	}
+
 	async function handleStatusChange(status: string) {
 		if (!estimate) return;
 		await repositories.estimates.updateEstimateStatus(estimate.id, status);
@@ -175,6 +181,10 @@
 
 				<Button variant="secondary" size="sm" onclick={handleExportPdf}>
 					{i18n.t('invoice.pdf')}
+				</Button>
+
+				<Button variant="secondary" size="sm" onclick={handleDuplicate}>
+					Duplicate
 				</Button>
 
 				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/console/estimates/${estimate?.id}/edit`)}>

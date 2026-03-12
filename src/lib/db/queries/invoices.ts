@@ -294,3 +294,57 @@ export async function markOverdueInvoices(): Promise<number> {
 	await save();
 	return overdueIds.length;
 }
+
+export async function duplicateInvoice(id: number): Promise<number> {
+	const original = getInvoice(id);
+	if (!original) throw new Error(`Invoice ${id} not found`);
+
+	const { generateInvoiceNumber } = await import('../../utils/invoice-number.js');
+	const newNumber = generateInvoiceNumber();
+	const todayStr = new Date().toISOString().slice(0, 10);
+
+	const originalLineItems = getInvoiceLineItems(id);
+
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(
+			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				crypto.randomUUID(),
+				newNumber,
+				original.client_id,
+				todayStr,
+				'',
+				'custom',
+				original.subtotal,
+				original.tax_rate,
+				original.tax_amount,
+				original.total,
+				original.notes ?? '',
+				'draft',
+				original.currency_code ?? 'USD',
+				original.business_snapshot ?? '{}',
+				original.client_snapshot ?? '{}',
+				original.payer_snapshot ?? '{}'
+			]
+		);
+
+		const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+		const newId = result[0].id;
+
+		for (const item of originalLineItems) {
+			execute(
+				`INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				[crypto.randomUUID(), newId, item.description, item.quantity, item.rate, item.amount, item.notes ?? '', item.sort_order]
+			);
+		}
+
+		logAudit({ entity_type: 'invoice', entity_id: newId, action: 'create', context: `${newNumber} (duplicated from ${original.invoice_number})` });
+		runRaw('COMMIT');
+		await save();
+		return newId;
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
+	}
+}
