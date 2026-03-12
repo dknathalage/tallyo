@@ -11,6 +11,7 @@ export interface LineItemInput {
 }
 
 export interface CreateInvoiceInput {
+	uuid?: string;
 	invoice_number: string;
 	client_id: number;
 	date: string;
@@ -32,6 +33,7 @@ export interface CreateInvoiceInput {
 export type UpdateInvoiceInput = CreateInvoiceInput;
 
 export interface CreateEstimateInput {
+	uuid?: string;
 	estimate_number: string;
 	client_id: number;
 	date: string;
@@ -52,6 +54,7 @@ export interface CreateEstimateInput {
 export type UpdateEstimateInput = CreateEstimateInput;
 
 export interface CreateClientInput {
+	uuid?: string;
 	name: string;
 	email?: string;
 	phone?: string;

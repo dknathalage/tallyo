@@ -81,7 +81,7 @@
 
 	async function handleConfirm() {
 		if (previewData) {
-			await commitInvoiceImport(previewData.groups, previewData.newClientsToCreate);
+			await commitInvoiceImport(previewData.groups, previewData.newClientsToCreate, { invoices: repositories.invoices, clients: repositories.clients });
 			showPreview = false;
 			previewData = null;
 			await loadInvoices();

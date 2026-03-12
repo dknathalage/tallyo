@@ -1,5 +1,6 @@
 import { execute, query } from '../connection.svelte.js';
 import type { Client, PartySnapshot, ClientRevenueSummary } from '../../types/index.js';
+import type { CreateClientInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
 
 export function getClients(search?: string): Client[] {
@@ -21,21 +22,13 @@ export function getClient(id: number): Client | null {
  * Pure SQL: inserts a client and returns the new id.
  * No audit logging, no save().
  */
-export async function createClient(data: {
-	name: string;
-	email?: string;
-	phone?: string;
-	address?: string;
-	pricing_tier_id?: number | null;
-	metadata?: string;
-	payer_id?: number | null;
-}): Promise<number> {
+export async function createClient(data: CreateClientInput): Promise<number> {
 	if (!data.name?.trim()) {
 		throw new Error('Client name is required');
 	}
 	execute(
 		`INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id, metadata, payer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		[crypto.randomUUID(), data.name, data.email ?? '', data.phone ?? '', data.address ?? '', data.pricing_tier_id ?? null, data.metadata ?? '{}', data.payer_id ?? null]
+		[data.uuid ?? crypto.randomUUID(), data.name, data.email ?? '', data.phone ?? '', data.address ?? '', data.pricing_tier_id ?? null, data.metadata ?? '{}', data.payer_id ?? null]
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
 	return result[0].id;

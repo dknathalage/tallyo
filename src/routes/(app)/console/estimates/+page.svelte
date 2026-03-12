@@ -78,7 +78,7 @@
 
 	async function handleConfirm() {
 		if (previewData) {
-			await commitEstimateImport(previewData.groups, previewData.newClientsToCreate);
+			await commitEstimateImport(previewData.groups, previewData.newClientsToCreate, { estimates: repositories.estimates, clients: repositories.clients });
 			showPreview = false;
 			previewData = null;
 			loadEstimates();

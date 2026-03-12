@@ -51,7 +51,7 @@ export async function createInvoice(
 	execute(
 		`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
-			crypto.randomUUID(),
+			data.uuid ?? crypto.randomUUID(),
 			data.invoice_number,
 			data.client_id,
 			data.date,
