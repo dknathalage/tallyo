@@ -12,6 +12,8 @@ import {
 	convertEstimateToInvoice,
 	duplicateEstimate
 } from '$lib/db/queries/estimates.js';
+import { save } from '$lib/db/connection.svelte.js';
+import { computeChanges } from '$lib/db/audit.js';
 import type { EstimateRepository } from '../interfaces/EstimateRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
@@ -20,8 +22,8 @@ import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
 
 export class SqliteEstimateRepository implements EstimateRepository {
 	constructor(
-		private readonly _audit?: AuditRepository,
-		private readonly _tx?: StorageTransaction
+		private readonly _audit: AuditRepository,
+		private readonly _tx: StorageTransaction
 	) {}
 
 	getEstimates(search?: string, status?: string): Estimate[] {
@@ -40,35 +42,122 @@ export class SqliteEstimateRepository implements EstimateRepository {
 		return getClientEstimates(clientId);
 	}
 
-	createEstimate(data: CreateEstimateInput, lineItems: LineItemInput[]): Promise<number> {
-		return createEstimate(data, lineItems);
+	async createEstimate(data: CreateEstimateInput, lineItems: LineItemInput[]): Promise<number> {
+		const id = await this._tx.run(async () => {
+			return await createEstimate(data, lineItems);
+		});
+		this._audit.logAudit({
+			entity_type: 'estimate',
+			entity_id: id,
+			action: 'create',
+			context: data.estimate_number
+		});
+		await save();
+		return id;
 	}
 
-	updateEstimate(id: number, data: UpdateEstimateInput, lineItems: LineItemInput[]): Promise<void> {
-		return updateEstimate(id, data, lineItems);
+	async updateEstimate(id: number, data: UpdateEstimateInput, lineItems: LineItemInput[]): Promise<void> {
+		const oldEstimate = getEstimate(id);
+		await this._tx.run(async () => {
+			await updateEstimate(id, data, lineItems);
+		});
+		if (oldEstimate) {
+			const changes = computeChanges(
+				oldEstimate as unknown as Record<string, unknown>,
+				{ ...data, notes: data.notes ?? '', status: data.status ?? 'draft', currency_code: data.currency_code ?? 'USD' },
+				['estimate_number', 'client_id', 'date', 'valid_until', 'subtotal', 'tax_rate', 'total', 'notes', 'status', 'currency_code']
+			);
+			if (Object.keys(changes).length > 0) {
+				this._audit.logAudit({ entity_type: 'estimate', entity_id: id, action: 'update', changes, context: data.estimate_number });
+			}
+		}
+		await save();
 	}
 
-	deleteEstimate(id: number): Promise<void> {
-		return deleteEstimate(id);
+	async deleteEstimate(id: number): Promise<void> {
+		const estimate = getEstimate(id);
+		await this._tx.run(async () => {
+			await deleteEstimate(id);
+		});
+		this._audit.logAudit({ entity_type: 'estimate', entity_id: id, action: 'delete', context: estimate?.estimate_number ?? '' });
+		await save();
 	}
 
-	updateEstimateStatus(id: number, status: string): Promise<void> {
-		return updateEstimateStatus(id, status);
+	async updateEstimateStatus(id: number, status: string): Promise<void> {
+		const oldEstimate = getEstimate(id);
+		await updateEstimateStatus(id, status);
+		this._audit.logAudit({
+			entity_type: 'estimate',
+			entity_id: id,
+			action: 'status_change',
+			changes: { status: { old: oldEstimate?.status ?? '', new: status } },
+			context: oldEstimate?.estimate_number ?? ''
+		});
+		await save();
 	}
 
-	bulkDeleteEstimates(ids: number[]): Promise<void> {
-		return bulkDeleteEstimates(ids);
+	async bulkDeleteEstimates(ids: number[]): Promise<void> {
+		if (ids.length === 0) return;
+		const batch_id = crypto.randomUUID();
+		const estimates = ids.map((id) => getEstimate(id));
+		await this._tx.run(async () => {
+			await bulkDeleteEstimates(ids);
+		});
+		for (let i = 0; i < ids.length; i++) {
+			this._audit.logAudit({ entity_type: 'estimate', entity_id: ids[i], action: 'delete', context: estimates[i]?.estimate_number ?? '', batch_id });
+		}
+		await save();
 	}
 
-	bulkUpdateEstimateStatus(ids: number[], status: string): Promise<void> {
-		return bulkUpdateEstimateStatus(ids, status);
+	async bulkUpdateEstimateStatus(ids: number[], status: string): Promise<void> {
+		if (ids.length === 0) return;
+		const batch_id = crypto.randomUUID();
+		const estimates = ids.map((id) => getEstimate(id));
+		await bulkUpdateEstimateStatus(ids, status);
+		for (let i = 0; i < ids.length; i++) {
+			this._audit.logAudit({
+				entity_type: 'estimate',
+				entity_id: ids[i],
+				action: 'status_change',
+				changes: { status: { old: estimates[i]?.status ?? '', new: status } },
+				context: estimates[i]?.estimate_number ?? '',
+				batch_id
+			});
+		}
+		await save();
 	}
 
-	convertEstimateToInvoice(estimateId: number): Promise<number> {
-		return convertEstimateToInvoice(estimateId);
+	async convertEstimateToInvoice(estimateId: number): Promise<number> {
+		const { invoiceId, invoiceNumber, estimateNumber } = await this._tx.run(async () => {
+			return await convertEstimateToInvoice(estimateId);
+		});
+		this._audit.logAudit({
+			entity_type: 'estimate',
+			entity_id: estimateId,
+			action: 'convert',
+			context: `${estimateNumber} -> ${invoiceNumber}`
+		});
+		this._audit.logAudit({
+			entity_type: 'invoice',
+			entity_id: invoiceId,
+			action: 'create',
+			context: `${invoiceNumber} (from estimate ${estimateNumber})`
+		});
+		await save();
+		return invoiceId;
 	}
 
-	duplicateEstimate(id: number): Promise<number> {
-		return duplicateEstimate(id);
+	async duplicateEstimate(id: number): Promise<number> {
+		const { newId, newNumber, originalNumber } = await this._tx.run(async () => {
+			return await duplicateEstimate(id);
+		});
+		this._audit.logAudit({
+			entity_type: 'estimate',
+			entity_id: newId,
+			action: 'create',
+			context: `${newNumber} (duplicated from ${originalNumber})`
+		});
+		await save();
+		return newId;
 	}
 }

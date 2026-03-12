@@ -2,25 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../connection.svelte.js', () => ({
 	query: vi.fn(),
-	execute: vi.fn(),
-	save: vi.fn().mockResolvedValue(undefined),
-	runRaw: vi.fn()
-}));
-
-vi.mock('../audit.js', () => ({
-	logAudit: vi.fn(),
-	computeChanges: vi.fn().mockReturnValue({})
+	execute: vi.fn()
 }));
 
 import { getClients, getClient, createClient, updateClient, deleteClient } from './clients.js';
-import { query, execute, save, runRaw } from '../connection.svelte.js';
-import { logAudit } from '../audit.js';
+import { query, execute } from '../connection.svelte.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);
-const mockSave = vi.mocked(save);
-const mockRunRaw = vi.mocked(runRaw);
-const mockLogAudit = vi.mocked(logAudit);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -82,7 +71,7 @@ describe('createClient', () => {
 			'INSERT INTO clients (uuid, name, email, phone, address, pricing_tier_id, metadata, payer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 			[expect.any(String), 'Bob', 'bob@test.com', '555-0100', '123 Main St', null, '{}', null]
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 		expect(id).toBe(42);
 	});
 
@@ -125,14 +114,14 @@ describe('createClient', () => {
 });
 
 describe('updateClient', () => {
-	it('updates client and saves', async () => {
+	it('updates client', async () => {
 		await updateClient(1, { name: 'Alice Updated', email: 'alice@new.com' });
 
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('UPDATE clients SET'),
 			['Alice Updated', 'alice@new.com', '', '', null, '{}', null, 1]
 		);
-		expect(mockSave).toHaveBeenCalled();
+		// save() and logAudit() are now the repository's responsibility
 	});
 
 	it('throws when name is empty string', async () => {
@@ -147,31 +136,19 @@ describe('updateClient', () => {
 });
 
 describe('deleteClient', () => {
-	it('deletes client and audit logs inside a transaction', async () => {
+	it('deletes client', async () => {
 		await deleteClient(5);
 
-		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
 		expect(mockExecute).toHaveBeenCalledWith('DELETE FROM clients WHERE id = ?', [5]);
-		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
-		expect(mockSave).toHaveBeenCalled();
+		// Transaction management, logAudit(), and save() are now the repository's responsibility
 	});
 
-	it('rolls back when the delete fails', async () => {
+	it('propagates errors from execute', async () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('DELETE failed');
 		});
 
 		await expect(deleteClient(5)).rejects.toThrow('DELETE failed');
-		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
-		expect(mockSave).not.toHaveBeenCalled();
-	});
-
-	it('rolls back when the audit log write fails', async () => {
-		mockLogAudit.mockImplementationOnce(() => { throw new Error('audit write failed'); });
-
-		await expect(deleteClient(5)).rejects.toThrow('audit write failed');
-		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
-		expect(mockSave).not.toHaveBeenCalled();
 	});
 });
 

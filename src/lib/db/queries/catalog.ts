@@ -1,5 +1,4 @@
-import { execute, query, save } from '../connection.svelte.js';
-import { logAudit, computeChanges } from '../audit.js';
+import { execute, query } from '../connection.svelte.js';
 import type { CatalogItem, CatalogItemWithRates, CatalogItemRate } from '../../types/index.js';
 
 export function getCatalogItems(search?: string, category?: string): CatalogItem[] {
@@ -43,6 +42,10 @@ export function searchCatalogItems(term: string, limit: number = 10): CatalogIte
 	);
 }
 
+/**
+ * Pure SQL: inserts a catalog item and returns the new id.
+ * No audit logging, no save().
+ */
 export async function createCatalogItem(data: {
 	name: string;
 	rate?: number;
@@ -58,19 +61,13 @@ export async function createCatalogItem(data: {
 		[crypto.randomUUID(), data.name, data.rate ?? 0, data.unit ?? '', data.category ?? '', data.sku ?? '']
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
-	logAudit({
-		entity_type: 'catalog',
-		entity_id: result[0].id,
-		action: 'create',
-		changes: {
-			name: { old: null, new: data.name },
-			rate: { old: null, new: data.rate ?? 0 }
-		}
-	});
-	await save();
 	return result[0].id;
 }
 
+/**
+ * Pure SQL: updates a catalog item.
+ * No audit logging, no save().
+ */
 export async function updateCatalogItem(
 	id: number,
 	data: { name: string; rate?: number; unit?: string; category?: string; sku?: string }
@@ -78,41 +75,28 @@ export async function updateCatalogItem(
 	if (!data.name?.trim()) {
 		throw new Error('Catalog item name is required');
 	}
-	const oldItem = getCatalogItem(id);
 	execute(
 		`UPDATE catalog_items SET name = ?, rate = ?, unit = ?, category = ?, sku = ?, updated_at = datetime('now') WHERE id = ?`,
 		[data.name, data.rate ?? 0, data.unit ?? '', data.category ?? '', data.sku ?? '', id]
 	);
-	if (oldItem) {
-		const changes = computeChanges(
-			oldItem as unknown as Record<string, unknown>,
-			{ name: data.name, rate: data.rate ?? 0, unit: data.unit ?? '', category: data.category ?? '', sku: data.sku ?? '' },
-			['name', 'rate', 'unit', 'category', 'sku']
-		);
-		if (Object.keys(changes).length > 0) {
-			logAudit({ entity_type: 'catalog', entity_id: id, action: 'update', changes });
-		}
-	}
-	await save();
 }
 
+/**
+ * Pure SQL: deletes a catalog item.
+ * No audit logging, no save().
+ */
 export async function deleteCatalogItem(id: number): Promise<void> {
-	const item = getCatalogItem(id);
 	execute(`DELETE FROM catalog_items WHERE id = ?`, [id]);
-	logAudit({ entity_type: 'catalog', entity_id: id, action: 'delete', context: item?.name ?? '' });
-	await save();
 }
 
+/**
+ * Pure SQL: bulk deletes catalog items.
+ * No audit logging, no save().
+ */
 export async function bulkDeleteCatalogItems(ids: number[]): Promise<void> {
 	if (ids.length === 0) return;
-	const batch_id = crypto.randomUUID();
-	const items = ids.map((id) => getCatalogItem(id));
 	const placeholders = ids.map(() => '?').join(',');
 	execute(`DELETE FROM catalog_items WHERE id IN (${placeholders})`, ids);
-	for (let i = 0; i < ids.length; i++) {
-		logAudit({ entity_type: 'catalog', entity_id: ids[i], action: 'delete', context: items[i]?.name ?? '', batch_id });
-	}
-	await save();
 }
 
 export function getCatalogItemWithRates(id: number): CatalogItemWithRates | null {
@@ -180,6 +164,10 @@ export function getEffectiveRate(catalogItemId: number, tierId: number | null): 
 	return item?.rate ?? 0;
 }
 
+/**
+ * Pure SQL: sets a catalog item rate for a tier.
+ * No save().
+ */
 export async function setCatalogItemRate(
 	catalogItemId: number,
 	tierId: number,
@@ -189,5 +177,4 @@ export async function setCatalogItemRate(
 		`INSERT OR REPLACE INTO catalog_item_rates (catalog_item_id, rate_tier_id, rate) VALUES (?, ?, ?)`,
 		[catalogItemId, tierId, rate]
 	);
-	await save();
 }
