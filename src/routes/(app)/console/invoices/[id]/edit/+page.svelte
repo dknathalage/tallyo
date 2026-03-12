@@ -6,6 +6,7 @@
 	import InvoiceForm from '$lib/components/invoice/InvoiceForm.svelte';
 	import type { Invoice, LineItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { addToast } from '$lib/stores/toast.js';
 
 	let invoice: Invoice | null = $state(null);
 	let lineItems: LineItem[] = $state([]);
@@ -40,8 +41,12 @@
 		items: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
 		if (!invoice) return;
-		await repositories.invoices.updateInvoice(invoice.id, data, items);
-		goto(`${base}/console/invoices/${invoice.id}`);
+		try {
+			await repositories.invoices.updateInvoice(invoice.id, data, items);
+			goto(`${base}/console/invoices/${invoice.id}`);
+		} catch (e: any) {
+			addToast({ type: 'error', message: e.message || 'Failed to update invoice' });
+		}
 	}
 </script>
 

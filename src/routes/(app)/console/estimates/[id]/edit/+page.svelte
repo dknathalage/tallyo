@@ -6,6 +6,7 @@
 	import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
 	import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { addToast } from '$lib/stores/toast.js';
 
 	let estimate: Estimate | null = $state(null);
 	let lineItems: EstimateLineItem[] = $state([]);
@@ -40,8 +41,12 @@
 		items: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
 		if (!estimate) return;
-		await repositories.estimates.updateEstimate(estimate.id, data, items);
-		goto(`${base}/console/estimates/${estimate.id}`);
+		try {
+			await repositories.estimates.updateEstimate(estimate.id, data, items);
+			goto(`${base}/console/estimates/${estimate.id}`);
+		} catch (e: any) {
+			addToast({ type: 'error', message: e.message || 'Failed to update estimate' });
+		}
 	}
 </script>
 

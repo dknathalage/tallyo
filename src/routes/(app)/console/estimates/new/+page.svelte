@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { addToast } from '$lib/stores/toast.js';
 
 	async function handleSubmit(
 		data: {
@@ -25,8 +26,12 @@
 		},
 		lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
-		await repositories.estimates.createEstimate(data, lineItems);
-		goto(`${base}/console/estimates`);
+		try {
+			await repositories.estimates.createEstimate(data, lineItems);
+			goto(`${base}/console/estimates`);
+		} catch (e: any) {
+			addToast({ type: 'error', message: e.message || 'Failed to save estimate' });
+		}
 	}
 </script>
 
