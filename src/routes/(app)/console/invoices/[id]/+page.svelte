@@ -16,6 +16,7 @@
 	let history: AuditLogEntry[] = $state([]);
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
+	let showNoEmailMessage = $state(false);
 
 	const allStatuses = ['draft', 'sent', 'paid', 'overdue'] as const;
 
@@ -55,6 +56,23 @@
 	function handleExportPdf() {
 		if (!invoice) return;
 		exportInvoicePdf(invoice, lineItems);
+	}
+
+	function handleSendToClient() {
+		if (!invoice) return;
+		const email = clientSnap.email?.trim();
+		if (!email) {
+			showNoEmailMessage = true;
+			return;
+		}
+		const businessName = businessSnap.name || 'Your Business';
+		const subject = encodeURIComponent(`Invoice ${invoice.invoice_number} from ${businessName}`);
+		const totalFormatted = formatCurrency(invoice.total, invoice.currency_code);
+		const dueDateFormatted = formatDate(invoice.due_date);
+		const body = encodeURIComponent(
+			`Hi ${clientSnap.name || 'there'},\n\nPlease find attached invoice ${invoice.invoice_number} for ${totalFormatted}, due on ${dueDateFormatted}.\n\nPlease attach the PDF when sending this email.\n\nThank you,\n${businessName}`
+		);
+		window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
 	}
 
 	function formatTimestamp(ts: string): string {
@@ -154,6 +172,12 @@
 				<Button variant="secondary" size="sm" onclick={handleDuplicate}>
 					Duplicate
 				</Button>
+
+				{#if invoice.status === 'draft' || invoice.status === 'sent'}
+					<Button variant="secondary" size="sm" onclick={handleSendToClient}>
+						{i18n.t('invoice.sendToClient')}
+					</Button>
+				{/if}
 
 				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/console/invoices/${invoice?.id}/edit`)}>
 					{i18n.t('invoice.edit')}
@@ -353,4 +377,22 @@
 		onconfirm={handleDelete}
 		oncancel={() => (showDeleteConfirm = false)}
 	/>
+
+	{#if showNoEmailMessage}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="fixed inset-0 z-50 flex items-center justify-center p-4"
+			onclick={() => (showNoEmailMessage = false)}
+			onkeydown={(e) => e.key === 'Escape' && (showNoEmailMessage = false)}
+		>
+			<div class="absolute inset-0 bg-black/50"></div>
+			<div class="relative z-10 w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+				<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('invoice.noClientEmail')}</h2>
+				<p class="text-sm text-gray-600 dark:text-gray-300">{i18n.t('invoice.noClientEmailMessage')}</p>
+				<div class="mt-4 flex justify-end">
+					<Button size="sm" onclick={() => (showNoEmailMessage = false)}>{i18n.t('common.close')}</Button>
+				</div>
+			</div>
+		</div>
+	{/if}
 {/if}
