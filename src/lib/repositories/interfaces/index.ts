@@ -17,6 +17,11 @@ export type {
 	UpdateColumnMappingInput
 } from './ColumnMappingsRepository.js';
 export type {
+	RecurringTemplateRepository,
+	CreateRecurringTemplateInput,
+	UpdateRecurringTemplateInput
+} from './RecurringTemplateRepository.js';
+export type {
 	LineItemInput,
 	CreateInvoiceInput,
 	UpdateInvoiceInput,

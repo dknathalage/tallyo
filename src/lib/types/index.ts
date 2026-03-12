@@ -249,3 +249,21 @@ export interface Payment {
 	created_at: string;
 	updated_at: string;
 }
+
+export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly';
+
+export interface RecurringTemplate {
+	id: number;
+	uuid: string;
+	client_id: number;
+	client_name?: string;
+	name: string;
+	frequency: RecurringFrequency;
+	next_due: string;
+	line_items: string; // JSON
+	tax_rate: number;
+	notes: string;
+	is_active: number;
+	created_at: string;
+	updated_at: string;
+}

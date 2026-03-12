@@ -210,6 +210,28 @@ function migration10_payments() {
 	}
 }
 
+/** Migration 11: Create recurring_templates table */
+function migration11_recurringTemplates() {
+	if (!tableExists('recurring_templates')) {
+		execute(`CREATE TABLE IF NOT EXISTS recurring_templates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT NOT NULL UNIQUE,
+			client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+			name TEXT NOT NULL,
+			frequency TEXT NOT NULL CHECK (frequency IN ('weekly', 'monthly', 'quarterly')),
+			next_due TEXT NOT NULL,
+			line_items TEXT NOT NULL DEFAULT '[]',
+			tax_rate REAL NOT NULL DEFAULT 0,
+			notes TEXT NOT NULL DEFAULT '',
+			is_active INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`);
+		execute(`CREATE INDEX IF NOT EXISTS idx_recurring_client ON recurring_templates(client_id)`);
+		execute(`CREATE INDEX IF NOT EXISTS idx_recurring_next_due ON recurring_templates(next_due)`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations() {
 	migration0_addUuids();
@@ -223,6 +245,7 @@ export function runMigrations() {
 	migration8_paymentTerms();
 	migration9_taxRates();
 	migration10_payments();
+	migration11_recurringTemplates();
 }
 
 // Keep backward-compatible export name

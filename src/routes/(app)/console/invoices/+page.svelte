@@ -21,6 +21,7 @@
 	let search = $state('');
 	let statusFilter = $state('');
 	let invoices: Invoice[] = $state([]);
+	let dueTemplatesCount = $state(0);
 	let showPreview = $state(false);
 	let previewData: ParsedInvoiceImport | null = $state(null);
 	let importTrigger = $state(0);
@@ -35,6 +36,7 @@
 		repositories.invoices.markOverdueInvoices().then(() => {
 			invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
 		});
+		dueTemplatesCount = repositories.recurringTemplates.getDueTemplates().length;
 		selectedIds = new Set();
 	});
 
@@ -87,6 +89,26 @@
 </script>
 
 <div class="space-y-6">
+	<!-- Due recurring templates notification -->
+	{#if dueTemplatesCount > 0}
+		<div class="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-900/20">
+			<div class="flex items-center gap-2">
+				<svg class="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+				</svg>
+				<span class="text-sm font-medium text-amber-800 dark:text-amber-300">
+					{i18n.t('recurring.dueNoticeMessage', { count: dueTemplatesCount, plural: dueTemplatesCount === 1 ? '' : 's', verb: dueTemplatesCount === 1 ? 'is' : 'are' })}
+				</span>
+			</div>
+			<a
+				href="{base}/console/recurring"
+				class="ml-4 shrink-0 text-sm font-medium text-amber-700 underline hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
+			>
+				{i18n.t('recurring.viewDue')}
+			</a>
+		</div>
+	{/if}
+
 	<!-- Header -->
 	<div class="flex flex-wrap items-center justify-between gap-4">
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('invoice.title')}</h1>

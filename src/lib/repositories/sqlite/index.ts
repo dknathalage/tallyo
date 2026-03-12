@@ -10,6 +10,7 @@ import { SqliteBusinessProfileRepository } from './SqliteBusinessProfileReposito
 import { SqliteDashboardRepository } from './SqliteDashboardRepository.js';
 import { SqliteAuditRepository } from './SqliteAuditRepository.js';
 import { SqliteColumnMappingsRepository } from './SqliteColumnMappingsRepository.js';
+import { SqliteRecurringTemplateRepository } from './SqliteRecurringTemplateRepository.js';
 import { SqliteTransactionFactory } from './SqliteTransactionFactory.js';
 import type {
 	InvoiceRepository,
@@ -23,7 +24,8 @@ import type {
 	BusinessProfileRepository,
 	DashboardRepository,
 	AuditRepository,
-	ColumnMappingsRepository
+	ColumnMappingsRepository,
+	RecurringTemplateRepository
 } from '../interfaces/index.js';
 
 // Shared infrastructure singletons
@@ -42,7 +44,8 @@ export const repositories = {
 	businessProfile: new SqliteBusinessProfileRepository() as BusinessProfileRepository,
 	dashboard: new SqliteDashboardRepository() as DashboardRepository,
 	audit: auditRepo as AuditRepository,
-	columnMappings: new SqliteColumnMappingsRepository() as ColumnMappingsRepository
+	columnMappings: new SqliteColumnMappingsRepository() as ColumnMappingsRepository,
+	recurringTemplates: new SqliteRecurringTemplateRepository() as RecurringTemplateRepository
 };
 
 export type Repositories = typeof repositories;
