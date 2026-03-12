@@ -360,3 +360,51 @@ describe('markOverdueInvoices', () => {
 		);
 	});
 });
+
+import { getAgingReport } from './invoices.js';
+
+vi.mock('./business-profile.js', () => ({
+	getBusinessProfile: vi.fn().mockReturnValue({ default_currency: 'USD' })
+}));
+
+describe('getAgingReport', () => {
+	it('returns 5 aging buckets', () => {
+		mockQuery.mockReturnValueOnce([]);
+		const result = getAgingReport();
+		expect(result).toHaveLength(5);
+		expect(result.map((b) => b.label)).toEqual([
+			'Current',
+			'1–30 days',
+			'31–60 days',
+			'61–90 days',
+			'90+ days'
+		]);
+	});
+
+	it('distributes invoices to correct buckets by days overdue', () => {
+		mockQuery.mockReturnValueOnce([
+			{ id: 1, invoice_number: 'INV-001', total: 1000, currency_code: 'USD', days_overdue: -2, status: 'sent' },
+			{ id: 2, invoice_number: 'INV-002', total: 500, currency_code: 'USD', days_overdue: 15, status: 'overdue' },
+			{ id: 3, invoice_number: 'INV-003', total: 750, currency_code: 'USD', days_overdue: 45, status: 'overdue' },
+			{ id: 4, invoice_number: 'INV-004', total: 200, currency_code: 'USD', days_overdue: 75, status: 'overdue' },
+			{ id: 5, invoice_number: 'INV-005', total: 300, currency_code: 'USD', days_overdue: 120, status: 'overdue' }
+		]);
+		const result = getAgingReport();
+		expect(result[0].invoices).toHaveLength(1); // Current
+		expect(result[1].invoices).toHaveLength(1); // 1–30
+		expect(result[2].invoices).toHaveLength(1); // 31–60
+		expect(result[3].invoices).toHaveLength(1); // 61–90
+		expect(result[4].invoices).toHaveLength(1); // 90+
+		expect(result[0].total).toBe(1000);
+		expect(result[4].total).toBe(300);
+	});
+
+	it('returns all empty buckets when no outstanding invoices', () => {
+		mockQuery.mockReturnValueOnce([]);
+		const result = getAgingReport();
+		result.forEach((b) => {
+			expect(b.total).toBe(0);
+			expect(b.invoices).toHaveLength(0);
+		});
+	});
+});

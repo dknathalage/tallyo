@@ -1,4 +1,4 @@
-import type { Invoice, LineItem } from '$lib/types/index.js';
+import type { Invoice, LineItem, AgingBucket } from '$lib/types/index.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from './types.js';
 
 export interface InvoiceRepository {
@@ -6,6 +6,7 @@ export interface InvoiceRepository {
 	getInvoice(id: number): Invoice | null;
 	getInvoiceLineItems(invoiceId: number): LineItem[];
 	getClientInvoices(clientId: number): Invoice[];
+	getAgingReport(): AgingBucket[];
 
 	createInvoice(data: CreateInvoiceInput, lineItems: LineItemInput[]): Promise<number>;
 	updateInvoice(id: number, data: UpdateInvoiceInput, lineItems: LineItemInput[]): Promise<void>;

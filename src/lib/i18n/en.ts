@@ -9,6 +9,7 @@ const en: Messages = {
 		payers: 'Payers',
 		catalog: 'Catalog',
 		rateTiers: 'Rate Tiers',
+		reports: 'Reports',
 		settings: 'Settings',
 		appName: 'Invoice Manager',
 		close: 'Close',
