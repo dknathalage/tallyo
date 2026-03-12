@@ -20,6 +20,11 @@
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
 	let showPaymentModal = $state(false);
+	let showSaveAsRecurring = $state(false);
+	let recurringName = $state('');
+	let recurringFrequency = $state<'weekly' | 'monthly' | 'quarterly'>('monthly');
+	let recurringNextDue = $state(new Date().toISOString().slice(0, 10));
+	let savingRecurring = $state(false);
 	let paymentAmount = $state(0);
 	let paymentDate = $state(new Date().toISOString().slice(0, 10));
 	let paymentMethod = $state('');
@@ -53,6 +58,36 @@
 		if (!invoice) return;
 		const newId = await repositories.invoices.duplicateInvoice(invoice.id);
 		goto(`${base}/console/invoices/${newId}/edit`);
+	}
+
+	async function handleSaveAsRecurring() {
+		if (!invoice || !recurringName.trim()) return;
+		savingRecurring = true;
+		try {
+			const templateLineItems = lineItems.map((li, i) => ({
+				description: li.description,
+				quantity: li.quantity,
+				rate: li.rate,
+				amount: li.amount,
+				notes: li.notes ?? '',
+				sort_order: i
+			}));
+			const id = await repositories.recurringTemplates.createRecurringTemplate({
+				client_id: invoice.client_id,
+				name: recurringName.trim(),
+				frequency: recurringFrequency,
+				next_due: recurringNextDue,
+				line_items: JSON.stringify(templateLineItems),
+				tax_rate: invoice.tax_rate,
+				notes: invoice.notes ?? '',
+				is_active: 1
+			});
+			showSaveAsRecurring = false;
+			recurringName = '';
+			goto(`${base}/console/recurring/${id}`);
+		} finally {
+			savingRecurring = false;
+		}
 	}
 
 	async function handleRecordPayment() {
@@ -217,6 +252,10 @@
 
 				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/console/invoices/${invoice?.id}/edit`)}>
 					{i18n.t('invoice.edit')}
+				</Button>
+
+				<Button variant="secondary" size="sm" onclick={() => { recurringName = invoice?.invoice_number ?? ''; recurringNextDue = new Date().toISOString().slice(0, 10); showSaveAsRecurring = true; }}>
+					{i18n.t('recurring.saveAsRecurring')}
 				</Button>
 
 				<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>
@@ -489,6 +528,65 @@
 		onconfirm={handleDelete}
 		oncancel={() => (showDeleteConfirm = false)}
 	/>
+
+	{#if showSaveAsRecurring}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="fixed inset-0 z-50 flex items-center justify-center p-4"
+			onclick={(e) => { if (e.target === e.currentTarget) showSaveAsRecurring = false; }}
+			onkeydown={(e) => e.key === 'Escape' && (showSaveAsRecurring = false)}
+		>
+			<div class="absolute inset-0 bg-black/50"></div>
+			<div class="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('recurring.saveAsRecurringTitle')}</h2>
+				<div class="space-y-4">
+					<div>
+						<label for="rec-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+							{i18n.t('recurring.templateName')}
+						</label>
+						<input
+							id="rec-name"
+							type="text"
+							bind:value={recurringName}
+							placeholder={i18n.t('recurring.templateNamePlaceholder')}
+							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+						/>
+					</div>
+					<div>
+						<label for="rec-freq" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+							{i18n.t('recurring.frequency')}
+						</label>
+						<select
+							id="rec-freq"
+							bind:value={recurringFrequency}
+							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+						>
+							<option value="weekly">{i18n.t('recurring.weekly')}</option>
+							<option value="monthly">{i18n.t('recurring.monthly')}</option>
+							<option value="quarterly">{i18n.t('recurring.quarterly')}</option>
+						</select>
+					</div>
+					<div>
+						<label for="rec-next-due" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+							{i18n.t('recurring.nextDue')}
+						</label>
+						<input
+							id="rec-next-due"
+							type="date"
+							bind:value={recurringNextDue}
+							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+						/>
+					</div>
+				</div>
+				<div class="mt-4 flex justify-end gap-3">
+					<Button variant="secondary" size="sm" onclick={() => (showSaveAsRecurring = false)}>{i18n.t('common.cancel')}</Button>
+					<Button size="sm" onclick={handleSaveAsRecurring} disabled={savingRecurring || !recurringName.trim()}>
+						{savingRecurring ? i18n.t('common.loading') : i18n.t('recurring.createTemplate')}
+					</Button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	{#if showNoEmailMessage}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->

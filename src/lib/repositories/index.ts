@@ -17,6 +17,7 @@ export type {
 	DashboardRepository,
 	AuditRepository,
 	ColumnMappingsRepository,
+	RecurringTemplateRepository,
 	CreateColumnMappingInput,
 	UpdateColumnMappingInput,
 	LineItemInput,
@@ -32,5 +33,7 @@ export type {
 	UpdateCatalogItemInput,
 	CreateRateTierInput,
 	UpdateRateTierInput,
-	SaveBusinessProfileInput
+	SaveBusinessProfileInput,
+	CreateRecurringTemplateInput,
+	UpdateRecurringTemplateInput
 } from './interfaces/index.js';
