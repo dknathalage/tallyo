@@ -68,6 +68,9 @@ export interface Messages {
 		billTo: string;
 		status: string;
 		pdf: string;
+		sendToClient: string;
+		noClientEmail: string;
+		noClientEmailMessage: string;
 		edit: string;
 		delete: string;
 		deleteConfirmTitle: string;
