@@ -174,3 +174,42 @@ describe('deleteClient', () => {
 		expect(mockSave).not.toHaveBeenCalled();
 	});
 });
+
+import { getClientRevenueSummary } from './clients.js';
+
+vi.mock('./business-profile.js', () => ({
+	getBusinessProfile: vi.fn().mockReturnValue({ default_currency: 'USD' })
+}));
+
+describe('getClientRevenueSummary', () => {
+	it('returns revenue summary for a client', () => {
+		mockQuery
+			.mockReturnValueOnce([{ total: 5000 }])   // total invoiced
+			.mockReturnValueOnce([{ total: 3000 }])   // total paid
+			.mockReturnValueOnce([{ total: 2000 }])   // outstanding
+			.mockReturnValueOnce([{ count: 8 }]);     // invoice count
+
+		const result = getClientRevenueSummary(1);
+
+		expect(result.total_invoiced).toBe(5000);
+		expect(result.total_paid).toBe(3000);
+		expect(result.outstanding_balance).toBe(2000);
+		expect(result.invoice_count).toBe(8);
+		expect(result.currency_code).toBe('USD');
+	});
+
+	it('returns zeros when no invoices', () => {
+		mockQuery
+			.mockReturnValueOnce([{ total: null }])
+			.mockReturnValueOnce([{ total: null }])
+			.mockReturnValueOnce([{ total: null }])
+			.mockReturnValueOnce([{ count: 0 }]);
+
+		const result = getClientRevenueSummary(99);
+
+		expect(result.total_invoiced).toBe(0);
+		expect(result.total_paid).toBe(0);
+		expect(result.outstanding_balance).toBe(0);
+		expect(result.invoice_count).toBe(0);
+	});
+});

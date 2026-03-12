@@ -1,6 +1,7 @@
 import { execute, query, save, runRaw } from '../connection.svelte.js';
 import { logAudit, computeChanges } from '../audit.js';
-import type { Client, PartySnapshot } from '../../types/index.js';
+import type { Client, PartySnapshot, ClientRevenueSummary } from '../../types/index.js';
+import { getBusinessProfile } from './business-profile.js';
 
 export function getClients(search?: string): Client[] {
 	if (search) {
@@ -118,5 +119,38 @@ export function buildClientSnapshot(clientId: number): PartySnapshot {
 		phone: client.phone,
 		address: client.address,
 		metadata
+	};
+}
+
+export function getClientRevenueSummary(clientId: number): ClientRevenueSummary {
+	const profile = getBusinessProfile();
+	const defaultCurrency = profile?.default_currency || 'USD';
+
+	const totalInvoicedResult = query<{ total: number | null }>(
+		`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE client_id = ? AND COALESCE(currency_code, 'USD') = ?`,
+		[clientId, defaultCurrency]
+	);
+
+	const totalPaidResult = query<{ total: number | null }>(
+		`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE client_id = ? AND status = 'paid' AND COALESCE(currency_code, 'USD') = ?`,
+		[clientId, defaultCurrency]
+	);
+
+	const outstandingResult = query<{ total: number | null }>(
+		`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE client_id = ? AND status IN ('sent', 'overdue') AND COALESCE(currency_code, 'USD') = ?`,
+		[clientId, defaultCurrency]
+	);
+
+	const countResult = query<{ count: number }>(
+		`SELECT COUNT(*) as count FROM invoices WHERE client_id = ?`,
+		[clientId]
+	);
+
+	return {
+		total_invoiced: totalInvoicedResult[0]?.total ?? 0,
+		total_paid: totalPaidResult[0]?.total ?? 0,
+		outstanding_balance: outstandingResult[0]?.total ?? 0,
+		invoice_count: countResult[0]?.count ?? 0,
+		currency_code: defaultCurrency
 	};
 }
