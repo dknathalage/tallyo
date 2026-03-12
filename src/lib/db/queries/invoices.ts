@@ -45,6 +45,7 @@ export async function createInvoice(
 		client_id: number;
 		date: string;
 		due_date: string;
+		payment_terms?: string;
 		subtotal: number;
 		tax_rate: number;
 		tax_amount: number;
@@ -61,13 +62,14 @@ export async function createInvoice(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				crypto.randomUUID(),
 				data.invoice_number,
 				data.client_id,
 				data.date,
 				data.due_date,
+				data.payment_terms ?? 'custom',
 				data.subtotal,
 				data.tax_rate,
 				data.tax_amount,
@@ -114,6 +116,7 @@ export async function updateInvoice(
 		client_id: number;
 		date: string;
 		due_date: string;
+		payment_terms?: string;
 		subtotal: number;
 		tax_rate: number;
 		tax_amount: number;
@@ -131,12 +134,13 @@ export async function updateInvoice(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
+			`UPDATE invoices SET invoice_number = ?, client_id = ?, date = ?, due_date = ?, payment_terms = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
 			[
 				data.invoice_number,
 				data.client_id,
 				data.date,
 				data.due_date,
+				data.payment_terms ?? 'custom',
 				data.subtotal,
 				data.tax_rate,
 				data.tax_amount,
