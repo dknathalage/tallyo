@@ -14,4 +14,6 @@ export interface InvoiceRepository {
 
 	bulkDeleteInvoices(ids: number[]): Promise<void>;
 	bulkUpdateInvoiceStatus(ids: number[], status: string): Promise<void>;
+
+	markOverdueInvoices(): Promise<number>;
 }

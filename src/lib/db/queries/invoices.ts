@@ -261,3 +261,36 @@ export function getClientInvoices(clientId: number): Invoice[] {
 		[clientId]
 	);
 }
+
+/**
+ * Marks any 'Sent' invoice whose due_date is before today as 'Overdue'.
+ * Returns the number of invoices updated.
+ */
+export async function markOverdueInvoices(): Promise<number> {
+	const overdueIds = query<{ id: number }>(
+		`SELECT id FROM invoices WHERE status = 'sent' AND due_date < date('now')`
+	);
+	if (overdueIds.length === 0) return 0;
+
+	const placeholders = overdueIds.map(() => '?').join(',');
+	const ids = overdueIds.map((r) => r.id);
+
+	execute(
+		`UPDATE invoices SET status = 'overdue', updated_at = datetime('now') WHERE id IN (${placeholders})`,
+		ids
+	);
+
+	for (const { id } of overdueIds) {
+		const inv = getInvoice(id);
+		logAudit({
+			entity_type: 'invoice',
+			entity_id: id,
+			action: 'status_change',
+			changes: { status: { old: 'sent', new: 'overdue' } },
+			context: inv?.invoice_number ?? ''
+		});
+	}
+
+	await save();
+	return overdueIds.length;
+}

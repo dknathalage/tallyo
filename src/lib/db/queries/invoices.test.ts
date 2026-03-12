@@ -20,7 +20,8 @@ import {
 	updateInvoice,
 	deleteInvoice,
 	updateInvoiceStatus,
-	getClientInvoices
+	getClientInvoices,
+	markOverdueInvoices
 } from './invoices.js';
 import { query, execute, save, runRaw } from '../connection.svelte.js';
 import { logAudit } from '../audit.js';
@@ -305,6 +306,57 @@ describe('getClientInvoices', () => {
 		expect(mockQuery).toHaveBeenCalledWith(
 			expect.stringContaining('WHERE i.client_id = ?'),
 			[5]
+		);
+	});
+});
+
+describe('markOverdueInvoices', () => {
+	it('does nothing and returns 0 when no sent invoices are overdue', async () => {
+		mockQuery.mockReturnValue([]);
+
+		const count = await markOverdueInvoices();
+
+		expect(count).toBe(0);
+		expect(mockExecute).not.toHaveBeenCalled();
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+
+	it('updates overdue invoices and returns count', async () => {
+		// First query: find overdue sent invoices; subsequent calls for getInvoice return null
+		mockQuery.mockReturnValueOnce([{ id: 1 }, { id: 2 }]).mockReturnValue([]);
+
+		const count = await markOverdueInvoices();
+
+		expect(count).toBe(2);
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining("UPDATE invoices SET status = 'overdue'"),
+			[1, 2]
+		);
+		expect(mockSave).toHaveBeenCalled();
+	});
+
+	it('only selects invoices with status sent and past due date', async () => {
+		mockQuery.mockReturnValue([]);
+
+		await markOverdueInvoices();
+
+		expect(mockQuery).toHaveBeenCalledWith(
+			expect.stringContaining("status = 'sent' AND due_date < date('now')")
+		);
+	});
+
+	it('logs an audit entry for each overdue invoice', async () => {
+		mockQuery.mockReturnValueOnce([{ id: 3 }]).mockReturnValue([]);
+
+		await markOverdueInvoices();
+
+		expect(mockLogAudit).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entity_type: 'invoice',
+				entity_id: 3,
+				action: 'status_change',
+				changes: { status: { old: 'sent', new: 'overdue' } }
+			})
 		);
 	});
 });

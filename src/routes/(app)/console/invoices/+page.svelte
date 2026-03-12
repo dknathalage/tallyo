@@ -32,7 +32,9 @@
 
 	$effect(() => {
 		importTrigger;
-		invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
+		repositories.invoices.markOverdueInvoices().then(() => {
+			invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
+		});
 		selectedIds = new Set();
 	});
 
