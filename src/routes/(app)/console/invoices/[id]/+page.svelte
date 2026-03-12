@@ -34,9 +34,9 @@
 
 	const allStatuses = ['draft', 'sent', 'paid', 'overdue'] as const;
 
-	let businessSnap = $derived.by(() => parseSnapshot((invoice as any)?.business_snapshot ?? '{}'));
-	let clientSnap = $derived.by(() => parseSnapshot((invoice as any)?.client_snapshot ?? '{}'));
-	let payerSnap = $derived.by(() => parseSnapshot((invoice as any)?.payer_snapshot ?? '{}'));
+	let businessSnap = $derived.by(() => parseSnapshot(invoice?.business_snapshot ?? '{}'));
+	let clientSnap = $derived.by(() => parseSnapshot(invoice?.client_snapshot ?? '{}'));
+	let payerSnap = $derived.by(() => parseSnapshot(invoice?.payer_snapshot ?? '{}'));
 
 	$effect(() => {
 		const id = Number(page.params.id);

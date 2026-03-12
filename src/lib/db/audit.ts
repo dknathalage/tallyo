@@ -1,9 +1,35 @@
 import { execute } from './connection.svelte.js';
 
+export type AuditEntityType =
+	| 'invoice'
+	| 'estimate'
+	| 'client'
+	| 'payer'
+	| 'catalog'
+	| 'catalog_item'
+	| 'rate_tier'
+	| 'tax_rate'
+	| 'payment'
+	| 'recurring_template'
+	| 'business_profile';
+
+export type AuditAction =
+	| 'create'
+	| 'update'
+	| 'delete'
+	| 'status_change'
+	| 'convert'
+	| 'duplicate'
+	| 'bulk_delete'
+	| 'import'
+	| 'export'
+	| 'backup'
+	| 'restore';
+
 export function logAudit(params: {
-	entity_type: string;
+	entity_type: AuditEntityType;
 	entity_id?: number | null;
-	action: string;
+	action: AuditAction;
 	changes?: Record<string, { old: unknown; new: unknown }>;
 	context?: string;
 	batch_id?: string;
