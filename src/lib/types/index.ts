@@ -153,6 +153,26 @@ export interface AuditLogEntry {
 	created_at: string;
 }
 
+export interface MonthlyRevenue {
+	month: string; // YYYY-MM
+	label: string; // e.g. "Jan 2024"
+	revenue: number;
+}
+
+export interface ClientRevenueSummary {
+	total_invoiced: number;
+	total_paid: number;
+	outstanding_balance: number;
+	invoice_count: number;
+	currency_code: string;
+}
+
+export interface AgingBucket {
+	label: string;
+	total: number;
+	invoices: Invoice[];
+}
+
 export interface DashboardStats {
 	total_revenue: number;
 	outstanding_amount: number;
