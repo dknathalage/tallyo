@@ -6,6 +6,7 @@
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportInvoicePdf } from '$lib/utils/pdf.js';
 	import type { Invoice, LineItem, AuditLogEntry, Payment } from '$lib/types/index.js';
+	import { parseSnapshot } from '$lib/utils/snapshot.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
@@ -187,14 +188,6 @@
 		return String(val) || '(empty)';
 	}
 
-	function parseSnapshot(json: string): { name: string; email: string; phone: string; address: string; logo?: string; metadata: Record<string, string> } {
-		try {
-			const p = JSON.parse(json || '{}');
-			return { name: p.name || '', email: p.email || '', phone: p.phone || '', address: p.address || '', logo: p.logo, metadata: p.metadata || {} };
-		} catch {
-			return { name: '', email: '', phone: '', address: '', metadata: {} };
-		}
-	}
 </script>
 
 {#if !invoice}

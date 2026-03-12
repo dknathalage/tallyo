@@ -135,6 +135,14 @@ export async function updateInvoice(
 	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes?: string }>
 ): Promise<void> {
 	const oldInvoice = getInvoice(id);
+	// If a tax_rate_id is provided, look up the actual rate from the tax_rates table
+	let resolvedTaxRate = data.tax_rate;
+	if (data.tax_rate_id) {
+		const taxRateRow = query<{ rate: number }>(`SELECT rate FROM tax_rates WHERE id = ?`, [data.tax_rate_id]);
+		if (taxRateRow.length > 0) {
+			resolvedTaxRate = taxRateRow[0].rate;
+		}
+	}
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
@@ -146,7 +154,7 @@ export async function updateInvoice(
 				data.due_date,
 				data.payment_terms ?? 'custom',
 				data.subtotal,
-				data.tax_rate_id ? data.tax_rate : data.tax_rate,
+				resolvedTaxRate,
 				data.tax_rate_id ?? null,
 				data.tax_amount,
 				data.total,
