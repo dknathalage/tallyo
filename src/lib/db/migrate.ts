@@ -164,6 +164,35 @@ function migration8_paymentTerms() {
 	}
 }
 
+/** Migration 9: Add tax_rates table */
+function migration9_taxRates() {
+	if (!tableExists('tax_rates')) {
+		execute(`CREATE TABLE IF NOT EXISTS tax_rates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			rate REAL NOT NULL DEFAULT 0,
+			is_default INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`);
+		// Seed with GST 10% as default
+		execute(
+			`INSERT INTO tax_rates (uuid, name, rate, is_default) VALUES (?, 'GST', 10, 1)`,
+			[crypto.randomUUID()]
+		);
+	}
+	// Add tax_rate_id to invoices if not present
+	if (!tableHasColumn('invoices', 'tax_rate_id')) {
+		execute(`ALTER TABLE invoices ADD COLUMN tax_rate_id INTEGER REFERENCES tax_rates(id) ON DELETE SET NULL`);
+	}
+	// Add tax_rate_id to estimates if not present
+	if (!tableExists('estimates')) return;
+	if (!tableHasColumn('estimates', 'tax_rate_id')) {
+		execute(`ALTER TABLE estimates ADD COLUMN tax_rate_id INTEGER REFERENCES tax_rates(id) ON DELETE SET NULL`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations() {
 	migration0_addUuids();
@@ -175,6 +204,7 @@ export function runMigrations() {
 	migration6_multiCurrency();
 	migration7_estimates();
 	migration8_paymentTerms();
+	migration9_taxRates();
 }
 
 // Keep backward-compatible export name

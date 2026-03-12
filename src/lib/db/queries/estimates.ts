@@ -48,6 +48,7 @@ export async function createEstimate(
 		valid_until: string;
 		subtotal: number;
 		tax_rate: number;
+		tax_rate_id?: number | null;
 		tax_amount: number;
 		total: number;
 		notes?: string;
@@ -62,7 +63,7 @@ export async function createEstimate(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				crypto.randomUUID(),
 				data.estimate_number,
@@ -71,6 +72,7 @@ export async function createEstimate(
 				data.valid_until,
 				data.subtotal,
 				data.tax_rate,
+				data.tax_rate_id ?? null,
 				data.tax_amount,
 				data.total,
 				data.notes ?? '',
@@ -117,6 +119,7 @@ export async function updateEstimate(
 		valid_until: string;
 		subtotal: number;
 		tax_rate: number;
+		tax_rate_id?: number | null;
 		tax_amount: number;
 		total: number;
 		notes?: string;
@@ -132,7 +135,7 @@ export async function updateEstimate(
 	runRaw('BEGIN TRANSACTION');
 	try {
 		execute(
-			`UPDATE estimates SET estimate_number = ?, client_id = ?, date = ?, valid_until = ?, subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
+			`UPDATE estimates SET estimate_number = ?, client_id = ?, date = ?, valid_until = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
 			[
 				data.estimate_number,
 				data.client_id,
@@ -140,6 +143,7 @@ export async function updateEstimate(
 				data.valid_until,
 				data.subtotal,
 				data.tax_rate,
+				data.tax_rate_id ?? null,
 				data.tax_amount,
 				data.total,
 				data.notes ?? '',

@@ -6,6 +6,7 @@ export type { ClientRepository } from './ClientRepository.js';
 export type { PayerRepository } from './PayerRepository.js';
 export type { CatalogRepository } from './CatalogRepository.js';
 export type { RateTierRepository } from './RateTierRepository.js';
+export type { TaxRateRepository } from './TaxRateRepository.js';
 export type { BusinessProfileRepository } from './BusinessProfileRepository.js';
 export type { DashboardRepository } from './DashboardRepository.js';
 export type { AuditRepository, LogAuditParams } from './AuditRepository.js';
