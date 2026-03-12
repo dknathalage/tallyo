@@ -1,6 +1,7 @@
-import { query, execute, runRaw, save } from '$lib/db/connection.svelte.js';
+import { query } from '$lib/db/connection.svelte.js';
 import { parseCsvFile, validateRequiredField } from './parse.js';
 import type { CsvClientRow, ParsedImport, ValidationError } from './types.js';
+import type { ClientRepository } from '$lib/repositories/interfaces/index.js';
 
 export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClientRow>> {
 	const { data } = await parseCsvFile<CsvClientRow>(file);
@@ -9,7 +10,7 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 	const validRows: CsvClientRow[] = [];
 	let skippedDuplicates = 0;
 
-	// Get existing UUIDs for deduplication
+	// Get existing UUIDs for deduplication (read-only, safe in CSV layer)
 	const existing = query<{ uuid: string }>('SELECT uuid FROM clients WHERE uuid IS NOT NULL');
 	const existingUuids = new Set(existing.map((r) => r.uuid));
 
@@ -36,20 +37,21 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 	return { validRows, errors, skippedDuplicates, totalRows };
 }
 
-export async function commitClientImport(rows: CsvClientRow[]): Promise<void> {
-	try {
-		runRaw('BEGIN TRANSACTION');
-		for (const row of rows) {
-			const uuid = row.uuid?.trim() || crypto.randomUUID();
-			execute(
-				'INSERT INTO clients (uuid, name, email, phone, address) VALUES (?, ?, ?, ?, ?)',
-				[uuid, row.name?.trim(), row.email?.trim() || '', row.phone?.trim() || '', row.address?.trim() || '']
-			);
-		}
-		runRaw('COMMIT');
-		await save();
-	} catch (err) {
-		runRaw('ROLLBACK');
-		throw err;
+/**
+ * Commits the parsed client import through the repository layer.
+ * The repository layer handles audit logging for each record.
+ */
+export async function commitClientImport(
+	rows: CsvClientRow[],
+	repos: { clients: ClientRepository }
+): Promise<void> {
+	for (const row of rows) {
+		await repos.clients.createClient({
+			uuid: row.uuid?.trim() || undefined,
+			name: row.name?.trim() || '',
+			email: row.email?.trim() || '',
+			phone: row.phone?.trim() || '',
+			address: row.address?.trim() || ''
+		});
 	}
 }

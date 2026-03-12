@@ -74,7 +74,7 @@
 
 	async function handleConfirm() {
 		if (previewData) {
-			await commitClientImport(previewData.validRows);
+			await commitClientImport(previewData.validRows, { clients: repositories.clients });
 			showPreview = false;
 			previewData = null;
 			refreshTrigger++;

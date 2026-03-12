@@ -1,6 +1,7 @@
-import { query, execute, runRaw, save } from '$lib/db/connection.svelte.js';
+import { query } from '$lib/db/connection.svelte.js';
 import { parseCsvFile, validateRequiredField, validateNumeric, validateDate, validateStatus } from './parse.js';
 import type { CsvInvoiceRow, ParsedInvoiceImport, ParsedInvoiceGroup, ValidationError } from './types.js';
+import type { InvoiceRepository, ClientRepository } from '$lib/repositories/interfaces/index.js';
 
 export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport> {
 	const { data } = await parseCsvFile<CsvInvoiceRow>(file);
@@ -126,89 +127,70 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 	};
 }
 
-export async function commitInvoiceImport(groups: ParsedInvoiceGroup[], newClients: string[]): Promise<void> {
-	try {
-		runRaw('BEGIN TRANSACTION');
+/**
+ * Commits the parsed invoice import through the repository layer.
+ * The repository layer handles transactions and audit logging for each record.
+ */
+export async function commitInvoiceImport(
+	groups: ParsedInvoiceGroup[],
+	newClients: string[],
+	repos: { invoices: InvoiceRepository; clients: ClientRepository }
+): Promise<void> {
+	// Auto-create missing clients through the repository (audit-logged)
+	for (const name of newClients) {
+		await repos.clients.createClient({ name });
+	}
 
-		// Auto-create missing clients
-		for (const name of newClients) {
-			execute(
-				'INSERT INTO clients (uuid, name) VALUES (?, ?)',
-				[crypto.randomUUID(), name]
-			);
+	// Rebuild client name→id map after creating new clients (read-only, safe in CSV layer)
+	const allClients = query<{ id: number; name: string }>('SELECT id, name FROM clients');
+	const clientMap = new Map<string, number>();
+	for (const c of allClients) {
+		clientMap.set(c.name.toLowerCase(), c.id);
+	}
+
+	for (const group of groups) {
+		const clientId = clientMap.get(group.clientName.toLowerCase());
+		if (!clientId) continue;
+
+		// Handle duplicate invoice numbers (read-only check in CSV layer)
+		let invoiceNumber = group.invoiceNumber;
+		const dupes = query<{ id: number }>('SELECT id FROM invoices WHERE invoice_number = ?', [invoiceNumber]);
+		if (dupes.length > 0) {
+			invoiceNumber = `${invoiceNumber}-imported-${Date.now()}`;
 		}
 
-		// Build client name→id map (case-insensitive)
-		const allClients = query<{ id: number; name: string }>('SELECT id, name FROM clients');
-		const clientMap = new Map<string, number>();
-		for (const c of allClients) {
-			clientMap.set(c.name.toLowerCase(), c.id);
-		}
+		// Calculate totals from line items
+		const subtotal = group.lineItems.reduce((sum, li) => sum + li.amount, 0);
+		const taxAmount = (subtotal * group.taxRate) / 100;
+		const total = subtotal + taxAmount;
 
-		for (const group of groups) {
-			const clientId = clientMap.get(group.clientName.toLowerCase());
-			if (!clientId) continue;
-
-			// Handle duplicate invoice numbers
-			let invoiceNumber = group.invoiceNumber;
-			const dupes = query<{ id: number }>('SELECT id FROM invoices WHERE invoice_number = ?', [invoiceNumber]);
-			if (dupes.length > 0) {
-				invoiceNumber = `${invoiceNumber}-imported-${Date.now()}`;
-			}
-
-			// Calculate totals from line items
-			const subtotal = group.lineItems.reduce((sum, li) => sum + li.amount, 0);
-			const taxAmount = subtotal * group.taxRate / 100;
-			const total = subtotal + taxAmount;
-
-			execute(
-				'INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, subtotal, tax_rate, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-				[
-					group.invoiceUuid,
-					invoiceNumber,
-					clientId,
-					group.date,
-					group.dueDate,
-					subtotal,
-					group.taxRate,
-					taxAmount,
-					total,
-					group.notes,
-					group.status,
-					group.currencyCode || 'USD',
-					group.businessSnapshot,
-					group.clientSnapshot,
-					group.payerSnapshot
-				]
-			);
-
-			// Get the inserted invoice's id
-			const inserted = query<{ id: number }>('SELECT last_insert_rowid() as id');
-			const invoiceId = inserted[0]?.id;
-			if (!invoiceId) continue;
-
-			// Insert line items
-			for (const li of group.lineItems) {
-				execute(
-					'INSERT INTO line_items (uuid, invoice_id, description, quantity, rate, amount, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-					[
-						crypto.randomUUID(),
-						invoiceId,
-						li.description,
-						li.quantity,
-						li.rate,
-						li.amount,
-						li.notes ?? '',
-						li.sortOrder
-					]
-				);
-			}
-		}
-
-		runRaw('COMMIT');
-		await save();
-	} catch (err) {
-		runRaw('ROLLBACK');
-		throw err;
+		// Route the write through the repository (handles transaction + audit)
+		await repos.invoices.createInvoice(
+			{
+				uuid: group.invoiceUuid,
+				invoice_number: invoiceNumber,
+				client_id: clientId,
+				date: group.date,
+				due_date: group.dueDate,
+				subtotal,
+				tax_rate: group.taxRate,
+				tax_amount: taxAmount,
+				total,
+				notes: group.notes,
+				status: group.status,
+				currency_code: group.currencyCode || 'USD',
+				business_snapshot: group.businessSnapshot,
+				client_snapshot: group.clientSnapshot,
+				payer_snapshot: group.payerSnapshot
+			},
+			group.lineItems.map((li) => ({
+				description: li.description,
+				quantity: li.quantity,
+				rate: li.rate,
+				amount: li.amount,
+				sort_order: li.sortOrder,
+				notes: li.notes ?? ''
+			}))
+		);
 	}
 }

@@ -51,7 +51,7 @@ export async function createEstimate(
 	execute(
 		`INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
-			crypto.randomUUID(),
+			data.uuid ?? crypto.randomUUID(),
 			data.estimate_number,
 			data.client_id,
 			data.date,
