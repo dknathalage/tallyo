@@ -5,6 +5,7 @@ import { SqlitePayerRepository } from './SqlitePayerRepository.js';
 import { SqliteCatalogRepository } from './SqliteCatalogRepository.js';
 import { SqliteRateTierRepository } from './SqliteRateTierRepository.js';
 import { SqliteTaxRateRepository } from './SqliteTaxRateRepository.js';
+import { SqlitePaymentRepository } from './SqlitePaymentRepository.js';
 import { SqliteBusinessProfileRepository } from './SqliteBusinessProfileRepository.js';
 import { SqliteDashboardRepository } from './SqliteDashboardRepository.js';
 import { SqliteAuditRepository } from './SqliteAuditRepository.js';
@@ -18,6 +19,7 @@ import type {
 	CatalogRepository,
 	RateTierRepository,
 	TaxRateRepository,
+	PaymentRepository,
 	BusinessProfileRepository,
 	DashboardRepository,
 	AuditRepository,
@@ -36,6 +38,7 @@ export const repositories = {
 	catalog: new SqliteCatalogRepository(auditRepo, txFactory.create()) as CatalogRepository,
 	rateTiers: new SqliteRateTierRepository() as RateTierRepository,
 	taxRates: new SqliteTaxRateRepository() as TaxRateRepository,
+	payments: new SqlitePaymentRepository() as PaymentRepository,
 	businessProfile: new SqliteBusinessProfileRepository() as BusinessProfileRepository,
 	dashboard: new SqliteDashboardRepository() as DashboardRepository,
 	audit: auditRepo as AuditRepository,
