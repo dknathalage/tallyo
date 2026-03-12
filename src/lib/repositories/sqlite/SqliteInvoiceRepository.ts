@@ -8,7 +8,8 @@ import {
 	deleteInvoice,
 	updateInvoiceStatus,
 	bulkDeleteInvoices,
-	bulkUpdateInvoiceStatus
+	bulkUpdateInvoiceStatus,
+	markOverdueInvoices
 } from '$lib/db/queries/invoices.js';
 import type { InvoiceRepository } from '../interfaces/InvoiceRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -60,5 +61,9 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 
 	bulkUpdateInvoiceStatus(ids: number[], status: string): Promise<void> {
 		return bulkUpdateInvoiceStatus(ids, status);
+	}
+
+	markOverdueInvoices(): Promise<number> {
+		return markOverdueInvoices();
 	}
 }
