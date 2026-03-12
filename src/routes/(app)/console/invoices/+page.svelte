@@ -24,20 +24,21 @@
 	let dueTemplatesCount = $state(0);
 	let showPreview = $state(false);
 	let previewData: ParsedInvoiceImport | null = $state(null);
-	let importTrigger = $state(0);
 
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
 	const statuses = ['', 'draft', 'sent', 'paid', 'overdue'] as const;
 
-	$effect(() => {
-		importTrigger;
-		repositories.invoices.markOverdueInvoices().then(() => {
-			invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
-		});
+	async function loadInvoices() {
+		await repositories.invoices.markOverdueInvoices();
+		invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
 		dueTemplatesCount = repositories.recurringTemplates.getDueTemplates().length;
-		selectedIds = new Set();
+	}
+
+	$effect(() => {
+		// Reactive on search and statusFilter; re-runs when either changes
+		void loadInvoices();
 	});
 
 	let allSelected = $derived(invoices.length > 0 && selectedIds.size === invoices.length);
@@ -64,13 +65,13 @@
 		await repositories.invoices.bulkDeleteInvoices([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		importTrigger++;
+		await loadInvoices();
 	}
 
 	async function handleBulkStatus(status: string) {
 		await repositories.invoices.bulkUpdateInvoiceStatus([...selectedIds], status);
 		selectedIds = new Set();
-		importTrigger++;
+		await loadInvoices();
 	}
 
 	async function handleImport(file: File) {
@@ -83,7 +84,7 @@
 			await commitInvoiceImport(previewData.groups, previewData.newClientsToCreate);
 			showPreview = false;
 			previewData = null;
-			importTrigger++;
+			await loadInvoices();
 		}
 	}
 </script>

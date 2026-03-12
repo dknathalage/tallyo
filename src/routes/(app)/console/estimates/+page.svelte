@@ -23,17 +23,19 @@
 	let estimates: Estimate[] = $state([]);
 	let showPreview = $state(false);
 	let previewData: ParsedEstimateImport | null = $state(null);
-	let importTrigger = $state(0);
 
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
 	const statuses = ['', 'draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
 
-	$effect(() => {
-		importTrigger;
+	function loadEstimates() {
 		estimates = repositories.estimates.getEstimates(search || undefined, statusFilter || undefined);
-		selectedIds = new Set();
+	}
+
+	$effect(() => {
+		// Reactive on search and statusFilter; re-runs when either changes
+		loadEstimates();
 	});
 
 	let allSelected = $derived(estimates.length > 0 && selectedIds.size === estimates.length);
@@ -60,13 +62,13 @@
 		await repositories.estimates.bulkDeleteEstimates([...selectedIds]);
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		importTrigger++;
+		loadEstimates();
 	}
 
 	async function handleBulkStatus(status: string) {
 		await repositories.estimates.bulkUpdateEstimateStatus([...selectedIds], status);
 		selectedIds = new Set();
-		importTrigger++;
+		loadEstimates();
 	}
 
 	async function handleImport(file: File) {
@@ -79,7 +81,7 @@
 			await commitEstimateImport(previewData.groups, previewData.newClientsToCreate);
 			showPreview = false;
 			previewData = null;
-			importTrigger++;
+			loadEstimates();
 		}
 	}
 </script>

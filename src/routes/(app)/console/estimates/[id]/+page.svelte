@@ -19,7 +19,6 @@
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
 	let converting = $state(false);
-	let refreshTrigger = $state(0);
 
 	const allStatuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
 
@@ -27,8 +26,7 @@
 	let clientSnap = $derived.by(() => parseSnapshot(estimate?.client_snapshot ?? '{}'));
 	let payerSnap = $derived.by(() => parseSnapshot(estimate?.payer_snapshot ?? '{}'));
 
-	$effect(() => {
-		refreshTrigger;
+	function loadEstimate() {
 		const id = Number(page.params.id);
 		const est = repositories.estimates.getEstimate(id);
 		estimate = est;
@@ -36,6 +34,10 @@
 			lineItems = repositories.estimates.getEstimateLineItems(est.id);
 			history = repositories.audit.getEntityHistory('estimate', est.id);
 		}
+	}
+
+	$effect(() => {
+		loadEstimate();
 	});
 
 	async function handleDelete() {
@@ -67,7 +69,7 @@
 			addToast({ type: 'error', message: e.message || 'Failed to convert estimate to invoice' });
 		} finally {
 			converting = false;
-			refreshTrigger++;
+			loadEstimate();
 		}
 	}
 
