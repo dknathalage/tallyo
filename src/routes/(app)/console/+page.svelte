@@ -5,10 +5,12 @@
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
+	import RevenueChart from '$lib/components/dashboard/RevenueChart.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let stats = $derived(repositories.dashboard.getDashboardStats());
 	let defaultCurrency = $derived(repositories.businessProfile.getBusinessProfile()?.default_currency || 'USD');
+	let monthlyRevenue = $derived(repositories.dashboard.getMonthlyRevenue());
 </script>
 
 <div class="space-y-6">
@@ -111,6 +113,12 @@
 			{i18n.t('dashboard.excludedCurrencyNote', { count: stats.excluded_currency_count, plural: stats.excluded_currency_count === 1 ? '' : 's' })}
 		</p>
 	{/if}
+
+	<!-- Monthly Revenue Chart -->
+	<div class="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+		<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Monthly Revenue (Last 12 Months)</h2>
+		<RevenueChart data={monthlyRevenue} currency={defaultCurrency} />
+	</div>
 
 	<!-- Recent Invoices -->
 	<div>

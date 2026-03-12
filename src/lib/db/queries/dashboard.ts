@@ -1,5 +1,5 @@
 import { query } from '../connection.svelte.js';
-import type { DashboardStats, Invoice, Estimate } from '../../types/index.js';
+import type { DashboardStats, Invoice, Estimate, MonthlyRevenue } from '../../types/index.js';
 import { getBusinessProfile } from './business-profile.js';
 
 export function getDashboardStats(): DashboardStats {
@@ -78,4 +78,48 @@ export function getDashboardStats(): DashboardStats {
 		pending_estimates,
 		recent_estimates
 	};
+}
+
+export function getMonthlyRevenue(): MonthlyRevenue[] {
+	const profile = getBusinessProfile();
+	const defaultCurrency = profile?.default_currency || 'USD';
+
+	// Generate the last 12 months as YYYY-MM strings
+	const months: string[] = [];
+	const now = new Date();
+	for (let i = 11; i >= 0; i--) {
+		const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+		const yyyy = d.getFullYear();
+		const mm = String(d.getMonth() + 1).padStart(2, '0');
+		months.push(`${yyyy}-${mm}`);
+	}
+
+	const rows = query<{ month: string; revenue: number }>(
+		`SELECT strftime('%Y-%m', date) as month, COALESCE(SUM(total), 0) as revenue
+		 FROM invoices
+		 WHERE status = 'paid'
+		   AND COALESCE(currency_code, 'USD') = ?
+		   AND strftime('%Y-%m', date) >= strftime('%Y-%m', date('now', '-11 months'))
+		 GROUP BY month
+		 ORDER BY month ASC`,
+		[defaultCurrency]
+	);
+
+	const revenueMap = new Map<string, number>();
+	for (const row of rows) {
+		revenueMap.set(row.month, row.revenue);
+	}
+
+	return months.map((month) => {
+		const [year, mon] = month.split('-');
+		const label = new Date(Number(year), Number(mon) - 1, 1).toLocaleString('default', {
+			month: 'short',
+			year: 'numeric'
+		});
+		return {
+			month,
+			label,
+			revenue: revenueMap.get(month) ?? 0
+		};
+	});
 }

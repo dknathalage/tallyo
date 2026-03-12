@@ -118,3 +118,30 @@ describe('getDashboardStats', () => {
 		);
 	});
 });
+
+import { getMonthlyRevenue } from './dashboard.js';
+
+describe('getMonthlyRevenue', () => {
+	it('returns 12 months of data', () => {
+		// Mock returns some paid invoice rows
+		mockQuery.mockReturnValueOnce([
+			{ month: '2024-01', revenue: 1000 },
+			{ month: '2024-03', revenue: 2500 }
+		]);
+
+		const result = getMonthlyRevenue();
+		expect(result).toHaveLength(12);
+		result.forEach((r) => {
+			expect(r).toHaveProperty('month');
+			expect(r).toHaveProperty('label');
+			expect(r).toHaveProperty('revenue');
+		});
+	});
+
+	it('fills missing months with 0 revenue', () => {
+		mockQuery.mockReturnValueOnce([]);
+		const result = getMonthlyRevenue();
+		expect(result).toHaveLength(12);
+		result.forEach((r) => expect(r.revenue).toBe(0));
+	});
+});
