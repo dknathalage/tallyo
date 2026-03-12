@@ -21,7 +21,9 @@ import {
 	deleteInvoice,
 	updateInvoiceStatus,
 	getClientInvoices,
-	markOverdueInvoices
+	markOverdueInvoices,
+	bulkDeleteInvoices,
+	duplicateInvoice
 } from './invoices.js';
 import { query, execute, save, runRaw } from '../connection.svelte.js';
 import { logAudit } from '../audit.js';
@@ -406,5 +408,195 @@ describe('getAgingReport', () => {
 			expect(b.total).toBe(0);
 			expect(b.invoices).toHaveLength(0);
 		});
+	});
+});
+
+describe('bulkDeleteInvoices', () => {
+	it('does nothing when given an empty array', async () => {
+		await bulkDeleteInvoices([]);
+
+		expect(mockExecute).not.toHaveBeenCalled();
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+
+	it('deletes all specified invoices within a transaction', async () => {
+		mockQuery.mockReturnValue([]);
+
+		await bulkDeleteInvoices([1, 2, 3]);
+
+		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('DELETE FROM invoices WHERE id IN'),
+			[1, 2, 3]
+		);
+		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
+		expect(mockSave).toHaveBeenCalled();
+	});
+
+	it('also deletes associated line_items for all specified invoices', async () => {
+		mockQuery.mockReturnValue([]);
+
+		await bulkDeleteInvoices([4, 5]);
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('DELETE FROM line_items WHERE invoice_id IN'),
+			[4, 5]
+		);
+	});
+
+	it('audit logs a delete entry for each invoice id', async () => {
+		// Return null for each getInvoice call (query returns [])
+		mockQuery.mockReturnValue([]);
+
+		await bulkDeleteInvoices([10, 11]);
+
+		expect(mockLogAudit).toHaveBeenCalledTimes(2);
+		expect(mockLogAudit).toHaveBeenCalledWith(
+			expect.objectContaining({ entity_type: 'invoice', entity_id: 10, action: 'delete' })
+		);
+		expect(mockLogAudit).toHaveBeenCalledWith(
+			expect.objectContaining({ entity_type: 'invoice', entity_id: 11, action: 'delete' })
+		);
+	});
+
+	it('all audit entries share the same batch_id', async () => {
+		mockQuery.mockReturnValue([]);
+
+		await bulkDeleteInvoices([20, 21, 22]);
+
+		const batchIds = mockLogAudit.mock.calls.map((c) => (c[0] as { batch_id: string }).batch_id);
+		expect(new Set(batchIds).size).toBe(1);
+		expect(typeof batchIds[0]).toBe('string');
+	});
+
+	it('rolls back on error', async () => {
+		mockQuery.mockReturnValue([]);
+		mockExecute.mockImplementationOnce(() => {
+			throw new Error('Bulk delete failed');
+		});
+
+		await expect(bulkDeleteInvoices([1, 2])).rejects.toThrow('Bulk delete failed');
+		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+});
+
+vi.mock('../../utils/invoice-number.js', () => ({
+	generateInvoiceNumber: vi.fn().mockReturnValue('INV-9999')
+}));
+
+describe('duplicateInvoice', () => {
+	const originalInvoice = {
+		id: 1,
+		invoice_number: 'INV-0001',
+		client_id: 5,
+		date: '2025-01-01',
+		due_date: '2025-02-01',
+		subtotal: 100,
+		tax_rate: 10,
+		tax_amount: 10,
+		total: 110,
+		notes: 'Original note',
+		status: 'sent',
+		currency_code: 'USD',
+		business_snapshot: '{"name":"Biz"}',
+		client_snapshot: '{"name":"Client"}',
+		payer_snapshot: '{}'
+	};
+
+	const originalLineItems = [
+		{ id: 10, description: 'Service A', quantity: 1, rate: 100, amount: 100, notes: 'note', sort_order: 0 }
+	];
+
+	it('creates a new draft invoice with a new invoice number', async () => {
+		// getInvoice returns original, getInvoiceLineItems returns line items, last_insert_rowid returns new id
+		mockQuery
+			.mockReturnValueOnce([originalInvoice]) // getInvoice
+			.mockReturnValueOnce(originalLineItems)  // getInvoiceLineItems
+			.mockReturnValueOnce([{ id: 99 }]);      // last_insert_rowid
+
+		const newId = await duplicateInvoice(1);
+
+		expect(newId).toBe(99);
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('INSERT INTO invoices'),
+			expect.arrayContaining(['INV-9999'])
+		);
+	});
+
+	it('new invoice is created with status draft', async () => {
+		mockQuery
+			.mockReturnValueOnce([originalInvoice])
+			.mockReturnValueOnce(originalLineItems)
+			.mockReturnValueOnce([{ id: 99 }]);
+
+		await duplicateInvoice(1);
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('INSERT INTO invoices'),
+			expect.arrayContaining(['draft'])
+		);
+	});
+
+	it('copies original line items to the new invoice', async () => {
+		mockQuery
+			.mockReturnValueOnce([originalInvoice])
+			.mockReturnValueOnce(originalLineItems)
+			.mockReturnValueOnce([{ id: 99 }]);
+
+		await duplicateInvoice(1);
+
+		expect(mockExecute).toHaveBeenCalledWith(
+			expect.stringContaining('INSERT INTO line_items'),
+			expect.arrayContaining([99, 'Service A', 1, 100, 100])
+		);
+	});
+
+	it('runs inside a transaction and saves', async () => {
+		mockQuery
+			.mockReturnValueOnce([originalInvoice])
+			.mockReturnValueOnce(originalLineItems)
+			.mockReturnValueOnce([{ id: 99 }]);
+
+		await duplicateInvoice(1);
+
+		expect(mockRunRaw).toHaveBeenCalledWith('BEGIN TRANSACTION');
+		expect(mockRunRaw).toHaveBeenCalledWith('COMMIT');
+		expect(mockSave).toHaveBeenCalled();
+	});
+
+	it('audit logs the creation of the duplicate', async () => {
+		mockQuery
+			.mockReturnValueOnce([originalInvoice])
+			.mockReturnValueOnce(originalLineItems)
+			.mockReturnValueOnce([{ id: 99 }]);
+
+		await duplicateInvoice(1);
+
+		expect(mockLogAudit).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entity_type: 'invoice',
+				entity_id: 99,
+				action: 'create'
+			})
+		);
+	});
+
+	it('throws when the original invoice does not exist', async () => {
+		mockQuery.mockReturnValue([]);
+
+		await expect(duplicateInvoice(999)).rejects.toThrow('Invoice 999 not found');
+	});
+
+	it('rolls back on error', async () => {
+		mockQuery
+			.mockReturnValueOnce([originalInvoice])
+			.mockReturnValueOnce(originalLineItems);
+		mockExecute.mockImplementationOnce(() => {
+			throw new Error('Insert failed');
+		});
+
+		await expect(duplicateInvoice(1)).rejects.toThrow('Insert failed');
+		expect(mockRunRaw).toHaveBeenCalledWith('ROLLBACK');
 	});
 });
