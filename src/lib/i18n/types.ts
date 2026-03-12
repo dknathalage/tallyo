@@ -467,6 +467,13 @@ export interface Messages {
 		notes: string;
 		thankYou: string;
 	};
+	shortcuts: {
+		title: string;
+		newItem: string;
+		focusSearch: string;
+		closeModal: string;
+		showHelp: string;
+	};
 	fileGate: {
 		appName: string;
 		appDescription: string;

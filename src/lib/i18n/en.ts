@@ -470,6 +470,13 @@ const en: Messages = {
 		notes: 'NOTES',
 		thankYou: 'Thank you for your business'
 	},
+	shortcuts: {
+		title: 'Keyboard Shortcuts',
+		newItem: 'New invoice / estimate / client (on list pages)',
+		focusSearch: 'Focus search input',
+		closeModal: 'Close modal / dialog',
+		showHelp: 'Show this help'
+	},
 	fileGate: {
 		appName: 'Invoice Manager',
 		appDescription: 'A local-first invoice management tool. Your data stays on your device, stored in a SQLite database file you control.',
