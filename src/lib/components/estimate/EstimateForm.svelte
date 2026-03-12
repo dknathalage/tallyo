@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { repositories } from '$lib/repositories';
 		import { generateEstimateNumber } from '$lib/utils/estimate-number.js';
 	import { today, formatCurrency } from '$lib/utils/format.js';
-	import type { Client, Estimate, EstimateLineItem, KeyValuePair, TaxRate } from '$lib/types/index.js';
+	import type { Client, Estimate, EstimateLineItem, KeyValuePair, TaxRate, RateTier } from '$lib/types/index.js';
 	import { parseSnapshot } from '$lib/utils/snapshot.js';
 	import type { PartySnapshot } from '$lib/utils/snapshot.js';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -86,9 +87,18 @@
 		}
 	});
 
-	let selectedClient = $derived(clientId ? repositories.clients.getClient(clientId) : null);
+	let tiers = $state<RateTier[]>([]);
+	let selectedClient = $state<Client | null>(null);
+
+	onMount(() => {
+		tiers = repositories.rateTiers.getRateTiers();
+	});
+
+	$effect(() => {
+		selectedClient = clientId ? repositories.clients.getClient(clientId) : null;
+	});
+
 	let activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
-	let tiers = $derived(repositories.rateTiers.getRateTiers());
 	let activeTierName = $derived(tiers.find(t => t.id === activeTierId)?.name ?? null);
 
 	let subtotal = $derived(
