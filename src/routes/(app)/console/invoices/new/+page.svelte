@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
-	import { addToast } from '$lib/stores/toast.js';
+	import { addToast } from '$lib/stores/toast.svelte.js';
 
 	async function handleSubmit(
 		data: {

@@ -4,7 +4,7 @@
 	import InvoiceForm from '$lib/components/invoice/InvoiceForm.svelte';
 	import type { PageData } from './$types';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
-	import { addToast } from '$lib/stores/toast.js';
+	import { addToast } from '$lib/stores/toast.svelte.js';
 
 	let { data }: { data: PageData } = $props();
 
