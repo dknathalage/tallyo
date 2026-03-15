@@ -58,56 +58,11 @@ jobs:
       - name: Build release notes
         env:
           TEST_COUNT: ${{ steps.tests.outputs.count }}
-          STMTS: ${{ steps.coverage.outputs.statements }}
-          FUNCS: ${{ steps.coverage.outputs.functions }}
-          BRANCH: ${{ steps.coverage.outputs.branch }}
-          LINES: ${{ steps.coverage.outputs.lines }}
-        run: |
-          python3 - <<'EOF'
-          import os
-
-          changelog = open('CHANGELOG_RELEASE.md').read().strip()
-          test_count = os.environ.get('TEST_COUNT', 'N/A')
-          stmts  = os.environ.get('STMTS',  'N/A')
-          funcs  = os.environ.get('FUNCS',  'N/A')
-          branch = os.environ.get('BRANCH', 'N/A')
-          lines  = os.environ.get('LINES',  'N/A')
-
-          notes = f"""{changelog}
-
----
-
-## 🧪 Quality Report
-
-| Metric | Value |
-|--------|-------|
-| ✅ Tests passing | **{test_count}** |
-| 📊 Statement coverage | {stmts}% |
-| 📊 Function coverage | {funcs}% |
-| 📊 Branch coverage | {branch}% |
-| 📊 Line coverage | {lines}% |
-
-## 🚀 Quick Start
-
-```bash
-git clone https://github.com/dknathalage/invoices.git
-cd invoices
-npm install && npm run build
-PORT=3002 HOST=0.0.0.0 node build/index.js
-```
-
-Database auto-created at `~/.invoices/invoices.db` on first run.
-
-## 🏥 Health Check
-
-```
-GET /health → {{"status":"ok","db":"connected"}}
-```
-"""
-
-          open('RELEASE_NOTES.md', 'w').write(notes)
-          print("Release notes written successfully.")
-          EOF
+          COVERAGE_STMTS: ${{ steps.coverage.outputs.statements }}
+          COVERAGE_FUNCS: ${{ steps.coverage.outputs.functions }}
+          COVERAGE_BRANCH: ${{ steps.coverage.outputs.branch }}
+          COVERAGE_LINES: ${{ steps.coverage.outputs.lines }}
+        run: python3 scripts/build-release-notes.py
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
