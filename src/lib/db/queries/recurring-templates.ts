@@ -1,4 +1,4 @@
-import { execute, query, runRaw } from '../connection.js';
+import { execute, query, runRaw, save } from '../connection.js';
 import { logAudit } from '../audit.js';
 import { generateInvoiceNumber } from '../number-generators.js';
 import { getClient } from './clients.js';
@@ -78,6 +78,7 @@ export function createRecurringTemplate(data: {
 		action: 'create',
 		changes: { name: { old: null, new: data.name } }
 	});
+	save();
 	return result[0].id;
 }
 
@@ -117,11 +118,13 @@ export function updateRecurringTemplate(
 		action: 'update',
 		changes: { name: { old: null, new: data.name } }
 	});
+	save();
 }
 
 export function deleteRecurringTemplate(id: number): void {
 	execute(`DELETE FROM recurring_templates WHERE id = ?`, [id]);
 	logAudit({ entity_type: 'recurring_template', entity_id: id, action: 'delete', changes: {} });
+	save();
 }
 
 /** Advance next_due by frequency period */

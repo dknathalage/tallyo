@@ -5,8 +5,9 @@ vi.mock('../connection.js', () => ({
 	execute: vi.fn()
 }));
 
-vi.mock('../../utils/invoice-number.js', () => ({
-	generateInvoiceNumber: vi.fn().mockReturnValue('INV-0001')
+vi.mock('../number-generators.js', () => ({
+	generateInvoiceNumber: vi.fn().mockReturnValue('INV-0001'),
+	generateEstimateNumber: vi.fn().mockReturnValue('EST-0001')
 }));
 
 import {
@@ -135,13 +136,13 @@ describe('createEstimate', () => {
 		expect(id).toBe(7);
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockQuery.mockReturnValue([{ id: 1 }]);
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('SQL error');
 		});
 
-		await expect(createEstimate(estimateData, lineItems)).rejects.toThrow('SQL error');
+		expect(() => createEstimate(estimateData, lineItems)).toThrow('SQL error');
 	});
 
 	it('defaults optional fields', async () => {
@@ -218,12 +219,12 @@ describe('updateEstimate', () => {
 		// Transaction management, audit, and save() are now the repository's responsibility
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('Update failed');
 		});
 
-		await expect(updateEstimate(1, estimateData, [])).rejects.toThrow('Update failed');
+		expect(() => updateEstimate(1, estimateData, [])).toThrow('Update failed');
 	});
 
 	it('includes snapshot fields in update', async () => {
@@ -251,12 +252,12 @@ describe('deleteEstimate', () => {
 		// Transaction management, logAudit(), and save() are now the repository's responsibility
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('DELETE failed');
 		});
 
-		await expect(deleteEstimate(3)).rejects.toThrow('DELETE failed');
+		expect(() => deleteEstimate(3)).toThrow('DELETE failed');
 	});
 });
 
@@ -323,22 +324,22 @@ describe('getClientEstimates', () => {
 });
 
 describe('convertEstimateToInvoice', () => {
-	it('throws when estimate not found', async () => {
+	it('throws when estimate not found', () => {
 		mockQuery.mockReturnValue([]);
 
-		await expect(convertEstimateToInvoice(999)).rejects.toThrow('Estimate not found');
+		expect(() => convertEstimateToInvoice(999)).toThrow('Estimate not found');
 	});
 
-	it('throws when estimate is not accepted', async () => {
+	it('throws when estimate is not accepted', () => {
 		mockQuery.mockReturnValueOnce([{ id: 1, status: 'draft', converted_invoice_id: null }]);
 
-		await expect(convertEstimateToInvoice(1)).rejects.toThrow('Only accepted estimates can be converted');
+		expect(() => convertEstimateToInvoice(1)).toThrow('Only accepted estimates can be converted');
 	});
 
-	it('throws when estimate is already converted', async () => {
+	it('throws when estimate is already converted', () => {
 		mockQuery.mockReturnValueOnce([{ id: 1, status: 'accepted', converted_invoice_id: 5 }]);
 
-		await expect(convertEstimateToInvoice(1)).rejects.toThrow('already been converted');
+		expect(() => convertEstimateToInvoice(1)).toThrow('already been converted');
 	});
 
 	it('converts accepted estimate to invoice and returns audit info', async () => {

@@ -1,26 +1,20 @@
 /**
- * Client-side placeholder invoice number generator.
- * The server-side will validate and override with the real next number on save.
- * On the server (query functions), use generateInvoiceNumberFromDb() directly.
+ * Invoice number generator using the database to find the next sequential number.
+ * Only import from server-side code (+page.server.ts, +server.ts, query files).
  */
-
-// Server-side generator - only import this from server-side code
-export function generateInvoiceNumberServer(): string {
-	// This function is only called from server-side query functions
-	// where better-sqlite3 is available. Import happens dynamically.
-	throw new Error('Use generateInvoiceNumber() from query context instead');
-}
+import { query } from '../db/connection.js';
 
 /**
- * Generates a timestamp-based placeholder number for new invoice forms.
- * The actual unique number is confirmed server-side on creation.
+ * Generates the next sequential invoice number in INV-XXXX format.
+ * Uses the database to find the current max and increment by 1.
  */
 export function generateInvoiceNumber(): string {
-	const now = new Date();
-	const year = now.getFullYear();
-	const month = String(now.getMonth() + 1).padStart(2, '0');
-	const day = String(now.getDate()).padStart(2, '0');
-	// Use timestamp for uniqueness in the form
-	const unique = String(Date.now()).slice(-4);
-	return `INV-${year}${month}${day}-${unique}`;
+	const result = query<{ max_num: number | null }>(
+		`SELECT MAX(CAST(SUBSTR(invoice_number, 5) AS INTEGER)) as max_num
+		 FROM invoices
+		 WHERE invoice_number GLOB 'INV-[0-9]*'`
+	);
+	const maxNum = result.length > 0 ? result[0].max_num : null;
+	const next = maxNum !== null && maxNum > 0 ? maxNum + 1 : 1;
+	return `INV-${String(next).padStart(4, '0')}`;
 }
