@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/sqlite/index.js';
+import { dbError } from '$lib/server/db-error.js';
 
 export const GET: RequestHandler = ({ url }) => {
 	const search = url.searchParams.get('search') || undefined;
@@ -12,10 +13,18 @@ export const POST: RequestHandler = async ({ request }) => {
 	const { action, ...data } = body;
 
 	if (action === 'bulk-delete') {
-		await repositories.payers.bulkDeletePayers(data.ids ?? []);
-		return json({ success: true });
+		try {
+			await repositories.payers.bulkDeletePayers(data.ids ?? []);
+			return json({ success: true });
+		} catch (err) {
+			dbError(err);
+		}
 	}
 
-	const id = await repositories.payers.createPayer(data);
-	return json({ id }, { status: 201 });
+	try {
+		const id = await repositories.payers.createPayer(data);
+		return json({ id }, { status: 201 });
+	} catch (err) {
+		dbError(err);
+	}
 };
