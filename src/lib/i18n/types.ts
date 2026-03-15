@@ -472,9 +472,18 @@ export interface Messages {
 	shortcuts: {
 		title: string;
 		newItem: string;
+		newInvoice: string;
+		newEstimate: string;
+		newClient: string;
 		focusSearch: string;
 		closeModal: string;
 		showHelp: string;
+	};
+	quickAdd: {
+		label: string;
+		newInvoice: string;
+		newEstimate: string;
+		newClient: string;
 	};
 	recurring: {
 		title: string;

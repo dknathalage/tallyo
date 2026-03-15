@@ -475,9 +475,18 @@ const en: Messages = {
 	shortcuts: {
 		title: 'Keyboard Shortcuts',
 		newItem: 'New invoice / estimate / client (on list pages)',
+		newInvoice: 'New invoice',
+		newEstimate: 'New estimate',
+		newClient: 'New client',
 		focusSearch: 'Focus search input',
 		closeModal: 'Close modal / dialog',
 		showHelp: 'Show this help'
+	},
+	quickAdd: {
+		label: 'Quick add',
+		newInvoice: 'New Invoice',
+		newEstimate: 'New Estimate',
+		newClient: 'New Client'
 	},
 	recurring: {
 		title: 'Recurring Templates',
