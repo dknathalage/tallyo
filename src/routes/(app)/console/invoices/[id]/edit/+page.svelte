@@ -35,8 +35,9 @@
 				body: JSON.stringify({ ...updateData, lineItems: items })
 			});
 			goto(`${base}/console/invoices/${data.invoice.id}`);
-		} catch (e: any) {
-			addToast({ type: 'error', message: e.message || 'Failed to update invoice' });
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'An unexpected error occurred';
+			addToast({ type: 'error', message: message || 'Failed to update invoice' });
 		}
 	}
 </script>

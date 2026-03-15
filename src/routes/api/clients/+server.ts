@@ -1,14 +1,14 @@
-import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './';
 import { repositories } from '$lib/repositories/sqlite/index.js';
 import { dbError, fkOrNull } from '$lib/server/db-error.js';
 import { validate } from '$lib/validation/validate.js';
 import { CreateClientSchema, BulkDeleteSchema, SearchParamsSchema } from '$lib/validation/schemas.js';
 
 export const GET: RequestHandler = ({ url }) => {
-	const params = validate(SearchParamsSchema, {
-		search: url.searchParams.get('search') || undefined
-	});
+	const search = url.searchParams.get('search') || undefined;
+	if (search && search.length > 255) throw error(400, 'Search query too long');
+	const params = validate(SearchParamsSchema, { search });
 	return json(repositories.clients.getClients(params.search));
 };
 

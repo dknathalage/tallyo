@@ -86,7 +86,7 @@ export function buildPayerSnapshot(payerId: number | null): PartySnapshot {
 		return { name: '', email: '', phone: '', address: '', metadata: {} };
 	}
 	let metadata: Record<string, string> = {};
-	try { metadata = JSON.parse(payer.metadata); } catch {}
+	try { metadata = JSON.parse(payer.metadata); } catch (e) { console.error('Failed to parse payer metadata', e); }
 	return {
 		name: payer.name,
 		email: payer.email,

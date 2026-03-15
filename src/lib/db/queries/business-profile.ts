@@ -45,7 +45,7 @@ export function buildBusinessSnapshot(): PartySnapshot {
 		return { name: '', email: '', phone: '', address: '', metadata: {} };
 	}
 	let metadata: Record<string, string> = {};
-	try { metadata = JSON.parse(profile.metadata); } catch {}
+	try { metadata = JSON.parse(profile.metadata); } catch (e) { console.error('Failed to parse business profile metadata', e); }
 	return {
 		name: profile.name,
 		email: profile.email,

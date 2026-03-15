@@ -4,14 +4,16 @@ import { repositories } from '$lib/repositories/sqlite/index.js';
 import { dbError, fkOrNull } from '$lib/server/db-error.js';
 
 export const GET: RequestHandler = ({ params }) => {
-	const id = parseInt(params.id);
+	const id = parseInt(params.id, 10);
+	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	const invoice = repositories.invoices.getInvoice(id);
 	if (!invoice) throw error(404, 'Invoice not found');
 	return json(invoice);
 };
 
 export const PUT: RequestHandler = async ({ params, request }) => {
-	const id = parseInt(params.id);
+	const id = parseInt(params.id, 10);
+	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	const body = await request.json();
 	const { lineItems, ...invoiceData } = body;
 	invoiceData.client_id = fkOrNull(invoiceData.client_id);
@@ -25,7 +27,8 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
-	const id = parseInt(params.id);
+	const id = parseInt(params.id, 10);
+	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	try {
 		await repositories.invoices.deleteInvoice(id);
 		return json({ success: true });
@@ -35,7 +38,8 @@ export const DELETE: RequestHandler = async ({ params }) => {
 };
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
-	const id = parseInt(params.id);
+	const id = parseInt(params.id, 10);
+	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	const { action, ...data } = await request.json();
 
 	if (action === 'status') {

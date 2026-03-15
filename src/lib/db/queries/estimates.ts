@@ -1,4 +1,4 @@
-import { execute, query } from '../connection.js';
+import { execute, query, runRaw } from '../connection.js';
 import { generateInvoiceNumber } from '../number-generators.js';
 import { generateEstimateNumber } from '../number-generators.js';
 import type { Estimate, EstimateLineItem } from '../../types/index.js';
@@ -49,7 +49,9 @@ export function createEstimate(
 	data: CreateEstimateInput,
 	lineItems: LineItemInput[]
 ): number {
-	execute(
+	runRaw('BEGIN TRANSACTION');
+	try {
+		execute(
 		`INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
 			data.uuid ?? crypto.randomUUID(),
@@ -81,7 +83,12 @@ export function createEstimate(
 		);
 	}
 
-	return estimateId;
+		runRaw('COMMIT');
+		return estimateId;
+	} catch (e) {
+		runRaw('ROLLBACK');
+		throw e;
+	}
 }
 
 /**

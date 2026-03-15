@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../connection.js', () => ({
 	query: vi.fn(),
-	execute: vi.fn()
+	execute: vi.fn(),
+	runRaw: vi.fn()
 }));
 
 vi.mock('../number-generators.js', () => ({
@@ -23,7 +24,7 @@ import {
 	bulkUpdateEstimateStatus,
 	convertEstimateToInvoice
 } from './estimates.js';
-import { query, execute } from '../connection.js';
+import { query, execute, runRaw } from '../connection.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);

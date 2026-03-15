@@ -70,8 +70,9 @@
 			});
 			const { invoiceId } = await res.json();
 			goto(`${base}/console/invoices/${invoiceId}`);
-		} catch (e: any) {
-			addToast({ type: 'error', message: e.message || 'Failed to convert estimate to invoice' });
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'An unexpected error occurred';
+			addToast({ type: 'error', message: message || 'Failed to convert estimate to invoice' });
 		} finally {
 			converting = false;
 			
