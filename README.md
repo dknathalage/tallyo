@@ -59,6 +59,42 @@ PORT=3002 HOST=0.0.0.0 node build/index.js
 | `NODE_ENV` | `development` | Environment |
 | `DB_PATH` | `~/.invoices/invoices.db` | SQLite database path |
 
+## Docker
+
+### Quick Start
+
+```bash
+docker compose up -d
+```
+
+The app will be available at http://localhost:3000. Data is persisted in a Docker volume.
+
+### Environment Variables
+
+You can customize the port mapping by setting `PORT` before running:
+
+```bash
+PORT=8080 docker compose up -d
+```
+
+See `.env.example` for all available configuration options.
+
+### Data Volume
+
+Invoice data (SQLite database) is stored in the `invoices-data` Docker volume mounted at `/data` inside the container. This ensures your data persists across container restarts and upgrades.
+
+### Backup
+
+To back up your data:
+
+```bash
+# Create a backup of the database
+docker compose exec invoices cp /data/invoices.db /data/invoices.db.bak
+
+# Or copy it to your host machine
+docker compose cp invoices:/data/invoices.db ./invoices-backup.db
+```
+
 ## Development Guide
 
 ### Project Structure
