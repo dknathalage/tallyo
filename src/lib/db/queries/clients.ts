@@ -1,16 +1,20 @@
 import { execute, query } from '../connection.js';
-import type { Client, PartySnapshot, ClientRevenueSummary } from '../../types/index.js';
+import type { Client, PartySnapshot, ClientRevenueSummary, PaginationParams, PaginatedResult } from '../../types/index.js';
+import { paginate } from '../../types/index.js';
 import type { CreateClientInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
 
-export function getClients(search?: string): Client[] {
+export function getClients(search?: string, pagination?: PaginationParams): PaginatedResult<Client> {
+	let all: Client[];
 	if (search) {
-		return query<Client>(
+		all = query<Client>(
 			`SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id WHERE c.name LIKE ? OR c.email LIKE ? ORDER BY c.name`,
 			[`%${search}%`, `%${search}%`]
 		);
+	} else {
+		all = query<Client>(`SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id ORDER BY c.name`);
 	}
-	return query<Client>(`SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id ORDER BY c.name`);
+	return paginate(all, pagination);
 }
 
 export function getClient(id: number): Client | null {

@@ -1,10 +1,11 @@
 import { execute, query, runRaw } from '../connection.js';
-import type { Invoice, LineItem, AgingBucket } from '../../types/index.js';
+import type { Invoice, LineItem, AgingBucket, PaginationParams, PaginatedResult } from '../../types/index.js';
+import { paginate } from '../../types/index.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
 import { generateInvoiceNumber } from '../number-generators.js';
 
-export function getInvoices(search?: string, status?: string): Invoice[] {
+export function getInvoices(search?: string, status?: string, pagination?: PaginationParams): PaginatedResult<Invoice> {
 	let sql = `SELECT i.*, c.name as client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id`;
 	const params: unknown[] = [];
 	const conditions: string[] = [];
@@ -23,7 +24,8 @@ export function getInvoices(search?: string, status?: string): Invoice[] {
 	}
 
 	sql += ` ORDER BY i.created_at DESC`;
-	return query<Invoice>(sql, params);
+	const all = query<Invoice>(sql, params);
+	return paginate(all, pagination);
 }
 
 export function getInvoice(id: number): Invoice | null {

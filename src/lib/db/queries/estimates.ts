@@ -1,10 +1,11 @@
 import { execute, query, runRaw } from '../connection.js';
 import { generateInvoiceNumber } from '../number-generators.js';
 import { generateEstimateNumber } from '../number-generators.js';
-import type { Estimate, EstimateLineItem } from '../../types/index.js';
+import type { Estimate, EstimateLineItem, PaginationParams, PaginatedResult } from '../../types/index.js';
+import { paginate } from '../../types/index.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../../repositories/interfaces/types.js';
 
-export function getEstimates(search?: string, status?: string): Estimate[] {
+export function getEstimates(search?: string, status?: string, pagination?: PaginationParams): PaginatedResult<Estimate> {
 	let sql = `SELECT e.*, c.name as client_name FROM estimates e LEFT JOIN clients c ON e.client_id = c.id`;
 	const params: unknown[] = [];
 	const conditions: string[] = [];
@@ -23,7 +24,8 @@ export function getEstimates(search?: string, status?: string): Estimate[] {
 	}
 
 	sql += ` ORDER BY e.created_at DESC`;
-	return query<Estimate>(sql, params);
+	const all = query<Estimate>(sql, params);
+	return paginate(all, pagination);
 }
 
 export function getEstimate(id: number): Estimate | null {

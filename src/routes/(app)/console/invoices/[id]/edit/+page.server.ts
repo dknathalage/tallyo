@@ -9,9 +9,9 @@ export const load: PageServerLoad = ({ params }) => {
 	return {
 		invoice,
 		lineItems: repositories.invoices.getInvoiceLineItems(id),
-		clients: repositories.clients.getClients(),
+		clients: repositories.clients.getClients(undefined, { limit: 200 }).data,
 		payers: repositories.payers.getPayers(),
-		catalog: repositories.catalog.getCatalogItems(),
+		catalog: repositories.catalog.getCatalogItems(undefined, undefined, { limit: 200 }).data,
 		rateTiers: repositories.rateTiers.getRateTiers(),
 		taxRates: repositories.taxRates.getTaxRates(),
 		businessProfile: repositories.businessProfile.getBusinessProfile()

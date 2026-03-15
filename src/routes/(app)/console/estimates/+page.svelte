@@ -8,6 +8,7 @@
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import BulkActionBar from '$lib/components/shared/BulkActionBar.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
+	import Pagination from '$lib/components/shared/Pagination.svelte';
 	import ImportExportBar from '$lib/components/csv/ImportExportBar.svelte';
 	import ImportPreviewModal from '$lib/components/csv/ImportPreviewModal.svelte';
 	import { exportEstimates } from '$lib/csv/export-estimates.js';
@@ -30,9 +31,10 @@
 	let showDeleteConfirm = $state(false);
 
 	const statuses = ['', 'draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
+	let paginationResult = $derived(data.estimatesResult);
 
 	let estimates: Estimate[] = $derived(
-		data.estimates.filter((est: Estimate) => {
+		paginationResult.data.filter((est: Estimate) => {
 			const matchesSearch = !search || est.estimate_number.toLowerCase().includes(search.toLowerCase()) || (est.client_name ?? '').toLowerCase().includes(search.toLowerCase());
 			const matchesStatus = !statusFilter || est.status === statusFilter;
 			return matchesSearch && matchesStatus;
@@ -236,6 +238,13 @@
 				</tbody>
 			</table>
 		</div>
+		<Pagination
+			total={paginationResult.total}
+			currentPage={paginationResult.page}
+			totalPages={paginationResult.totalPages}
+			hasNextPage={paginationResult.hasNextPage}
+			hasPrevPage={paginationResult.hasPrevPage}
+		/>
 	{/if}
 </div>
 

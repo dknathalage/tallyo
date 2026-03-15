@@ -7,6 +7,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import BulkActionBar from '$lib/components/shared/BulkActionBar.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
+	import Pagination from '$lib/components/shared/Pagination.svelte';
 	import ImportWizardModal from '$lib/components/import/ImportWizardModal.svelte';
 	import { exportCatalog } from '$lib/csv/export-catalog.js';
 	import type { CatalogItem } from '$lib/types';
@@ -25,9 +26,10 @@
 
 	let tiers = $derived(data.rateTiers);
 	let categories = $derived(data.categories);
+	let paginationResult = $derived(data.catalogResult);
 
 	let items = $derived.by((): (CatalogItem & { tier_rate?: number })[] => {
-		return data.catalog.filter((item: CatalogItem) => {
+		return paginationResult.data.filter((item: CatalogItem) => {
 			const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku ?? '').toLowerCase().includes(search.toLowerCase());
 			const matchesCategory = !selectedCategory || item.category === selectedCategory;
 			return matchesSearch && matchesCategory;
@@ -202,6 +204,13 @@
 				</tbody>
 			</table>
 		</div>
+		<Pagination
+			total={paginationResult.total}
+			currentPage={paginationResult.page}
+			totalPages={paginationResult.totalPages}
+			hasNextPage={paginationResult.hasNextPage}
+			hasPrevPage={paginationResult.hasPrevPage}
+		/>
 	{/if}
 </div>
 

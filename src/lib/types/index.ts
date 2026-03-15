@@ -1,3 +1,6 @@
+export type { PaginationParams, PaginatedResult } from './pagination.js';
+export { paginate } from './pagination.js';
+
 export interface Client {
 	id: number;
 	uuid: string;

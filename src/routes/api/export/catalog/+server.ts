@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/sqlite/index.js';
 
 export const GET: RequestHandler = () => {
-	const items = repositories.catalog.getCatalogItems();
+	const items = repositories.catalog.getCatalogItems(undefined, undefined, { limit: 200 }).data;
 	const tiers = repositories.rateTiers.getRateTiers();
 
 	const rows = items.map((item) => {

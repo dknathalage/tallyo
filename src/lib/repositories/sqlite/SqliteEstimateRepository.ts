@@ -18,7 +18,7 @@ import type { EstimateRepository } from '../interfaces/EstimateRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../interfaces/types.js';
-import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
+import type { Estimate, EstimateLineItem, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
 export class SqliteEstimateRepository implements EstimateRepository {
 	constructor(
@@ -26,8 +26,8 @@ export class SqliteEstimateRepository implements EstimateRepository {
 		private readonly _tx: StorageTransaction
 	) {}
 
-	getEstimates(search?: string, status?: string): Estimate[] {
-		return getEstimates(search, status);
+	getEstimates(search?: string, status?: string, pagination?: PaginationParams): PaginatedResult<Estimate> {
+		return getEstimates(search, status, pagination);
 	}
 
 	getEstimate(id: number): Estimate | null {
