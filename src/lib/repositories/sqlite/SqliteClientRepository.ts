@@ -14,7 +14,7 @@ import type { ClientRepository } from '../interfaces/ClientRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateClientInput, UpdateClientInput } from '../interfaces/types.js';
-import type { Client, PartySnapshot, ClientRevenueSummary } from '$lib/types/index.js';
+import type { Client, PartySnapshot, ClientRevenueSummary, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
 export class SqliteClientRepository implements ClientRepository {
 	constructor(
@@ -22,8 +22,8 @@ export class SqliteClientRepository implements ClientRepository {
 		private readonly _tx: StorageTransaction
 	) {}
 
-	getClients(search?: string): Client[] {
-		return getClients(search);
+	getClients(search?: string, pagination?: PaginationParams): PaginatedResult<Client> {
+		return getClients(search, pagination);
 	}
 
 	getClient(id: number): Client | null {

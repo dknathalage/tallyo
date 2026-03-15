@@ -27,7 +27,9 @@ describe('getClients', () => {
 		expect(mockQuery).toHaveBeenCalledWith(
 			'SELECT c.*, rt.name as pricing_tier_name, p.name as payer_name FROM clients c LEFT JOIN rate_tiers rt ON c.pricing_tier_id = rt.id LEFT JOIN payers p ON c.payer_id = p.id ORDER BY c.name'
 		);
-		expect(result).toEqual(clients);
+		expect(result.data).toEqual(clients);
+		expect(result.total).toBe(1);
+		expect(result.page).toBe(1);
 	});
 
 	it('filters clients by search term', () => {

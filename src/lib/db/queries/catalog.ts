@@ -1,26 +1,28 @@
 import { execute, query } from '../connection.js';
-import type { CatalogItem, CatalogItemWithRates, CatalogItemRate } from '../../types/index.js';
+import type { CatalogItem, CatalogItemWithRates, CatalogItemRate, PaginationParams, PaginatedResult } from '../../types/index.js';
+import { paginate } from '../../types/index.js';
 
-export function getCatalogItems(search?: string, category?: string): CatalogItem[] {
+export function getCatalogItems(search?: string, category?: string, pagination?: PaginationParams): PaginatedResult<CatalogItem> {
+	let all: CatalogItem[];
 	if (search && category) {
-		return query<CatalogItem>(
+		all = query<CatalogItem>(
 			`SELECT * FROM catalog_items WHERE (name LIKE ? OR sku LIKE ?) AND category = ? ORDER BY name`,
 			[`%${search}%`, `%${search}%`, category]
 		);
-	}
-	if (search) {
-		return query<CatalogItem>(
+	} else if (search) {
+		all = query<CatalogItem>(
 			`SELECT * FROM catalog_items WHERE name LIKE ? OR sku LIKE ? ORDER BY name`,
 			[`%${search}%`, `%${search}%`]
 		);
-	}
-	if (category) {
-		return query<CatalogItem>(
+	} else if (category) {
+		all = query<CatalogItem>(
 			`SELECT * FROM catalog_items WHERE category = ? ORDER BY name`,
 			[category]
 		);
+	} else {
+		all = query<CatalogItem>(`SELECT * FROM catalog_items ORDER BY name`);
 	}
-	return query<CatalogItem>(`SELECT * FROM catalog_items ORDER BY name`);
+	return paginate(all, pagination);
 }
 
 export function getCatalogItem(id: number): CatalogItem | null {

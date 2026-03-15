@@ -1,8 +1,8 @@
-import type { Invoice, LineItem, AgingBucket } from '$lib/types/index.js';
+import type { Invoice, LineItem, AgingBucket, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from './types.js';
 
 export interface InvoiceRepository {
-	getInvoices(search?: string, status?: string): Invoice[];
+	getInvoices(search?: string, status?: string, pagination?: PaginationParams): PaginatedResult<Invoice>;
 	getInvoice(id: number): Invoice | null;
 	getInvoiceLineItems(invoiceId: number): LineItem[];
 	getClientInvoices(clientId: number): Invoice[];

@@ -19,7 +19,7 @@ import type { InvoiceRepository } from '../interfaces/InvoiceRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../interfaces/types.js';
-import type { Invoice, LineItem, AgingBucket } from '$lib/types/index.js';
+import type { Invoice, LineItem, AgingBucket, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
 export class SqliteInvoiceRepository implements InvoiceRepository {
 	constructor(
@@ -27,8 +27,8 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 		private readonly _tx: StorageTransaction
 	) {}
 
-	getInvoices(search?: string, status?: string): Invoice[] {
-		return getInvoices(search, status);
+	getInvoices(search?: string, status?: string, pagination?: PaginationParams): PaginatedResult<Invoice> {
+		return getInvoices(search, status, pagination);
 	}
 
 	getInvoice(id: number): Invoice | null {

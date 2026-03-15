@@ -8,6 +8,7 @@
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import BulkActionBar from '$lib/components/shared/BulkActionBar.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
+	import Pagination from '$lib/components/shared/Pagination.svelte';
 	import ImportExportBar from '$lib/components/csv/ImportExportBar.svelte';
 	import ImportPreviewModal from '$lib/components/csv/ImportPreviewModal.svelte';
 	import { exportInvoices } from '$lib/csv/export-invoices.js';
@@ -30,11 +31,12 @@
 	let showDeleteConfirm = $state(false);
 
 	let dueTemplatesCount = $derived(data.dueTemplatesCount);
+	let paginationResult = $derived(data.invoicesResult);
 
 	const statuses = ['', 'draft', 'sent', 'paid', 'overdue'] as const;
 
 	let invoices: Invoice[] = $derived(
-		data.invoices.filter((inv: Invoice) => {
+		paginationResult.data.filter((inv: Invoice) => {
 			const matchesSearch = !search || inv.invoice_number.toLowerCase().includes(search.toLowerCase()) || (inv.client_name ?? '').toLowerCase().includes(search.toLowerCase());
 			const matchesStatus = !statusFilter || inv.status === statusFilter;
 			return matchesSearch && matchesStatus;
@@ -251,6 +253,13 @@
 				</tbody>
 			</table>
 		</div>
+		<Pagination
+			total={paginationResult.total}
+			currentPage={paginationResult.page}
+			totalPages={paginationResult.totalPages}
+			hasNextPage={paginationResult.hasNextPage}
+			hasPrevPage={paginationResult.hasPrevPage}
+		/>
 	{/if}
 </div>
 

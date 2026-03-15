@@ -8,6 +8,6 @@ export const load: PageServerLoad = ({ params }) => {
 	if (!template) throw error(404, 'Template not found');
 	return {
 		template,
-		clients: repositories.clients.getClients()
+		clients: repositories.clients.getClients(undefined, { limit: 200 }).data
 	};
 };

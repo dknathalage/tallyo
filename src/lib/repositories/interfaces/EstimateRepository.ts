@@ -1,8 +1,8 @@
-import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
+import type { Estimate, EstimateLineItem, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from './types.js';
 
 export interface EstimateRepository {
-	getEstimates(search?: string, status?: string): Estimate[];
+	getEstimates(search?: string, status?: string, pagination?: PaginationParams): PaginatedResult<Estimate>;
 	getEstimate(id: number): Estimate | null;
 	getEstimateLineItems(estimateId: number): EstimateLineItem[];
 	getClientEstimates(clientId: number): Estimate[];

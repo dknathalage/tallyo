@@ -6,6 +6,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import BulkActionBar from '$lib/components/shared/BulkActionBar.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
+	import Pagination from '$lib/components/shared/Pagination.svelte';
 	import ImportExportBar from '$lib/components/csv/ImportExportBar.svelte';
 	import ImportPreviewModal from '$lib/components/csv/ImportPreviewModal.svelte';
 	import { exportClients } from '$lib/csv/export-clients.js';
@@ -25,9 +26,10 @@
 	let showDeleteConfirm = $state(false);
 
 	let tiers = $derived(data.rateTiers);
+	let paginationResult = $derived(data.clientsResult);
 
 	let clients = $derived(
-		data.clients.filter(c =>
+		paginationResult.data.filter(c =>
 			!search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.email ?? '').toLowerCase().includes(search.toLowerCase())
 		)
 	);
@@ -193,6 +195,13 @@
 				</tbody>
 			</table>
 		</div>
+		<Pagination
+			total={paginationResult.total}
+			currentPage={paginationResult.page}
+			totalPages={paginationResult.totalPages}
+			hasNextPage={paginationResult.hasNextPage}
+			hasPrevPage={paginationResult.hasPrevPage}
+		/>
 	{/if}
 </div>
 

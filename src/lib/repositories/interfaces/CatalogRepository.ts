@@ -1,8 +1,8 @@
-import type { CatalogItem, CatalogItemWithRates } from '$lib/types/index.js';
+import type { CatalogItem, CatalogItemWithRates, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 import type { CreateCatalogItemInput, UpdateCatalogItemInput } from './types.js';
 
 export interface CatalogRepository {
-	getCatalogItems(search?: string, category?: string): CatalogItem[];
+	getCatalogItems(search?: string, category?: string, pagination?: PaginationParams): PaginatedResult<CatalogItem>;
 	getCatalogItem(id: number): CatalogItem | null;
 	getCatalogCategories(): string[];
 	searchCatalogItems(term: string, limit?: number): CatalogItem[];

@@ -32,12 +32,13 @@ describe('getCatalogItems', () => {
 		);
 	});
 
-	it('returns empty array when catalog is empty', () => {
+	it('returns empty result when catalog is empty', () => {
 		mockQuery.mockReturnValue([]);
 
 		const result = getCatalogItems();
 
-		expect(result).toEqual([]);
+		expect(result.data).toEqual([]);
+		expect(result.total).toBe(0);
 	});
 
 	it('filters by search term', () => {

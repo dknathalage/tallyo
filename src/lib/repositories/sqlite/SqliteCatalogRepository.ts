@@ -18,7 +18,7 @@ import type { CatalogRepository } from '../interfaces/CatalogRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 import type { CreateCatalogItemInput, UpdateCatalogItemInput } from '../interfaces/types.js';
-import type { CatalogItem, CatalogItemWithRates } from '$lib/types/index.js';
+import type { CatalogItem, CatalogItemWithRates, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
 export class SqliteCatalogRepository implements CatalogRepository {
 	constructor(
@@ -26,8 +26,8 @@ export class SqliteCatalogRepository implements CatalogRepository {
 		private readonly _tx: StorageTransaction
 	) {}
 
-	getCatalogItems(search?: string, category?: string): CatalogItem[] {
-		return getCatalogItems(search, category);
+	getCatalogItems(search?: string, category?: string, pagination?: PaginationParams): PaginatedResult<CatalogItem> {
+		return getCatalogItems(search, category, pagination);
 	}
 
 	getCatalogItem(id: number): CatalogItem | null {
