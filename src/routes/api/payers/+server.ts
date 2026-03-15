@@ -2,10 +2,14 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/sqlite/index.js';
 import { dbError } from '$lib/server/db-error.js';
+import { validate } from '$lib/validation/validate.js';
+import { BulkDeleteSchema, SearchParamsSchema } from '$lib/validation/schemas.js';
 
 export const GET: RequestHandler = ({ url }) => {
-	const search = url.searchParams.get('search') || undefined;
-	return json(repositories.payers.getPayers(search));
+	const params = validate(SearchParamsSchema, {
+		search: url.searchParams.get('search') || undefined
+	});
+	return json(repositories.payers.getPayers(params.search));
 };
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -13,8 +17,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	const { action, ...data } = body;
 
 	if (action === 'bulk-delete') {
+		const { ids } = validate(BulkDeleteSchema, data);
 		try {
-			await repositories.payers.bulkDeletePayers(data.ids ?? []);
+			await repositories.payers.bulkDeletePayers(ids);
 			return json({ success: true });
 		} catch (err) {
 			dbError(err);
