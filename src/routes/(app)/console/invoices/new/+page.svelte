@@ -35,8 +35,9 @@
 				body: JSON.stringify({ ...data, lineItems })
 			});
 			goto(`${base}/console/invoices`);
-		} catch (e: any) {
-			addToast({ type: 'error', message: e.message || 'Failed to save invoice' });
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'An unexpected error occurred';
+			addToast({ type: 'error', message: message || 'Failed to save invoice' });
 		}
 	}
 </script>

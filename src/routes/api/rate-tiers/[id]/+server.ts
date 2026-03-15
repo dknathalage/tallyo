@@ -3,7 +3,8 @@ import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/sqlite/index.js';
 
 export const PUT: RequestHandler = async ({ params, request }) => {
-	const id = parseInt(params.id);
+	const id = parseInt(params.id, 10);
+	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	if (isNaN(id)) error(400, 'Invalid tier ID');
 
 	const data = await request.json();
@@ -22,7 +23,8 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
-	const id = parseInt(params.id);
+	const id = parseInt(params.id, 10);
+	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	if (isNaN(id)) error(400, 'Invalid tier ID');
 
 	try {

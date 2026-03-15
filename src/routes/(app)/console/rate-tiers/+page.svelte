@@ -68,8 +68,9 @@
 			}
 			closeForm();
 			await invalidateAll();
-		} catch (err: any) {
-			error = err.message || 'An error occurred';
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+			error = message || 'An error occurred';
 		}
 	}
 
@@ -85,9 +86,10 @@
 			showDeleteConfirm = false;
 			deletingTier = null;
 			await invalidateAll();
-		} catch (err: any) {
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'An unexpected error occurred';
 			showDeleteConfirm = false;
-			error = err.message || 'Cannot delete tier';
+			error = message || 'Cannot delete tier';
 		}
 	}
 </script>

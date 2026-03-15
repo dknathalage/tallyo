@@ -59,8 +59,9 @@
 					}
 				})
 			});
-		} catch (err: any) {
-			bpError = err.message || 'Failed to save';
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+			bpError = message || 'Failed to save';
 		} finally {
 			bpSaving = false;
 		}
@@ -92,8 +93,9 @@
 		restoreError = '';
 		try {
 			await importDatabase(restoreFile);
-		} catch (err: any) {
-			restoreError = err.message || i18n.t('settings.restoreError');
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+			restoreError = message || i18n.t('settings.restoreError');
 			restoring = false;
 		}
 	}

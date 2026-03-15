@@ -75,7 +75,7 @@ export function buildClientSnapshot(clientId: number): PartySnapshot {
 		return { name: '', email: '', phone: '', address: '', metadata: {} };
 	}
 	let metadata: Record<string, string> = {};
-	try { metadata = JSON.parse(client.metadata || '{}'); } catch {}
+	try { metadata = JSON.parse(client.metadata || '{}'); } catch (e) { console.error('Failed to parse client metadata', e); }
 	return {
 		name: client.name,
 		email: client.email,
