@@ -6,6 +6,8 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { addToast } from '$lib/stores/toast.svelte.js';
 
+	let { data }: { data: PageData } = $props();
+
 	async function handleSubmit(
 		data: {
 			invoice_number: string;
@@ -50,6 +52,6 @@
 	</div>
 
 	<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-		<InvoiceForm onsubmit={handleSubmit} />
+		<InvoiceForm onsubmit={handleSubmit} nextInvoiceNumber={data.nextInvoiceNumber} />
 	</div>
 </div>

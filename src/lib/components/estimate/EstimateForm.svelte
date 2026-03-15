@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-		import { generateEstimateNumber } from '$lib/utils/estimate-number.js';
+
 	import { today, formatCurrency } from '$lib/utils/format.js';
 	import type { Client, Estimate, EstimateLineItem, KeyValuePair, TaxRate, RateTier } from '$lib/types/index.js';
 	import { parseSnapshot } from '$lib/utils/snapshot.js';
@@ -14,10 +14,12 @@
 	let {
 		initialData,
 		initialLineItems,
+		nextEstimateNumber,
 		onsubmit
 	}: {
 		initialData?: Estimate;
 		initialLineItems?: EstimateLineItem[];
+		nextEstimateNumber?: string;
 		onsubmit: (
 			data: {
 				estimate_number: string;
@@ -41,7 +43,7 @@
 	} = $props();
 
 	let clients: Client[] = $state([]);
-	let estimateNumber = $derived(initialData?.estimate_number ?? '');
+	let estimateNumber = $state(initialData?.estimate_number ?? '');
 	let clientId: number | '' = $state(initialData?.client_id ?? '');
 	let date = $state(initialData?.date ?? today());
 	let validUntil = $state(initialData?.valid_until ?? today());
@@ -158,7 +160,7 @@
 			selectedTaxRateId = defaultRate.id;
 		}
 		if (!initialData) {
-			estimateNumber = generateEstimateNumber();
+			estimateNumber = nextEstimateNumber ?? '';
 			const profile = settings.profile;
 			if (profile && !currencyCode) {
 				currencyCode = profile.default_currency || 'USD';
