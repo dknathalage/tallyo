@@ -28,6 +28,9 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      - name: Test with coverage
+        run: npm run test:coverage
+
   build:
     name: Build
     runs-on: ubuntu-latest

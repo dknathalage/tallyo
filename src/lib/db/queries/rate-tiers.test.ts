@@ -107,13 +107,13 @@ describe('createRateTier', () => {
 		);
 	});
 
-	it('throws when name is empty', async () => {
-		await expect(createRateTier({ name: '' })).rejects.toThrow('Tier name is required');
+	it('throws when name is empty', () => {
+		expect(() => createRateTier({ name: '' })).toThrow('Tier name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('throws when name is only whitespace', async () => {
-		await expect(createRateTier({ name: '   ' })).rejects.toThrow('Tier name is required');
+	it('throws when name is only whitespace', () => {
+		expect(() => createRateTier({ name: '   ' })).toThrow('Tier name is required');
 	});
 });
 
@@ -137,8 +137,8 @@ describe('updateRateTier', () => {
 		);
 	});
 
-	it('throws when new name is empty', async () => {
-		await expect(updateRateTier(1, { name: '' })).rejects.toThrow('Tier name is required');
+	it('throws when new name is empty', () => {
+		expect(() => updateRateTier(1, { name: '' })).toThrow('Tier name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 });
@@ -156,10 +156,10 @@ describe('deleteRateTier', () => {
 		expect(mockSave).toHaveBeenCalled();
 	});
 
-	it('throws when trying to delete the last tier', async () => {
+	it('throws when trying to delete the last tier', () => {
 		mockQuery.mockReturnValue([{ id: 1, name: 'Standard' }]);
 
-		await expect(deleteRateTier(1)).rejects.toThrow('Cannot delete the last tier');
+		expect(() => deleteRateTier(1)).toThrow('Cannot delete the last tier');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 });

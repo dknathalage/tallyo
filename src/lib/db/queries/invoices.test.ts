@@ -5,6 +5,10 @@ vi.mock('../connection.js', () => ({
 	execute: vi.fn()
 }));
 
+vi.mock('../number-generators.js', () => ({
+	generateInvoiceNumber: vi.fn().mockReturnValue('INV-0100')
+}));
+
 import {
 	getInvoices,
 	getInvoice,
@@ -131,13 +135,13 @@ describe('createInvoice', () => {
 		expect(id).toBe(7);
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockQuery.mockReturnValue([{ id: 1 }]);
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('SQL error');
 		});
 
-		await expect(createInvoice(invoiceData, lineItems)).rejects.toThrow('SQL error');
+		expect(() => createInvoice(invoiceData, lineItems)).toThrow('SQL error');
 	});
 
 	it('defaults optional fields', async () => {
@@ -215,13 +219,13 @@ describe('updateInvoice', () => {
 		// Transaction management, audit, and save() are now the repository's responsibility
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockQuery.mockReturnValue([]); // no tax_rate_id lookup
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('Update failed');
 		});
 
-		await expect(updateInvoice(1, invoiceData, [])).rejects.toThrow('Update failed');
+		expect(() => updateInvoice(1, invoiceData, [])).toThrow('Update failed');
 	});
 
 	it('includes snapshot fields in update', async () => {
@@ -250,12 +254,12 @@ describe('deleteInvoice', () => {
 		// Transaction management, logAudit(), and save() are now the repository's responsibility
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('DELETE failed');
 		});
 
-		await expect(deleteInvoice(3)).rejects.toThrow('DELETE failed');
+		expect(() => deleteInvoice(3)).toThrow('DELETE failed');
 	});
 });
 
@@ -398,18 +402,14 @@ describe('bulkDeleteInvoices', () => {
 		);
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('Bulk delete failed');
 		});
 
-		await expect(bulkDeleteInvoices([1, 2])).rejects.toThrow('Bulk delete failed');
+		expect(() => bulkDeleteInvoices([1, 2])).toThrow('Bulk delete failed');
 	});
 });
-
-vi.mock('../../utils/invoice-number.js', () => ({
-	generateInvoiceNumber: vi.fn().mockReturnValue('INV-9999')
-}));
 
 describe('duplicateInvoice', () => {
 	const originalInvoice = {
@@ -446,7 +446,7 @@ describe('duplicateInvoice', () => {
 		expect(newId).toBe(99);
 		expect(mockExecute).toHaveBeenCalledWith(
 			expect.stringContaining('INSERT INTO invoices'),
-			expect.arrayContaining(['INV-9999'])
+			expect.arrayContaining(['INV-0100'])
 		);
 	});
 
@@ -478,13 +478,13 @@ describe('duplicateInvoice', () => {
 		);
 	});
 
-	it('throws when the original invoice does not exist', async () => {
+	it('throws when the original invoice does not exist', () => {
 		mockQuery.mockReturnValue([]);
 
-		await expect(duplicateInvoice(999)).rejects.toThrow('Invoice 999 not found');
+		expect(() => duplicateInvoice(999)).toThrow('Invoice 999 not found');
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockQuery
 			.mockReturnValueOnce([originalInvoice])
 			.mockReturnValueOnce(originalLineItems);
@@ -492,7 +492,7 @@ describe('duplicateInvoice', () => {
 			throw new Error('Insert failed');
 		});
 
-		await expect(duplicateInvoice(1)).rejects.toThrow('Insert failed');
+		expect(() => duplicateInvoice(1)).toThrow('Insert failed');
 		// Transaction management, audit, and save() are now the repository's responsibility
 	});
 });

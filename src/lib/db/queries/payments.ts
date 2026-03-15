@@ -28,9 +28,11 @@ export function createPayment(data: {
 		[crypto.randomUUID(), data.invoice_id, data.amount, data.payment_date, data.method ?? '', data.notes ?? '']
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+	save();
 	return result[0].id;
 }
 
 export function deletePayment(id: number): void {
 	execute(`DELETE FROM payments WHERE id = ?`, [id]);
+	save();
 }

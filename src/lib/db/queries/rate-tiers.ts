@@ -30,6 +30,7 @@ export function createRateTier(data: {
 		[crypto.randomUUID(), data.name, data.description ?? '', data.sort_order ?? 0]
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+	save();
 	return result[0].id;
 }
 
@@ -44,6 +45,7 @@ export function updateRateTier(
 		`UPDATE rate_tiers SET name = ?, description = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
 		[data.name, data.description ?? '', data.sort_order ?? 0, id]
 	);
+	save();
 }
 
 export function deleteRateTier(id: number): void {
@@ -52,4 +54,5 @@ export function deleteRateTier(id: number): void {
 		throw new Error('Cannot delete the last tier');
 	}
 	execute(`DELETE FROM rate_tiers WHERE id = ?`, [id]);
+	save();
 }

@@ -24,6 +24,7 @@ export function createTaxRate(data: { name: string; rate: number; is_default?: b
 		[crypto.randomUUID(), data.name, data.rate, data.is_default ? 1 : 0]
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+	save();
 	return result[0].id;
 }
 
@@ -38,8 +39,10 @@ export function updateTaxRate(
 		`UPDATE tax_rates SET name = ?, rate = ?, is_default = ?, updated_at = datetime('now') WHERE id = ?`,
 		[data.name, data.rate, data.is_default ? 1 : 0, id]
 	);
+	save();
 }
 
 export function deleteTaxRate(id: number): void {
 	execute(`DELETE FROM tax_rates WHERE id = ?`, [id]);
+	save();
 }

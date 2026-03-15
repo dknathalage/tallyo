@@ -86,18 +86,18 @@ describe('createClient', () => {
 		);
 	});
 
-	it('throws when name is empty string', async () => {
-		await expect(createClient({ name: '' })).rejects.toThrow('Client name is required');
+	it('throws when name is empty string', () => {
+		expect(() => createClient({ name: '' })).toThrow('Client name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('throws when name is only whitespace', async () => {
-		await expect(createClient({ name: '   ' })).rejects.toThrow('Client name is required');
+	it('throws when name is only whitespace', () => {
+		expect(() => createClient({ name: '   ' })).toThrow('Client name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('throws when name is undefined', async () => {
-		await expect(createClient({ name: undefined as any })).rejects.toThrow('Client name is required');
+	it('throws when name is undefined', () => {
+		expect(() => createClient({ name: undefined as any })).toThrow('Client name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
@@ -124,13 +124,13 @@ describe('updateClient', () => {
 		// save() and logAudit() are now the repository's responsibility
 	});
 
-	it('throws when name is empty string', async () => {
-		await expect(updateClient(1, { name: '' })).rejects.toThrow('Client name is required');
+	it('throws when name is empty string', () => {
+		expect(() => updateClient(1, { name: '' })).toThrow('Client name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('throws when name is only whitespace', async () => {
-		await expect(updateClient(1, { name: '  ' })).rejects.toThrow('Client name is required');
+	it('throws when name is only whitespace', () => {
+		expect(() => updateClient(1, { name: '  ' })).toThrow('Client name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 });
@@ -143,12 +143,12 @@ describe('deleteClient', () => {
 		// Transaction management, logAudit(), and save() are now the repository's responsibility
 	});
 
-	it('propagates errors from execute', async () => {
+	it('propagates errors from execute', () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('DELETE failed');
 		});
 
-		await expect(deleteClient(5)).rejects.toThrow('DELETE failed');
+		expect(() => deleteClient(5)).toThrow('DELETE failed');
 	});
 });
 

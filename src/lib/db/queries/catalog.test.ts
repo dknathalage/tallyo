@@ -135,15 +135,15 @@ describe('createCatalogItem', () => {
 		);
 	});
 
-	it('throws when name is empty', async () => {
-		await expect(createCatalogItem({ name: '' })).rejects.toThrow(
+	it('throws when name is empty', () => {
+		expect(() => createCatalogItem({ name: '' })).toThrow(
 			'Catalog item name is required'
 		);
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('throws when name is only whitespace', async () => {
-		await expect(createCatalogItem({ name: '   ' })).rejects.toThrow(
+	it('throws when name is only whitespace', () => {
+		expect(() => createCatalogItem({ name: '   ' })).toThrow(
 			'Catalog item name is required'
 		);
 	});
@@ -162,8 +162,8 @@ describe('updateCatalogItem', () => {
 		// save() and logAudit() are now the repository's responsibility
 	});
 
-	it('throws when new name is empty', async () => {
-		await expect(updateCatalogItem(1, { name: '' })).rejects.toThrow(
+	it('throws when new name is empty', () => {
+		expect(() => updateCatalogItem(1, { name: '' })).toThrow(
 			'Catalog item name is required'
 		);
 		expect(mockExecute).not.toHaveBeenCalled();
@@ -178,11 +178,11 @@ describe('deleteCatalogItem', () => {
 		// save() and logAudit() are now the repository's responsibility
 	});
 
-	it('propagates execute errors', async () => {
+	it('propagates execute errors', () => {
 		mockExecute.mockImplementationOnce(() => {
 			throw new Error('DELETE failed');
 		});
 
-		await expect(deleteCatalogItem(5)).rejects.toThrow('DELETE failed');
+		expect(() => deleteCatalogItem(5)).toThrow('DELETE failed');
 	});
 });

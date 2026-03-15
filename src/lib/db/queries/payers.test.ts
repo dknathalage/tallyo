@@ -66,13 +66,13 @@ describe('createPayer', () => {
 		expect(id).toBe(10);
 	});
 
-	it('throws when name is empty', async () => {
-		await expect(createPayer({ name: '' })).rejects.toThrow('Payer name is required');
+	it('throws when name is empty', () => {
+		expect(() => createPayer({ name: '' })).toThrow('Payer name is required');
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
-	it('throws when name is whitespace', async () => {
-		await expect(createPayer({ name: '   ' })).rejects.toThrow('Payer name is required');
+	it('throws when name is whitespace', () => {
+		expect(() => createPayer({ name: '   ' })).toThrow('Payer name is required');
 	});
 });
 
@@ -87,8 +87,8 @@ describe('updatePayer', () => {
 		// save() is now the repository's responsibility
 	});
 
-	it('throws when name is empty', async () => {
-		await expect(updatePayer(1, { name: '' })).rejects.toThrow('Payer name is required');
+	it('throws when name is empty', () => {
+		expect(() => updatePayer(1, { name: '' })).toThrow('Payer name is required');
 	});
 });
 

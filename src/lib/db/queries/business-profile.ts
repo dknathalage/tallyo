@@ -36,6 +36,7 @@ export function saveBusinessProfile(data: {
 		action: existing ? 'update' : 'create',
 		context: data.name
 	});
+	save();
 }
 
 export function buildBusinessSnapshot(): PartySnapshot {
