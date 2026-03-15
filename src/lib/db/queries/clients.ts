@@ -89,31 +89,27 @@ export function getClientRevenueSummary(clientId: number): ClientRevenueSummary 
 	const profile = getBusinessProfile();
 	const defaultCurrency = profile?.default_currency || 'USD';
 
-	const totalInvoicedResult = query<{ total: number | null }>(
-		`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE client_id = ? AND COALESCE(currency_code, 'USD') = ?`,
+	const result = query<{
+		total_invoiced: number;
+		total_paid: number;
+		outstanding_balance: number;
+		invoice_count: number;
+	}>(
+		`SELECT
+			COALESCE(SUM(total), 0) as total_invoiced,
+			COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) as total_paid,
+			COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total ELSE 0 END), 0) as outstanding_balance,
+			COUNT(*) as invoice_count
+		FROM invoices
+		WHERE client_id = ? AND COALESCE(currency_code, 'USD') = ?`,
 		[clientId, defaultCurrency]
-	);
-
-	const totalPaidResult = query<{ total: number | null }>(
-		`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE client_id = ? AND status = 'paid' AND COALESCE(currency_code, 'USD') = ?`,
-		[clientId, defaultCurrency]
-	);
-
-	const outstandingResult = query<{ total: number | null }>(
-		`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE client_id = ? AND status IN ('sent', 'overdue') AND COALESCE(currency_code, 'USD') = ?`,
-		[clientId, defaultCurrency]
-	);
-
-	const countResult = query<{ count: number }>(
-		`SELECT COUNT(*) as count FROM invoices WHERE client_id = ?`,
-		[clientId]
 	);
 
 	return {
-		total_invoiced: totalInvoicedResult[0]?.total ?? 0,
-		total_paid: totalPaidResult[0]?.total ?? 0,
-		outstanding_balance: outstandingResult[0]?.total ?? 0,
-		invoice_count: countResult[0]?.count ?? 0,
+		total_invoiced: result[0]?.total_invoiced ?? 0,
+		total_paid: result[0]?.total_paid ?? 0,
+		outstanding_balance: result[0]?.outstanding_balance ?? 0,
+		invoice_count: result[0]?.invoice_count ?? 0,
 		currency_code: defaultCurrency
 	};
 }

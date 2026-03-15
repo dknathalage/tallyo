@@ -238,6 +238,22 @@ function migration11_recurringTemplates(db: Database.Database) {
 	}
 }
 
+/** Migration 12: Add performance indexes on frequently-queried columns */
+function migration12_performanceIndexes(db: Database.Database) {
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status)`);
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_invoices_client_id ON invoices(client_id)`);
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC)`);
+	if (tableExists(db, 'estimates')) {
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_estimates_status ON estimates(status)`);
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_estimates_client_id ON estimates(client_id)`);
+	}
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_line_items_invoice_id ON line_items(invoice_id)`);
+	if (tableExists(db, 'payments')) {
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)`);
+	}
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id)`);
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations(db: Database.Database): void {
 	db.exec(CREATE_TABLES);
@@ -253,6 +269,7 @@ export function runMigrations(db: Database.Database): void {
 	migration9_taxRates(db);
 	migration10_payments(db);
 	migration11_recurringTemplates(db);
+	migration12_performanceIndexes(db);
 }
 
 // Backward-compatible alias
