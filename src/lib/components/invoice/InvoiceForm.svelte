@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-		import { generateInvoiceNumber } from '$lib/utils/invoice-number.js';
 	import { today, formatCurrency } from '$lib/utils/format.js';
 	import type { Client, Invoice, LineItem, KeyValuePair, TaxRate, RateTier } from '$lib/types/index.js';
 	import { parseSnapshot } from '$lib/utils/snapshot.js';
@@ -30,10 +29,12 @@
 	let {
 		initialData,
 		initialLineItems,
+		nextInvoiceNumber,
 		onsubmit
 	}: {
 		initialData?: Invoice;
 		initialLineItems?: LineItem[];
+		nextInvoiceNumber?: string;
 		onsubmit: (
 			data: {
 				invoice_number: string;
@@ -58,7 +59,7 @@
 	} = $props();
 
 	let clients: Client[] = $state([]);
-	let invoiceNumber = $derived(initialData?.invoice_number ?? '');
+	let invoiceNumber = $state(initialData?.invoice_number ?? '');
 	let clientId: number | '' = $state(initialData?.client_id ?? '');
 	let date = $state(initialData?.date ?? today());
 	let dueDate = $state(initialData?.due_date ?? today());
@@ -190,7 +191,7 @@
 			selectedTaxRateId = defaultRate.id;
 		}
 		if (!initialData) {
-			invoiceNumber = generateInvoiceNumber();
+			invoiceNumber = nextInvoiceNumber ?? '';
 			const profile = settings.profile;
 			if (profile && !currencyCode) {
 				currencyCode = profile.default_currency || 'USD';
