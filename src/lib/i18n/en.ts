@@ -12,6 +12,7 @@ const en: Messages = {
 		recurring: 'Recurring',
 		reports: 'Reports',
 		settings: 'Settings',
+		aiAssistant: 'AI Assistant',
 		appName: 'Invoice Manager',
 		close: 'Close',
 		closeDatabase: 'Close Database',

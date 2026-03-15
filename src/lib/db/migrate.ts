@@ -254,6 +254,38 @@ function migration12_performanceIndexes(db: Database.Database) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id)`);
 }
 
+/** Migration 13: Create ai_chat_sessions table */
+function migration13_aiChatSessions(db: Database.Database) {
+	if (!tableExists(db, 'ai_chat_sessions')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16)))),
+			title TEXT NOT NULL DEFAULT 'New Chat',
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`);
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_sessions_created ON ai_chat_sessions(created_at DESC)`);
+	}
+}
+
+/** Migration 14: Create ai_chat_messages table */
+function migration14_aiChatMessages(db: Database.Database) {
+	if (!tableExists(db, 'ai_chat_messages')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS ai_chat_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16)))),
+			session_id INTEGER NOT NULL REFERENCES ai_chat_sessions(id) ON DELETE CASCADE,
+			role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+			content TEXT NOT NULL DEFAULT '',
+			tool_calls TEXT DEFAULT NULL,
+			tool_results TEXT DEFAULT NULL,
+			is_streaming INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`);
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_messages_session ON ai_chat_messages(session_id, created_at)`);
+	}
+}
+
 /** Run all migrations in order. Safe to call multiple times. */
 export function runMigrations(db: Database.Database): void {
 	db.exec(CREATE_TABLES);
@@ -270,6 +302,8 @@ export function runMigrations(db: Database.Database): void {
 	migration10_payments(db);
 	migration11_recurringTemplates(db);
 	migration12_performanceIndexes(db);
+	migration13_aiChatSessions(db);
+	migration14_aiChatMessages(db);
 }
 
 // Backward-compatible alias

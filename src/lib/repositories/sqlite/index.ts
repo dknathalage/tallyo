@@ -12,6 +12,7 @@ import { SqliteAuditRepository } from './SqliteAuditRepository.js';
 import { SqliteColumnMappingsRepository } from './SqliteColumnMappingsRepository.js';
 import { SqliteRecurringTemplateRepository } from './SqliteRecurringTemplateRepository.js';
 import { SqliteTransactionFactory } from './SqliteTransactionFactory.js';
+import { SqliteAiChatRepository } from './SqliteAiChatRepository.js';
 import type {
 	InvoiceRepository,
 	EstimateRepository,
@@ -27,6 +28,7 @@ import type {
 	ColumnMappingsRepository,
 	RecurringTemplateRepository
 } from '../interfaces/index.js';
+import type { AiChatRepository } from '../interfaces/AiChatRepository.js';
 
 // Shared infrastructure singletons
 const auditRepo = new SqliteAuditRepository();
@@ -45,7 +47,8 @@ export const repositories = {
 	dashboard: new SqliteDashboardRepository() as DashboardRepository,
 	audit: auditRepo as AuditRepository,
 	columnMappings: new SqliteColumnMappingsRepository() as ColumnMappingsRepository,
-	recurringTemplates: new SqliteRecurringTemplateRepository() as RecurringTemplateRepository
+	recurringTemplates: new SqliteRecurringTemplateRepository() as RecurringTemplateRepository,
+	aiChat: new SqliteAiChatRepository() as AiChatRepository
 };
 
 export type Repositories = typeof repositories;
