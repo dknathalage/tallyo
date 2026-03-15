@@ -33,21 +33,25 @@ jobs:
       - name: Parse coverage summary
         id: coverage
         run: |
-          # Extract coverage percentages from v8 output
-          LINES=$(grep -E "^All files" coverage-output.txt | awk '{print $4}' || echo "N/A")
-          echo "lines=$LINES" >> $GITHUB_OUTPUT
-          STMTS=$(grep -E "^All files" coverage-output.txt | awk '{print $2}' || echo "N/A")
-          echo "statements=$STMTS" >> $GITHUB_OUTPUT
-          FUNCS=$(grep -E "^All files" coverage-output.txt | awk '{print $6}' || echo "N/A")
-          echo "functions=$FUNCS" >> $GITHUB_OUTPUT
-          BRANCHES=$(grep -E "^All files" coverage-output.txt | awk '{print $8}' || echo "N/A")
-          echo "branches=$BRANCHES" >> $GITHUB_OUTPUT
+          # v8 coverage table format:
+          # All files  |  25.08 |  28.40 |  29.27 |  26.88 |
+          # Fields (awk whitespace split): All(1) files(2) |(3) stmts(4) |(5) branch(6) |(7) funcs(8) |(9) lines(10) |(11)
+          LINE=$(grep "All files" coverage-output.txt | tail -1)
+          echo "coverage line: $LINE"
+          STMTS=$(echo "$LINE" | awk '{print $4}')
+          BRANCH=$(echo "$LINE" | awk '{print $6}')
+          FUNCS=$(echo "$LINE" | awk '{print $8}')
+          LINES=$(echo "$LINE" | awk '{print $10}')
+          echo "statements=${STMTS:-N/A}" >> $GITHUB_OUTPUT
+          echo "branch=${BRANCH:-N/A}" >> $GITHUB_OUTPUT
+          echo "functions=${FUNCS:-N/A}" >> $GITHUB_OUTPUT
+          echo "lines=${LINES:-N/A}" >> $GITHUB_OUTPUT
 
       - name: Count tests
         id: tests
         run: |
-          COUNT=$(npm test 2>&1 | grep -E "Tests.*passed" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" || echo "224")
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          COUNT=$(npm test 2>&1 | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | head -1)
+          echo "count=${COUNT:-0}" >> $GITHUB_OUTPUT
 
       - name: Generate changelog
         id: changelog
@@ -59,9 +63,24 @@ jobs:
           OUTPUT: CHANGELOG_RELEASE.md
 
       - name: Build release notes
+        env:
+          TEST_COUNT: ${{ steps.tests.outputs.count }}
+          STMTS: ${{ steps.coverage.outputs.statements }}
+          FUNCS: ${{ steps.coverage.outputs.functions }}
+          BRANCH: ${{ steps.coverage.outputs.branch }}
+          LINES: ${{ steps.coverage.outputs.lines }}
         run: |
-          cat > RELEASE_NOTES.md << EOF
-          $(cat CHANGELOG_RELEASE.md)
+          python3 - <<'EOF'
+          import os
+
+          changelog = open('CHANGELOG_RELEASE.md').read().strip()
+          test_count = os.environ['TEST_COUNT']
+          stmts     = os.environ['STMTS']
+          funcs     = os.environ['FUNCS']
+          branch    = os.environ['BRANCH']
+          lines     = os.environ['LINES']
+
+          notes = f"""{changelog}
 
           ---
 
@@ -69,28 +88,32 @@ jobs:
 
           | Metric | Value |
           |--------|-------|
-          | ✅ Tests passing | ${{ steps.tests.outputs.count }} |
-          | 📊 Statement coverage | ${{ steps.coverage.outputs.statements }}% |
-          | 📊 Function coverage | ${{ steps.coverage.outputs.functions }}% |
-          | 📊 Branch coverage | ${{ steps.coverage.outputs.branches }}% |
-          | 📊 Line coverage | ${{ steps.coverage.outputs.lines }}% |
+          | ✅ Tests passing | **{test_count}** |
+          | 📊 Statement coverage | {stmts}% |
+          | 📊 Function coverage | {funcs}% |
+          | 📊 Branch coverage | {branch}% |
+          | 📊 Line coverage | {lines}% |
 
           ## 🚀 Quick Start
 
-          \`\`\`bash
+          ```bash
           git clone https://github.com/dknathalage/invoices.git
           cd invoices
           npm install && npm run build
-          PORT=3002 node build/index.js
-          \`\`\`
+          PORT=3002 HOST=0.0.0.0 node build/index.js
+          ```
 
-          Database auto-created at \`~/.invoices/invoices.db\` on first run.
+          Database auto-created at `~/.invoices/invoices.db` on first run.
 
           ## 🏥 Health Check
 
-          \`\`\`
-          GET /health → {"status":"ok","db":"connected"}
-          \`\`\`
+          ```
+          GET /health → {{"status":"ok","db":"connected"}}
+          ```
+          """
+
+          open('RELEASE_NOTES.md', 'w').write(notes)
+          print("Release notes written.")
           EOF
 
       - name: Create GitHub Release
