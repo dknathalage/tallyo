@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/sqlite/index.js';
+import { dbError, fkOrNull } from '$lib/server/db-error.js';
 
 export const GET: RequestHandler = ({ params }) => {
 	const id = parseInt(params.id);
@@ -12,12 +13,22 @@ export const GET: RequestHandler = ({ params }) => {
 export const PUT: RequestHandler = async ({ params, request }) => {
 	const id = parseInt(params.id);
 	const data = await request.json();
-	await repositories.clients.updateClient(id, data);
-	return json({ success: true });
+	data.pricing_tier_id = fkOrNull(data.pricing_tier_id);
+	data.payer_id = fkOrNull(data.payer_id);
+	try {
+		await repositories.clients.updateClient(id, data);
+		return json({ success: true });
+	} catch (err) {
+		dbError(err);
+	}
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
 	const id = parseInt(params.id);
-	await repositories.clients.deleteClient(id);
-	return json({ success: true });
+	try {
+		await repositories.clients.deleteClient(id);
+		return json({ success: true });
+	} catch (err) {
+		dbError(err);
+	}
 };
