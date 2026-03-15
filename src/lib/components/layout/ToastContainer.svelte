@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getToasts, removeToast } from '$lib/stores/toast.js';
+	import { getToasts, removeToast } from '$lib/stores/toast.svelte.js';
 
 	const toastTypeClasses: Record<string, string> = {
 		success: 'bg-green-500 text-white',
