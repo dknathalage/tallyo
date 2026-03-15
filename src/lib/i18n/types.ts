@@ -10,6 +10,7 @@ export interface Messages {
 		recurring: string;
 		reports: string;
 		settings: string;
+		aiAssistant: string;
 		appName: string;
 		close: string;
 		closeDatabase: string;
