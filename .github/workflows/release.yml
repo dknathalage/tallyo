@@ -33,19 +33,11 @@ jobs:
       - name: Parse coverage summary
         id: coverage
         run: |
-          # v8 coverage table format:
-          # All files  |  25.08 |  28.40 |  29.27 |  26.88 |
-          # Fields (awk whitespace split): All(1) files(2) |(3) stmts(4) |(5) branch(6) |(7) funcs(8) |(9) lines(10) |(11)
           LINE=$(grep "All files" coverage-output.txt | tail -1)
-          echo "coverage line: $LINE"
-          STMTS=$(echo "$LINE" | awk '{print $4}')
-          BRANCH=$(echo "$LINE" | awk '{print $6}')
-          FUNCS=$(echo "$LINE" | awk '{print $8}')
-          LINES=$(echo "$LINE" | awk '{print $10}')
-          echo "statements=${STMTS:-N/A}" >> $GITHUB_OUTPUT
-          echo "branch=${BRANCH:-N/A}" >> $GITHUB_OUTPUT
-          echo "functions=${FUNCS:-N/A}" >> $GITHUB_OUTPUT
-          echo "lines=${LINES:-N/A}" >> $GITHUB_OUTPUT
+          echo "statements=$(echo "$LINE" | awk '{print $4}')" >> $GITHUB_OUTPUT
+          echo "branch=$(echo "$LINE"    | awk '{print $6}')" >> $GITHUB_OUTPUT
+          echo "functions=$(echo "$LINE" | awk '{print $8}')" >> $GITHUB_OUTPUT
+          echo "lines=$(echo "$LINE"     | awk '{print $10}')" >> $GITHUB_OUTPUT
 
       - name: Count tests
         id: tests
@@ -53,14 +45,15 @@ jobs:
           COUNT=$(npm test 2>&1 | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | head -1)
           echo "count=${COUNT:-0}" >> $GITHUB_OUTPUT
 
+      - name: Install git-cliff
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/orhun/git-cliff/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          curl -sSL "https://github.com/orhun/git-cliff/releases/download/${VERSION}/git-cliff-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin git-cliff-x86_64-unknown-linux-musl/git-cliff
+          git-cliff --version
+
       - name: Generate changelog
-        id: changelog
-        uses: orhun/git-cliff-action@v3
-        with:
-          config: cliff.toml
-          args: --latest --strip header
-        env:
-          OUTPUT: CHANGELOG_RELEASE.md
+        run: git-cliff --latest --strip header -o CHANGELOG_RELEASE.md
 
       - name: Build release notes
         env:
@@ -74,46 +67,46 @@ jobs:
           import os
 
           changelog = open('CHANGELOG_RELEASE.md').read().strip()
-          test_count = os.environ['TEST_COUNT']
-          stmts     = os.environ['STMTS']
-          funcs     = os.environ['FUNCS']
-          branch    = os.environ['BRANCH']
-          lines     = os.environ['LINES']
+          test_count = os.environ.get('TEST_COUNT', 'N/A')
+          stmts  = os.environ.get('STMTS',  'N/A')
+          funcs  = os.environ.get('FUNCS',  'N/A')
+          branch = os.environ.get('BRANCH', 'N/A')
+          lines  = os.environ.get('LINES',  'N/A')
 
           notes = f"""{changelog}
 
-          ---
+---
 
-          ## 🧪 Quality Report
+## 🧪 Quality Report
 
-          | Metric | Value |
-          |--------|-------|
-          | ✅ Tests passing | **{test_count}** |
-          | 📊 Statement coverage | {stmts}% |
-          | 📊 Function coverage | {funcs}% |
-          | 📊 Branch coverage | {branch}% |
-          | 📊 Line coverage | {lines}% |
+| Metric | Value |
+|--------|-------|
+| ✅ Tests passing | **{test_count}** |
+| 📊 Statement coverage | {stmts}% |
+| 📊 Function coverage | {funcs}% |
+| 📊 Branch coverage | {branch}% |
+| 📊 Line coverage | {lines}% |
 
-          ## 🚀 Quick Start
+## 🚀 Quick Start
 
-          ```bash
-          git clone https://github.com/dknathalage/invoices.git
-          cd invoices
-          npm install && npm run build
-          PORT=3002 HOST=0.0.0.0 node build/index.js
-          ```
+```bash
+git clone https://github.com/dknathalage/invoices.git
+cd invoices
+npm install && npm run build
+PORT=3002 HOST=0.0.0.0 node build/index.js
+```
 
-          Database auto-created at `~/.invoices/invoices.db` on first run.
+Database auto-created at `~/.invoices/invoices.db` on first run.
 
-          ## 🏥 Health Check
+## 🏥 Health Check
 
-          ```
-          GET /health → {{"status":"ok","db":"connected"}}
-          ```
-          """
+```
+GET /health → {{"status":"ok","db":"connected"}}
+```
+"""
 
           open('RELEASE_NOTES.md', 'w').write(notes)
-          print("Release notes written.")
+          print("Release notes written successfully.")
           EOF
 
       - name: Create GitHub Release
