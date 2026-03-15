@@ -4,10 +4,6 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
-	ssr: {
-		// Treat these as external Node.js built-ins (don't bundle for client)
-		noExternal: ['better-sqlite3']
-	},
 	test: {
 		include: ['src/**/*.test.ts'],
 		coverage: {
