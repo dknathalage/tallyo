@@ -128,4 +128,10 @@ CREATE TABLE IF NOT EXISTS payers (
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_batch ON audit_log(batch_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_client_id ON invoices(client_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_line_items_invoice_id ON line_items(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
 `;

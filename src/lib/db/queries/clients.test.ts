@@ -161,10 +161,7 @@ vi.mock('./business-profile.js', () => ({
 describe('getClientRevenueSummary', () => {
 	it('returns revenue summary for a client', () => {
 		mockQuery
-			.mockReturnValueOnce([{ total: 5000 }])   // total invoiced
-			.mockReturnValueOnce([{ total: 3000 }])   // total paid
-			.mockReturnValueOnce([{ total: 2000 }])   // outstanding
-			.mockReturnValueOnce([{ count: 8 }]);     // invoice count
+			.mockReturnValueOnce([{ total_invoiced: 5000, total_paid: 3000, outstanding_balance: 2000, invoice_count: 8 }]);
 
 		const result = getClientRevenueSummary(1);
 
@@ -177,10 +174,7 @@ describe('getClientRevenueSummary', () => {
 
 	it('returns zeros when no invoices', () => {
 		mockQuery
-			.mockReturnValueOnce([{ total: null }])
-			.mockReturnValueOnce([{ total: null }])
-			.mockReturnValueOnce([{ total: null }])
-			.mockReturnValueOnce([{ count: 0 }]);
+			.mockReturnValueOnce([{ total_invoiced: 0, total_paid: 0, outstanding_balance: 0, invoice_count: 0 }]);
 
 		const result = getClientRevenueSummary(99);
 

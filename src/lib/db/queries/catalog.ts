@@ -100,20 +100,37 @@ export function bulkDeleteCatalogItems(ids: number[]): void {
 }
 
 export function getCatalogItemWithRates(id: number): CatalogItemWithRates | null {
-	const item = getCatalogItem(id);
-	if (!item) return null;
-
-	const rateRows = query<CatalogItemRate>(
-		`SELECT * FROM catalog_item_rates WHERE catalog_item_id = ?`,
+	const rows = query<CatalogItem & { tier_id: number | null; tier_rate: number | null }>(
+		`SELECT ci.*, cir.rate_tier_id as tier_id, cir.rate as tier_rate
+		FROM catalog_items ci
+		LEFT JOIN catalog_item_rates cir ON ci.id = cir.catalog_item_id
+		WHERE ci.id = ?`,
 		[id]
 	);
 
+	if (rows.length === 0) return null;
+
+	const item = rows[0];
 	const rates: Record<number, number> = {};
-	for (const row of rateRows) {
-		rates[row.rate_tier_id] = row.rate;
+	for (const row of rows) {
+		if (row.tier_id != null && row.tier_rate != null) {
+			rates[row.tier_id] = row.tier_rate;
+		}
 	}
 
-	return { ...item, rates };
+	return {
+		id: item.id,
+		uuid: item.uuid,
+		name: item.name,
+		rate: item.rate,
+		unit: item.unit,
+		category: item.category,
+		sku: item.sku,
+		metadata: item.metadata,
+		created_at: item.created_at,
+		updated_at: item.updated_at,
+		rates
+	};
 }
 
 export function getCatalogItemsWithTierRate(
