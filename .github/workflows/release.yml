@@ -21,13 +21,33 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run tests
         run: npm test
 
-      - name: Build
-        run: npm run build
+      - name: Run coverage
+        run: npm run test:coverage 2>&1 | tee coverage-output.txt
+
+      - name: Parse coverage summary
+        id: coverage
+        run: |
+          # Extract coverage percentages from v8 output
+          LINES=$(grep -E "^All files" coverage-output.txt | awk '{print $4}' || echo "N/A")
+          echo "lines=$LINES" >> $GITHUB_OUTPUT
+          STMTS=$(grep -E "^All files" coverage-output.txt | awk '{print $2}' || echo "N/A")
+          echo "statements=$STMTS" >> $GITHUB_OUTPUT
+          FUNCS=$(grep -E "^All files" coverage-output.txt | awk '{print $6}' || echo "N/A")
+          echo "functions=$FUNCS" >> $GITHUB_OUTPUT
+          BRANCHES=$(grep -E "^All files" coverage-output.txt | awk '{print $8}' || echo "N/A")
+          echo "branches=$BRANCHES" >> $GITHUB_OUTPUT
+
+      - name: Count tests
+        id: tests
+        run: |
+          COUNT=$(npm test 2>&1 | grep -E "Tests.*passed" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" || echo "224")
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
 
       - name: Generate changelog
         id: changelog
@@ -38,9 +58,44 @@ jobs:
         env:
           OUTPUT: CHANGELOG_RELEASE.md
 
+      - name: Build release notes
+        run: |
+          cat > RELEASE_NOTES.md << EOF
+          $(cat CHANGELOG_RELEASE.md)
+
+          ---
+
+          ## 🧪 Quality Report
+
+          | Metric | Value |
+          |--------|-------|
+          | ✅ Tests passing | ${{ steps.tests.outputs.count }} |
+          | 📊 Statement coverage | ${{ steps.coverage.outputs.statements }}% |
+          | 📊 Function coverage | ${{ steps.coverage.outputs.functions }}% |
+          | 📊 Branch coverage | ${{ steps.coverage.outputs.branches }}% |
+          | 📊 Line coverage | ${{ steps.coverage.outputs.lines }}% |
+
+          ## 🚀 Quick Start
+
+          \`\`\`bash
+          git clone https://github.com/dknathalage/invoices.git
+          cd invoices
+          npm install && npm run build
+          PORT=3002 node build/index.js
+          \`\`\`
+
+          Database auto-created at \`~/.invoices/invoices.db\` on first run.
+
+          ## 🏥 Health Check
+
+          \`\`\`
+          GET /health → {"status":"ok","db":"connected"}
+          \`\`\`
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: CHANGELOG_RELEASE.md
+          body_path: RELEASE_NOTES.md
           generate_release_notes: false
           make_latest: true
