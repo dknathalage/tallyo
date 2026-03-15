@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import type { Invoice } from '$lib/types/index.js';
+	import type { Invoice } from '$lib/types/index.js';
+	import type { PageData } from './$types';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
@@ -11,35 +11,35 @@
 	import ImportExportBar from '$lib/components/csv/ImportExportBar.svelte';
 	import ImportPreviewModal from '$lib/components/csv/ImportPreviewModal.svelte';
 	import { exportInvoices } from '$lib/csv/export-invoices.js';
-	import { parseInvoicesCsv, commitInvoiceImport } from '$lib/csv/import-invoices.js';
+	import { parseInvoicesCsv } from '$lib/csv/import-invoices.js';
 	import { INVOICE_COLUMNS } from '$lib/csv/columns.js';
 	import type { ParsedInvoiceImport } from '$lib/csv/types.js';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
+	let { data }: { data: PageData } = $props();
+
 	let search = $state('');
 	let statusFilter = $state('');
-	let invoices: Invoice[] = $state([]);
-	let dueTemplatesCount = $state(0);
 	let showPreview = $state(false);
 	let previewData: ParsedInvoiceImport | null = $state(null);
 
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
+	let dueTemplatesCount = $derived(data.dueTemplatesCount);
+
 	const statuses = ['', 'draft', 'sent', 'paid', 'overdue'] as const;
 
-	async function loadInvoices() {
-		await repositories.invoices.markOverdueInvoices();
-		invoices = repositories.invoices.getInvoices(search || undefined, statusFilter || undefined);
-		dueTemplatesCount = repositories.recurringTemplates.getDueTemplates().length;
-	}
-
-	$effect(() => {
-		// Reactive on search and statusFilter; re-runs when either changes
-		void loadInvoices();
-	});
+	let invoices: Invoice[] = $derived(
+		data.invoices.filter((inv: Invoice) => {
+			const matchesSearch = !search || inv.invoice_number.toLowerCase().includes(search.toLowerCase()) || (inv.client_name ?? '').toLowerCase().includes(search.toLowerCase());
+			const matchesStatus = !statusFilter || inv.status === statusFilter;
+			return matchesSearch && matchesStatus;
+		})
+	);
 
 	let allSelected = $derived(invoices.length > 0 && selectedIds.size === invoices.length);
 
@@ -62,16 +62,24 @@
 	}
 
 	async function handleBulkDelete() {
-		await repositories.invoices.bulkDeleteInvoices([...selectedIds]);
+		await fetch('/api/invoices', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+		});
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		await loadInvoices();
+		await invalidateAll();
 	}
 
 	async function handleBulkStatus(status: string) {
-		await repositories.invoices.bulkUpdateInvoiceStatus([...selectedIds], status);
+		await fetch('/api/invoices', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-status', ids: [...selectedIds], status })
+		});
 		selectedIds = new Set();
-		await loadInvoices();
+		await invalidateAll();
 	}
 
 	async function handleImport(file: File) {
@@ -81,10 +89,18 @@
 
 	async function handleConfirm() {
 		if (previewData) {
-			await commitInvoiceImport(previewData.groups, previewData.newClientsToCreate, { invoices: repositories.invoices, clients: repositories.clients });
+			// Import invoice groups via API
+			for (const group of previewData.groups) {
+				const { lineItems, ...invoiceData } = group;
+				await fetch('/api/invoices', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ ...invoiceData, lineItems })
+				});
+			}
 			showPreview = false;
 			previewData = null;
-			await loadInvoices();
+			await invalidateAll();
 		}
 	}
 </script>

@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import type { CatalogItem } from '$lib/types/index.js';
+	import type { CatalogItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { announcer } from '$lib/stores/announcer.svelte.js';
 
@@ -27,7 +26,7 @@
 
 	function handleInput() {
 		if (value.trim().length > 0) {
-			suggestions = repositories.catalog.searchCatalogItems(value);
+			fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json()).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
 			showDropdown = suggestions.length > 0;
 			highlightedIndex = -1;
 			if (suggestions.length > 0) {
@@ -81,7 +80,7 @@
 			clearTimeout(blurTimeout);
 		}
 		if (value.trim().length > 0) {
-			suggestions = repositories.catalog.searchCatalogItems(value);
+			fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json()).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
 			showDropdown = suggestions.length > 0;
 		}
 	}
@@ -124,7 +123,7 @@
 				>
 					<span class="font-medium text-gray-900 dark:text-white">{item.name}</span>
 					<span class="ml-2 text-gray-500 dark:text-gray-400">
-						${tierId ? repositories.catalog.getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
+						${item.rate.toFixed(2)}
 					</span>
 					{#if item.category}
 						<span class="ml-2 text-xs text-gray-400 dark:text-gray-500">{item.category}</span>

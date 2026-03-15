@@ -1,4 +1,4 @@
-import { execute, query, save } from '../connection.svelte.js';
+import { execute, query, save } from '../connection.js';
 import type { ColumnMapping } from '../../types/index.js';
 
 export function getColumnMappings(entityType?: string): ColumnMapping[] {
@@ -16,7 +16,7 @@ export function getColumnMapping(id: number): ColumnMapping | null {
 	return results.length > 0 ? results[0] : null;
 }
 
-export async function createColumnMapping(data: {
+export function createColumnMapping(data: {
 	name: string;
 	entity_type?: string;
 	mapping: Record<string, string>;
@@ -25,7 +25,7 @@ export async function createColumnMapping(data: {
 	file_type?: string;
 	sheet_name?: string;
 	header_row?: number;
-}): Promise<number> {
+}): number {
 	execute(
 		`INSERT INTO column_mappings (uuid, name, entity_type, mapping, tier_mapping, metadata_mapping, file_type, sheet_name, header_row) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
@@ -41,11 +41,10 @@ export async function createColumnMapping(data: {
 		]
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
-	await save();
 	return result[0].id;
 }
 
-export async function updateColumnMapping(
+export function updateColumnMapping(
 	id: number,
 	data: {
 		name: string;
@@ -57,7 +56,7 @@ export async function updateColumnMapping(
 		sheet_name?: string;
 		header_row?: number;
 	}
-): Promise<void> {
+): void {
 	execute(
 		`UPDATE column_mappings SET name = ?, entity_type = ?, mapping = ?, tier_mapping = ?, metadata_mapping = ?, file_type = ?, sheet_name = ?, header_row = ?, updated_at = datetime('now') WHERE id = ?`,
 		[
@@ -72,10 +71,8 @@ export async function updateColumnMapping(
 			id
 		]
 	);
-	await save();
 }
 
-export async function deleteColumnMapping(id: number): Promise<void> {
+export function deleteColumnMapping(id: number): void {
 	execute(`DELETE FROM column_mappings WHERE id = ?`, [id]);
-	await save();
 }

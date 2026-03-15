@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportEstimatePdf } from '$lib/utils/pdf.js';
 	import type { Estimate, EstimateLineItem, AuditLogEntry } from '$lib/types/index.js';
@@ -13,9 +13,11 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { addToast } from '$lib/stores/toast.js';
 
-	let estimate: Estimate | null = $state(null);
-	let lineItems: EstimateLineItem[] = $state([]);
-	let history: AuditLogEntry[] = $state([]);
+	let { data }: { data: PageData } = $props();
+
+	let estimate: Estimate | null = $state(data.estimate);
+	let lineItems: EstimateLineItem[] = $state(data.lineItems);
+	let history: AuditLogEntry[] = $state(data.auditHistory);
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
 	let converting = $state(false);
@@ -26,36 +28,34 @@
 	let clientSnap = $derived.by(() => parseSnapshot(estimate?.client_snapshot ?? '{}'));
 	let payerSnap = $derived.by(() => parseSnapshot(estimate?.payer_snapshot ?? '{}'));
 
-	function loadEstimate() {
-		const id = Number(page.params.id);
-		const est = repositories.estimates.getEstimate(id);
-		estimate = est;
-		if (est) {
-			lineItems = repositories.estimates.getEstimateLineItems(est.id);
-			history = repositories.audit.getEntityHistory('estimate', est.id);
-		}
-	}
 
-	$effect(() => {
-		loadEstimate();
-	});
 
 	async function handleDelete() {
 		if (!estimate) return;
-		await repositories.estimates.deleteEstimate(estimate.id);
+		await fetch(`/api/estimates/${estimate.id}`, { method: 'DELETE' });
 		goto(`${base}/console/estimates`);
 	}
 
 	async function handleDuplicate() {
 		if (!estimate) return;
-		const newId = await repositories.estimates.duplicateEstimate(estimate.id);
+		const res = await fetch(`/api/estimates/${estimate.id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'duplicate' })
+		});
+		const { newId } = await res.json();
 		goto(`${base}/console/estimates/${newId}/edit`);
 	}
 
 	async function handleStatusChange(status: string) {
 		if (!estimate) return;
-		await repositories.estimates.updateEstimateStatus(estimate.id, status);
-		estimate = repositories.estimates.getEstimate(estimate.id);
+		await fetch(`/api/estimates/${estimate.id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'status', status })
+		});
+		const res = await fetch(`/api/estimates/${estimate.id}`);
+		estimate = await res.json();
 		showStatusMenu = false;
 	}
 
@@ -63,13 +63,18 @@
 		if (!estimate) return;
 		converting = true;
 		try {
-			const invoiceId = await repositories.estimates.convertEstimateToInvoice(estimate.id);
+			const res = await fetch(`/api/estimates/${estimate.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'convert' })
+			});
+			const { invoiceId } = await res.json();
 			goto(`${base}/console/invoices/${invoiceId}`);
 		} catch (e: any) {
 			addToast({ type: 'error', message: e.message || 'Failed to convert estimate to invoice' });
 		} finally {
 			converting = false;
-			loadEstimate();
+			
 		}
 	}
 

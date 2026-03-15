@@ -1,4 +1,4 @@
-import { query } from '../connection.svelte.js';
+import { query } from '../connection.js';
 import type { DashboardStats, Invoice, Estimate, MonthlyRevenue } from '../../types/index.js';
 import { getBusinessProfile } from './business-profile.js';
 

@@ -1,4 +1,4 @@
-import { execute, query, save } from '../connection.svelte.js';
+import { execute, query, save } from '../connection.js';
 import { logAudit } from '../audit.js';
 import type { BusinessProfile, PartySnapshot } from '../../types/index.js';
 
@@ -7,7 +7,7 @@ export function getBusinessProfile(): BusinessProfile | null {
 	return results.length > 0 ? results[0] : null;
 }
 
-export async function saveBusinessProfile(data: {
+export function saveBusinessProfile(data: {
 	name: string;
 	email?: string;
 	phone?: string;
@@ -15,7 +15,7 @@ export async function saveBusinessProfile(data: {
 	logo?: string;
 	metadata?: string;
 	default_currency?: string;
-}): Promise<void> {
+}): void {
 	const existing = getBusinessProfile();
 	execute(
 		`INSERT OR REPLACE INTO business_profile (id, uuid, name, email, phone, address, logo, metadata, default_currency, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
@@ -36,7 +36,6 @@ export async function saveBusinessProfile(data: {
 		action: existing ? 'update' : 'create',
 		context: data.name
 	});
-	await save();
 }
 
 export function buildBusinessSnapshot(): PartySnapshot {

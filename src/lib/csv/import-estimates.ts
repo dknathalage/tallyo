@@ -1,4 +1,3 @@
-import { query } from '$lib/db/connection.svelte.js';
 import { parseCsvFile, validateRequiredField, validateNumeric, validateDate } from './parse.js';
 import type { CsvEstimateRow, ParsedEstimateImport, ParsedEstimateGroup, ValidationError } from './types.js';
 import type { EstimateRepository, ClientRepository } from '$lib/repositories/interfaces/index.js';
@@ -63,12 +62,14 @@ export async function parseEstimatesCsv(file: File): Promise<ParsedEstimateImpor
 		}
 	}
 
-	// Check existing estimate UUIDs for deduplication
-	const existingEstimates = query<{ uuid: string }>('SELECT uuid FROM estimates WHERE uuid IS NOT NULL');
-	const existingUuids = new Set(existingEstimates.map((r) => r.uuid));
-
-	// Check existing clients for matching
-	const existingClients = query<{ id: number; name: string }>('SELECT id, name FROM clients');
+	// Check existing estimate UUIDs for deduplication via API
+	const [estimatesRes, clientsRes] = await Promise.all([
+		fetch('/api/estimates'),
+		fetch('/api/clients')
+	]);
+	const existingEstimates = await estimatesRes.json() as Array<{ uuid: string }>;
+	const existingClients = await clientsRes.json() as Array<{ id: number; name: string }>;
+	const existingUuids = new Set(existingEstimates.map((r) => r.uuid).filter(Boolean));
 	const clientNameMap = new Map<string, number>();
 	for (const c of existingClients) {
 		clientNameMap.set(c.name.toLowerCase(), c.id);
@@ -149,8 +150,9 @@ export async function commitEstimateImport(
 		await repos.clients.createClient({ name });
 	}
 
-	// Rebuild client name→id map after creating new clients (read-only, safe in CSV layer)
-	const allClients = query<{ id: number; name: string }>('SELECT id, name FROM clients');
+	// Rebuild client name→id map after creating new clients
+	const allClientsRes = await fetch('/api/clients');
+	const allClients = await allClientsRes.json() as Array<{ id: number; name: string }>;
 	const clientMap = new Map<string, number>();
 	for (const c of allClients) {
 		clientMap.set(c.name.toLowerCase(), c.id);
@@ -159,13 +161,6 @@ export async function commitEstimateImport(
 	for (const group of groups) {
 		const clientId = clientMap.get(group.clientName.toLowerCase());
 		if (!clientId) continue;
-
-		// Handle duplicate estimate numbers (read-only check in CSV layer)
-		let estimateNumber = group.estimateNumber;
-		const dupes = query<{ id: number }>('SELECT id FROM estimates WHERE estimate_number = ?', [estimateNumber]);
-		if (dupes.length > 0) {
-			estimateNumber = `${estimateNumber}-imported-${Date.now()}`;
-		}
 
 		// Calculate totals from line items
 		const subtotal = group.lineItems.reduce((sum, li) => sum + li.amount, 0);
@@ -176,7 +171,7 @@ export async function commitEstimateImport(
 		await repos.estimates.createEstimate(
 			{
 				uuid: group.estimateUuid,
-				estimate_number: estimateNumber,
+				estimate_number: group.estimateNumber,
 				client_id: clientId,
 				date: group.date,
 				valid_until: group.validUntil,

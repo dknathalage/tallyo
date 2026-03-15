@@ -8,7 +8,7 @@ import {
 	buildClientSnapshot,
 	getClientRevenueSummary
 } from '$lib/db/queries/clients.js';
-import { save } from '$lib/db/connection.svelte.js';
+
 import { computeChanges } from '$lib/db/audit.js';
 import type { ClientRepository } from '../interfaces/ClientRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -49,7 +49,6 @@ export class SqliteClientRepository implements ClientRepository {
 				email: { old: null, new: data.email ?? '' }
 			}
 		});
-		await save();
 		return id;
 	}
 
@@ -66,7 +65,6 @@ export class SqliteClientRepository implements ClientRepository {
 				this._audit.logAudit({ entity_type: 'client', entity_id: id, action: 'update', changes });
 			}
 		}
-		await save();
 	}
 
 	async deleteClient(id: number): Promise<void> {
@@ -75,7 +73,6 @@ export class SqliteClientRepository implements ClientRepository {
 			await deleteClient(id);
 		});
 		this._audit.logAudit({ entity_type: 'client', entity_id: id, action: 'delete', context: client?.name ?? '' });
-		await save();
 	}
 
 	async bulkDeleteClients(ids: number[]): Promise<void> {
@@ -88,6 +85,5 @@ export class SqliteClientRepository implements ClientRepository {
 		for (let i = 0; i < ids.length; i++) {
 			this._audit.logAudit({ entity_type: 'client', entity_id: ids[i], action: 'delete', context: clients[i]?.name ?? '', batch_id });
 		}
-		await save();
 	}
 }

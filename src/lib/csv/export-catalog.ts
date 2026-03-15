@@ -1,37 +1,9 @@
-import { query } from '$lib/db/connection.svelte.js';
 import Papa from 'papaparse';
 import { downloadCsv } from './download.js';
-import { getRateTiers } from '$lib/db/queries/rate-tiers.js';
-import { getCatalogItemWithRates } from '$lib/db/queries/catalog.js';
-import type { CatalogItem } from '$lib/types/index.js';
 
-export function exportCatalog(): void {
-	const items = query<CatalogItem>(
-		'SELECT * FROM catalog_items ORDER BY name'
-	);
-	const tiers = getRateTiers();
-
-	const rows = items.map((item) => {
-		const withRates = getCatalogItemWithRates(item.id);
-		const row: Record<string, unknown> = {
-			uuid: item.uuid,
-			name: item.name,
-			rate: item.rate,
-			unit: item.unit,
-			category: item.category,
-			sku: item.sku
-		};
-
-		for (const tier of tiers) {
-			const tierRate = withRates?.rates[tier.id];
-			row[`Rate: ${tier.name}`] = tierRate ?? '';
-		}
-
-		row['metadata'] = item.metadata ?? '';
-
-		return row;
-	});
-
+export async function exportCatalog(): Promise<void> {
+	const res = await fetch('/api/export/catalog');
+	const { rows } = await res.json() as { rows: Array<Record<string, unknown>> };
 	const csv = Papa.unparse(rows);
 	const date = new Date().toISOString().slice(0, 10);
 	downloadCsv(csv, `catalog-${date}.csv`);

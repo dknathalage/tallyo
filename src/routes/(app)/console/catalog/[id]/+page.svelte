@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import { formatCurrency } from '$lib/utils/format';
 	import type { AuditLogEntry } from '$lib/types/index.js';
 	import CatalogForm from '$lib/components/catalog/CatalogForm.svelte';
@@ -11,22 +11,12 @@
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let itemId = $derived(Number(page.params.id));
-	let refreshTrigger = $state(0);
-	let item = $derived.by(() => {
-		refreshTrigger;
-		return repositories.catalog.getCatalogItem(itemId);
-	});
-	let itemWithRates = $derived.by(() => {
-		refreshTrigger;
-		return repositories.catalog.getCatalogItemWithRates(itemId);
-	});
-	let tiers = $derived(repositories.rateTiers.getRateTiers());
+	let { data }: { data: PageData } = $props();
 
-	let history = $derived.by(() => {
-		refreshTrigger;
-		return repositories.audit.getEntityHistory('catalog', itemId);
-	});
+	let item = $derived(data.item);
+	let itemWithRates = $derived(data.itemWithRates);
+	let tiers = $derived(data.rateTiers);
+	let history = $derived(data.auditHistory);
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
@@ -40,21 +30,18 @@
 		tierRates?: Record<number, number>;
 		metadata?: string;
 	}) {
-		await repositories.catalog.updateCatalogItem(itemId, data);
-
-		// Save tier rates
-		if (data.tierRates) {
-			for (const [tierId, rate] of Object.entries(data.tierRates)) {
-				await repositories.catalog.setCatalogItemRate(itemId, Number(tierId), rate);
-			}
-		}
+		await fetch(`/api/catalog/${item.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(data)
+		});
 
 		editing = false;
-		refreshTrigger++;
+		await invalidateAll();
 	}
 
 	async function handleDelete() {
-		await repositories.catalog.deleteCatalogItem(itemId);
+		await fetch(`/api/catalog/${item.id}`, { method: 'DELETE' });
 		goto(`${base}/console/catalog`);
 	}
 

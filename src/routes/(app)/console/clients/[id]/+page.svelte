@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
 	import type { AuditLogEntry } from '$lib/types/index.js';
+	import type { PageData } from './$types';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
@@ -12,14 +12,14 @@
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let clientId = $derived(Number(page.params.id));
-	let client = $derived(repositories.clients.getClient(clientId));
-	let invoices = $derived(repositories.invoices.getClientInvoices(clientId));
-	let estimates = $derived(repositories.estimates.getClientEstimates(clientId));
-	let history = $derived(repositories.audit.getEntityHistory('client', clientId));
-	let payer = $derived(client?.payer_id ? repositories.payers.getPayer(client.payer_id) : null);
-	let revenueSummary = $derived(repositories.clients.getClientRevenueSummary(clientId));
+	let { data }: { data: PageData } = $props();
 
+	let client = $state(data.client);
+	let revenueSummary = $derived(data.revenueSummary);
+	let auditHistory = $derived(data.auditHistory);
+	let invoices = $derived(data.invoices ?? []);
+	let estimates = $derived(data.estimates ?? []);
+	let payer = $derived(data.payer);
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
 
@@ -32,13 +32,19 @@
 		}
 	}
 
-	async function handleUpdate(data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) {
-		await repositories.clients.updateClient(clientId, data);
+	async function handleUpdate(updateData: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) {
+		await fetch(`/api/clients/${client.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(updateData)
+		});
+		await invalidateAll();
+		client = { ...client, ...updateData };
 		editing = false;
 	}
 
 	async function handleDelete() {
-		await repositories.clients.deleteClient(clientId);
+		await fetch(`/api/clients/${client.id}`, { method: 'DELETE' });
 		goto(`${base}/console/clients`);
 	}
 
@@ -188,7 +194,7 @@
 		<div>
 			<div class="flex items-center justify-between">
 				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.invoices')}</h2>
-				<a href="{base}/console/invoices/new?client_id={clientId}">
+				<a href="{base}/console/invoices/new?client_id={client.id}">
 					<Button size="sm">{i18n.t('client.newInvoice')}</Button>
 				</a>
 			</div>
@@ -283,11 +289,11 @@
 		</div>
 
 		<!-- Change History -->
-		{#if history.length > 0}
+		{#if auditHistory.length > 0}
 			<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.changeHistory')}</h2>
 				<div class="space-y-4">
-					{#each history as entry}
+					{#each auditHistory as entry}
 						{@const changes = parseChanges(entry.changes)}
 						<div class="flex gap-3 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
 							<div class="flex-1">

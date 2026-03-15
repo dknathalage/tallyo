@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { repositories } from '$lib/repositories';
 		import { generateEstimateNumber } from '$lib/utils/estimate-number.js';
 	import { today, formatCurrency } from '$lib/utils/format.js';
 	import type { Client, Estimate, EstimateLineItem, KeyValuePair, TaxRate, RateTier } from '$lib/types/index.js';
@@ -90,12 +89,18 @@
 	let tiers = $state<RateTier[]>([]);
 	let selectedClient = $state<Client | null>(null);
 
-	onMount(() => {
-		tiers = repositories.rateTiers.getRateTiers();
+	onMount(async () => {
+		const res = await fetch('/api/rate-tiers');
+		tiers = await res.json();
 	});
 
 	$effect(() => {
-		selectedClient = clientId ? repositories.clients.getClient(clientId) : null;
+		const id = clientId;
+		if (id) {
+			fetch(`/api/clients/${id}`).then(r => r.json()).then(c => { selectedClient = c; });
+		} else {
+			selectedClient = null;
+		}
 	});
 
 	let activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
@@ -140,25 +145,38 @@
 	let hasPayer = $derived(payerName.trim().length > 0);
 
 	// Initialize clients, estimate number, business snapshot, and edit-mode snapshots
-	$effect(() => {
-		clients = repositories.clients.getClients();
-		taxRates = repositories.taxRates.getTaxRates();
+	onMount(async () => {
+		const [clientsRes, settingsRes] = await Promise.all([
+			fetch('/api/clients'),
+			fetch('/api/settings')
+		]);
+		clients = await clientsRes.json();
+		const settings = await settingsRes.json();
+		taxRates = settings.taxRates ?? [];
 		if (selectedTaxRateId === null && taxRates.length > 0) {
-			const defaultRate = taxRates.find((r) => r.is_default === 1) ?? taxRates[0];
+			const defaultRate = taxRates.find((r: TaxRate) => r.is_default === 1) ?? taxRates[0];
 			selectedTaxRateId = defaultRate.id;
 		}
 		if (!initialData) {
 			estimateNumber = generateEstimateNumber();
-			// Set default currency from business profile
-			const profile = repositories.businessProfile.getBusinessProfile();
+			const profile = settings.profile;
 			if (profile && !currencyCode) {
 				currencyCode = profile.default_currency || 'USD';
 			}
 		}
 		if (!currencyCode) currencyCode = 'USD';
 
-		// Load business snapshot
-		businessSnapshot = repositories.businessProfile.buildBusinessSnapshot();
+		// Build business snapshot from profile
+		const p = settings.profile;
+		if (p) {
+			businessSnapshot = {
+				name: p.name ?? '',
+				email: p.email ?? '',
+				phone: p.phone ?? '',
+				address: p.address ?? '',
+				metadata: (() => { try { return JSON.parse(p.metadata ?? '{}'); } catch { return {}; } })()
+			};
+		}
 
 		// If editing existing estimate, load snapshots from the estimate
 		if (initialData) {
@@ -176,16 +194,15 @@
 
 	// Auto-populate client metadata and payer when client changes (new estimates only)
 	$effect(() => {
-		if (!clientId || initialData) return;
+		const id = clientId;
+		if (!id || initialData) return;
 
-		// Auto-populate client metadata from client record
-		const client = repositories.clients.getClient(clientId);
-		if (client) {
+		fetch(`/api/clients/${id}`).then(r => r.json()).then(async (client) => {
+			if (!client) return;
 			clientMetadataPairs = parseMetadata(client.metadata);
 
-			// Auto-populate payer from client's linked payer
 			if (client.payer_id) {
-				const payer = repositories.payers.getPayer(client.payer_id);
+				const payer = await fetch(`/api/payers/${client.payer_id}`).then(r => r.json());
 				if (payer) {
 					payerName = payer.name;
 					payerEmail = payer.email;
@@ -193,20 +210,14 @@
 					payerAddress = payer.address;
 					payerMetadataPairs = parseMetadata(payer.metadata);
 				} else {
-					payerName = '';
-					payerEmail = '';
-					payerPhone = '';
-					payerAddress = '';
+					payerName = payerEmail = payerPhone = payerAddress = '';
 					payerMetadataPairs = [];
 				}
 			} else {
-				payerName = '';
-				payerEmail = '';
-				payerPhone = '';
-				payerAddress = '';
+				payerName = payerEmail = payerPhone = payerAddress = '';
 				payerMetadataPairs = [];
 			}
-		}
+		});
 	});
 
 	function addLineItem() {
@@ -477,8 +488,15 @@
 					<input type="number" bind:value={newTaxRateValue} min="0" step="any" placeholder="%" class="w-16 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-white" />
 					<button type="button" onclick={async () => {
 						if (!newTaxRateName.trim()) return;
-						const newId = await repositories.taxRates.createTaxRate({ name: newTaxRateName, rate: newTaxRateValue });
-						taxRates = repositories.taxRates.getTaxRates();
+						const res = await fetch('/api/tax-rates', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ name: newTaxRateName, rate: newTaxRateValue })
+						});
+						const { id: newId } = await res.json();
+						const settingsRes = await fetch('/api/settings');
+						const settings = await settingsRes.json();
+						taxRates = settings.taxRates ?? [];
 						selectedTaxRateId = newId;
 						showNewTaxRate = false;
 						newTaxRateName = '';

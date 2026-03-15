@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import Modal from '$lib/components/shared/Modal.svelte';
+	import { onMount } from 'svelte';
+	import Modal from '$lib/components/shared/Modal.svelte';
 	import type { CatalogItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -18,9 +18,24 @@
 
 	let search = $state('');
 	let selectedCategory = $state('');
+	let allCategories = $state<string[]>([]);
+	let allItems = $state<CatalogItem[]>([]);
 
-	let categories = $derived(open ? repositories.catalog.getCatalogCategories() : []);
-	let items = $derived(open ? repositories.catalog.getCatalogItems(search || undefined, selectedCategory || undefined) : []);
+	$effect(() => {
+		if (open) {
+			fetch('/api/catalog').then(r => r.json()).then(d => { allItems = d; });
+			// Get categories from loaded items
+		}
+	});
+
+	let categories = $derived(open ? [...new Set(allItems.map((i: CatalogItem) => i.category).filter(Boolean))] : []);
+	let items = $derived(
+		open ? allItems.filter((item: CatalogItem) => {
+			const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
+			const matchesCategory = !selectedCategory || item.category === selectedCategory;
+			return matchesSearch && matchesCategory;
+		}) : []
+	);
 
 	function handleSelect(item: CatalogItem) {
 		onselect(item);
@@ -75,7 +90,7 @@
 							</div>
 							<div class="text-right">
 								<div class="text-sm font-medium text-gray-900 dark:text-white">
-									${tierId ? repositories.catalog.getEffectiveRate(item.id, tierId).toFixed(2) : item.rate.toFixed(2)}
+									${item.rate.toFixed(2)}
 								</div>
 								{#if item.unit}
 									<div class="text-xs text-gray-400 dark:text-gray-500">{i18n.t('common.per', { unit: item.unit })}</div>

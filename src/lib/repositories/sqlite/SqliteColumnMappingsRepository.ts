@@ -17,15 +17,15 @@ export class SqliteColumnMappingsRepository implements ColumnMappingsRepository 
 		return getColumnMapping(id);
 	}
 
-	createColumnMapping(data: CreateColumnMappingInput): Promise<number> {
+	async createColumnMapping(data: CreateColumnMappingInput): Promise<number> {
 		return createColumnMapping(data);
 	}
 
-	updateColumnMapping(id: number, data: UpdateColumnMappingInput): Promise<void> {
+	async updateColumnMapping(id: number, data: UpdateColumnMappingInput): Promise<void> {
 		return updateColumnMapping(id, data);
 	}
 
-	deleteColumnMapping(id: number): Promise<void> {
+	async deleteColumnMapping(id: number): Promise<void> {
 		return deleteColumnMapping(id);
 	}
 }

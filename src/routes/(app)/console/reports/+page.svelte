@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
 	import { base } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
+	import type { PageData } from './$types';
 
-	let agingBuckets = $derived(repositories.invoices.getAgingReport());
-	let defaultCurrency = $derived(repositories.businessProfile.getBusinessProfile()?.default_currency || 'USD');
+	let { data }: { data: PageData } = $props();
+	let agingBuckets = $derived(data.agingBuckets);
+	let defaultCurrency = $derived(data.defaultCurrency);
 
 	let expandedBuckets = $state<Set<string>>(new Set());
 

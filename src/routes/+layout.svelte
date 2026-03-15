@@ -1,6 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import ReloadPrompt from '$lib/components/pwa/ReloadPrompt.svelte';
 	import LiveAnnouncer from '$lib/components/shared/LiveAnnouncer.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte';
@@ -17,4 +16,3 @@
 {@render children()}
 
 <LiveAnnouncer />
-<ReloadPrompt />

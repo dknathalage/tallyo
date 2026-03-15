@@ -1,31 +1,32 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
 	import type { RecurringTemplate } from '$lib/types/index.js';
+	import type { PageData } from './$types';
 	import { formatDate } from '$lib/utils/format.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let templates: RecurringTemplate[] = $state([]);
+	let { data }: { data: PageData } = $props();
+
 	let showAll = $state(false);
-	let refresh = $state(0);
 	let showDeleteConfirm = $state(false);
 	let templateToDelete: RecurringTemplate | null = $state(null);
 	let creatingFrom: number | null = $state(null);
 
-	$effect(() => {
-		refresh;
-		templates = repositories.recurringTemplates.getRecurringTemplates(!showAll);
-	});
+	let templates = $derived(
+		showAll ? data.templates : data.templates.filter((t: RecurringTemplate) => t.is_active)
+	);
 
 	async function handleCreateFromTemplate(template: RecurringTemplate) {
 		creatingFrom = template.id;
 		try {
-			const invoiceId = await repositories.recurringTemplates.createInvoiceFromTemplate(template.id);
-			refresh++;
+			const res = await fetch(`/api/recurring/${template.id}`, { method: 'PATCH' });
+			const { invoiceId } = await res.json();
+			await invalidateAll();
 			goto(`${base}/console/invoices/${invoiceId}`);
 		} finally {
 			creatingFrom = null;
@@ -34,25 +35,29 @@
 
 	async function handleToggleActive(template: RecurringTemplate) {
 		const newActive = template.is_active ? 0 : 1;
-		await repositories.recurringTemplates.updateRecurringTemplate(template.id, {
-			client_id: template.client_id,
-			name: template.name,
-			frequency: template.frequency,
-			next_due: template.next_due,
-			line_items: template.line_items,
-			tax_rate: template.tax_rate,
-			notes: template.notes,
-			is_active: newActive
+		await fetch(`/api/recurring/${template.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				client_id: template.client_id,
+				name: template.name,
+				frequency: template.frequency,
+				next_due: template.next_due,
+				line_items: template.line_items,
+				tax_rate: template.tax_rate,
+				notes: template.notes,
+				is_active: newActive
+			})
 		});
-		refresh++;
+		await invalidateAll();
 	}
 
 	async function handleDelete() {
 		if (!templateToDelete) return;
-		await repositories.recurringTemplates.deleteRecurringTemplate(templateToDelete.id);
+		await fetch(`/api/recurring/${templateToDelete.id}`, { method: 'DELETE' });
 		templateToDelete = null;
 		showDeleteConfirm = false;
-		refresh++;
+		await invalidateAll();
 	}
 
 	function confirmDelete(template: RecurringTemplate) {

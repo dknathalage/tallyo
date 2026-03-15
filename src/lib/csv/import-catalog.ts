@@ -1,4 +1,4 @@
-import { query, execute, runRaw, save } from '$lib/db/connection.svelte.js';
+import { query, execute, runRaw, save } from '$lib/db/connection.js';
 import { parseCsvFile, validateRequiredField, validateNumeric } from './parse.js';
 import type { CsvCatalogRow, ParsedImport, ValidationError } from './types.js';
 
@@ -58,7 +58,6 @@ export async function commitCatalogImport(rows: CsvCatalogRow[]): Promise<void> 
 			);
 		}
 		runRaw('COMMIT');
-		await save();
 	} catch (err) {
 		runRaw('ROLLBACK');
 		throw err;

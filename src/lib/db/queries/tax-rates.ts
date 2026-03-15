@@ -1,4 +1,4 @@
-import { execute, query, save } from '../connection.svelte.js';
+import { execute, query, save } from '../connection.js';
 import type { TaxRate } from '../../types/index.js';
 
 export function getTaxRates(): TaxRate[] {
@@ -15,7 +15,7 @@ export function getTaxRate(id: number): TaxRate | null {
 	return results.length > 0 ? results[0] : null;
 }
 
-export async function createTaxRate(data: { name: string; rate: number; is_default?: boolean }): Promise<number> {
+export function createTaxRate(data: { name: string; rate: number; is_default?: boolean }): number {
 	if (data.is_default) {
 		execute(`UPDATE tax_rates SET is_default = 0`);
 	}
@@ -24,11 +24,13 @@ export async function createTaxRate(data: { name: string; rate: number; is_defau
 		[crypto.randomUUID(), data.name, data.rate, data.is_default ? 1 : 0]
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
-	await save();
 	return result[0].id;
 }
 
-export async function updateTaxRate(id: number, data: { name: string; rate: number; is_default?: boolean }): Promise<void> {
+export function updateTaxRate(
+	id: number,
+	data: { name: string; rate: number; is_default?: boolean }
+): void {
 	if (data.is_default) {
 		execute(`UPDATE tax_rates SET is_default = 0 WHERE id != ?`, [id]);
 	}
@@ -36,10 +38,8 @@ export async function updateTaxRate(id: number, data: { name: string; rate: numb
 		`UPDATE tax_rates SET name = ?, rate = ?, is_default = ?, updated_at = datetime('now') WHERE id = ?`,
 		[data.name, data.rate, data.is_default ? 1 : 0, id]
 	);
-	await save();
 }
 
-export async function deleteTaxRate(id: number): Promise<void> {
+export function deleteTaxRate(id: number): void {
 	execute(`DELETE FROM tax_rates WHERE id = ?`, [id]);
-	await save();
 }

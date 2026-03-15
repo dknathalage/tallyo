@@ -16,7 +16,7 @@ export class SqlitePaymentRepository implements PaymentRepository {
 		return getInvoiceTotalPaid(invoiceId);
 	}
 
-	createPayment(data: {
+	async createPayment(data: {
 		invoice_id: number;
 		amount: number;
 		payment_date: string;
@@ -26,7 +26,7 @@ export class SqlitePaymentRepository implements PaymentRepository {
 		return createPayment(data);
 	}
 
-	deletePayment(id: number): Promise<void> {
+	async deletePayment(id: number): Promise<void> {
 		return deletePayment(id);
 	}
 }

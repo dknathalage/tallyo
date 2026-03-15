@@ -12,7 +12,7 @@ import {
 	convertEstimateToInvoice,
 	duplicateEstimate
 } from '$lib/db/queries/estimates.js';
-import { save } from '$lib/db/connection.svelte.js';
+
 import { computeChanges } from '$lib/db/audit.js';
 import type { EstimateRepository } from '../interfaces/EstimateRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -52,7 +52,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 			action: 'create',
 			context: data.estimate_number
 		});
-		await save();
 		return id;
 	}
 
@@ -71,7 +70,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 				this._audit.logAudit({ entity_type: 'estimate', entity_id: id, action: 'update', changes, context: data.estimate_number });
 			}
 		}
-		await save();
 	}
 
 	async deleteEstimate(id: number): Promise<void> {
@@ -80,7 +78,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 			await deleteEstimate(id);
 		});
 		this._audit.logAudit({ entity_type: 'estimate', entity_id: id, action: 'delete', context: estimate?.estimate_number ?? '' });
-		await save();
 	}
 
 	async updateEstimateStatus(id: number, status: string): Promise<void> {
@@ -93,7 +90,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 			changes: { status: { old: oldEstimate?.status ?? '', new: status } },
 			context: oldEstimate?.estimate_number ?? ''
 		});
-		await save();
 	}
 
 	async bulkDeleteEstimates(ids: number[]): Promise<void> {
@@ -106,7 +102,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 		for (let i = 0; i < ids.length; i++) {
 			this._audit.logAudit({ entity_type: 'estimate', entity_id: ids[i], action: 'delete', context: estimates[i]?.estimate_number ?? '', batch_id });
 		}
-		await save();
 	}
 
 	async bulkUpdateEstimateStatus(ids: number[], status: string): Promise<void> {
@@ -124,7 +119,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 				batch_id
 			});
 		}
-		await save();
 	}
 
 	async convertEstimateToInvoice(estimateId: number): Promise<number> {
@@ -143,7 +137,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 			action: 'create',
 			context: `${invoiceNumber} (from estimate ${estimateNumber})`
 		});
-		await save();
 		return invoiceId;
 	}
 
@@ -157,7 +150,6 @@ export class SqliteEstimateRepository implements EstimateRepository {
 			action: 'create',
 			context: `${newNumber} (duplicated from ${originalNumber})`
 		});
-		await save();
 		return newId;
 	}
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import type { Client, Payer, KeyValuePair } from '$lib/types';
+	import { onMount } from 'svelte';
+	import type { Client, Payer, KeyValuePair } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -30,8 +30,9 @@
 		}
 	}
 
-	$effect(() => {
-		payers = repositories.payers.getPayers();
+	onMount(async () => {
+		const res = await fetch('/api/payers');
+		payers = await res.json();
 	});
 
 	function handleSubmit(e: SubmitEvent) {
@@ -118,6 +119,6 @@
 
 	<div class="flex justify-end gap-3 pt-2">
 		<Button variant="secondary" onclick={() => history.back()}>{i18n.t('common.cancel')}</Button>
-		<Button type="submit">{initialData ? i18n.t('common.saveChanges') : i18n.t('client.repositories.clients.createClient')}</Button>
+		<Button type="submit">{initialData ? i18n.t('common.saveChanges') : i18n.t('client.createClient')}</Button>
 	</div>
 </form>

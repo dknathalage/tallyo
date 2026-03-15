@@ -1,18 +1,17 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import type { RateTier } from '$lib/types';
+	import type { RateTier } from '$lib/types';
+	import type { PageData } from './$types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { invalidateAll } from '$app/navigation';
+
+	let { data }: { data: PageData } = $props();
 
 	// ── Rate Tiers ──────────────────────────────────────────
-	let refreshTrigger = $state(0);
-	let tiers = $derived.by(() => {
-		refreshTrigger;
-		return repositories.rateTiers.getRateTiers();
-	});
+	let tiers = $derived(data.rateTiers);
 
 	let showForm = $state(false);
 	let editingTier: RateTier | null = $state(null);
@@ -55,20 +54,20 @@
 
 		try {
 			if (editingTier) {
-				await repositories.rateTiers.updateRateTier(editingTier.id, {
-					name: formName,
-					description: formDescription,
-					sort_order: formSortOrder
+				await fetch(`/api/rate-tiers/${editingTier.id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name: formName, description: formDescription, sort_order: formSortOrder })
 				});
 			} else {
-				await repositories.rateTiers.createRateTier({
-					name: formName,
-					description: formDescription,
-					sort_order: formSortOrder
+				await fetch('/api/rate-tiers', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name: formName, description: formDescription, sort_order: formSortOrder })
 				});
 			}
 			closeForm();
-			refreshTrigger++;
+			await invalidateAll();
 		} catch (err: any) {
 			error = err.message || 'An error occurred';
 		}
@@ -82,10 +81,10 @@
 	async function handleDelete() {
 		if (!deletingTier) return;
 		try {
-			await repositories.rateTiers.deleteRateTier(deletingTier.id);
+			await fetch(`/api/rate-tiers/${deletingTier.id}`, { method: 'DELETE' });
 			showDeleteConfirm = false;
 			deletingTier = null;
-			refreshTrigger++;
+			await invalidateAll();
 		} catch (err: any) {
 			showDeleteConfirm = false;
 			error = err.message || 'Cannot delete tier';

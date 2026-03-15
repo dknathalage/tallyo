@@ -1,4 +1,4 @@
-import { execute, query } from '../connection.svelte.js';
+import { execute, query } from '../connection.js';
 import type { CatalogItem, CatalogItemWithRates, CatalogItemRate } from '../../types/index.js';
 
 export function getCatalogItems(search?: string, category?: string): CatalogItem[] {
@@ -46,13 +46,13 @@ export function searchCatalogItems(term: string, limit: number = 10): CatalogIte
  * Pure SQL: inserts a catalog item and returns the new id.
  * No audit logging, no save().
  */
-export async function createCatalogItem(data: {
+export function createCatalogItem(data: {
 	name: string;
 	rate?: number;
 	unit?: string;
 	category?: string;
 	sku?: string;
-}): Promise<number> {
+}): number {
 	if (!data.name?.trim()) {
 		throw new Error('Catalog item name is required');
 	}
@@ -68,10 +68,10 @@ export async function createCatalogItem(data: {
  * Pure SQL: updates a catalog item.
  * No audit logging, no save().
  */
-export async function updateCatalogItem(
+export function updateCatalogItem(
 	id: number,
 	data: { name: string; rate?: number; unit?: string; category?: string; sku?: string }
-): Promise<void> {
+): void {
 	if (!data.name?.trim()) {
 		throw new Error('Catalog item name is required');
 	}
@@ -85,7 +85,7 @@ export async function updateCatalogItem(
  * Pure SQL: deletes a catalog item.
  * No audit logging, no save().
  */
-export async function deleteCatalogItem(id: number): Promise<void> {
+export function deleteCatalogItem(id: number): void {
 	execute(`DELETE FROM catalog_items WHERE id = ?`, [id]);
 }
 
@@ -93,7 +93,7 @@ export async function deleteCatalogItem(id: number): Promise<void> {
  * Pure SQL: bulk deletes catalog items.
  * No audit logging, no save().
  */
-export async function bulkDeleteCatalogItems(ids: number[]): Promise<void> {
+export function bulkDeleteCatalogItems(ids: number[]): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(`DELETE FROM catalog_items WHERE id IN (${placeholders})`, ids);
@@ -168,11 +168,11 @@ export function getEffectiveRate(catalogItemId: number, tierId: number | null): 
  * Pure SQL: sets a catalog item rate for a tier.
  * No save().
  */
-export async function setCatalogItemRate(
+export function setCatalogItemRate(
 	catalogItemId: number,
 	tierId: number,
 	rate: number
-): Promise<void> {
+): void {
 	execute(
 		`INSERT OR REPLACE INTO catalog_item_rates (catalog_item_id, rate_tier_id, rate) VALUES (?, ?, ?)`,
 		[catalogItemId, tierId, rate]

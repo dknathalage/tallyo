@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../connection.svelte.js', () => ({
+vi.mock('../connection.js', () => ({
 	query: vi.fn(),
 	execute: vi.fn()
 }));
@@ -12,7 +12,7 @@ import {
 	updateCatalogItem,
 	deleteCatalogItem
 } from './catalog.js';
-import { query, execute } from '../connection.svelte.js';
+import { query, execute } from '../connection.js';
 
 const mockQuery = vi.mocked(query);
 const mockExecute = vi.mocked(execute);

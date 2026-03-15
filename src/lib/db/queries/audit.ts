@@ -1,4 +1,4 @@
-import { query } from '../connection.svelte.js';
+import { query } from '../connection.js';
 import type { AuditLogEntry } from '../../types/index.js';
 
 export function getEntityHistory(entity_type: string, entity_id: number): AuditLogEntry[] {

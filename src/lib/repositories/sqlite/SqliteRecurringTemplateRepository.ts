@@ -24,23 +24,23 @@ export class SqliteRecurringTemplateRepository implements RecurringTemplateRepos
 		return getDueTemplates();
 	}
 
-	createRecurringTemplate(data: CreateRecurringTemplateInput): Promise<number> {
+	async createRecurringTemplate(data: CreateRecurringTemplateInput): Promise<number> {
 		return createRecurringTemplate(data);
 	}
 
-	updateRecurringTemplate(id: number, data: UpdateRecurringTemplateInput): Promise<void> {
+	async updateRecurringTemplate(id: number, data: UpdateRecurringTemplateInput): Promise<void> {
 		return updateRecurringTemplate(id, data);
 	}
 
-	deleteRecurringTemplate(id: number): Promise<void> {
+	async deleteRecurringTemplate(id: number): Promise<void> {
 		return deleteRecurringTemplate(id);
 	}
 
-	advanceTemplateNextDue(id: number): Promise<void> {
+	async advanceTemplateNextDue(id: number): Promise<void> {
 		return advanceTemplateNextDue(id);
 	}
 
-	createInvoiceFromTemplate(templateId: number): Promise<number> {
+	async createInvoiceFromTemplate(templateId: number): Promise<number> {
 		return createInvoiceFromTemplate(templateId);
 	}
 }

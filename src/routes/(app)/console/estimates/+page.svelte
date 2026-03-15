@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import type { Estimate } from '$lib/types/index.js';
+	import type { Estimate } from '$lib/types/index.js';
+	import type { PageData } from './$types';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
@@ -11,16 +11,18 @@
 	import ImportExportBar from '$lib/components/csv/ImportExportBar.svelte';
 	import ImportPreviewModal from '$lib/components/csv/ImportPreviewModal.svelte';
 	import { exportEstimates } from '$lib/csv/export-estimates.js';
-	import { parseEstimatesCsv, commitEstimateImport } from '$lib/csv/import-estimates.js';
+	import { parseEstimatesCsv } from '$lib/csv/import-estimates.js';
 	import { ESTIMATE_COLUMNS } from '$lib/csv/columns.js';
 	import type { ParsedEstimateImport } from '$lib/csv/types.js';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
+	let { data }: { data: PageData } = $props();
+
 	let search = $state('');
 	let statusFilter = $state('');
-	let estimates: Estimate[] = $state([]);
 	let showPreview = $state(false);
 	let previewData: ParsedEstimateImport | null = $state(null);
 
@@ -29,14 +31,13 @@
 
 	const statuses = ['', 'draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
 
-	function loadEstimates() {
-		estimates = repositories.estimates.getEstimates(search || undefined, statusFilter || undefined);
-	}
-
-	$effect(() => {
-		// Reactive on search and statusFilter; re-runs when either changes
-		loadEstimates();
-	});
+	let estimates: Estimate[] = $derived(
+		data.estimates.filter((est: Estimate) => {
+			const matchesSearch = !search || est.estimate_number.toLowerCase().includes(search.toLowerCase()) || (est.client_name ?? '').toLowerCase().includes(search.toLowerCase());
+			const matchesStatus = !statusFilter || est.status === statusFilter;
+			return matchesSearch && matchesStatus;
+		})
+	);
 
 	let allSelected = $derived(estimates.length > 0 && selectedIds.size === estimates.length);
 
@@ -59,16 +60,24 @@
 	}
 
 	async function handleBulkDelete() {
-		await repositories.estimates.bulkDeleteEstimates([...selectedIds]);
+		await fetch('/api/estimates', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+		});
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		loadEstimates();
+		await invalidateAll();
 	}
 
 	async function handleBulkStatus(status: string) {
-		await repositories.estimates.bulkUpdateEstimateStatus([...selectedIds], status);
+		await fetch('/api/estimates', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-status', ids: [...selectedIds], status })
+		});
 		selectedIds = new Set();
-		loadEstimates();
+		await invalidateAll();
 	}
 
 	async function handleImport(file: File) {
@@ -78,10 +87,17 @@
 
 	async function handleConfirm() {
 		if (previewData) {
-			await commitEstimateImport(previewData.groups, previewData.newClientsToCreate, { estimates: repositories.estimates, clients: repositories.clients });
+			for (const group of previewData.groups) {
+				const { lineItems, ...estimateData } = group;
+				await fetch('/api/estimates', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ ...estimateData, lineItems })
+				});
+			}
 			showPreview = false;
 			previewData = null;
-			loadEstimates();
+			await invalidateAll();
 		}
 	}
 </script>

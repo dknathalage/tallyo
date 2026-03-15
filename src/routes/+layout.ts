@@ -1,2 +1,2 @@
-export const ssr = false;
-export const prerender = false;
+// Server-side rendering enabled for all routes
+export const ssr = true;

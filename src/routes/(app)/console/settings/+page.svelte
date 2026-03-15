@@ -1,25 +1,19 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
 	import type { KeyValuePair } from '$lib/types';
+	import type { PageData } from './$types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import LogoUploader from '$lib/components/shared/LogoUploader.svelte';
 	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
-	import { exportDatabase, importDatabase } from '$lib/db/backup.js';
+	// backup.ts removed: server-side DB lives at ~/.invoices/invoices.db, no manual backup needed
+	function exportDatabase() { alert('To backup, copy ~/.invoices/invoices.db'); }
+	async function importDatabase(_file: File): Promise<void> { alert('To restore, replace ~/.invoices/invoices.db'); }
+
+	let { data }: { data: PageData } = $props();
 
 	// ── Business Profile ────────────────────────────────────
-	let bpName = $state('');
-	let bpEmail = $state('');
-	let bpPhone = $state('');
-	let bpAddress = $state('');
-	let bpLogo = $state('');
-	let bpDefaultCurrency = $state('USD');
-	let bpMetadata: KeyValuePair[] = $state([]);
-	let bpSaving = $state(false);
-	let bpError = $state('');
-
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {
 			const obj = JSON.parse(metaStr || '{}');
@@ -29,18 +23,16 @@
 		}
 	}
 
-	$effect(() => {
-		const profile = repositories.businessProfile.getBusinessProfile();
-		if (profile) {
-			bpName = profile.name;
-			bpEmail = profile.email;
-			bpPhone = profile.phone;
-			bpAddress = profile.address;
-			bpLogo = profile.logo;
-			bpDefaultCurrency = profile.default_currency || 'USD';
-			bpMetadata = parseMetadata(profile.metadata);
-		}
-	});
+	const profile = data.businessProfile;
+	let bpName = $state(profile?.name ?? '');
+	let bpEmail = $state(profile?.email ?? '');
+	let bpPhone = $state(profile?.phone ?? '');
+	let bpAddress = $state(profile?.address ?? '');
+	let bpLogo = $state(profile?.logo ?? '');
+	let bpDefaultCurrency = $state(profile?.default_currency ?? 'USD');
+	let bpMetadata: KeyValuePair[] = $state(parseMetadata(profile?.metadata));
+	let bpSaving = $state(false);
+	let bpError = $state('');
 
 	async function saveProfile() {
 		bpError = '';
@@ -52,14 +44,20 @@
 					metaObj[pair.key.trim()] = pair.value;
 				}
 			}
-			await repositories.businessProfile.saveBusinessProfile({
-				name: bpName,
-				email: bpEmail,
-				phone: bpPhone,
-				address: bpAddress,
-				logo: bpLogo,
-				metadata: JSON.stringify(metaObj),
-				default_currency: bpDefaultCurrency
+			await fetch('/api/settings', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					profile: {
+						name: bpName,
+						email: bpEmail,
+						phone: bpPhone,
+						address: bpAddress,
+						logo: bpLogo,
+						metadata: JSON.stringify(metaObj),
+						default_currency: bpDefaultCurrency
+					}
+				})
 			});
 		} catch (err: any) {
 			bpError = err.message || 'Failed to save';
