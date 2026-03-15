@@ -5,12 +5,12 @@
  */
 import Database from 'better-sqlite3';
 import { mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
 import { runMigrations } from './migrate.js';
 
 const DATA_DIR = process.env.DB_PATH
-	? dirname(process.env.DB_PATH)
+	? join(process.env.DB_PATH, '..')
 	: join(homedir(), '.invoices');
 const DB_PATH = process.env.DB_PATH ?? join(DATA_DIR, 'invoices.db');
 
