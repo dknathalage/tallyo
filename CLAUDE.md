@@ -1,41 +1,66 @@
 # Invoice Manager
 
-Local-first invoice management PWA. All data stays on the user's device via IndexedDB + SQL.js (in-browser SQL). No backend server.
+Self-hosted, open-source invoice management app. Server-side SQLite via better-sqlite3.
 
 ## Tech Stack
 
 - **Framework:** SvelteKit with Svelte 5, TypeScript (strict)
-- **Styling:** Tailwind CSS 4 via Vite plugin + `@tailwindcss/typography` for prose
-- **Markdown:** mdsvex (`.md` files as Svelte components)
-- **Database:** SQL.js (WebAssembly SQLite) with IndexedDB persistence
+- **Styling:** Tailwind CSS 4 via Vite plugin
+- **Database:** SQLite via better-sqlite3 (server-side)
 - **PDF:** jsPDF + autotable
 - **Import/Export:** PapaParse (CSV), XLSX (Excel)
-- **PWA:** Workbox service worker, installable manifest
 - **Testing:** Vitest
-- **Deploy:** GitHub Pages via GitHub Actions
+- **Deploy:** Node.js server (`node build/index.js`)
 
 ## Project Layout
 
 - `src/lib/` — Shared library: components, database, utilities
-- `src/routes/(app)/` — App pages (dashboard, invoices, clients, catalog, settings) — wrapped in `FileGate > AppShell`
-- `src/routes/(docs)/docs/` — Documentation pages (mdsvex markdown) — standalone layout, no database dependency
-- `static/` — Static assets (icons, WASM binary, favicon)
-- `build/` — Production build output (generated)
-- `.github/workflows/` — CI/CD pipeline
+- `src/lib/db/` — Database connection, schema, migrations, query modules
+- `src/lib/repositories/` — Data access layer (interfaces + SQLite implementations)
+- `src/lib/utils/` — Helpers (currency, formatting, PDF)
+- `src/routes/` — SvelteKit pages and server load functions
 
 ## Commands
 
-- `npm run dev` — Start dev server
+- `npm run dev` — Start dev server (http://localhost:5173)
 - `npm run build` — Production build
-- `npm run test` — Run Vitest tests
-- `npm run preview` — Preview production build
+- `npm test` — Run Vitest tests (224 tests)
+- `npm run test:coverage` — Run tests with coverage report
+- `npm run check` — TypeScript check
+
+## Production Deployment
+
+```bash
+npm run build
+PORT=3002 HOST=0.0.0.0 node build/index.js
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | HTTP port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `NODE_ENV` | `development` | Environment |
+| `DB_PATH` | `~/.invoices/invoices.db` | SQLite database path |
+
+### Health Check
+
+```bash
+curl http://localhost:3002/health
+# {"status":"ok","db":"connected"}
+```
 
 ## Conventions
 
 - Database queries live in `src/lib/db/queries/` with co-located `.test.ts` files
+- Use repositories (`$lib/repositories`) in routes — never `$lib/db/queries` directly
 - Components are grouped by domain under `src/lib/components/`
-- Routes follow SvelteKit file-based routing with `+page.svelte` and `+page.md` files
-- Route groups `(app)` and `(docs)` separate DB-dependent app from standalone docs
-- UUIDs are used as primary keys throughout
 - All database mutations are audit-logged
-- Update user documentation (`src/routes/(docs)/docs/`) when a feature change impacts user-facing functionality
+- Commits follow Conventional Commits (enforced by commitlint)
+
+## Database
+
+- SQLite via better-sqlite3 (server-side, synchronous writes)
+- Migrations run on startup via `src/lib/db/migrate.ts`
+- DB location: `~/.invoices/invoices.db` (or `DB_PATH` env var)
