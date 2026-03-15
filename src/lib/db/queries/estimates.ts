@@ -1,5 +1,6 @@
-import { execute, query } from '../connection.svelte.js';
-import { generateInvoiceNumber } from '../../utils/invoice-number.js';
+import { execute, query } from '../connection.js';
+import { generateInvoiceNumber } from '../number-generators.js';
+import { generateEstimateNumber } from '../number-generators.js';
 import type { Estimate, EstimateLineItem } from '../../types/index.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../../repositories/interfaces/types.js';
 
@@ -44,10 +45,10 @@ export function getEstimateLineItems(estimateId: number): EstimateLineItem[] {
  * Pure SQL: inserts the estimate and its line items, returns the new estimate id.
  * No transaction management, no audit logging, no save().
  */
-export async function createEstimate(
+export function createEstimate(
 	data: CreateEstimateInput,
 	lineItems: LineItemInput[]
-): Promise<number> {
+): number {
 	execute(
 		`INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
@@ -87,11 +88,11 @@ export async function createEstimate(
  * Pure SQL: updates the estimate and replaces its line items.
  * No transaction management, no audit logging, no save().
  */
-export async function updateEstimate(
+export function updateEstimate(
 	id: number,
 	data: UpdateEstimateInput,
 	lineItems: LineItemInput[]
-): Promise<void> {
+): void {
 	execute(
 		`UPDATE estimates SET estimate_number = ?, client_id = ?, date = ?, valid_until = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = datetime('now') WHERE id = ?`,
 		[
@@ -128,7 +129,7 @@ export async function updateEstimate(
  * Pure SQL: deletes the estimate.
  * No transaction management, no audit logging, no save().
  */
-export async function deleteEstimate(id: number): Promise<void> {
+export function deleteEstimate(id: number): void {
 	execute(`DELETE FROM estimates WHERE id = ?`, [id]);
 }
 
@@ -136,7 +137,7 @@ export async function deleteEstimate(id: number): Promise<void> {
  * Pure SQL: updates estimate status.
  * No audit logging, no save().
  */
-export async function updateEstimateStatus(id: number, status: string): Promise<void> {
+export function updateEstimateStatus(id: number, status: string): void {
 	execute(
 		`UPDATE estimates SET status = ?, updated_at = datetime('now') WHERE id = ?`,
 		[status, id]
@@ -147,7 +148,7 @@ export async function updateEstimateStatus(id: number, status: string): Promise<
  * Pure SQL: bulk deletes estimates and their line items.
  * No transaction management, no audit logging, no save().
  */
-export async function bulkDeleteEstimates(ids: number[]): Promise<void> {
+export function bulkDeleteEstimates(ids: number[]): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(`DELETE FROM estimate_line_items WHERE estimate_id IN (${placeholders})`, ids);
@@ -158,7 +159,7 @@ export async function bulkDeleteEstimates(ids: number[]): Promise<void> {
  * Pure SQL: bulk updates estimate status.
  * No audit logging, no save().
  */
-export async function bulkUpdateEstimateStatus(ids: number[], status: string): Promise<void> {
+export function bulkUpdateEstimateStatus(ids: number[], status: string): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(
@@ -179,7 +180,7 @@ export function getClientEstimates(clientId: number): Estimate[] {
  * No transaction management, no audit logging, no save().
  * Returns an object with both the new invoice id and info needed for audit.
  */
-export async function convertEstimateToInvoice(estimateId: number): Promise<{ invoiceId: number; invoiceNumber: string; estimateNumber: string }> {
+export function convertEstimateToInvoice(estimateId: number): { invoiceId: number; invoiceNumber: string; estimateNumber: string } {
 	const estimate = getEstimate(estimateId);
 	if (!estimate) throw new Error('Estimate not found');
 	if (estimate.status !== 'accepted') throw new Error('Only accepted estimates can be converted to invoices');
@@ -232,11 +233,10 @@ export async function convertEstimateToInvoice(estimateId: number): Promise<{ in
  * No transaction management, no audit logging, no save().
  * Returns the new estimate id and its number.
  */
-export async function duplicateEstimate(id: number): Promise<{ newId: number; newNumber: string; originalNumber: string }> {
+export function duplicateEstimate(id: number): { newId: number; newNumber: string; originalNumber: string } {
 	const original = getEstimate(id);
 	if (!original) throw new Error(`Estimate ${id} not found`);
 
-	const { generateEstimateNumber } = await import('../../utils/estimate-number.js');
 	const newNumber = generateEstimateNumber();
 	const todayStr = new Date().toISOString().slice(0, 10);
 

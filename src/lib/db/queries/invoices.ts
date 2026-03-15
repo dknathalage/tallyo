@@ -1,7 +1,8 @@
-import { execute, query, runRaw } from '../connection.svelte.js';
+import { execute, query, runRaw } from '../connection.js';
 import type { Invoice, LineItem, AgingBucket } from '../../types/index.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
+import { generateInvoiceNumber } from '../number-generators.js';
 
 export function getInvoices(search?: string, status?: string): Invoice[] {
 	let sql = `SELECT i.*, c.name as client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id`;
@@ -44,10 +45,10 @@ export function getInvoiceLineItems(invoiceId: number): LineItem[] {
  * Pure SQL: inserts the invoice and its line items, returns the new invoice id.
  * No transaction management, no audit logging, no save().
  */
-export async function createInvoice(
+export function createInvoice(
 	data: CreateInvoiceInput,
 	lineItems: LineItemInput[]
-): Promise<number> {
+): number {
 	execute(
 		`INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
@@ -89,11 +90,11 @@ export async function createInvoice(
  * No transaction management, no audit logging, no save().
  * If tax_rate_id is provided, looks up the actual rate from tax_rates.
  */
-export async function updateInvoice(
+export function updateInvoice(
 	id: number,
 	data: UpdateInvoiceInput,
 	lineItems: LineItemInput[]
-): Promise<void> {
+): void {
 	// If a tax_rate_id is provided, look up the actual rate from the tax_rates table
 	let resolvedTaxRate = data.tax_rate;
 	if (data.tax_rate_id) {
@@ -140,7 +141,7 @@ export async function updateInvoice(
  * Pure SQL: deletes the invoice row (cascades to line_items via FK or handled separately).
  * No transaction management, no audit logging, no save().
  */
-export async function deleteInvoice(id: number): Promise<void> {
+export function deleteInvoice(id: number): void {
 	execute(`DELETE FROM invoices WHERE id = ?`, [id]);
 }
 
@@ -148,7 +149,7 @@ export async function deleteInvoice(id: number): Promise<void> {
  * Pure SQL: updates invoice status.
  * No audit logging, no save().
  */
-export async function updateInvoiceStatus(id: number, status: string): Promise<void> {
+export function updateInvoiceStatus(id: number, status: string): void {
 	execute(
 		`UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?`,
 		[status, id]
@@ -159,7 +160,7 @@ export async function updateInvoiceStatus(id: number, status: string): Promise<v
  * Pure SQL: bulk deletes invoices and their line items.
  * No transaction management, no audit logging, no save().
  */
-export async function bulkDeleteInvoices(ids: number[]): Promise<void> {
+export function bulkDeleteInvoices(ids: number[]): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(`DELETE FROM line_items WHERE invoice_id IN (${placeholders})`, ids);
@@ -170,7 +171,7 @@ export async function bulkDeleteInvoices(ids: number[]): Promise<void> {
  * Pure SQL: bulk updates invoice status.
  * No audit logging, no save().
  */
-export async function bulkUpdateInvoiceStatus(ids: number[], status: string): Promise<void> {
+export function bulkUpdateInvoiceStatus(ids: number[], status: string): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(
@@ -191,7 +192,7 @@ export function getClientInvoices(clientId: number): Invoice[] {
  * Pure SQL: returns the list of invoices that were updated (for audit use).
  * No audit logging, no save().
  */
-export async function markOverdueInvoices(): Promise<Array<{ id: number; invoice_number: string }>> {
+export function markOverdueInvoices(): Array<{ id: number; invoice_number: string }> {
 	const overdue = query<{ id: number; invoice_number: string }>(
 		`SELECT id, invoice_number FROM invoices WHERE status = 'sent' AND due_date < date('now')`
 	);
@@ -213,11 +214,11 @@ export async function markOverdueInvoices(): Promise<Array<{ id: number; invoice
  * No transaction management, no audit logging, no save().
  * Returns the new invoice id.
  */
-export async function duplicateInvoice(id: number): Promise<number> {
+export function duplicateInvoice(id: number): number {
 	const original = getInvoice(id);
 	if (!original) throw new Error(`Invoice ${id} not found`);
 
-	const { generateInvoiceNumber } = await import('../../utils/invoice-number.js');
+
 	const newNumber = generateInvoiceNumber();
 	const todayStr = new Date().toISOString().slice(0, 10);
 

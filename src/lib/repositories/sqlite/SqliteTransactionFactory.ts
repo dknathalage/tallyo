@@ -1,4 +1,4 @@
-import { runRaw } from '$lib/db/connection.svelte.js';
+import { runRaw } from '$lib/db/connection.js';
 import type { StorageTransaction } from '../interfaces/StorageTransaction.js';
 
 /**

@@ -1,18 +1,19 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import PayerForm from '$lib/components/payer/PayerForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let payerId = $derived(Number(page.params.id));
-	let payer = $derived(repositories.payers.getPayer(payerId));
-	let linkedClients = $derived(repositories.payers.getPayerClients(payerId));
-	let history = $derived(repositories.audit.getEntityHistory('payer', payerId));
+	let { data }: { data: PageData } = $props();
+
+	let payer = $state(data.payer);
+	let history = $derived(data.auditHistory);
+	let linkedClients = $derived(data.linkedClients ?? []);
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
@@ -26,13 +27,19 @@
 		}
 	}
 
-	async function handleUpdate(data: { name: string; email: string; phone: string; address: string; metadata: string }) {
-		await repositories.payers.updatePayer(payerId, data);
+	async function handleUpdate(updateData: { name: string; email: string; phone: string; address: string; metadata: string }) {
+		await fetch(`/api/payers/${payer.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(updateData)
+		});
+		payer = { ...payer, ...updateData };
 		editing = false;
+		await invalidateAll();
 	}
 
 	async function handleDelete() {
-		await repositories.payers.deletePayer(payerId);
+		await fetch(`/api/payers/${payer.id}`, { method: 'DELETE' });
 		goto(`${base}/console/payers`);
 	}
 

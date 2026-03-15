@@ -22,15 +22,15 @@ export class SqliteTaxRateRepository implements TaxRateRepository {
 		return getTaxRate(id);
 	}
 
-	createTaxRate(data: { name: string; rate: number; is_default?: boolean }): Promise<number> {
+	async createTaxRate(data: { name: string; rate: number; is_default?: boolean }): Promise<number> {
 		return createTaxRate(data);
 	}
 
-	updateTaxRate(id: number, data: { name: string; rate: number; is_default?: boolean }): Promise<void> {
+	async updateTaxRate(id: number, data: { name: string; rate: number; is_default?: boolean }): Promise<void> {
 		return updateTaxRate(id, data);
 	}
 
-	deleteTaxRate(id: number): Promise<void> {
+	async deleteTaxRate(id: number): Promise<void> {
 		return deleteTaxRate(id);
 	}
 }

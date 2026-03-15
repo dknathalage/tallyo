@@ -1,23 +1,25 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { base } from '$app/paths';
+	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import BulkActionBar from '$lib/components/shared/BulkActionBar.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { invalidateAll } from '$app/navigation';
+
+	let { data }: { data: PageData } = $props();
 
 	let search = $state('');
-	let refreshTrigger = $state(0);
-
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let payers = $derived.by(() => {
-		refreshTrigger;
-		return repositories.payers.getPayers(search || undefined);
-	});
+	let payers = $derived(
+		data.payers.filter(p =>
+			!search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.email ?? '').toLowerCase().includes(search.toLowerCase())
+		)
+	);
 
 	$effect(() => {
 		search;
@@ -45,10 +47,14 @@
 	}
 
 	async function handleBulkDelete() {
-		await repositories.payers.bulkDeletePayers([...selectedIds]);
+		await fetch('/api/payers', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+		});
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		refreshTrigger++;
+		await invalidateAll();
 	}
 </script>
 

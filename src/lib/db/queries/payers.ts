@@ -1,4 +1,4 @@
-import { execute, query } from '../connection.svelte.js';
+import { execute, query } from '../connection.js';
 import type { Payer, Client, PartySnapshot } from '../../types/index.js';
 
 export function getPayers(search?: string): Payer[] {
@@ -20,13 +20,13 @@ export function getPayer(id: number): Payer | null {
  * Pure SQL: inserts a payer and returns the new id.
  * No audit logging, no save().
  */
-export async function createPayer(data: {
+export function createPayer(data: {
 	name: string;
 	email?: string;
 	phone?: string;
 	address?: string;
 	metadata?: string;
-}): Promise<number> {
+}): number {
 	if (!data.name?.trim()) {
 		throw new Error('Payer name is required');
 	}
@@ -42,10 +42,10 @@ export async function createPayer(data: {
  * Pure SQL: updates a payer.
  * No audit logging, no save().
  */
-export async function updatePayer(
+export function updatePayer(
 	id: number,
 	data: { name: string; email?: string; phone?: string; address?: string; metadata?: string }
-): Promise<void> {
+): void {
 	if (!data.name?.trim()) {
 		throw new Error('Payer name is required');
 	}
@@ -59,7 +59,7 @@ export async function updatePayer(
  * Pure SQL: deletes a payer.
  * No audit logging, no save().
  */
-export async function deletePayer(id: number): Promise<void> {
+export function deletePayer(id: number): void {
 	execute('DELETE FROM payers WHERE id = ?', [id]);
 }
 
@@ -67,7 +67,7 @@ export async function deletePayer(id: number): Promise<void> {
  * Pure SQL: bulk deletes payers.
  * No audit logging, no save().
  */
-export async function bulkDeletePayers(ids: number[]): Promise<void> {
+export function bulkDeletePayers(ids: number[]): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(`DELETE FROM payers WHERE id IN (${placeholders})`, ids);

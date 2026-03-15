@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { base } from '$app/paths';
+	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import { formatCurrency } from '$lib/utils/format';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -11,33 +11,27 @@
 	import { exportCatalog } from '$lib/csv/export-catalog.js';
 	import type { CatalogItem } from '$lib/types';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { invalidateAll } from '$app/navigation';
+
+	let { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let selectedCategory = $state('');
 	let selectedTierId = $state('');
 	let showImportWizard = $state(false);
-	let refreshTrigger = $state(0);
 
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let tiers = $derived.by(() => {
-		refreshTrigger;
-		return repositories.rateTiers.getRateTiers();
-	});
-
-	let categories = $derived.by(() => {
-		refreshTrigger;
-		return repositories.catalog.getCatalogCategories();
-	});
+	let tiers = $derived(data.rateTiers);
+	let categories = $derived(data.categories);
 
 	let items = $derived.by((): (CatalogItem & { tier_rate?: number })[] => {
-		refreshTrigger;
-		const tierId = selectedTierId ? Number(selectedTierId) : undefined;
-		if (tierId) {
-			return repositories.catalog.getCatalogItemsWithTierRate(search || undefined, selectedCategory || undefined, tierId);
-		}
-		return repositories.catalog.getCatalogItems(search || undefined, selectedCategory || undefined);
+		return data.catalog.filter((item: CatalogItem) => {
+			const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku ?? '').toLowerCase().includes(search.toLowerCase());
+			const matchesCategory = !selectedCategory || item.category === selectedCategory;
+			return matchesSearch && matchesCategory;
+		});
 	});
 
 	$effect(() => {
@@ -69,19 +63,23 @@
 	}
 
 	async function handleBulkDelete() {
-		await repositories.catalog.bulkDeleteCatalogItems([...selectedIds]);
+		await fetch('/api/catalog', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+		});
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		refreshTrigger++;
+		await invalidateAll();
 	}
 
 	function handleImport() {
 		showImportWizard = true;
 	}
 
-	function handleImportComplete() {
+	async function handleImportComplete() {
 		showImportWizard = false;
-		refreshTrigger++;
+		await invalidateAll();
 	}
 
 	function getDisplayRate(item: CatalogItem & { tier_rate?: number }): number {

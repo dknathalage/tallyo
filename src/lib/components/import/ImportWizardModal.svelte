@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import Modal from '$lib/components/shared/Modal.svelte';
+	import Modal from '$lib/components/shared/Modal.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import StepFileSelect from './StepFileSelect.svelte';
 	import StepColumnMapping from './StepColumnMapping.svelte';
@@ -79,10 +78,12 @@
 		if (mappingConfig.newTierColumns.length > 0) {
 			const resolvedTierColumns = { ...mappingConfig.tierColumns };
 			for (const colName of mappingConfig.newTierColumns) {
-				const tierId = await repositories.rateTiers.createRateTier({
-					name: colName,
-					description: `Auto-created from import column "${colName}"`
+				const res = await fetch('/api/rate-tiers', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name: colName, description: `Auto-created from import column "${colName}"` })
 				});
+				const { id: tierId } = await res.json();
 				resolvedTierColumns[colName] = tierId;
 			}
 			mappingConfig = {
@@ -94,7 +95,9 @@
 
 		// Run diff
 		const mapped = applyMapping(activeSheet.rows, mappingConfig);
-		const existing = repositories.catalog.getCatalogItems().map((item) => ({
+		const existingRes = await fetch('/api/catalog');
+		const existingItems = await existingRes.json();
+		const existing = existingItems.map((item: { id: number; name: string; sku: string; rate: number; unit: string; category: string }) => ({
 			id: item.id,
 			name: item.name,
 			sku: item.sku,

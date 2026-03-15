@@ -1,12 +1,16 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
+
 		import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	async function handleSubmit(data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) {
-		await repositories.clients.createClient(data);
+		await fetch('/api/clients', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	});
 		goto(`${base}/console/clients`);
 	}
 </script>

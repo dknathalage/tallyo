@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import CatalogAutocomplete from '$lib/components/catalog/CatalogAutocomplete.svelte';
+	import CatalogAutocomplete from '$lib/components/catalog/CatalogAutocomplete.svelte';
 	import CatalogBrowseModal from '$lib/components/catalog/CatalogBrowseModal.svelte';
 	import type { CatalogItem } from '$lib/types/index.js';
 
@@ -28,7 +27,8 @@
 
 	function handleCatalogSelect(catalogItem: CatalogItem) {
 		item.description = catalogItem.name;
-		item.rate = tierId ? repositories.catalog.getEffectiveRate(catalogItem.id, tierId) : catalogItem.rate;
+		// Use base rate - tier-specific rates would need an API call, using base for now
+		item.rate = catalogItem.rate;
 		item.unit = catalogItem.unit;
 		recalculate();
 	}

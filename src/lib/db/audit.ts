@@ -1,4 +1,4 @@
-import { execute } from './connection.svelte.js';
+import { execute } from './connection.js';
 
 export type AuditEntityType =
 	| 'invoice'

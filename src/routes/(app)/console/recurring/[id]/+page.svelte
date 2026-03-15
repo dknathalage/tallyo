@@ -1,19 +1,22 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-	import { page } from '$app/state';
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import type { RecurringTemplate, RecurringFrequency } from '$lib/types/index.js';
 	import type { Client } from '$lib/types/index.js';
 	import Button from '$lib/components/shared/Button.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let isNew = $derived(page.params.id === 'new');
-	let templateId = $derived(isNew ? null : Number(page.params.id));
+	let { data }: { data: PageData } = $props();
 
-	let template: RecurringTemplate | null = $state(null);
-	let clients: Client[] = $state([]);
+	let isNew = $derived(!data.template);
+	let templateId = $derived(data.template?.id ?? null);
+
+	let template: RecurringTemplate | null = $state(data.template ?? null);
+	let clients: Client[] = $state(data.clients ?? []);
 
 	// Form fields
 	let name = $state('');
@@ -46,27 +49,24 @@
 	let taxAmount = $derived(subtotal * (taxRate / 100));
 	let total = $derived(subtotal + taxAmount);
 
+	// Initialize form fields from server data
 	$effect(() => {
-		clients = repositories.clients.getClients();
-		if (!isNew && templateId) {
-			const t = repositories.recurringTemplates.getRecurringTemplate(templateId);
-			if (t) {
-				template = t;
-				name = t.name;
-				clientId = t.client_id ?? '';
-				frequency = t.frequency;
-				nextDue = t.next_due;
-				taxRate = t.tax_rate;
-				notes = t.notes ?? '';
-				isActive = t.is_active === 1;
-				try {
-					const parsed = JSON.parse(t.line_items);
-					if (Array.isArray(parsed) && parsed.length > 0) {
-						lineItems = parsed.map((li: FormLineItem, i: number) => ({ ...li, sort_order: i }));
-					}
-				} catch {
-					lineItems = [{ description: '', quantity: 1, rate: 0, amount: 0, notes: '', sort_order: 0 }];
+		const t = template;
+		if (t) {
+			name = t.name;
+			clientId = t.client_id ?? '';
+			frequency = t.frequency;
+			nextDue = t.next_due;
+			taxRate = t.tax_rate;
+			notes = t.notes ?? '';
+			isActive = t.is_active === 1;
+			try {
+				const parsed = JSON.parse(t.line_items);
+				if (Array.isArray(parsed) && parsed.length > 0) {
+					lineItems = parsed.map((li: FormLineItem, i: number) => ({ ...li, sort_order: i }));
 				}
+			} catch {
+				lineItems = [{ description: '', quantity: 1, rate: 0, amount: 0, notes: '', sort_order: 0 }];
 			}
 		}
 	});
@@ -115,11 +115,20 @@
 				is_active: isActive ? 1 : 0
 			};
 			if (isNew) {
-				const newId = await repositories.recurringTemplates.createRecurringTemplate(data);
+				const res = await fetch('/api/recurring', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(data)
+				});
+				const { id: newId } = await res.json();
 				goto(`${base}/console/recurring/${newId}`);
 			} else if (templateId) {
-				await repositories.recurringTemplates.updateRecurringTemplate(templateId, data);
-				template = repositories.recurringTemplates.getRecurringTemplate(templateId);
+				await fetch(`/api/recurring/${templateId}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(data)
+				});
+				await invalidateAll();
 			}
 		} finally {
 			saving = false;
@@ -128,7 +137,7 @@
 
 	async function handleDelete() {
 		if (!templateId) return;
-		await repositories.recurringTemplates.deleteRecurringTemplate(templateId);
+		await fetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
 		goto(`${base}/console/recurring`);
 	}
 
@@ -136,7 +145,8 @@
 		if (!templateId) return;
 		creatingInvoice = true;
 		try {
-			const invoiceId = await repositories.recurringTemplates.createInvoiceFromTemplate(templateId);
+			const res = await fetch(`/api/recurring/${templateId}`, { method: 'PATCH' });
+			const { invoiceId } = await res.json();
 			goto(`${base}/console/invoices/${invoiceId}`);
 		} finally {
 			creatingInvoice = false;

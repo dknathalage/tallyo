@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
+	import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -27,7 +26,11 @@
 		lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
 		try {
-			await repositories.estimates.createEstimate(data, lineItems);
+			await fetch('/api/estimates', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ...data, lineItems })
+			});
 			goto(`${base}/console/estimates`);
 		} catch (e: any) {
 			addToast({ type: 'error', message: e.message || 'Failed to save estimate' });

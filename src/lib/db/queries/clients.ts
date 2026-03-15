@@ -1,4 +1,4 @@
-import { execute, query } from '../connection.svelte.js';
+import { execute, query } from '../connection.js';
 import type { Client, PartySnapshot, ClientRevenueSummary } from '../../types/index.js';
 import type { CreateClientInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
@@ -22,7 +22,7 @@ export function getClient(id: number): Client | null {
  * Pure SQL: inserts a client and returns the new id.
  * No audit logging, no save().
  */
-export async function createClient(data: CreateClientInput): Promise<number> {
+export function createClient(data: CreateClientInput): number {
 	if (!data.name?.trim()) {
 		throw new Error('Client name is required');
 	}
@@ -38,10 +38,10 @@ export async function createClient(data: CreateClientInput): Promise<number> {
  * Pure SQL: updates a client.
  * No audit logging, no save().
  */
-export async function updateClient(
+export function updateClient(
 	id: number,
 	data: { name: string; email?: string; phone?: string; address?: string; pricing_tier_id?: number | null; metadata?: string; payer_id?: number | null }
-): Promise<void> {
+): void {
 	if (!data.name?.trim()) {
 		throw new Error('Client name is required');
 	}
@@ -55,7 +55,7 @@ export async function updateClient(
  * Pure SQL: deletes a client.
  * No transaction management, no audit logging, no save().
  */
-export async function deleteClient(id: number): Promise<void> {
+export function deleteClient(id: number): void {
 	execute(`DELETE FROM clients WHERE id = ?`, [id]);
 }
 
@@ -63,7 +63,7 @@ export async function deleteClient(id: number): Promise<void> {
  * Pure SQL: bulk deletes clients.
  * No transaction management, no audit logging, no save().
  */
-export async function bulkDeleteClients(ids: number[]): Promise<void> {
+export function bulkDeleteClients(ids: number[]): void {
 	if (ids.length === 0) return;
 	const placeholders = ids.map(() => '?').join(',');
 	execute(`DELETE FROM clients WHERE id IN (${placeholders})`, ids);

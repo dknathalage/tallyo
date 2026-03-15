@@ -1,21 +1,24 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { page } from '$app/state';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportInvoicePdf } from '$lib/utils/pdf.js';
 	import type { Invoice, LineItem, AuditLogEntry, Payment } from '$lib/types/index.js';
 	import { parseSnapshot } from '$lib/utils/snapshot.js';
+	import type { PageData } from './$types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let invoice: Invoice | null = $state(null);
-	let lineItems: LineItem[] = $state([]);
-	let history: AuditLogEntry[] = $state([]);
-	let payments: Payment[] = $state([]);
+	let { data }: { data: PageData } = $props();
+
+	let invoice: Invoice | null = $state(data.invoice);
+	let lineItems: LineItem[] = $state(data.lineItems);
+	let history: AuditLogEntry[] = $state(data.auditHistory);
+	let payments: Payment[] = $state(data.payments);
 	let totalPaid = $derived(payments.reduce((sum, p) => sum + p.amount, 0));
 	let outstanding = $derived.by(() => (invoice ? invoice.total - totalPaid : 0));
 	let showDeleteConfirm = $state(false);
@@ -38,26 +41,20 @@
 	let clientSnap = $derived.by(() => parseSnapshot(invoice?.client_snapshot ?? '{}'));
 	let payerSnap = $derived.by(() => parseSnapshot(invoice?.payer_snapshot ?? '{}'));
 
-	$effect(() => {
-		const id = Number(page.params.id);
-		const inv = repositories.invoices.getInvoice(id);
-		invoice = inv;
-		if (inv) {
-			lineItems = repositories.invoices.getInvoiceLineItems(inv.id);
-			history = repositories.audit.getEntityHistory('invoice', inv.id);
-			payments = repositories.payments.getInvoicePayments(inv.id);
-		}
-	});
-
 	async function handleDelete() {
 		if (!invoice) return;
-		await repositories.invoices.deleteInvoice(invoice.id);
+		await fetch(`/api/invoices/${invoice.id}`, { method: 'DELETE' });
 		goto(`${base}/console/invoices`);
 	}
 
 	async function handleDuplicate() {
 		if (!invoice) return;
-		const newId = await repositories.invoices.duplicateInvoice(invoice.id);
+		const res = await fetch(`/api/invoices/${invoice.id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'duplicate' })
+		});
+		const { id: newId } = await res.json();
 		goto(`${base}/console/invoices/${newId}/edit`);
 	}
 
@@ -73,16 +70,21 @@
 				notes: li.notes ?? '',
 				sort_order: i
 			}));
-			const id = await repositories.recurringTemplates.createRecurringTemplate({
-				client_id: invoice.client_id,
-				name: recurringName.trim(),
-				frequency: recurringFrequency,
-				next_due: recurringNextDue,
-				line_items: JSON.stringify(templateLineItems),
-				tax_rate: invoice.tax_rate,
-				notes: invoice.notes ?? '',
-				is_active: 1
+			const res = await fetch('/api/recurring', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					client_id: invoice.client_id,
+					name: recurringName.trim(),
+					frequency: recurringFrequency,
+					next_due: recurringNextDue,
+					line_items: JSON.stringify(templateLineItems),
+					tax_rate: invoice.tax_rate,
+					notes: invoice.notes ?? '',
+					is_active: 1
+				})
 			});
+			const { id } = await res.json();
 			showSaveAsRecurring = false;
 			recurringName = '';
 			goto(`${base}/console/recurring/${id}`);
@@ -93,19 +95,31 @@
 
 	async function handleRecordPayment() {
 		if (!invoice || paymentAmount <= 0) return;
-		await repositories.payments.createPayment({
-			invoice_id: invoice.id,
-			amount: paymentAmount,
-			payment_date: paymentDate,
-			method: paymentMethod,
-			notes: paymentNotes
+		await fetch('/api/payments', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				invoice_id: invoice.id,
+				amount: paymentAmount,
+				payment_date: paymentDate,
+				method: paymentMethod,
+				notes: paymentNotes
+			})
 		});
-		payments = repositories.payments.getInvoicePayments(invoice.id);
+		await invalidateAll();
+		// Refresh payments from server
+		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoice.id}`);
+		payments = await paymentsRes.json();
 		// Auto-update status based on paid amount
-		const newTotalPaid = payments.reduce((s, p) => s + p.amount, 0);
+		const newTotalPaid = payments.reduce((s: number, p: Payment) => s + p.amount, 0);
 		if (newTotalPaid >= invoice.total && invoice.status !== 'paid') {
-			await repositories.invoices.updateInvoiceStatus(invoice.id, 'paid');
-			invoice = repositories.invoices.getInvoice(invoice.id);
+			await fetch(`/api/invoices/${invoice.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'status', status: 'paid' })
+			});
+			const invoiceRes = await fetch(`/api/invoices/${invoice.id}`);
+			invoice = await invoiceRes.json();
 		}
 		showPaymentModal = false;
 		paymentAmount = 0;
@@ -114,14 +128,20 @@
 	}
 
 	async function handleDeletePayment(paymentId: number) {
-		await repositories.payments.deletePayment(paymentId);
-		payments = repositories.payments.getInvoicePayments(invoice!.id);
+		await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
+		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoice!.id}`);
+		payments = await paymentsRes.json();
 	}
 
 	async function handleStatusChange(status: string) {
 		if (!invoice) return;
-		await repositories.invoices.updateInvoiceStatus(invoice.id, status);
-		invoice = repositories.invoices.getInvoice(invoice.id);
+		await fetch(`/api/invoices/${invoice.id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'status', status })
+		});
+		const res = await fetch(`/api/invoices/${invoice.id}`);
+		invoice = await res.json();
 		showStatusMenu = false;
 	}
 

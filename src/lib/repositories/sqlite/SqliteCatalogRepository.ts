@@ -12,7 +12,7 @@ import {
 	getEffectiveRate,
 	setCatalogItemRate
 } from '$lib/db/queries/catalog.js';
-import { save } from '$lib/db/connection.svelte.js';
+
 import { computeChanges } from '$lib/db/audit.js';
 import type { CatalogRepository } from '../interfaces/CatalogRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -69,7 +69,6 @@ export class SqliteCatalogRepository implements CatalogRepository {
 				rate: { old: null, new: data.rate ?? 0 }
 			}
 		});
-		await save();
 		return id;
 	}
 
@@ -86,19 +85,16 @@ export class SqliteCatalogRepository implements CatalogRepository {
 				this._audit.logAudit({ entity_type: 'catalog', entity_id: id, action: 'update', changes });
 			}
 		}
-		await save();
 	}
 
 	async deleteCatalogItem(id: number): Promise<void> {
 		const item = getCatalogItem(id);
 		await deleteCatalogItem(id);
 		this._audit.logAudit({ entity_type: 'catalog', entity_id: id, action: 'delete', context: item?.name ?? '' });
-		await save();
 	}
 
 	async setCatalogItemRate(catalogItemId: number, tierId: number, rate: number): Promise<void> {
 		await setCatalogItemRate(catalogItemId, tierId, rate);
-		await save();
 	}
 
 	async bulkDeleteCatalogItems(ids: number[]): Promise<void> {
@@ -109,6 +105,5 @@ export class SqliteCatalogRepository implements CatalogRepository {
 		for (let i = 0; i < ids.length; i++) {
 			this._audit.logAudit({ entity_type: 'catalog', entity_id: ids[i], action: 'delete', context: items[i]?.name ?? '', batch_id });
 		}
-		await save();
 	}
 }

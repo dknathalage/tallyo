@@ -1,4 +1,3 @@
-import { query } from '$lib/db/connection.svelte.js';
 import { parseCsvFile, validateRequiredField } from './parse.js';
 import type { CsvClientRow, ParsedImport, ValidationError } from './types.js';
 import type { ClientRepository } from '$lib/repositories/interfaces/index.js';
@@ -10,9 +9,10 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 	const validRows: CsvClientRow[] = [];
 	let skippedDuplicates = 0;
 
-	// Get existing UUIDs for deduplication (read-only, safe in CSV layer)
-	const existing = query<{ uuid: string }>('SELECT uuid FROM clients WHERE uuid IS NOT NULL');
-	const existingUuids = new Set(existing.map((r) => r.uuid));
+	// Get existing UUIDs for deduplication via API
+	const existingRes = await fetch('/api/clients');
+	const existingClients = await existingRes.json() as Array<{ uuid: string }>;
+	const existingUuids = new Set(existingClients.map((r) => r.uuid).filter(Boolean));
 
 	for (let i = 0; i < data.length; i++) {
 		const row = data[i];

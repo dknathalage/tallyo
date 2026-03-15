@@ -1,4 +1,4 @@
-import { execute, query, save } from '../connection.svelte.js';
+import { execute, query, save } from '../connection.js';
 import type { RateTier } from '../../types/index.js';
 
 export function getRateTiers(): RateTier[] {
@@ -17,11 +17,11 @@ export function getDefaultTier(): RateTier | null {
 	return results.length > 0 ? results[0] : null;
 }
 
-export async function createRateTier(data: {
+export function createRateTier(data: {
 	name: string;
 	description?: string;
 	sort_order?: number;
-}): Promise<number> {
+}): number {
 	if (!data.name?.trim()) {
 		throw new Error('Tier name is required');
 	}
@@ -30,14 +30,13 @@ export async function createRateTier(data: {
 		[crypto.randomUUID(), data.name, data.description ?? '', data.sort_order ?? 0]
 	);
 	const result = query<{ id: number }>(`SELECT last_insert_rowid() as id`);
-	await save();
 	return result[0].id;
 }
 
-export async function updateRateTier(
+export function updateRateTier(
 	id: number,
 	data: { name: string; description?: string; sort_order?: number }
-): Promise<void> {
+): void {
 	if (!data.name?.trim()) {
 		throw new Error('Tier name is required');
 	}
@@ -45,14 +44,12 @@ export async function updateRateTier(
 		`UPDATE rate_tiers SET name = ?, description = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
 		[data.name, data.description ?? '', data.sort_order ?? 0, id]
 	);
-	await save();
 }
 
-export async function deleteRateTier(id: number): Promise<void> {
+export function deleteRateTier(id: number): void {
 	const tiers = getRateTiers();
 	if (tiers.length <= 1) {
 		throw new Error('Cannot delete the last tier');
 	}
 	execute(`DELETE FROM rate_tiers WHERE id = ?`, [id]);
-	await save();
 }

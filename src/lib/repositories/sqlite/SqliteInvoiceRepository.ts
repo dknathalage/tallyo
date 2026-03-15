@@ -13,7 +13,7 @@ import {
 	duplicateInvoice,
 	getAgingReport
 } from '$lib/db/queries/invoices.js';
-import { save } from '$lib/db/connection.svelte.js';
+
 import { computeChanges } from '$lib/db/audit.js';
 import type { InvoiceRepository } from '../interfaces/InvoiceRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -53,7 +53,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 			action: 'create',
 			context: data.invoice_number
 		});
-		await save();
 		return id;
 	}
 
@@ -72,7 +71,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 				this._audit.logAudit({ entity_type: 'invoice', entity_id: id, action: 'update', changes, context: data.invoice_number });
 			}
 		}
-		await save();
 	}
 
 	async deleteInvoice(id: number): Promise<void> {
@@ -81,7 +79,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 			await deleteInvoice(id);
 		});
 		this._audit.logAudit({ entity_type: 'invoice', entity_id: id, action: 'delete', context: invoice?.invoice_number ?? '' });
-		await save();
 	}
 
 	async updateInvoiceStatus(id: number, status: string): Promise<void> {
@@ -94,7 +91,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 			changes: { status: { old: oldInvoice?.status ?? '', new: status } },
 			context: oldInvoice?.invoice_number ?? ''
 		});
-		await save();
 	}
 
 	async bulkDeleteInvoices(ids: number[]): Promise<void> {
@@ -107,7 +103,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 		for (let i = 0; i < ids.length; i++) {
 			this._audit.logAudit({ entity_type: 'invoice', entity_id: ids[i], action: 'delete', context: invoices[i]?.invoice_number ?? '', batch_id });
 		}
-		await save();
 	}
 
 	async bulkUpdateInvoiceStatus(ids: number[], status: string): Promise<void> {
@@ -125,7 +120,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 				batch_id
 			});
 		}
-		await save();
 	}
 
 	async markOverdueInvoices(): Promise<number> {
@@ -140,7 +134,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 			});
 		}
 		if (updated.length > 0) {
-			await save();
 		}
 		return updated.length;
 	}
@@ -156,7 +149,6 @@ export class SqliteInvoiceRepository implements InvoiceRepository {
 			action: 'create',
 			context: original ? `(duplicated from ${original.invoice_number})` : `(duplicated from invoice ${id})`
 		});
-		await save();
 		return newId;
 	}
 

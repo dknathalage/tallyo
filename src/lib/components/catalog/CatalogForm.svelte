@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import type { CatalogItem, CatalogItemWithRates } from '$lib/types';
+	import { onMount } from 'svelte';
+	import type { CatalogItem, CatalogItemWithRates } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -27,15 +27,25 @@
 	let sku = $state(initialData?.sku ?? '');
 	let metadata = $state(initialData?.metadata ?? '{}');
 
-	let categories = $derived(repositories.catalog.getCatalogCategories());
-	let tiers = $derived(repositories.rateTiers.getRateTiers());
+	let categories = $state<string[]>([]);
+	let tiers = $state<{ id: number; name: string }[]>([]);
+	let itemWithRates = $state<CatalogItemWithRates | null>(null);
 
-	// Load existing tier rates if editing
-	let itemWithRates: CatalogItemWithRates | null = $derived.by(() => {
+	onMount(async () => {
+		const [catalogRes, tiersRes] = await Promise.all([
+			fetch('/api/catalog'),
+			fetch('/api/rate-tiers')
+		]);
+		const catalogItems = await catalogRes.json() as CatalogItem[];
+		categories = [...new Set(catalogItems.map((i: CatalogItem) => i.category).filter(Boolean))];
+		tiers = await tiersRes.json();
+
+		// Load existing tier rates if editing
 		if (initialData?.id) {
-			return repositories.catalog.getCatalogItemWithRates(initialData.id);
+			const res = await fetch(`/api/catalog/${initialData.id}`);
+			const data = await res.json();
+			itemWithRates = data.itemWithRates ?? data;
 		}
-		return null;
 	});
 
 	// Tier rate values as a mutable record

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import Button from '$lib/components/shared/Button.svelte';
+	import { onMount } from 'svelte';
+	import Button from '$lib/components/shared/Button.svelte';
 	import { autoDetectMapping, type ColumnMappingConfig, type TargetField } from '$lib/import/map-columns.js';
 	import type { RateTier, ColumnMapping } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -31,9 +31,16 @@
 	let showSave = $state(false);
 
 	// Initialize
+	onMount(async () => {
+		const [tiersRes, mappingsRes] = await Promise.all([
+			fetch('/api/rate-tiers'),
+			fetch('/api/column-mappings?entity=catalog')
+		]);
+		tiers = await tiersRes.json();
+		savedMappings = await mappingsRes.json();
+	});
+
 	$effect(() => {
-		tiers = repositories.rateTiers.getRateTiers();
-		savedMappings = repositories.columnMappings.getColumnMappings('catalog');
 
 		// Auto-detect mapping with smart data-driven heuristics
 		const detected = autoDetectMapping(headers, sampleRows);
@@ -131,25 +138,31 @@
 			allMappings[h] = fieldMap[h] ?? 'skip';
 		}
 
-		await repositories.columnMappings.createColumnMapping({
-			name: saveName.trim(),
-			entity_type: 'catalog',
-			mapping: allMappings,
-			tier_mapping: tierColumns,
-			metadata_mapping: metadataColumns,
-			file_type: fileType,
-			sheet_name: sheetName,
-			header_row: headerRow
+		await fetch('/api/column-mappings', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: saveName.trim(),
+				entity_type: 'catalog',
+				mapping: allMappings,
+				tier_mapping: tierColumns,
+				metadata_mapping: metadataColumns,
+				file_type: fileType,
+				sheet_name: sheetName,
+				header_row: headerRow
+			})
 		});
 
-		savedMappings = repositories.columnMappings.getColumnMappings('catalog');
+		const res = await fetch('/api/column-mappings?entity=catalog');
+		savedMappings = await res.json();
 		saveName = '';
 		showSave = false;
 	}
 
 	async function handleDeletePreset(id: number) {
-		await repositories.columnMappings.deleteColumnMapping(id);
-		savedMappings = repositories.columnMappings.getColumnMappings('catalog');
+		await fetch(`/api/column-mappings?id=${id}`, { method: 'DELETE' });
+		const res = await fetch('/api/column-mappings?entity=catalog');
+		savedMappings = await res.json();
 	}
 
 	let hasNameMapping = $derived(

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../db/connection.svelte.js', () => ({
+vi.mock('../db/connection.js', () => ({
 	query: vi.fn()
 }));
 
 import { generateInvoiceNumber } from './invoice-number.js';
-import { query } from '../db/connection.svelte.js';
+import { query } from '../db/connection.js';
 
 const mockQuery = vi.mocked(query);
 

@@ -1,5 +1,8 @@
-import { execute, query, save, runRaw } from '../connection.svelte.js';
+import { execute, query, runRaw } from '../connection.js';
 import { logAudit } from '../audit.js';
+import { generateInvoiceNumber } from '../number-generators.js';
+import { getClient } from './clients.js';
+import { getBusinessProfile } from './business-profile.js';
 import type { RecurringTemplate, RecurringFrequency } from '../../types/index.js';
 
 export function getRecurringTemplates(activeOnly = true): RecurringTemplate[] {
@@ -43,7 +46,7 @@ export function getDueTemplates(): RecurringTemplate[] {
 	);
 }
 
-export async function createRecurringTemplate(data: {
+export function createRecurringTemplate(data: {
 	client_id: number;
 	name: string;
 	frequency: RecurringFrequency;
@@ -52,7 +55,7 @@ export async function createRecurringTemplate(data: {
 	tax_rate?: number;
 	notes?: string;
 	is_active?: number;
-}): Promise<number> {
+}): number {
 	execute(
 		`INSERT INTO recurring_templates (uuid, client_id, name, frequency, next_due, line_items, tax_rate, notes, is_active)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -75,11 +78,10 @@ export async function createRecurringTemplate(data: {
 		action: 'create',
 		changes: { name: { old: null, new: data.name } }
 	});
-	await save();
 	return result[0].id;
 }
 
-export async function updateRecurringTemplate(
+export function updateRecurringTemplate(
 	id: number,
 	data: {
 		client_id: number;
@@ -91,7 +93,7 @@ export async function updateRecurringTemplate(
 		notes?: string;
 		is_active?: number;
 	}
-): Promise<void> {
+): void {
 	execute(
 		`UPDATE recurring_templates
 		 SET client_id = ?, name = ?, frequency = ?, next_due = ?, line_items = ?,
@@ -115,13 +117,11 @@ export async function updateRecurringTemplate(
 		action: 'update',
 		changes: { name: { old: null, new: data.name } }
 	});
-	await save();
 }
 
-export async function deleteRecurringTemplate(id: number): Promise<void> {
+export function deleteRecurringTemplate(id: number): void {
 	execute(`DELETE FROM recurring_templates WHERE id = ?`, [id]);
 	logAudit({ entity_type: 'recurring_template', entity_id: id, action: 'delete', changes: {} });
-	await save();
 }
 
 /** Advance next_due by frequency period */
@@ -141,7 +141,7 @@ export function advanceNextDue(date: string, frequency: RecurringFrequency): str
 	return d.toISOString().slice(0, 10);
 }
 
-export async function advanceTemplateNextDue(id: number): Promise<void> {
+export function advanceTemplateNextDue(id: number): void {
 	const template = getRecurringTemplate(id);
 	if (!template) return;
 	const newDate = advanceNextDue(template.next_due, template.frequency);
@@ -149,17 +149,12 @@ export async function advanceTemplateNextDue(id: number): Promise<void> {
 		`UPDATE recurring_templates SET next_due = ?, updated_at = datetime('now') WHERE id = ?`,
 		[newDate, id]
 	);
-	await save();
 }
 
 /** Create a draft invoice from a recurring template and advance next_due */
-export async function createInvoiceFromTemplate(templateId: number): Promise<number> {
+export function createInvoiceFromTemplate(templateId: number): number {
 	const template = getRecurringTemplate(templateId);
 	if (!template) throw new Error(`Recurring template ${templateId} not found`);
-
-	const { generateInvoiceNumber } = await import('../../utils/invoice-number.js');
-	const { getClient } = await import('./clients.js');
-	const { getBusinessProfile } = await import('./business-profile.js');
 
 	const invoiceNumber = generateInvoiceNumber();
 	const todayStr = new Date().toISOString().slice(0, 10);
@@ -268,7 +263,6 @@ export async function createInvoiceFromTemplate(templateId: number): Promise<num
 			[newDate, templateId]
 		);
 
-		await save();
 		return invoiceId;
 	} catch (e) {
 		runRaw('ROLLBACK');

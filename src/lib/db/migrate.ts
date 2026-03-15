@@ -1,124 +1,130 @@
-import { query, execute } from './connection.svelte.js';
+import type Database from 'better-sqlite3';
+import { CREATE_TABLES } from './schema.js';
 
-const TABLES_WITH_UUID = ['clients', 'invoices', 'line_items', 'catalog_items'];
-
-function tableHasColumn(table: string, column: string): boolean {
-	const cols = query<{ name: string }>(`PRAGMA table_info(${table})`);
+function tableHasColumn(db: Database.Database, table: string, column: string): boolean {
+	const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
 	return cols.some((c) => c.name === column);
 }
 
-function tableExists(table: string): boolean {
-	const result = query<{ name: string }>(
-		`SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
-		[table]
-	);
+function tableExists(db: Database.Database, table: string): boolean {
+	const result = db
+		.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`)
+		.all(table) as { name: string }[];
 	return result.length > 0;
 }
 
 /** Migration 0: Add UUID columns to original tables */
-function migration0_addUuids() {
+function migration0_addUuids(db: Database.Database) {
+	const TABLES_WITH_UUID = ['clients', 'invoices', 'line_items', 'catalog_items'];
 	for (const table of TABLES_WITH_UUID) {
-		if (!tableHasColumn(table, 'uuid')) {
-			execute(`ALTER TABLE ${table} ADD COLUMN uuid TEXT`);
+		if (!tableHasColumn(db, table, 'uuid')) {
+			db.exec(`ALTER TABLE ${table} ADD COLUMN uuid TEXT`);
 		}
-		const rows = query<{ id: number }>(`SELECT id FROM ${table} WHERE uuid IS NULL`);
+		const rows = db.prepare(`SELECT id FROM ${table} WHERE uuid IS NULL`).all() as { id: number }[];
 		for (const row of rows) {
-			execute(`UPDATE ${table} SET uuid = ? WHERE id = ?`, [crypto.randomUUID(), row.id]);
+			db.prepare(`UPDATE ${table} SET uuid = ? WHERE id = ?`).run(crypto.randomUUID(), row.id);
 		}
-		execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_uuid ON ${table}(uuid)`);
+		db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_uuid ON ${table}(uuid)`);
 	}
 }
 
 /** Migration 1: Add metadata column to catalog_items */
-function migration1_catalogMetadata() {
-	if (!tableHasColumn('catalog_items', 'metadata')) {
-		execute(`ALTER TABLE catalog_items ADD COLUMN metadata TEXT DEFAULT '{}'`);
+function migration1_catalogMetadata(db: Database.Database) {
+	if (!tableHasColumn(db, 'catalog_items', 'metadata')) {
+		db.exec(`ALTER TABLE catalog_items ADD COLUMN metadata TEXT DEFAULT '{}'`);
 	}
 }
 
 /** Migration 2: Add pricing_tier_id to clients */
-function migration2_clientTier() {
-	if (!tableHasColumn('clients', 'pricing_tier_id')) {
-		execute(`ALTER TABLE clients ADD COLUMN pricing_tier_id INTEGER REFERENCES rate_tiers(id) ON DELETE SET NULL`);
+function migration2_clientTier(db: Database.Database) {
+	if (!tableHasColumn(db, 'clients', 'pricing_tier_id')) {
+		db.exec(
+			`ALTER TABLE clients ADD COLUMN pricing_tier_id INTEGER REFERENCES rate_tiers(id) ON DELETE SET NULL`
+		);
 	}
 }
 
 /** Migration 3: Add catalog_item_id and rate_tier_id to line_items */
-function migration3_lineItemRefs() {
-	if (!tableHasColumn('line_items', 'catalog_item_id')) {
-		execute(`ALTER TABLE line_items ADD COLUMN catalog_item_id INTEGER`);
+function migration3_lineItemRefs(db: Database.Database) {
+	if (!tableHasColumn(db, 'line_items', 'catalog_item_id')) {
+		db.exec(`ALTER TABLE line_items ADD COLUMN catalog_item_id INTEGER`);
 	}
-	if (!tableHasColumn('line_items', 'rate_tier_id')) {
-		execute(`ALTER TABLE line_items ADD COLUMN rate_tier_id INTEGER`);
+	if (!tableHasColumn(db, 'line_items', 'rate_tier_id')) {
+		db.exec(`ALTER TABLE line_items ADD COLUMN rate_tier_id INTEGER`);
 	}
 }
 
 /** Migration 4: Create default "Standard" tier and migrate existing rates */
-function migration4_defaultTier() {
-	if (!tableExists('rate_tiers')) return;
+function migration4_defaultTier(db: Database.Database) {
+	if (!tableExists(db, 'rate_tiers')) return;
 
-	const existing = query<{ id: number }>(`SELECT id FROM rate_tiers WHERE name = 'Standard'`);
+	const existing = db
+		.prepare(`SELECT id FROM rate_tiers WHERE name = 'Standard'`)
+		.all() as { id: number }[];
 	if (existing.length > 0) return;
 
-	// Create default tier
-	execute(
-		`INSERT INTO rate_tiers (uuid, name, description, sort_order) VALUES (?, 'Standard', 'Default pricing tier', 0)`,
-		[crypto.randomUUID()]
-	);
-	const tier = query<{ id: number }>(`SELECT id FROM rate_tiers WHERE name = 'Standard'`);
+	db.prepare(
+		`INSERT INTO rate_tiers (uuid, name, description, sort_order) VALUES (?, 'Standard', 'Default pricing tier', 0)`
+	).run(crypto.randomUUID());
+	const tier = db
+		.prepare(`SELECT id FROM rate_tiers WHERE name = 'Standard'`)
+		.all() as { id: number }[];
 	if (tier.length === 0) return;
 	const tierId = tier[0].id;
 
-	// Migrate existing catalog item rates
-	const items = query<{ id: number; rate: number }>(`SELECT id, rate FROM catalog_items`);
+	const items = db
+		.prepare(`SELECT id, rate FROM catalog_items`)
+		.all() as { id: number; rate: number }[];
 	for (const item of items) {
-		const alreadyMigrated = query<{ id: number }>(
-			`SELECT id FROM catalog_item_rates WHERE catalog_item_id = ? AND rate_tier_id = ?`,
-			[item.id, tierId]
-		);
+		const alreadyMigrated = db
+			.prepare(
+				`SELECT id FROM catalog_item_rates WHERE catalog_item_id = ? AND rate_tier_id = ?`
+			)
+			.all(item.id, tierId) as { id: number }[];
 		if (alreadyMigrated.length === 0) {
-			execute(
-				`INSERT INTO catalog_item_rates (catalog_item_id, rate_tier_id, rate) VALUES (?, ?, ?)`,
-				[item.id, tierId, item.rate]
-			);
+			db.prepare(
+				`INSERT INTO catalog_item_rates (catalog_item_id, rate_tier_id, rate) VALUES (?, ?, ?)`
+			).run(item.id, tierId, item.rate);
 		}
 	}
 }
 
 /** Migration 5: Add metadata/payer_id to clients, snapshot columns to invoices */
-function migration5_metadataAndParties() {
-	if (!tableHasColumn('clients', 'metadata')) {
-		execute(`ALTER TABLE clients ADD COLUMN metadata TEXT DEFAULT '{}'`);
+function migration5_metadataAndParties(db: Database.Database) {
+	if (!tableHasColumn(db, 'clients', 'metadata')) {
+		db.exec(`ALTER TABLE clients ADD COLUMN metadata TEXT DEFAULT '{}'`);
 	}
-	if (!tableHasColumn('clients', 'payer_id')) {
-		execute(`ALTER TABLE clients ADD COLUMN payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL`);
+	if (!tableHasColumn(db, 'clients', 'payer_id')) {
+		db.exec(
+			`ALTER TABLE clients ADD COLUMN payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL`
+		);
 	}
-	execute(`CREATE INDEX IF NOT EXISTS idx_clients_payer ON clients(payer_id)`);
-	if (!tableHasColumn('invoices', 'business_snapshot')) {
-		execute(`ALTER TABLE invoices ADD COLUMN business_snapshot TEXT DEFAULT '{}'`);
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_clients_payer ON clients(payer_id)`);
+	if (!tableHasColumn(db, 'invoices', 'business_snapshot')) {
+		db.exec(`ALTER TABLE invoices ADD COLUMN business_snapshot TEXT DEFAULT '{}'`);
 	}
-	if (!tableHasColumn('invoices', 'client_snapshot')) {
-		execute(`ALTER TABLE invoices ADD COLUMN client_snapshot TEXT DEFAULT '{}'`);
+	if (!tableHasColumn(db, 'invoices', 'client_snapshot')) {
+		db.exec(`ALTER TABLE invoices ADD COLUMN client_snapshot TEXT DEFAULT '{}'`);
 	}
-	if (!tableHasColumn('invoices', 'payer_snapshot')) {
-		execute(`ALTER TABLE invoices ADD COLUMN payer_snapshot TEXT DEFAULT '{}'`);
+	if (!tableHasColumn(db, 'invoices', 'payer_snapshot')) {
+		db.exec(`ALTER TABLE invoices ADD COLUMN payer_snapshot TEXT DEFAULT '{}'`);
 	}
 }
 
 /** Migration 6: Add multi-currency support */
-function migration6_multiCurrency() {
-	if (!tableHasColumn('invoices', 'currency_code')) {
-		execute(`ALTER TABLE invoices ADD COLUMN currency_code TEXT DEFAULT 'USD'`);
+function migration6_multiCurrency(db: Database.Database) {
+	if (!tableHasColumn(db, 'invoices', 'currency_code')) {
+		db.exec(`ALTER TABLE invoices ADD COLUMN currency_code TEXT DEFAULT 'USD'`);
 	}
-	if (!tableHasColumn('business_profile', 'default_currency')) {
-		execute(`ALTER TABLE business_profile ADD COLUMN default_currency TEXT DEFAULT 'USD'`);
+	if (!tableHasColumn(db, 'business_profile', 'default_currency')) {
+		db.exec(`ALTER TABLE business_profile ADD COLUMN default_currency TEXT DEFAULT 'USD'`);
 	}
 }
 
 /** Migration 7: Create estimates and estimate_line_items tables */
-function migration7_estimates() {
-	if (!tableExists('estimates')) {
-		execute(`CREATE TABLE IF NOT EXISTS estimates (
+function migration7_estimates(db: Database.Database) {
+	if (!tableExists(db, 'estimates')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS estimates (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			uuid TEXT UNIQUE,
 			estimate_number TEXT UNIQUE NOT NULL,
@@ -140,8 +146,8 @@ function migration7_estimates() {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`);
 	}
-	if (!tableExists('estimate_line_items')) {
-		execute(`CREATE TABLE IF NOT EXISTS estimate_line_items (
+	if (!tableExists(db, 'estimate_line_items')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS estimate_line_items (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			uuid TEXT UNIQUE,
 			estimate_id INTEGER REFERENCES estimates(id) ON DELETE CASCADE,
@@ -158,16 +164,16 @@ function migration7_estimates() {
 }
 
 /** Migration 8: Add payment_terms to invoices */
-function migration8_paymentTerms() {
-	if (!tableHasColumn('invoices', 'payment_terms')) {
-		execute(`ALTER TABLE invoices ADD COLUMN payment_terms TEXT DEFAULT 'custom'`);
+function migration8_paymentTerms(db: Database.Database) {
+	if (!tableHasColumn(db, 'invoices', 'payment_terms')) {
+		db.exec(`ALTER TABLE invoices ADD COLUMN payment_terms TEXT DEFAULT 'custom'`);
 	}
 }
 
 /** Migration 9: Add tax_rates table */
-function migration9_taxRates() {
-	if (!tableExists('tax_rates')) {
-		execute(`CREATE TABLE IF NOT EXISTS tax_rates (
+function migration9_taxRates(db: Database.Database) {
+	if (!tableExists(db, 'tax_rates')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS tax_rates (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			uuid TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
@@ -176,27 +182,27 @@ function migration9_taxRates() {
 			created_at TEXT DEFAULT (datetime('now')),
 			updated_at TEXT DEFAULT (datetime('now'))
 		)`);
-		// Seed with GST 10% as default
-		execute(
-			`INSERT INTO tax_rates (uuid, name, rate, is_default) VALUES (?, 'GST', 10, 1)`,
-			[crypto.randomUUID()]
+		db.prepare(`INSERT INTO tax_rates (uuid, name, rate, is_default) VALUES (?, 'GST', 10, 1)`).run(
+			crypto.randomUUID()
 		);
 	}
-	// Add tax_rate_id to invoices if not present
-	if (!tableHasColumn('invoices', 'tax_rate_id')) {
-		execute(`ALTER TABLE invoices ADD COLUMN tax_rate_id INTEGER REFERENCES tax_rates(id) ON DELETE SET NULL`);
+	if (!tableHasColumn(db, 'invoices', 'tax_rate_id')) {
+		db.exec(
+			`ALTER TABLE invoices ADD COLUMN tax_rate_id INTEGER REFERENCES tax_rates(id) ON DELETE SET NULL`
+		);
 	}
-	// Add tax_rate_id to estimates if not present
-	if (!tableExists('estimates')) return;
-	if (!tableHasColumn('estimates', 'tax_rate_id')) {
-		execute(`ALTER TABLE estimates ADD COLUMN tax_rate_id INTEGER REFERENCES tax_rates(id) ON DELETE SET NULL`);
+	if (!tableExists(db, 'estimates')) return;
+	if (!tableHasColumn(db, 'estimates', 'tax_rate_id')) {
+		db.exec(
+			`ALTER TABLE estimates ADD COLUMN tax_rate_id INTEGER REFERENCES tax_rates(id) ON DELETE SET NULL`
+		);
 	}
 }
 
 /** Migration 10: Add payments table */
-function migration10_payments() {
-	if (!tableExists('payments')) {
-		execute(`CREATE TABLE IF NOT EXISTS payments (
+function migration10_payments(db: Database.Database) {
+	if (!tableExists(db, 'payments')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS payments (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			uuid TEXT NOT NULL UNIQUE,
 			invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -211,9 +217,9 @@ function migration10_payments() {
 }
 
 /** Migration 11: Create recurring_templates table */
-function migration11_recurringTemplates() {
-	if (!tableExists('recurring_templates')) {
-		execute(`CREATE TABLE IF NOT EXISTS recurring_templates (
+function migration11_recurringTemplates(db: Database.Database) {
+	if (!tableExists(db, 'recurring_templates')) {
+		db.exec(`CREATE TABLE IF NOT EXISTS recurring_templates (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			uuid TEXT NOT NULL UNIQUE,
 			client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
@@ -227,26 +233,27 @@ function migration11_recurringTemplates() {
 			created_at TEXT DEFAULT (datetime('now')),
 			updated_at TEXT DEFAULT (datetime('now'))
 		)`);
-		execute(`CREATE INDEX IF NOT EXISTS idx_recurring_client ON recurring_templates(client_id)`);
-		execute(`CREATE INDEX IF NOT EXISTS idx_recurring_next_due ON recurring_templates(next_due)`);
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_recurring_client ON recurring_templates(client_id)`);
+		db.exec(`CREATE INDEX IF NOT EXISTS idx_recurring_next_due ON recurring_templates(next_due)`);
 	}
 }
 
 /** Run all migrations in order. Safe to call multiple times. */
-export function runMigrations() {
-	migration0_addUuids();
-	migration1_catalogMetadata();
-	migration2_clientTier();
-	migration3_lineItemRefs();
-	migration4_defaultTier();
-	migration5_metadataAndParties();
-	migration6_multiCurrency();
-	migration7_estimates();
-	migration8_paymentTerms();
-	migration9_taxRates();
-	migration10_payments();
-	migration11_recurringTemplates();
+export function runMigrations(db: Database.Database): void {
+	db.exec(CREATE_TABLES);
+	migration0_addUuids(db);
+	migration1_catalogMetadata(db);
+	migration2_clientTier(db);
+	migration3_lineItemRefs(db);
+	migration4_defaultTier(db);
+	migration5_metadataAndParties(db);
+	migration6_multiCurrency(db);
+	migration7_estimates(db);
+	migration8_paymentTerms(db);
+	migration9_taxRates(db);
+	migration10_payments(db);
+	migration11_recurringTemplates(db);
 }
 
-// Keep backward-compatible export name
+// Backward-compatible alias
 export const migrateAddUuids = runMigrations;

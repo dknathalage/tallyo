@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../connection.svelte.js', () => ({
+vi.mock('../connection.js', () => ({
 	query: vi.fn(),
 	execute: vi.fn(),
 	save: vi.fn().mockResolvedValue(undefined),
@@ -21,7 +21,7 @@ import {
 	deleteRecurringTemplate,
 	advanceNextDue
 } from './recurring-templates.js';
-import { query, execute, save } from '../connection.svelte.js';
+import { query, execute, save } from '../connection.js';
 import { logAudit } from '../audit.js';
 
 const mockQuery = vi.mocked(query);

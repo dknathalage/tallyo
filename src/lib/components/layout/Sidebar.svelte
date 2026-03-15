@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
-	import { db, close } from '$lib/db/connection.svelte';
+	// db connection is server-side only; no client reference needed
 	import { theme } from '$lib/stores/theme.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -147,13 +147,7 @@
 					</svg>
 				{/if}
 			</button>
-			<span class="truncate px-2 text-xs text-gray-500 dark:text-gray-400">{db.fileName}</span>
+			<span class="truncate px-2 text-xs text-gray-500 dark:text-gray-400">~/.invoices/invoices.db</span>
 		</div>
-		<button
-			onclick={() => { open = false; close(); }}
-			class="mt-2 w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
-		>
-			{i18n.t('nav.closeDatabase')}
-		</button>
 	</div>
 </aside>

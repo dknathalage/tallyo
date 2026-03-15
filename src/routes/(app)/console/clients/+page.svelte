@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { base } from '$app/paths';
+	import { base } from '$app/paths';
+	import type { PageData } from './$types';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -9,29 +9,36 @@
 	import ImportExportBar from '$lib/components/csv/ImportExportBar.svelte';
 	import ImportPreviewModal from '$lib/components/csv/ImportPreviewModal.svelte';
 	import { exportClients } from '$lib/csv/export-clients.js';
-	import { parseClientsCsv, commitClientImport } from '$lib/csv/import-clients.js';
+	import { parseClientsCsv } from '$lib/csv/import-clients.js';
 	import { CLIENT_COLUMNS } from '$lib/csv/columns.js';
 	import type { ParsedImport, CsvClientRow } from '$lib/csv/types.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { invalidateAll } from '$app/navigation';
+
+	let { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let showPreview = $state(false);
 	let previewData: ParsedImport<CsvClientRow> | null = $state(null);
-	let refreshTrigger = $state(0);
 
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let tiers = $derived(repositories.rateTiers.getRateTiers());
+	let tiers = $derived(data.rateTiers);
 
-	let clients = $derived.by(() => {
-		refreshTrigger;
-		return repositories.clients.getClients(search || undefined);
-	});
+	let clients = $derived(
+		data.clients.filter(c =>
+			!search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.email ?? '').toLowerCase().includes(search.toLowerCase())
+		)
+	);
 
 	async function handleTierChange(client: { id: number; name: string; email: string; phone: string; address: string }, tierId: number | null) {
-		await repositories.clients.updateClient(client.id, { name: client.name, email: client.email, phone: client.phone, address: client.address, pricing_tier_id: tierId });
-		refreshTrigger++;
+		await fetch(`/api/clients/${client.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: client.name, email: client.email, phone: client.phone, address: client.address, pricing_tier_id: tierId })
+		});
+		await invalidateAll();
 	}
 
 	$effect(() => {
@@ -61,10 +68,14 @@
 	}
 
 	async function handleBulkDelete() {
-		await repositories.clients.bulkDeleteClients([...selectedIds]);
+		await fetch('/api/clients', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+		});
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		refreshTrigger++;
+		await invalidateAll();
 	}
 
 	async function handleImport(file: File) {
@@ -74,10 +85,16 @@
 
 	async function handleConfirm() {
 		if (previewData) {
-			await commitClientImport(previewData.validRows, { clients: repositories.clients });
+			for (const row of previewData.validRows) {
+				await fetch('/api/clients', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(row)
+				});
+			}
 			showPreview = false;
 			previewData = null;
-			refreshTrigger++;
+			await invalidateAll();
 		}
 	}
 </script>

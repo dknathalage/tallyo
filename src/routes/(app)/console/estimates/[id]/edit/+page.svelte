@@ -1,27 +1,15 @@
 <script lang="ts">
-	import { repositories } from '$lib/repositories';
-		import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import EstimateForm from '$lib/components/estimate/EstimateForm.svelte';
-	import type { Estimate, EstimateLineItem } from '$lib/types/index.js';
+	import type { PageData } from './$types';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { addToast } from '$lib/stores/toast.js';
 
-	let estimate: Estimate | null = $state(null);
-	let lineItems: EstimateLineItem[] = $state([]);
-
-	$effect(() => {
-		const id = Number(page.params.id);
-		const est = repositories.estimates.getEstimate(id);
-		estimate = est;
-		if (est) {
-			lineItems = repositories.estimates.getEstimateLineItems(est.id);
-		}
-	});
+	let { data }: { data: PageData } = $props();
 
 	async function handleSubmit(
-		data: {
+		updateData: {
 			estimate_number: string;
 			client_id: number;
 			date: string;
@@ -40,34 +28,30 @@
 		},
 		items: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number }>
 	) {
-		if (!estimate) return;
 		try {
-			await repositories.estimates.updateEstimate(estimate.id, data, items);
-			goto(`${base}/console/estimates/${estimate.id}`);
+			await fetch(`/api/estimates/${data.estimate.id}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ...updateData, lineItems: items })
+			});
+			goto(`${base}/console/estimates/${data.estimate.id}`);
 		} catch (e: any) {
 			addToast({ type: 'error', message: e.message || 'Failed to update estimate' });
 		}
 	}
 </script>
 
-{#if !estimate}
-	<div class="py-12 text-center">
-		<p class="text-gray-500 dark:text-gray-400">{i18n.t('estimate.notFound')}</p>
-		<a href="{base}/console/estimates" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">{i18n.t('estimate.backToEstimates')}</a>
+<div class="space-y-6">
+	<div class="flex items-center gap-3">
+		<a href="{base}/console/estimates/{data.estimate.id}" class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToEstimate')}>
+			<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+			</svg>
+		</a>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('estimate.editEstimate', { number: data.estimate.estimate_number })}</h1>
 	</div>
-{:else}
-	<div class="space-y-6">
-		<div class="flex items-center gap-3">
-			<a href="{base}/console/estimates/{estimate.id}" class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToEstimate')}>
-				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-				</svg>
-			</a>
-			<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('estimate.editEstimate', { number: estimate.estimate_number })}</h1>
-		</div>
 
-		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-			<EstimateForm initialData={estimate} initialLineItems={lineItems} onsubmit={handleSubmit} />
-		</div>
+	<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+		<EstimateForm initialData={data.estimate} initialLineItems={data.lineItems} onsubmit={handleSubmit} />
 	</div>
-{/if}
+</div>

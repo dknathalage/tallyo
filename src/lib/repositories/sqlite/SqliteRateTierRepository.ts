@@ -23,15 +23,15 @@ export class SqliteRateTierRepository implements RateTierRepository {
 		return getDefaultTier();
 	}
 
-	createRateTier(data: CreateRateTierInput): Promise<number> {
+	async createRateTier(data: CreateRateTierInput): Promise<number> {
 		return createRateTier(data);
 	}
 
-	updateRateTier(id: number, data: UpdateRateTierInput): Promise<void> {
+	async updateRateTier(id: number, data: UpdateRateTierInput): Promise<void> {
 		return updateRateTier(id, data);
 	}
 
-	deleteRateTier(id: number): Promise<void> {
+	async deleteRateTier(id: number): Promise<void> {
 		return deleteRateTier(id);
 	}
 }

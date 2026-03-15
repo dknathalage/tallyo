@@ -1,4 +1,3 @@
-import { query } from '$lib/db/connection.svelte.js';
 import { parseCsvFile, validateRequiredField, validateNumeric, validateDate, validateStatus } from './parse.js';
 import type { CsvInvoiceRow, ParsedInvoiceImport, ParsedInvoiceGroup, ValidationError } from './types.js';
 import type { InvoiceRepository, ClientRepository } from '$lib/repositories/interfaces/index.js';
@@ -55,12 +54,14 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 		}
 	}
 
-	// Check existing invoice UUIDs for deduplication
-	const existingInvoices = query<{ uuid: string }>('SELECT uuid FROM invoices WHERE uuid IS NOT NULL');
-	const existingUuids = new Set(existingInvoices.map((r) => r.uuid));
-
-	// Check existing clients for matching
-	const existingClients = query<{ id: number; name: string }>('SELECT id, name FROM clients');
+	// Check existing invoice UUIDs for deduplication via API
+	const [invoicesRes, clientsRes] = await Promise.all([
+		fetch('/api/invoices'),
+		fetch('/api/clients')
+	]);
+	const existingInvoices = await invoicesRes.json() as Array<{ uuid: string }>;
+	const existingClients = await clientsRes.json() as Array<{ id: number; name: string }>;
+	const existingUuids = new Set(existingInvoices.map((r) => r.uuid).filter(Boolean));
 	const clientNameMap = new Map<string, number>();
 	for (const c of existingClients) {
 		clientNameMap.set(c.name.toLowerCase(), c.id);
@@ -141,8 +142,9 @@ export async function commitInvoiceImport(
 		await repos.clients.createClient({ name });
 	}
 
-	// Rebuild client name→id map after creating new clients (read-only, safe in CSV layer)
-	const allClients = query<{ id: number; name: string }>('SELECT id, name FROM clients');
+	// Rebuild client name→id map after creating new clients
+	const allClientsRes = await fetch('/api/clients');
+	const allClients = await allClientsRes.json() as Array<{ id: number; name: string }>;
 	const clientMap = new Map<string, number>();
 	for (const c of allClients) {
 		clientMap.set(c.name.toLowerCase(), c.id);
@@ -151,13 +153,6 @@ export async function commitInvoiceImport(
 	for (const group of groups) {
 		const clientId = clientMap.get(group.clientName.toLowerCase());
 		if (!clientId) continue;
-
-		// Handle duplicate invoice numbers (read-only check in CSV layer)
-		let invoiceNumber = group.invoiceNumber;
-		const dupes = query<{ id: number }>('SELECT id FROM invoices WHERE invoice_number = ?', [invoiceNumber]);
-		if (dupes.length > 0) {
-			invoiceNumber = `${invoiceNumber}-imported-${Date.now()}`;
-		}
 
 		// Calculate totals from line items
 		const subtotal = group.lineItems.reduce((sum, li) => sum + li.amount, 0);
@@ -168,7 +163,7 @@ export async function commitInvoiceImport(
 		await repos.invoices.createInvoice(
 			{
 				uuid: group.invoiceUuid,
-				invoice_number: invoiceNumber,
+				invoice_number: group.invoiceNumber,
 				client_id: clientId,
 				date: group.date,
 				due_date: group.dueDate,

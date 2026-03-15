@@ -1,22 +1,13 @@
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-node';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { mdsvex } from 'mdsvex';
-
-const dev = process.argv.includes('dev');
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	extensions: ['.svelte', '.md'],
-	preprocess: [mdsvex({ extensions: ['.md'] })],
+	preprocess: [vitePreprocess(), mdsvex({ extensions: ['.md'] })],
 	kit: {
-		adapter: adapter({
-			fallback: 'index.html'
-		}),
-		paths: {
-			base: dev ? '' : '/invoices'
-		},
-		serviceWorker: {
-			register: false
-		}
+		adapter: adapter({ out: 'build' })
 	}
 };
 

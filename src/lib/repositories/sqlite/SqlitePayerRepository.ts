@@ -8,7 +8,7 @@ import {
 	getPayerClients,
 	buildPayerSnapshot
 } from '$lib/db/queries/payers.js';
-import { save } from '$lib/db/connection.svelte.js';
+
 import { computeChanges } from '$lib/db/audit.js';
 import type { PayerRepository } from '../interfaces/PayerRepository.js';
 import type { AuditRepository } from '../interfaces/AuditRepository.js';
@@ -49,7 +49,6 @@ export class SqlitePayerRepository implements PayerRepository {
 				email: { old: null, new: data.email ?? '' }
 			}
 		});
-		await save();
 		return id;
 	}
 
@@ -66,14 +65,12 @@ export class SqlitePayerRepository implements PayerRepository {
 				this._audit.logAudit({ entity_type: 'payer', entity_id: id, action: 'update', changes });
 			}
 		}
-		await save();
 	}
 
 	async deletePayer(id: number): Promise<void> {
 		const payer = getPayer(id);
 		await deletePayer(id);
 		this._audit.logAudit({ entity_type: 'payer', entity_id: id, action: 'delete', context: payer?.name ?? '' });
-		await save();
 	}
 
 	async bulkDeletePayers(ids: number[]): Promise<void> {
@@ -84,6 +81,5 @@ export class SqlitePayerRepository implements PayerRepository {
 		for (let i = 0; i < ids.length; i++) {
 			this._audit.logAudit({ entity_type: 'payer', entity_id: ids[i], action: 'delete', context: payers[i]?.name ?? '', batch_id });
 		}
-		await save();
 	}
 }

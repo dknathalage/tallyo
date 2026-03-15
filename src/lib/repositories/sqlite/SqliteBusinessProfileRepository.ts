@@ -16,7 +16,7 @@ export class SqliteBusinessProfileRepository implements BusinessProfileRepositor
 		return buildBusinessSnapshot();
 	}
 
-	saveBusinessProfile(data: SaveBusinessProfileInput): Promise<void> {
+	async saveBusinessProfile(data: SaveBusinessProfileInput): Promise<void> {
 		return saveBusinessProfile(data);
 	}
 }
