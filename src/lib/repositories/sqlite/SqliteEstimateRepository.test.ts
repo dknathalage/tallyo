@@ -22,6 +22,7 @@ vi.mock('$lib/db/audit.js', () => ({
 import { SqliteEstimateRepository } from './SqliteEstimateRepository.js';
 import * as queries from '$lib/db/queries/estimates.js';
 import { computeChanges } from '$lib/db/audit.js';
+import type { StorageTransaction } from '$lib/repositories/interfaces/StorageTransaction.js';
 
 const mockGetEstimates = vi.mocked(queries.getEstimates);
 const mockGetEstimate = vi.mocked(queries.getEstimate);
@@ -41,13 +42,13 @@ function makeMockAudit() {
 	return { logAudit: vi.fn(), getEntityHistory: vi.fn() };
 }
 
-function makeMockTx() {
+function makeMockTx(): StorageTransaction {
 	return {
 		run: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 		begin: vi.fn(),
 		commit: vi.fn(),
 		rollback: vi.fn()
-	};
+	} as unknown as StorageTransaction;
 }
 
 beforeEach(() => {
@@ -59,7 +60,7 @@ describe('SqliteEstimateRepository', () => {
 	describe('getEstimates', () => {
 		it('delegates to getEstimates query', () => {
 			const repo = new SqliteEstimateRepository(makeMockAudit(), makeMockTx());
-			const expected = { data: [], total: 0, page: 1, totalPages: 1 };
+			const expected = { data: [], total: 0, page: 1, totalPages: 1 } as any;
 			mockGetEstimates.mockReturnValue(expected);
 
 			const result = repo.getEstimates('search', 'draft');

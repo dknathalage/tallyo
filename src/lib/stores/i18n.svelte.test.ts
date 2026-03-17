@@ -116,7 +116,7 @@ describe('i18n store', () => {
 	});
 
 	it('init() keeps default locale when localStorage is empty', () => {
-		localStorageMock.getItem.mockReturnValueOnce(null);
+		localStorageMock.getItem.mockReturnValueOnce(null as any);
 		i18n.init();
 		// locale was changed to 'de' above, so we just check init doesn't crash
 		// and locale stays as whatever was set

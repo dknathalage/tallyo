@@ -18,6 +18,7 @@ vi.mock('$lib/db/audit.js', () => ({
 import { SqlitePayerRepository } from './SqlitePayerRepository.js';
 import * as queries from '$lib/db/queries/payers.js';
 import { computeChanges } from '$lib/db/audit.js';
+import type { StorageTransaction } from '$lib/repositories/interfaces/StorageTransaction.js';
 
 const mockGetPayers = vi.mocked(queries.getPayers);
 const mockGetPayer = vi.mocked(queries.getPayer);
@@ -33,13 +34,13 @@ function makeMockAudit() {
 	return { logAudit: vi.fn(), getEntityHistory: vi.fn() };
 }
 
-function makeMockTx() {
+function makeMockTx(): StorageTransaction {
 	return {
 		run: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 		begin: vi.fn(),
 		commit: vi.fn(),
 		rollback: vi.fn()
-	};
+	} as unknown as StorageTransaction;
 }
 
 beforeEach(() => {

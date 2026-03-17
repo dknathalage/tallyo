@@ -15,7 +15,7 @@ import {
 	validateStatus
 } from './parse.js';
 
-const mockPapaParse = vi.mocked(Papa.parse);
+const mockPapaParse = vi.mocked(Papa.parse) as any;
 
 beforeEach(() => {
 	vi.clearAllMocks();

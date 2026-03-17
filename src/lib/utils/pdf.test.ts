@@ -12,7 +12,7 @@ const mockSetLineWidth = vi.fn();
 const mockLine = vi.fn();
 const mockAddImage = vi.fn();
 const mockSetFont = vi.fn();
-const mockSplitTextToSize = vi.fn((text: string) => [text]);
+const mockSplitTextToSize = vi.fn((...args: any[]) => [args[0]]);
 
 // Use a factory that returns a constructed object
 vi.mock('jspdf', () => {
@@ -156,7 +156,7 @@ const baseEstimateLineItems: EstimateLineItem[] = [
 beforeEach(() => {
 	vi.clearAllMocks();
 	// Restore splitTextToSize implementation after clearAllMocks
-	mockSplitTextToSize.mockImplementation((text: string) => [text]);
+	mockSplitTextToSize.mockImplementation((...args: any[]) => [args[0]]);
 });
 
 describe('exportInvoicePdf', () => {

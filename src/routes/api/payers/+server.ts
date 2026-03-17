@@ -1,5 +1,5 @@
 import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './';
+import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/sqlite/index.js';
 import { dbError } from '$lib/server/db-error.js';
 import { validate } from '$lib/validation/validate.js';

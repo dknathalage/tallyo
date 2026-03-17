@@ -13,7 +13,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { parseFile, getSheetWithHeaderRow } from './parse-file.js';
 
-const mockPapaParse = vi.mocked(Papa.parse);
+const mockPapaParse = vi.mocked(Papa.parse) as any;
 const mockXlsxRead = vi.mocked(XLSX.read);
 const mockSheetToJson = vi.mocked(XLSX.utils.sheet_to_json);
 

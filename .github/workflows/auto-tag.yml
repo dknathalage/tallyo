@@ -1,7 +1,10 @@
 name: Auto Tag
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - main
 
@@ -10,18 +13,23 @@ permissions:
 
 jobs:
   tag:
-    # Skip bot commits (version bumps, etc.)
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && !startsWith(github.event.head_commit.message, 'chore(release)')"
+    # Only tag when CI succeeds on a push (not PRs), and skip bot commits
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      !contains(github.event.workflow_run.head_commit.message, '[skip ci]') &&
+      !startsWith(github.event.workflow_run.head_commit.message, 'chore(release)')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Determine version bump
         id: bump
         run: |
-          MSG="${{ github.event.head_commit.message }}"
+          MSG="${{ github.event.workflow_run.head_commit.message }}"
           echo "Commit: $MSG"
 
           if echo "$MSG" | grep -qE "BREAKING[- ]CHANGE|!:"; then
