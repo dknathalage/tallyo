@@ -1,15 +1,26 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
+import { execSync } from 'child_process';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
+function getGitSha(): string {
+	try {
+		return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+	} catch {
+		// Fall back to a build-sha file written by the update script
+		if (existsSync('.build-sha')) return readFileSync('.build-sha', 'utf-8').trim();
+		return 'unknown';
+	}
+}
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	define: {
 		__PKG_NAME__: JSON.stringify(pkg.name),
-		__PKG_VERSION__: JSON.stringify(pkg.version)
+		__PKG_VERSION__: JSON.stringify(getGitSha())
 	},
 	test: {
 		include: ['src/**/*.test.ts'],
