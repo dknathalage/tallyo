@@ -8,8 +8,8 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	// backup.ts removed: server-side DB lives at ~/.invoices/invoices.db, no manual backup needed
-	function exportDatabase() { alert('To backup, copy ~/.invoices/invoices.db'); }
-	async function importDatabase(_file: File): Promise<void> { alert('To restore, replace ~/.invoices/invoices.db'); }
+	function exportDatabase() { alert('To backup, copy ~/.invoices/invoices.db (or your DB_PATH)'); }
+	async function importDatabase(_file: File): Promise<void> { alert('To restore, replace ~/.invoices/invoices.db (or your DB_PATH)'); }
 
 	let { data }: { data: PageData } = $props();
 

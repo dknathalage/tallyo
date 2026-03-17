@@ -26,7 +26,7 @@ USER nodejs
 ENV PORT=3000
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
-ENV DB_PATH=/data/invoices.db
+ENV DB_PATH=/data/database.db
 
 EXPOSE 3000
 VOLUME ["/data"]

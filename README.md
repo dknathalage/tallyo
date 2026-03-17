@@ -41,7 +41,7 @@ npm install
 npm run dev
 ```
 
-Opens at http://localhost:5173. Database created automatically at `~/.invoices/invoices.db`.
+Opens at http://localhost:5173. Database created automatically at `~/.<package-name>/<package-name>.db` (e.g., `~/.invoices/invoices.db`).
 
 ### Production
 
@@ -57,7 +57,7 @@ PORT=3002 HOST=0.0.0.0 node build/index.js
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `NODE_ENV` | `development` | Environment |
-| `DB_PATH` | `~/.invoices/invoices.db` | SQLite database path |
+| `DB_PATH` | `~/.<pkg-name>/<pkg-name>.db` | SQLite database path (derived from package.json `name`) |
 
 ## Docker
 
@@ -89,10 +89,10 @@ To back up your data:
 
 ```bash
 # Create a backup of the database
-docker compose exec invoices cp /data/invoices.db /data/invoices.db.bak
+docker compose exec invoices cp /data/database.db /data/database.db.bak
 
 # Or copy it to your host machine
-docker compose cp invoices:/data/invoices.db ./invoices-backup.db
+docker compose cp invoices:/data/database.db ./invoices-backup.db
 ```
 
 ## Development Guide

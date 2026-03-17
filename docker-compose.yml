@@ -7,7 +7,7 @@ services:
       - invoices-data:/data
     environment:
       - NODE_ENV=production
-      - DB_PATH=/data/invoices.db
+      - DB_PATH=/data/database.db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
