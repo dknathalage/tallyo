@@ -22,6 +22,7 @@ export const LineItemSchema = z.object({
 });
 
 export const CreateInvoiceSchema = z.object({
+	invoice_number: z.string().optional(),
 	client_id: z.number().int().positive('Client ID must be a positive integer'),
 	currency_code: z.string().length(3, 'Currency code must be 3 characters').optional(),
 	date: z.string().optional(),
@@ -41,6 +42,7 @@ export const CreateInvoiceSchema = z.object({
 });
 
 export const CreateEstimateSchema = z.object({
+	estimate_number: z.string().optional(),
 	client_id: z.number().int().positive('Client ID must be a positive integer'),
 	currency_code: z.string().length(3, 'Currency code must be 3 characters').optional(),
 	date: z.string().optional(),

@@ -23,6 +23,7 @@ vi.mock('$lib/db/audit.js', () => ({
 import { SqliteInvoiceRepository } from './SqliteInvoiceRepository.js';
 import * as queries from '$lib/db/queries/invoices.js';
 import { computeChanges } from '$lib/db/audit.js';
+import type { StorageTransaction } from '$lib/repositories/interfaces/StorageTransaction.js';
 
 const mockGetInvoices = vi.mocked(queries.getInvoices);
 const mockGetInvoice = vi.mocked(queries.getInvoice);
@@ -43,13 +44,13 @@ function makeMockAudit() {
 	return { logAudit: vi.fn(), getEntityHistory: vi.fn() };
 }
 
-function makeMockTx() {
+function makeMockTx(): StorageTransaction {
 	return {
 		run: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 		begin: vi.fn(),
 		commit: vi.fn(),
 		rollback: vi.fn()
-	};
+	} as unknown as StorageTransaction;
 }
 
 beforeEach(() => {
@@ -63,7 +64,7 @@ describe('SqliteInvoiceRepository', () => {
 			const audit = makeMockAudit();
 			const tx = makeMockTx();
 			const repo = new SqliteInvoiceRepository(audit, tx);
-			const expected = { data: [], total: 0, page: 1, totalPages: 1 };
+			const expected = { data: [], total: 0, page: 1, totalPages: 1 } as any;
 			mockGetInvoices.mockReturnValue(expected);
 
 			const result = repo.getInvoices('search', 'draft');
@@ -73,7 +74,7 @@ describe('SqliteInvoiceRepository', () => {
 
 		it('passes pagination param', () => {
 			const repo = new SqliteInvoiceRepository(makeMockAudit(), makeMockTx());
-			mockGetInvoices.mockReturnValue({ data: [], total: 0, page: 1, totalPages: 1 });
+			mockGetInvoices.mockReturnValue({ data: [], total: 0, page: 1, totalPages: 1 } as any);
 			repo.getInvoices(undefined, undefined, { page: 2, limit: 10 });
 			expect(mockGetInvoices).toHaveBeenCalledWith(undefined, undefined, { page: 2, limit: 10 });
 		});

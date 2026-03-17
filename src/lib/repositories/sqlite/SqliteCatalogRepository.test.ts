@@ -22,6 +22,7 @@ vi.mock('$lib/db/audit.js', () => ({
 import { SqliteCatalogRepository } from './SqliteCatalogRepository.js';
 import * as queries from '$lib/db/queries/catalog.js';
 import { computeChanges } from '$lib/db/audit.js';
+import type { StorageTransaction } from '$lib/repositories/interfaces/StorageTransaction.js';
 
 const mockGetCatalogItems = vi.mocked(queries.getCatalogItems);
 const mockGetCatalogItem = vi.mocked(queries.getCatalogItem);
@@ -41,13 +42,13 @@ function makeMockAudit() {
 	return { logAudit: vi.fn(), getEntityHistory: vi.fn() };
 }
 
-function makeMockTx() {
+function makeMockTx(): StorageTransaction {
 	return {
 		run: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 		begin: vi.fn(),
 		commit: vi.fn(),
 		rollback: vi.fn()
-	};
+	} as unknown as StorageTransaction;
 }
 
 beforeEach(() => {
@@ -59,7 +60,7 @@ describe('SqliteCatalogRepository', () => {
 	describe('getCatalogItems', () => {
 		it('delegates to getCatalogItems query', () => {
 			const repo = new SqliteCatalogRepository(makeMockAudit(), makeMockTx());
-			const expected = { data: [], total: 0, page: 1, totalPages: 1 };
+			const expected = { data: [], total: 0, page: 1, totalPages: 1 } as any;
 			mockGetCatalogItems.mockReturnValue(expected);
 
 			const result = repo.getCatalogItems('search', 'dev');
