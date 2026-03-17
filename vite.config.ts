@@ -8,7 +8,8 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	define: {
-		__PKG_NAME__: JSON.stringify(pkg.name)
+		__PKG_NAME__: JSON.stringify(pkg.name),
+		__PKG_VERSION__: JSON.stringify(pkg.version)
 	},
 	test: {
 		include: ['src/**/*.test.ts'],

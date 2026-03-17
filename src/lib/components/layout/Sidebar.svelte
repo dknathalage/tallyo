@@ -152,7 +152,7 @@
 					</svg>
 				{/if}
 			</button>
-			<span class="truncate px-2 text-xs text-gray-500 dark:text-gray-400">~/.invoices/invoices.db</span>
+			<span class="truncate px-2 text-xs text-gray-500 dark:text-gray-400">v{__PKG_VERSION__}</span>
 		</div>
 	</div>
 </aside>
