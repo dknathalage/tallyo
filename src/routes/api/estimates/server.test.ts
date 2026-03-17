@@ -146,7 +146,7 @@ describe('POST /api/estimates', () => {
 
 		const calledWith = vi.mocked(repositories.estimates.createEstimate).mock.calls[0][0];
 		expect(calledWith.client_id).toBeNull();
-		expect(calledWith.payer_id).toBeNull();
+		expect((calledWith as any).payer_id).toBeNull();
 	});
 
 	it('bulk-deletes estimates', async () => {

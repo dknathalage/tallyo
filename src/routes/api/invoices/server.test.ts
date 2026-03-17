@@ -146,7 +146,7 @@ describe('POST /api/invoices', () => {
 
 		const calledWith = vi.mocked(repositories.invoices.createInvoice).mock.calls[0][0];
 		expect(calledWith.client_id).toBeNull();
-		expect(calledWith.payer_id).toBeNull();
+		expect((calledWith as any).payer_id).toBeNull();
 	});
 });
 
