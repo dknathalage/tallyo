@@ -42,7 +42,7 @@ PORT=3002 HOST=0.0.0.0 node build/index.js
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `NODE_ENV` | `development` | Environment |
-| `DB_PATH` | `~/.invoices/invoices.db` | SQLite database path |
+| `DB_PATH` | `~/.invoices/invoices.db (derived from package.json name)` | SQLite database path |
 
 ### Health Check
 
@@ -63,4 +63,4 @@ curl http://localhost:3002/health
 
 - SQLite via better-sqlite3 (server-side, synchronous writes)
 - Migrations run on startup via `src/lib/db/migrate.ts`
-- DB location: `~/.invoices/invoices.db` (or `DB_PATH` env var)
+- DB location: `~/.invoices/invoices.db (derived from package.json name)` (or `DB_PATH` env var)

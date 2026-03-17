@@ -81,7 +81,7 @@ cd invoices && npm install && npm run build
 PORT=3002 HOST=0.0.0.0 node build/index.js
 ```
 
-Database auto-created at `~/.invoices/invoices.db`. Health: `GET /health`
+Database auto-created at `~/.<package-name>/<package-name>.db`. Health: `GET /health`
 """
 
 open('RELEASE_NOTES.md', 'w').write(notes)

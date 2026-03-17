@@ -9,10 +9,12 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { runMigrations } from './migrate.js';
 
+declare const __PKG_NAME__: string;
+
 const DATA_DIR = process.env.DB_PATH
 	? join(process.env.DB_PATH, '..')
-	: join(homedir(), '.invoices');
-const DB_PATH = process.env.DB_PATH ?? join(DATA_DIR, 'invoices.db');
+	: join(homedir(), `.${__PKG_NAME__}`);
+const DB_PATH = process.env.DB_PATH ?? join(DATA_DIR, `${__PKG_NAME__}.db`);
 
 let _db: Database.Database | null = null;
 
