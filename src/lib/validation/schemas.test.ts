@@ -41,7 +41,7 @@ describe('CreateClientSchema', () => {
 	it('rejects empty name', () => {
 		const result = CreateClientSchema.safeParse({ name: '' });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Name is required');
+		expect(result.error?.issues[0].message).toBe('Name is required');
 	});
 
 	it('rejects invalid email', () => {
@@ -102,13 +102,13 @@ describe('LineItemSchema', () => {
 	it('rejects empty description', () => {
 		const result = LineItemSchema.safeParse({ description: '', quantity: 1, rate: 100 });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Description is required');
+		expect(result.error?.issues[0].message).toBe('Description is required');
 	});
 
 	it('rejects zero quantity', () => {
 		const result = LineItemSchema.safeParse({ description: 'X', quantity: 0, rate: 100 });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Quantity must be positive');
+		expect(result.error?.issues[0].message).toBe('Quantity must be positive');
 	});
 
 	it('rejects negative quantity', () => {
@@ -119,7 +119,7 @@ describe('LineItemSchema', () => {
 	it('rejects negative rate', () => {
 		const result = LineItemSchema.safeParse({ description: 'X', quantity: 1, rate: -1 });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Rate must be non-negative');
+		expect(result.error?.issues[0].message).toBe('Rate must be non-negative');
 	});
 
 	it('accepts zero rate', () => {
@@ -169,7 +169,7 @@ describe('CreateInvoiceSchema', () => {
 	it('rejects zero client_id', () => {
 		const result = CreateInvoiceSchema.safeParse({ client_id: 0 });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Client ID must be a positive integer');
+		expect(result.error?.issues[0].message).toBe('Client ID must be a positive integer');
 	});
 
 	it('rejects negative client_id', () => {
@@ -180,7 +180,7 @@ describe('CreateInvoiceSchema', () => {
 	it('rejects invalid currency_code length', () => {
 		const result = CreateInvoiceSchema.safeParse({ client_id: 1, currency_code: 'US' });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Currency code must be 3 characters');
+		expect(result.error?.issues[0].message).toBe('Currency code must be 3 characters');
 	});
 
 	it('rejects notes over 2000 chars', () => {
@@ -229,13 +229,13 @@ describe('CreateEstimateSchema', () => {
 	it('rejects zero client_id', () => {
 		const result = CreateEstimateSchema.safeParse({ client_id: 0 });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Client ID must be a positive integer');
+		expect(result.error?.issues[0].message).toBe('Client ID must be a positive integer');
 	});
 
 	it('rejects currency_code with wrong length', () => {
 		const result = CreateEstimateSchema.safeParse({ client_id: 1, currency_code: 'EURO' });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Currency code must be 3 characters');
+		expect(result.error?.issues[0].message).toBe('Currency code must be 3 characters');
 	});
 
 	it('accepts null tax_rate_id', () => {
@@ -273,13 +273,13 @@ describe('CreatePaymentSchema', () => {
 	it('rejects zero invoice_id', () => {
 		const result = CreatePaymentSchema.safeParse({ invoice_id: 0, amount: 100, payment_date: '2025-01-15' });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Invoice ID must be a positive integer');
+		expect(result.error?.issues[0].message).toBe('Invoice ID must be a positive integer');
 	});
 
 	it('rejects zero amount', () => {
 		const result = CreatePaymentSchema.safeParse({ invoice_id: 1, amount: 0, payment_date: '2025-01-15' });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Amount must be positive');
+		expect(result.error?.issues[0].message).toBe('Amount must be positive');
 	});
 
 	it('rejects negative amount', () => {
@@ -290,7 +290,7 @@ describe('CreatePaymentSchema', () => {
 	it('rejects empty payment_date', () => {
 		const result = CreatePaymentSchema.safeParse({ invoice_id: 1, amount: 100, payment_date: '' });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Payment date is required');
+		expect(result.error?.issues[0].message).toBe('Payment date is required');
 	});
 
 	it('rejects missing payment_date', () => {
@@ -313,14 +313,14 @@ describe('BulkDeleteSchema', () => {
 	it('rejects empty array', () => {
 		const result = BulkDeleteSchema.safeParse({ ids: [] });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('At least 1 ID required');
+		expect(result.error?.issues[0].message).toBe('At least 1 ID required');
 	});
 
 	it('rejects array with 1001 items', () => {
 		const ids = Array.from({ length: 1001 }, (_, i) => i + 1);
 		const result = BulkDeleteSchema.safeParse({ ids });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Maximum 1000 items');
+		expect(result.error?.issues[0].message).toBe('Maximum 1000 items');
 	});
 
 	it('accepts array with exactly 1000 items', () => {
@@ -359,7 +359,7 @@ describe('SearchParamsSchema', () => {
 	it('rejects search over 255 chars', () => {
 		const result = SearchParamsSchema.safeParse({ search: 'a'.repeat(256) });
 		expect(result.success).toBe(false);
-		expect(result.error?.errors[0].message).toBe('Search query too long');
+		expect(result.error?.issues[0].message).toBe('Search query too long');
 	});
 
 	it('rejects page 0', () => {
