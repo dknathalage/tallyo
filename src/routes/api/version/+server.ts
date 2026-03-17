@@ -1,8 +1,12 @@
 import { json } from '@sveltejs/kit';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { execSync } from 'child_process';
 
 export function GET() {
-	const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf-8'));
-	return json({ version: pkg.version });
+	let sha = 'unknown';
+	try {
+		sha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+	} catch {
+		// not a git repo in production — that's fine
+	}
+	return json({ version: sha });
 }
