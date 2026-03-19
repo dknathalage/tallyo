@@ -1,12 +1,13 @@
 # Invoice Manager
 
-Self-hosted, open-source invoice management app. Server-side SQLite via better-sqlite3.
+Self-hosted, open-source invoice management app. Turborepo monorepo with PostgreSQL via pg + Drizzle ORM.
 
 ## Tech Stack
 
+- **Monorepo:** Turborepo with npm workspaces
 - **Framework:** SvelteKit with Svelte 5, TypeScript (strict)
 - **Styling:** Tailwind CSS 4 via Vite plugin
-- **Database:** SQLite via better-sqlite3 (server-side)
+- **Database:** PostgreSQL via pg + Drizzle ORM
 - **PDF:** jsPDF + autotable
 - **Import/Export:** PapaParse (CSV), XLSX (Excel)
 - **Testing:** Vitest
@@ -14,11 +15,12 @@ Self-hosted, open-source invoice management app. Server-side SQLite via better-s
 
 ## Project Layout
 
-- `src/lib/` — Shared library: components, database, utilities
-- `src/lib/db/` — Database connection, schema, migrations, query modules
-- `src/lib/repositories/` — Data access layer (interfaces + SQLite implementations)
-- `src/lib/utils/` — Helpers (currency, formatting, PDF)
-- `src/routes/` — SvelteKit pages and server load functions
+- `apps/app/` — SvelteKit invoice app
+- `apps/app/src/lib/` — Shared library: components, database, utilities
+- `apps/app/src/lib/db/` — Database connection, schema, migrations, query modules
+- `apps/app/src/lib/repositories/` — Data access layer (interfaces + SQLite implementations)
+- `apps/app/src/lib/utils/` — Helpers (currency, formatting, PDF)
+- `apps/app/src/routes/` — SvelteKit pages and server load functions
 
 ## Commands
 
@@ -27,12 +29,25 @@ Self-hosted, open-source invoice management app. Server-side SQLite via better-s
 - `npm test` — Run Vitest tests (224 tests)
 - `npm run test:coverage` — Run tests with coverage report
 - `npm run check` — TypeScript check
+- `npx drizzle-kit generate` — Generate Drizzle migrations
+- `npx drizzle-kit migrate` — Run Drizzle migrations
+
+All root commands run via Turborepo. You can also run app-specific commands:
+- `npm run --workspace=@tallyo/app dev`
 
 ## Production Deployment
 
+Ensure PostgreSQL is running and accessible before starting the app.
+
 ```bash
 npm run build
-PORT=3002 HOST=0.0.0.0 node build/index.js
+DATABASE_URL=postgresql://user:pass@localhost:5432/tallyo PORT=3002 HOST=0.0.0.0 node apps/app/build/index.js
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up -d
 ```
 
 ### Environment Variables
@@ -42,7 +57,7 @@ PORT=3002 HOST=0.0.0.0 node build/index.js
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `NODE_ENV` | `development` | Environment |
-| `DB_PATH` | `~/.invoices/invoices.db (derived from package.json name)` | SQLite database path |
+| `DATABASE_URL` | `postgresql://localhost:5432/tallyo` | PostgreSQL connection URL |
 
 ### Health Check
 
@@ -53,14 +68,14 @@ curl http://localhost:3002/health
 
 ## Conventions
 
-- Database queries live in `src/lib/db/queries/` with co-located `.test.ts` files
+- Database queries live in `apps/app/src/lib/db/queries/` with co-located `.test.ts` files
 - Use repositories (`$lib/repositories`) in routes — never `$lib/db/queries` directly
-- Components are grouped by domain under `src/lib/components/`
+- Components are grouped by domain under `apps/app/src/lib/components/`
 - All database mutations are audit-logged
 - Commits follow Conventional Commits (enforced by commitlint)
 
 ## Database
 
-- SQLite via better-sqlite3 (server-side, synchronous writes)
-- Migrations run on startup via `src/lib/db/migrate.ts`
-- DB location: `~/.invoices/invoices.db (derived from package.json name)` (or `DB_PATH` env var)
+- PostgreSQL via pg + Drizzle ORM
+- Migrations managed by Drizzle Kit (`npx drizzle-kit generate` / `npx drizzle-kit migrate`)
+- Connection URL: `DATABASE_URL` env var (default: `postgresql://localhost:5432/tallyo`)
