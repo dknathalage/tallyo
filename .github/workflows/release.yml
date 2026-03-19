@@ -16,6 +16,18 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,16 +43,16 @@ jobs:
         run: npm ci
 
       - name: Svelte type check
-        run: npm run check
+        run: npx turbo run check
 
       - name: Run tests
-        run: npm test
+        run: npx turbo run test
 
       - name: Build
-        run: npm run build
+        run: npx turbo run build
 
       - name: Run coverage
-        run: npm run test:coverage 2>&1 | tee coverage-output.txt
+        run: npm run --workspace=@tallyo/app test:coverage 2>&1 | tee coverage-output.txt
 
       - name: Parse coverage summary
         id: coverage
@@ -54,7 +66,7 @@ jobs:
       - name: Count tests
         id: tests
         run: |
-          COUNT=$(npm test 2>&1 | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | head -1)
+          COUNT=$(npm run --workspace=@tallyo/app test 2>&1 | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+" | head -1)
           echo "count=${COUNT:-0}" >> $GITHUB_OUTPUT
 
       - name: Build release notes

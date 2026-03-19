@@ -13,6 +13,18 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test
     steps:
       - uses: actions/checkout@v4
 
@@ -26,13 +38,13 @@ jobs:
         run: npm ci
 
       - name: Svelte type check
-        run: npm run check
+        run: npx turbo run check
 
       - name: Run tests
-        run: npm run test
+        run: npx turbo run test
 
       - name: Test with coverage
-        run: npm run test:coverage
+        run: npx turbo run test:coverage
 
   build:
     name: Build
@@ -51,7 +63,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: npx turbo run build
 
   tag:
     name: Auto Tag

@@ -5,10 +5,12 @@ node_modules
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
-/build
+.svelte-kit
 /src/docs/.vitepress/dist
 /src/docs/.vitepress/cache
+
+# Turbo
+.turbo
 
 # OS
 .DS_Store
@@ -27,9 +29,5 @@ vite.config.ts.timestamp-*
 # Coverage reports
 coverage/
 
-# SQLite database files
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
 .build-sha
+build

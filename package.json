@@ -1,47 +1,21 @@
 {
-  "name": "invoices",
+  "name": "tallyo",
   "private": true,
-  "version": "1.0.2",
   "type": "module",
+  "packageManager": "npm@10.8.2",
+  "workspaces": ["apps/*"],
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "prepare": "husky",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "check": "turbo run check",
+    "test:coverage": "turbo run test:coverage",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.4",
     "@commitlint/config-conventional": "^20.4.4",
-    "@sveltejs/adapter-auto": "^7.0.0",
-    "@sveltejs/adapter-node": "^5.5.4",
-    "@sveltejs/kit": "^2.50.2",
-    "@sveltejs/vite-plugin-svelte": "^6.2.4",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/papaparse": "^5.5.2",
-    "@vitest/coverage-v8": "^4.1.0",
     "husky": "^9.1.7",
-    "svelte": "^5.51.0",
-    "svelte-check": "^4.3.6",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vitest": "^4.1.0"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
-    "@tailwindcss/typography": "^0.5.19",
-    "@tailwindcss/vite": "^4.2.1",
-    "better-sqlite3": "^12.8.0",
-    "jspdf": "^4.2.0",
-    "jspdf-autotable": "^5.0.7",
-    "mdsvex": "^0.12.6",
-    "papaparse": "^5.5.3",
-    "tailwindcss": "^4.2.1",
-    "xlsx": "^0.18.5",
-    "zod": "^4.3.6"
+    "turbo": "^2.4.0"
   }
 }
