@@ -134,7 +134,7 @@
 			<div class="mt-4">
 				<EmptyState title={i18n.t('dashboard.noInvoicesYet')} message={i18n.t('dashboard.noInvoicesMessage')}>
 					<a href="{base}/console/invoices/new">
-						<Button>{i18n.t('dashboard.repositories.invoices.createInvoice')}</Button>
+						<Button>{i18n.t('dashboard.createInvoice')}</Button>
 					</a>
 				</EmptyState>
 			</div>
@@ -192,7 +192,7 @@
 			<div class="mt-4">
 				<EmptyState title={i18n.t('dashboard.noEstimatesYet')} message={i18n.t('dashboard.noEstimatesMessage')}>
 					<a href="{base}/console/estimates/new">
-						<Button>{i18n.t('dashboard.repositories.estimates.createEstimate')}</Button>
+						<Button>{i18n.t('dashboard.createEstimate')}</Button>
 					</a>
 				</EmptyState>
 			</div>

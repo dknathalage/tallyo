@@ -74,17 +74,30 @@
 
 		if (!activeSheet || !mappingConfig) return;
 
-		// Create any new tiers first, then replace newTierColumns with real tier IDs
+		// Resolve new tier columns: reuse existing tiers by name, only create truly new ones
 		if (mappingConfig.newTierColumns.length > 0) {
 			const resolvedTierColumns = { ...mappingConfig.tierColumns };
+			const existingTiers: { id: number; name: string }[] = await fetch('/api/rate-tiers').then((r) => r.json());
+			const tiersByName = new Map(existingTiers.map((t) => [t.name, t.id]));
+
 			for (const colName of mappingConfig.newTierColumns) {
-				const res = await fetch('/api/rate-tiers', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ name: colName, description: `Auto-created from import column "${colName}"` })
-				});
-				const { id: tierId } = await res.json();
-				resolvedTierColumns[colName] = tierId;
+				const existingId = tiersByName.get(colName);
+				if (existingId) {
+					resolvedTierColumns[colName] = existingId;
+				} else {
+					const res = await fetch('/api/rate-tiers', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ name: colName, description: `Auto-created from import column "${colName}"` })
+					});
+					if (!res.ok) {
+						const errBody = await res.text();
+						throw new Error(`Failed to create rate tier "${colName}": ${errBody}`);
+					}
+					const { id: tierId } = await res.json();
+					resolvedTierColumns[colName] = tierId;
+					tiersByName.set(colName, tierId);
+				}
 			}
 			mappingConfig = {
 				...mappingConfig,
@@ -95,8 +108,9 @@
 
 		// Run diff
 		const mapped = applyMapping(activeSheet.rows, mappingConfig);
-		const existingRes = await fetch('/api/catalog');
-		const existingItems = await existingRes.json();
+		const existingRes = await fetch('/api/catalog?limit=200');
+		const existingBody = await existingRes.json();
+		const existingItems = existingBody.data ?? existingBody;
 		const existing = existingItems.map((item: { id: number; name: string; sku: string; rate: number; unit: string; category: string }) => ({
 			id: item.id,
 			name: item.name,
