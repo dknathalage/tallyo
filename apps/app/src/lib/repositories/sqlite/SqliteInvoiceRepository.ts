@@ -20,7 +20,7 @@ import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../interfaces/types.js';
 import type { Invoice, LineItem, AgingBucket, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
-export class PgInvoiceRepository implements InvoiceRepository {
+export class SqliteInvoiceRepository implements InvoiceRepository {
 	constructor(private readonly _audit: AuditRepository) {}
 
 	async getInvoices(search?: string, status?: string, pagination?: PaginationParams): Promise<PaginatedResult<Invoice>> {

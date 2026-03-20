@@ -1,29 +1,30 @@
 /**
- * Server-side PostgreSQL connection using pg + Drizzle ORM.
+ * Server-side SQLite connection using better-sqlite3 + Drizzle ORM.
  * This file must only be imported from server-side code (+page.server.ts, API routes, etc.).
  * Never import directly in .svelte files.
  */
-import { drizzle } from 'drizzle-orm/node-postgres';
-import pg from 'pg';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import Database from 'better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from './drizzle-schema.js';
+import { getDbPath } from '../data-dir.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://localhost:5432/tallyo';
-
-let _pool: pg.Pool | null = null;
+let _sqlite: Database.Database | null = null;
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let _migrated = false;
 
-function getPool(): pg.Pool {
-	if (_pool) return _pool;
-	_pool = new pg.Pool({ connectionString: DATABASE_URL });
-	return _pool;
+function getSqlite(): Database.Database {
+	if (_sqlite) return _sqlite;
+	_sqlite = new Database(getDbPath());
+	_sqlite.pragma('journal_mode = WAL');
+	_sqlite.pragma('foreign_keys = ON');
+	return _sqlite;
 }
 
 export function getDb() {
 	if (_db) return _db;
-	const pool = getPool();
-	_db = drizzle(pool, { schema });
+	const sqlite = getSqlite();
+	_db = drizzle(sqlite, { schema });
 	return _db;
 }
 
@@ -32,16 +33,11 @@ export type Database = ReturnType<typeof getDb>;
 export async function ensureMigrations(): Promise<void> {
 	if (_migrated) return;
 	const db = getDb();
-	await migrate(db, { migrationsFolder: './drizzle' });
+	migrate(db, { migrationsFolder: './drizzle' });
 	_migrated = true;
 }
 
 export async function healthCheck(): Promise<void> {
-	const pool = getPool();
-	const client = await pool.connect();
-	try {
-		await client.query('SELECT 1');
-	} finally {
-		client.release();
-	}
+	const sqlite = getSqlite();
+	sqlite.prepare('SELECT 1').get();
 }

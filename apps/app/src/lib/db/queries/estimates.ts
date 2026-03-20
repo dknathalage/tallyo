@@ -6,9 +6,8 @@ import type { Estimate, EstimateLineItem, PaginationParams, PaginatedResult } fr
 import { paginate } from '../../types/index.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../../repositories/interfaces/types.js';
 
-function toISOString(d: Date | string | null | undefined): string {
+function toISOString(d: string | null | undefined): string {
 	if (!d) return '';
-	if (d instanceof Date) return d.toISOString();
 	return d;
 }
 
@@ -33,8 +32,8 @@ function mapRowToEstimate(row: Record<string, unknown>): Estimate {
 		business_snapshot: (row.business_snapshot as string) ?? '{}',
 		client_snapshot: (row.client_snapshot as string) ?? '{}',
 		payer_snapshot: (row.payer_snapshot as string) ?? '{}',
-		created_at: toISOString(row.created_at as Date | string | null),
-		updated_at: toISOString(row.updated_at as Date | string | null)
+		created_at: toISOString(row.created_at as string | null),
+		updated_at: toISOString(row.updated_at as string | null)
 	};
 }
 
@@ -214,7 +213,7 @@ export async function updateEstimate(
 			business_snapshot: data.business_snapshot ?? '{}',
 			client_snapshot: data.client_snapshot ?? '{}',
 			payer_snapshot: data.payer_snapshot ?? '{}',
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(estimates.id, id));
 
@@ -249,7 +248,7 @@ export async function updateEstimateStatus(id: number, status: string): Promise<
 	const db = getDb();
 	await db
 		.update(estimates)
-		.set({ status, updated_at: new Date() })
+		.set({ status, updated_at: new Date().toISOString() })
 		.where(eq(estimates.id, id));
 }
 
@@ -271,7 +270,7 @@ export async function bulkUpdateEstimateStatus(ids: number[], status: string): P
 	const db = getDb();
 	await db
 		.update(estimates)
-		.set({ status, updated_at: new Date() })
+		.set({ status, updated_at: new Date().toISOString() })
 		.where(inArray(estimates.id, ids));
 }
 
@@ -343,7 +342,7 @@ export async function convertEstimateToInvoice(
 
 	await db
 		.update(estimates)
-		.set({ converted_invoice_id: invoiceId, updated_at: new Date() })
+		.set({ converted_invoice_id: invoiceId, updated_at: new Date().toISOString() })
 		.where(eq(estimates.id, estimateId));
 
 	return { invoiceId, invoiceNumber, estimateNumber: estimate.estimate_number };

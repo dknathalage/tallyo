@@ -1,13 +1,13 @@
 # Invoice Manager
 
-Self-hosted, open-source invoice management app. Turborepo monorepo with PostgreSQL via pg + Drizzle ORM.
+Self-hosted, open-source invoice management app. Turborepo monorepo with SQLite via better-sqlite3 + Drizzle ORM.
 
 ## Tech Stack
 
 - **Monorepo:** Turborepo with npm workspaces
 - **Framework:** SvelteKit with Svelte 5, TypeScript (strict)
 - **Styling:** Tailwind CSS 4 via Vite plugin
-- **Database:** PostgreSQL via pg + Drizzle ORM
+- **Database:** SQLite via better-sqlite3 + Drizzle ORM
 - **PDF:** jsPDF + autotable
 - **Import/Export:** PapaParse (CSV), XLSX (Excel)
 - **Testing:** Vitest
@@ -37,11 +37,9 @@ All root commands run via Turborepo. You can also run app-specific commands:
 
 ## Production Deployment
 
-Ensure PostgreSQL is running and accessible before starting the app.
-
 ```bash
 npm run build
-DATABASE_URL=postgresql://user:pass@localhost:5432/tallyo PORT=3002 HOST=0.0.0.0 node apps/app/build/index.js
+DATA_DIR=~/.tallyo PORT=3002 HOST=0.0.0.0 node apps/app/build/index.js
 ```
 
 Or use Docker Compose:
@@ -57,7 +55,7 @@ docker compose up -d
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `NODE_ENV` | `development` | Environment |
-| `DATABASE_URL` | `postgresql://localhost:5432/tallyo` | PostgreSQL connection URL |
+| `DATA_DIR` | `~/.tallyo` | Data directory (contains tallyo.db and config.json) |
 
 ### Health Check
 
@@ -76,6 +74,6 @@ curl http://localhost:3002/health
 
 ## Database
 
-- PostgreSQL via pg + Drizzle ORM
+- SQLite (better-sqlite3) + Drizzle ORM
 - Migrations managed by Drizzle Kit (`npx drizzle-kit generate` / `npx drizzle-kit migrate`)
-- Connection URL: `DATABASE_URL` env var (default: `postgresql://localhost:5432/tallyo`)
+- Database file stored in `DATA_DIR` (default: `~/.tallyo/tallyo.db`)

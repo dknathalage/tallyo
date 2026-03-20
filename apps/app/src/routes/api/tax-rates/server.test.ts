@@ -13,7 +13,7 @@ vi.mock('@sveltejs/kit', () => ({
 	}
 }));
 
-vi.mock('$lib/repositories/postgres/index.js', () => ({
+vi.mock('$lib/repositories/index.js', () => ({
 	repositories: {
 		taxRates: {
 			getTaxRates: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock('$lib/server/db-error.js', () => ({
 
 import { GET, POST } from './+server.js';
 import { PUT, DELETE } from './[id]/+server.js';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 
 function makeRequest(body: unknown) {
 	return { json: async () => body } as unknown as Request;

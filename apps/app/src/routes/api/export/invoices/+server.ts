@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 
 export const GET: RequestHandler = async () => {
 	const db = getDb();
-	const rows = await db.execute(sql`
+	const rows = db.all(sql`
 		SELECT i.uuid as invoice_uuid, i.invoice_number, c.name as client_name,
 		       COALESCE(c.email,'') as client_email, i.date, i.due_date, i.tax_rate,
 		       COALESCE(i.notes,'') as notes, i.status,
@@ -20,5 +20,5 @@ export const GET: RequestHandler = async () => {
 		INNER JOIN line_items li ON li.invoice_id = i.id
 		ORDER BY i.invoice_number, li.sort_order
 	`);
-	return json(rows.rows);
+	return json(rows);
 };

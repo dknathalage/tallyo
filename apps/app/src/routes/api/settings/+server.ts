@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 import { dbError } from '$lib/server/db-error.js';
 
 export const GET: RequestHandler = async () => {

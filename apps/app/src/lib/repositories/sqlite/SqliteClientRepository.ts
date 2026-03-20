@@ -15,7 +15,7 @@ import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { CreateClientInput, UpdateClientInput } from '../interfaces/types.js';
 import type { Client, PartySnapshot, ClientRevenueSummary, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
-export class PgClientRepository implements ClientRepository {
+export class SqliteClientRepository implements ClientRepository {
 	constructor(private readonly _audit: AuditRepository) {}
 
 	async getClients(search?: string, pagination?: PaginationParams): Promise<PaginatedResult<Client>> {

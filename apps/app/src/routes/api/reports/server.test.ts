@@ -13,7 +13,7 @@ vi.mock('@sveltejs/kit', () => ({
 	}
 }));
 
-vi.mock('$lib/repositories/postgres/index.js', () => ({
+vi.mock('$lib/repositories/index.js', () => ({
 	repositories: {
 		invoices: {
 			getAgingReport: vi.fn()
@@ -25,7 +25,7 @@ vi.mock('$lib/repositories/postgres/index.js', () => ({
 }));
 
 import { GET } from './+server.js';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 
 describe('GET /api/reports', () => {
 	beforeEach(() => vi.clearAllMocks());

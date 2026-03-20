@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 
 export const GET: RequestHandler = async () => {
 	return json(await repositories.rateTiers.getRateTiers());

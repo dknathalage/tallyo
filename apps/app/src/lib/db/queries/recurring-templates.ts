@@ -7,9 +7,8 @@ import { getClient } from './clients.js';
 import { getBusinessProfile } from './business-profile.js';
 import type { RecurringTemplate, RecurringFrequency } from '../../types/index.js';
 
-function toISOString(d: Date | string | null | undefined): string {
+function toISOString(d: string | null | undefined): string {
 	if (!d) return '';
-	if (d instanceof Date) return d.toISOString();
 	return d;
 }
 
@@ -26,8 +25,8 @@ function mapRowToTemplate(row: Record<string, unknown>): RecurringTemplate {
 		tax_rate: row.tax_rate as number,
 		notes: (row.notes as string) ?? '',
 		is_active: (row.is_active as boolean) ? 1 : 0,
-		created_at: toISOString(row.created_at as Date | string | null),
-		updated_at: toISOString(row.updated_at as Date | string | null)
+		created_at: toISOString(row.created_at as string | null),
+		updated_at: toISOString(row.updated_at as string | null)
 	};
 }
 
@@ -162,7 +161,7 @@ export async function updateRecurringTemplate(
 			tax_rate: data.tax_rate ?? 0,
 			notes: data.notes ?? '',
 			is_active: (data.is_active ?? 1) === 1,
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(recurringTemplates.id, id));
 
@@ -210,7 +209,7 @@ export async function advanceTemplateNextDue(id: number): Promise<void> {
 	const db = getDb();
 	await db
 		.update(recurringTemplates)
-		.set({ next_due: newDate, updated_at: new Date() })
+		.set({ next_due: newDate, updated_at: new Date().toISOString() })
 		.where(eq(recurringTemplates.id, id));
 }
 
@@ -322,7 +321,7 @@ export async function createInvoiceFromTemplate(templateId: number): Promise<num
 	const newDate = advanceNextDue(template.next_due, template.frequency);
 	await db
 		.update(recurringTemplates)
-		.set({ next_due: newDate, updated_at: new Date() })
+		.set({ next_due: newDate, updated_at: new Date().toISOString() })
 		.where(eq(recurringTemplates.id, templateId));
 
 	return invoiceId;

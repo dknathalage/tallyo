@@ -25,8 +25,8 @@ function mapRow(row: Record<string, unknown>): Client {
 		metadata: (row.metadata as string) ?? '{}',
 		payer_id: (row.payer_id as number | null) ?? null,
 		payer_name: (row.payer_name as string) ?? undefined,
-		created_at: row.created_at instanceof Date ? row.created_at.toISOString() : (row.created_at as string) ?? '',
-		updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : (row.updated_at as string) ?? ''
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 
@@ -152,7 +152,7 @@ export async function updateClient(
 			pricing_tier_id: data.pricing_tier_id ?? null,
 			metadata: data.metadata ?? '{}',
 			payer_id: data.payer_id ?? null,
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(clients.id, id));
 }

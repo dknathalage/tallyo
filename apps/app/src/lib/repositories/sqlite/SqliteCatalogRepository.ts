@@ -19,7 +19,7 @@ import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { CreateCatalogItemInput, UpdateCatalogItemInput } from '../interfaces/types.js';
 import type { CatalogItem, CatalogItemWithRates, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
-export class PgCatalogRepository implements CatalogRepository {
+export class SqliteCatalogRepository implements CatalogRepository {
 	constructor(private readonly _audit: AuditRepository) {}
 
 	async getCatalogItems(search?: string, category?: string, pagination?: PaginationParams): Promise<PaginatedResult<CatalogItem>> {

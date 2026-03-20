@@ -19,7 +19,7 @@ import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { CreateEstimateInput, UpdateEstimateInput, LineItemInput } from '../interfaces/types.js';
 import type { Estimate, EstimateLineItem, PaginationParams, PaginatedResult } from '$lib/types/index.js';
 
-export class PgEstimateRepository implements EstimateRepository {
+export class SqliteEstimateRepository implements EstimateRepository {
 	constructor(private readonly _audit: AuditRepository) {}
 
 	async getEstimates(search?: string, status?: string, pagination?: PaginationParams): Promise<PaginatedResult<Estimate>> {

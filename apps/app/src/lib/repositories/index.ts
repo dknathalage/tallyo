@@ -1,5 +1,5 @@
-export { repositories } from './postgres/index.js';
-export type { Repositories } from './postgres/index.js';
+export { repositories } from './sqlite/index.js';
+export type { Repositories } from './sqlite/index.js';
 export type {
 	StorageRepository,
 	StorageTransaction,

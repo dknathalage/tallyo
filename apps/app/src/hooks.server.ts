@@ -1,4 +1,7 @@
 import type { HandleServerError } from '@sveltejs/kit';
+import { ensureMigrations } from '$lib/db/connection';
+
+await ensureMigrations();
 
 export const handleError: HandleServerError = ({ error, event }) => {
 	const message = error instanceof Error ? error.message : String(error);

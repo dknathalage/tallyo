@@ -7,9 +7,8 @@ import type { CreateInvoiceInput, UpdateInvoiceInput, LineItemInput } from '../.
 import { getBusinessProfile } from './business-profile.js';
 import { generateInvoiceNumber } from '../number-generators.js';
 
-function toISOString(d: Date | string | null | undefined): string {
+function toISOString(d: string | null | undefined): string {
 	if (!d) return '';
-	if (d instanceof Date) return d.toISOString();
 	return d;
 }
 
@@ -34,8 +33,8 @@ function mapRowToInvoice(row: Record<string, unknown>): Invoice {
 		business_snapshot: (row.business_snapshot as string) ?? '{}',
 		client_snapshot: (row.client_snapshot as string) ?? '{}',
 		payer_snapshot: (row.payer_snapshot as string) ?? '{}',
-		created_at: toISOString(row.created_at as Date | string | null),
-		updated_at: toISOString(row.updated_at as Date | string | null)
+		created_at: toISOString(row.created_at as string | null),
+		updated_at: toISOString(row.updated_at as string | null)
 	};
 }
 
@@ -249,7 +248,7 @@ export async function updateInvoice(
 			business_snapshot: data.business_snapshot ?? '{}',
 			client_snapshot: data.client_snapshot ?? '{}',
 			payer_snapshot: data.payer_snapshot ?? '{}',
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(invoices.id, id));
 
@@ -284,7 +283,7 @@ export async function updateInvoiceStatus(id: number, status: string): Promise<v
 	const db = getDb();
 	await db
 		.update(invoices)
-		.set({ status, updated_at: new Date() })
+		.set({ status, updated_at: new Date().toISOString() })
 		.where(eq(invoices.id, id));
 }
 
@@ -306,7 +305,7 @@ export async function bulkUpdateInvoiceStatus(ids: number[], status: string): Pr
 	const db = getDb();
 	await db
 		.update(invoices)
-		.set({ status, updated_at: new Date() })
+		.set({ status, updated_at: new Date().toISOString() })
 		.where(inArray(invoices.id, ids));
 }
 
@@ -357,7 +356,7 @@ export async function markOverdueInvoices(): Promise<Array<{ id: number; invoice
 		.where(
 			and(
 				eq(invoices.status, 'sent'),
-				sql`${invoices.due_date}::date < CURRENT_DATE`
+				sql`${invoices.due_date} < date('now')`
 			)
 		);
 
@@ -366,7 +365,7 @@ export async function markOverdueInvoices(): Promise<Array<{ id: number; invoice
 	const ids = overdue.map((r) => r.id);
 	await db
 		.update(invoices)
-		.set({ status: 'overdue', updated_at: new Date() })
+		.set({ status: 'overdue', updated_at: new Date().toISOString() })
 		.where(inArray(invoices.id, ids));
 
 	return overdue;
@@ -456,7 +455,7 @@ export async function getAgingReport(): Promise<AgingBucket[]> {
 			payer_snapshot: invoices.payer_snapshot,
 			created_at: invoices.created_at,
 			updated_at: invoices.updated_at,
-			days_overdue: sql<number>`CAST(EXTRACT(DAY FROM now() - ${invoices.due_date}::date) AS INTEGER)`
+			days_overdue: sql<number>`CAST(julianday('now') - julianday(${invoices.due_date}) AS INTEGER)`
 		})
 		.from(invoices)
 		.leftJoin(clients, eq(invoices.client_id, clients.id))

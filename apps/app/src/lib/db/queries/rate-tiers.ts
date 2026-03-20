@@ -10,14 +10,8 @@ function mapRow(row: Record<string, unknown>): RateTier {
 		name: row.name as string,
 		description: (row.description as string) ?? '',
 		sort_order: (row.sort_order as number) ?? 0,
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? ''),
-		updated_at:
-			row.updated_at instanceof Date
-				? row.updated_at.toISOString()
-				: ((row.updated_at as string) ?? '')
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 
@@ -84,7 +78,7 @@ export async function updateRateTier(
 			name: data.name,
 			description: data.description ?? '',
 			sort_order: data.sort_order ?? 0,
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(rateTiers.id, id));
 }

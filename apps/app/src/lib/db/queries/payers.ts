@@ -59,7 +59,7 @@ export async function updatePayer(
 			phone: data.phone ?? '',
 			address: data.address ?? '',
 			metadata: data.metadata ?? '{}',
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(payers.id, id));
 }
@@ -92,8 +92,8 @@ export async function getPayerClients(payerId: number): Promise<Client[]> {
 		pricing_tier_id: r.pricing_tier_id,
 		metadata: r.metadata ?? '{}',
 		payer_id: r.payer_id,
-		created_at: r.created_at?.toISOString() ?? '',
-		updated_at: r.updated_at?.toISOString() ?? ''
+		created_at: (r.created_at as string) ?? '',
+		updated_at: (r.updated_at as string) ?? ''
 	}));
 }
 
@@ -129,7 +129,7 @@ function mapRow(row: typeof payers.$inferSelect): Payer {
 		phone: row.phone ?? '',
 		address: row.address ?? '',
 		metadata: row.metadata ?? '{}',
-		created_at: row.created_at?.toISOString() ?? '',
-		updated_at: row.updated_at?.toISOString() ?? ''
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }

@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);

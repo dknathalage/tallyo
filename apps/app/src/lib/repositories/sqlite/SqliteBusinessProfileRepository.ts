@@ -7,7 +7,7 @@ import type { BusinessProfileRepository } from '../interfaces/BusinessProfileRep
 import type { SaveBusinessProfileInput } from '../interfaces/types.js';
 import type { BusinessProfile, PartySnapshot } from '$lib/types/index.js';
 
-export class PgBusinessProfileRepository implements BusinessProfileRepository {
+export class SqliteBusinessProfileRepository implements BusinessProfileRepository {
 	async getBusinessProfile(): Promise<BusinessProfile | null> {
 		return await getBusinessProfile();
 	}

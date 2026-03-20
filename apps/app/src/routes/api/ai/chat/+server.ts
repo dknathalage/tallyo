@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import Anthropic from '@anthropic-ai/sdk';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 import { AI_TOOLS, SYSTEM_PROMPT, executeTool } from '$lib/server/ai-tools.js';
 import type { RequestHandler } from './$types.js';
 

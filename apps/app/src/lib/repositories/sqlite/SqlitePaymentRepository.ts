@@ -7,7 +7,7 @@ import {
 import type { PaymentRepository } from '../interfaces/PaymentRepository.js';
 import type { Payment } from '$lib/types/index.js';
 
-export class PgPaymentRepository implements PaymentRepository {
+export class SqlitePaymentRepository implements PaymentRepository {
 	async getInvoicePayments(invoiceId: number): Promise<Payment[]> {
 		return await getInvoicePayments(invoiceId);
 	}

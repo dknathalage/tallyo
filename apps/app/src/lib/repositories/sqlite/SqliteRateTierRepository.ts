@@ -10,7 +10,7 @@ import type { RateTierRepository } from '../interfaces/RateTierRepository.js';
 import type { CreateRateTierInput, UpdateRateTierInput } from '../interfaces/types.js';
 import type { RateTier } from '$lib/types/index.js';
 
-export class PgRateTierRepository implements RateTierRepository {
+export class SqliteRateTierRepository implements RateTierRepository {
 	async getRateTiers(): Promise<RateTier[]> {
 		return await getRateTiers();
 	}

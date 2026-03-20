@@ -12,14 +12,8 @@ function mapRow(row: Record<string, unknown>): Payment {
 		payment_date: row.payment_date as string,
 		method: (row.method as string) ?? '',
 		notes: (row.notes as string) ?? '',
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? ''),
-		updated_at:
-			row.updated_at instanceof Date
-				? row.updated_at.toISOString()
-				: ((row.updated_at as string) ?? '')
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 

@@ -16,18 +16,19 @@ RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 COPY --from=builder --chown=nodejs:nodejs /app/apps/app/build ./build
-COPY --from=builder --chown=nodejs:nodejs /app/apps/app/drizzle ./drizzle
 COPY --from=builder --chown=nodejs:nodejs /app/apps/app/package.json ./
 COPY --from=builder --chown=nodejs:nodejs /app/package-lock.json ./
 RUN npm ci --omit=dev
 
+# Create data directory
+RUN mkdir -p /data && chown nodejs:nodejs /data
+
 USER nodejs
 
-ENV PORT=3000
-ENV HOST=0.0.0.0
 ENV NODE_ENV=production
-ENV DATABASE_URL=postgresql://localhost:5432/tallyo
+ENV DATA_DIR=/data
 
+VOLUME ["/data"]
 EXPOSE 3000
 
 ENTRYPOINT ["dumb-init", "--"]

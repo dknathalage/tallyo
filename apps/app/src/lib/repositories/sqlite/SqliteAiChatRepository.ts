@@ -11,7 +11,7 @@ import {
 import type { AiChatRepository } from '../interfaces/AiChatRepository.js';
 import type { AiChatSession, AiChatMessage } from '$lib/types/index.js';
 
-export class PgAiChatRepository implements AiChatRepository {
+export class SqliteAiChatRepository implements AiChatRepository {
 	async getSessions(): Promise<AiChatSession[]> {
 		return await getSessions();
 	}

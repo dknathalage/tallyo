@@ -10,14 +10,8 @@ function mapRow(row: Record<string, unknown>): TaxRate {
 		name: row.name as string,
 		rate: row.rate as number,
 		is_default: row.is_default === true ? 1 : 0,
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? ''),
-		updated_at:
-			row.updated_at instanceof Date
-				? row.updated_at.toISOString()
-				: ((row.updated_at as string) ?? '')
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 
@@ -89,7 +83,7 @@ export async function updateTaxRate(
 			name: data.name,
 			rate: data.rate,
 			is_default: data.is_default ?? false,
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(taxRates.id, id));
 }
