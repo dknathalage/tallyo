@@ -33,7 +33,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.1",
     "drizzle-orm": "^0.44.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.8.0",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "mdsvex": "^0.12.6",

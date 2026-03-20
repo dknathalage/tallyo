@@ -1,5 +1,6 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 COPY apps/app/package.json apps/app/package.json
 RUN npm ci
@@ -9,16 +10,17 @@ RUN npx turbo run build --filter=@tallyo/app
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init and build tools for better-sqlite3
+RUN apk add --no-cache dumb-init python3 make g++
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 COPY --from=builder --chown=nodejs:nodejs /app/apps/app/build ./build
+COPY --from=builder --chown=nodejs:nodejs /app/apps/app/drizzle ./drizzle
 COPY --from=builder --chown=nodejs:nodejs /app/apps/app/package.json ./
 COPY --from=builder --chown=nodejs:nodejs /app/package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && apk del python3 make g++
 
 # Create data directory
 RUN mkdir -p /data && chown nodejs:nodejs /data
