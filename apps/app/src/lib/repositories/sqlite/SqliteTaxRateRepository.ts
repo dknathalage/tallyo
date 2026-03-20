@@ -9,7 +9,7 @@ import {
 import type { TaxRateRepository } from '../interfaces/TaxRateRepository.js';
 import type { TaxRate } from '$lib/types/index.js';
 
-export class PgTaxRateRepository implements TaxRateRepository {
+export class SqliteTaxRateRepository implements TaxRateRepository {
 	async getTaxRates(): Promise<TaxRate[]> {
 		return await getTaxRates();
 	}

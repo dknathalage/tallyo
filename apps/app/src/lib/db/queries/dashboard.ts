@@ -4,9 +4,8 @@ import { eq, sql, desc, inArray } from 'drizzle-orm';
 import type { DashboardStats, Invoice, Estimate, MonthlyRevenue } from '../../types/index.js';
 import { getBusinessProfile } from './business-profile.js';
 
-function toISOString(d: Date | string | null | undefined): string {
+function toISOString(d: string | null | undefined): string {
 	if (!d) return '';
-	if (d instanceof Date) return d.toISOString();
 	return d;
 }
 
@@ -31,8 +30,8 @@ function mapRowToInvoice(row: Record<string, unknown>): Invoice {
 		business_snapshot: (row.business_snapshot as string) ?? '{}',
 		client_snapshot: (row.client_snapshot as string) ?? '{}',
 		payer_snapshot: (row.payer_snapshot as string) ?? '{}',
-		created_at: toISOString(row.created_at as Date | string | null),
-		updated_at: toISOString(row.updated_at as Date | string | null)
+		created_at: toISOString(row.created_at as string | null),
+		updated_at: toISOString(row.updated_at as string | null)
 	};
 }
 
@@ -57,8 +56,8 @@ function mapRowToEstimate(row: Record<string, unknown>): Estimate {
 		business_snapshot: (row.business_snapshot as string) ?? '{}',
 		client_snapshot: (row.client_snapshot as string) ?? '{}',
 		payer_snapshot: (row.payer_snapshot as string) ?? '{}',
-		created_at: toISOString(row.created_at as Date | string | null),
-		updated_at: toISOString(row.updated_at as Date | string | null)
+		created_at: toISOString(row.created_at as string | null),
+		updated_at: toISOString(row.updated_at as string | null)
 	};
 }
 
@@ -212,17 +211,17 @@ export async function getMonthlyRevenue(): Promise<MonthlyRevenue[]> {
 
 	const rows = await db
 		.select({
-			month: sql<string>`to_char(${invoices.date}::date, 'YYYY-MM')`,
+			month: sql<string>`strftime('%Y-%m', ${invoices.date})`,
 			revenue: sql<number>`COALESCE(SUM(${invoices.total}), 0)`
 		})
 		.from(invoices)
 		.where(
 			sql`${invoices.status} = 'paid'
 				AND COALESCE(${invoices.currency_code}, 'USD') = ${defaultCurrency}
-				AND to_char(${invoices.date}::date, 'YYYY-MM') >= to_char((now() - interval '11 months')::date, 'YYYY-MM')`
+				AND strftime('%Y-%m', ${invoices.date}) >= strftime('%Y-%m', date('now', '-11 months'))`
 		)
-		.groupBy(sql`to_char(${invoices.date}::date, 'YYYY-MM')`)
-		.orderBy(sql`to_char(${invoices.date}::date, 'YYYY-MM')`);
+		.groupBy(sql`strftime('%Y-%m', ${invoices.date})`)
+		.orderBy(sql`strftime('%Y-%m', ${invoices.date})`);
 
 	const revenueMap = new Map<string, number>();
 	for (const row of rows) {

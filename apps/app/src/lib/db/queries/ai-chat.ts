@@ -8,14 +8,8 @@ function mapSession(row: Record<string, unknown>): AiChatSession {
 		id: row.id as number,
 		uuid: row.uuid as string,
 		title: row.title as string,
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? ''),
-		updated_at:
-			row.updated_at instanceof Date
-				? row.updated_at.toISOString()
-				: ((row.updated_at as string) ?? '')
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 
@@ -29,10 +23,7 @@ function mapMessage(row: Record<string, unknown>): AiChatMessage {
 		tool_calls: (row.tool_calls as string) ?? null,
 		tool_results: (row.tool_results as string) ?? null,
 		is_streaming: row.is_streaming === true ? 1 : 0,
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? '')
+		created_at: (row.created_at as string) ?? ''
 	};
 }
 
@@ -74,7 +65,7 @@ export async function updateSessionTitle(id: number, title: string): Promise<voi
 		.update(aiChatSessions)
 		.set({
 			title,
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(aiChatSessions.id, id));
 }
@@ -118,7 +109,7 @@ export async function addMessage(data: {
 
 	await db
 		.update(aiChatSessions)
-		.set({ updated_at: new Date() })
+		.set({ updated_at: new Date().toISOString() })
 		.where(eq(aiChatSessions.id, data.session_id));
 
 	return result[0].id;

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 
 export const SYSTEM_PROMPT = `You are an AI assistant built into an invoice management application. You help users manage their business finances through natural conversation.
 

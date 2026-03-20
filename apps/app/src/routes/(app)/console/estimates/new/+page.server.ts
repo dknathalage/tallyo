@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 import { generateEstimateNumber } from '$lib/utils/estimate-number.js';
 
 export const load: PageServerLoad = async () => {

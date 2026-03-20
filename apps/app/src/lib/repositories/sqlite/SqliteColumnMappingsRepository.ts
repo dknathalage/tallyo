@@ -8,7 +8,7 @@ import {
 import type { ColumnMappingsRepository, CreateColumnMappingInput, UpdateColumnMappingInput } from '../interfaces/ColumnMappingsRepository.js';
 import type { ColumnMapping } from '$lib/types/index.js';
 
-export class PgColumnMappingsRepository implements ColumnMappingsRepository {
+export class SqliteColumnMappingsRepository implements ColumnMappingsRepository {
 	async getColumnMappings(entityType?: string): Promise<ColumnMapping[]> {
 		return await getColumnMappings(entityType);
 	}

@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 import type { RequestHandler } from './$types.js';
 
 export const GET: RequestHandler = async () => json(await repositories.aiChat.getSessions());

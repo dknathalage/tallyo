@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 import { dbError, fkOrNull } from '$lib/server/db-error.js';
 import { validate } from '$lib/validation/validate.js';
 import { CreateClientSchema, BulkDeleteSchema, SearchParamsSchema } from '$lib/validation/schemas.js';

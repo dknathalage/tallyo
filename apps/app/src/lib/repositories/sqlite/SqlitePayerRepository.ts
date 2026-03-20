@@ -15,7 +15,7 @@ import type { AuditRepository } from '../interfaces/AuditRepository.js';
 import type { CreatePayerInput, UpdatePayerInput } from '../interfaces/types.js';
 import type { Payer, Client, PartySnapshot } from '$lib/types/index.js';
 
-export class PgPayerRepository implements PayerRepository {
+export class SqlitePayerRepository implements PayerRepository {
 	constructor(private readonly _audit: AuditRepository) {}
 
 	async getPayers(search?: string): Promise<Payer[]> {

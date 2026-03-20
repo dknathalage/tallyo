@@ -15,14 +15,8 @@ function mapRow(row: Record<string, unknown>): ColumnMapping {
 		file_type: (row.file_type as string) ?? 'csv',
 		sheet_name: (row.sheet_name as string) ?? '',
 		header_row: (row.header_row as number) ?? 1,
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? ''),
-		updated_at:
-			row.updated_at instanceof Date
-				? row.updated_at.toISOString()
-				: ((row.updated_at as string) ?? '')
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 
@@ -108,7 +102,7 @@ export async function updateColumnMapping(
 			file_type: data.file_type ?? 'csv',
 			sheet_name: data.sheet_name ?? '',
 			header_row: data.header_row ?? 1,
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(columnMappings.id, id));
 }

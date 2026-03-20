@@ -19,14 +19,8 @@ function mapRow(row: Record<string, unknown>): CatalogItem {
 		category: (row.category as string) ?? '',
 		sku: (row.sku as string) ?? '',
 		metadata: (row.metadata as string) ?? '{}',
-		created_at:
-			row.created_at instanceof Date
-				? row.created_at.toISOString()
-				: ((row.created_at as string) ?? ''),
-		updated_at:
-			row.updated_at instanceof Date
-				? row.updated_at.toISOString()
-				: ((row.updated_at as string) ?? '')
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
 
@@ -143,7 +137,7 @@ export async function updateCatalogItem(
 			unit: data.unit ?? '',
 			category: data.category ?? '',
 			sku: data.sku ?? '',
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.where(eq(catalogItems.id, id));
 }
@@ -208,10 +202,8 @@ export async function getCatalogItemWithRates(
 		category: item.category ?? '',
 		sku: item.sku ?? '',
 		metadata: item.metadata ?? '{}',
-		created_at:
-			item.created_at instanceof Date ? item.created_at.toISOString() : ((item.created_at as string | null) ?? ''),
-		updated_at:
-			item.updated_at instanceof Date ? item.updated_at.toISOString() : ((item.updated_at as string | null) ?? ''),
+		created_at: (item.created_at as string | null) ?? '',
+		updated_at: (item.updated_at as string | null) ?? '',
 		rates
 	};
 }

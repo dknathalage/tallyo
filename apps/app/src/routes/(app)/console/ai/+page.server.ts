@@ -1,4 +1,4 @@
-import { repositories } from '$lib/repositories/postgres/index.js';
+import { repositories } from '$lib/repositories/index.js';
 import type { PageServerLoad } from './$types.js';
 
 export const load: PageServerLoad = async () => {

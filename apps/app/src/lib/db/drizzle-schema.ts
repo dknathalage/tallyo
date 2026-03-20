@@ -1,24 +1,18 @@
 import {
-	pgTable,
-	serial,
+	sqliteTable,
 	text,
-	doublePrecision,
+	real,
 	integer,
-	boolean,
-	timestamp,
-	uuid,
 	uniqueIndex,
-	index,
-	check
-} from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+	index
+} from 'drizzle-orm/sqlite-core';
 
 // ── clients ──────────────────────────────────────────────────────────
-export const clients = pgTable(
+export const clients = sqliteTable(
 	'clients',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').$defaultFn(() => crypto.randomUUID()),
 		name: text('name').notNull(),
 		email: text('email').default(''),
 		phone: text('phone').default(''),
@@ -26,8 +20,8 @@ export const clients = pgTable(
 		pricing_tier_id: integer('pricing_tier_id').references(() => rateTiers.id, { onDelete: 'set null' }),
 		metadata: text('metadata').default('{}'),
 		payer_id: integer('payer_id').references(() => payers.id, { onDelete: 'set null' }),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [
 		uniqueIndex('idx_clients_uuid').on(table.uuid),
@@ -36,11 +30,11 @@ export const clients = pgTable(
 );
 
 // ── invoices ─────────────────────────────────────────────────────────
-export const invoices = pgTable(
+export const invoices = sqliteTable(
 	'invoices',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').$defaultFn(() => crypto.randomUUID()),
 		invoice_number: text('invoice_number').notNull().unique(),
 		client_id: integer('client_id')
 			.notNull()
@@ -48,19 +42,19 @@ export const invoices = pgTable(
 		date: text('date').notNull(),
 		due_date: text('due_date').notNull(),
 		payment_terms: text('payment_terms').default('custom'),
-		subtotal: doublePrecision('subtotal').default(0),
-		tax_rate: doublePrecision('tax_rate').default(0),
+		subtotal: real('subtotal').default(0),
+		tax_rate: real('tax_rate').default(0),
 		tax_rate_id: integer('tax_rate_id').references(() => taxRates.id, { onDelete: 'set null' }),
-		tax_amount: doublePrecision('tax_amount').default(0),
-		total: doublePrecision('total').default(0),
+		tax_amount: real('tax_amount').default(0),
+		total: real('total').default(0),
 		notes: text('notes').default(''),
 		status: text('status').default('draft'),
 		currency_code: text('currency_code').default('USD'),
 		business_snapshot: text('business_snapshot').default('{}'),
 		client_snapshot: text('client_snapshot').default('{}'),
 		payer_snapshot: text('payer_snapshot').default('{}'),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [
 		uniqueIndex('idx_invoices_uuid').on(table.uuid),
@@ -71,18 +65,18 @@ export const invoices = pgTable(
 );
 
 // ── line_items ───────────────────────────────────────────────────────
-export const lineItems = pgTable(
+export const lineItems = sqliteTable(
 	'line_items',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').$defaultFn(() => crypto.randomUUID()),
 		invoice_id: integer('invoice_id')
 			.notNull()
 			.references(() => invoices.id, { onDelete: 'cascade' }),
 		description: text('description').notNull(),
-		quantity: doublePrecision('quantity').notNull().default(1),
-		rate: doublePrecision('rate').notNull().default(0),
-		amount: doublePrecision('amount').notNull().default(0),
+		quantity: real('quantity').notNull().default(1),
+		rate: real('rate').notNull().default(0),
+		amount: real('amount').notNull().default(0),
 		notes: text('notes').default(''),
 		sort_order: integer('sort_order').default(0),
 		catalog_item_id: integer('catalog_item_id'),
@@ -92,46 +86,46 @@ export const lineItems = pgTable(
 );
 
 // ── catalog_items ────────────────────────────────────────────────────
-export const catalogItems = pgTable(
+export const catalogItems = sqliteTable(
 	'catalog_items',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').$defaultFn(() => crypto.randomUUID()),
 		name: text('name').notNull(),
-		rate: doublePrecision('rate').notNull().default(0),
+		rate: real('rate').notNull().default(0),
 		unit: text('unit').default(''),
 		category: text('category').default(''),
 		sku: text('sku').default(''),
 		metadata: text('metadata').default('{}'),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [uniqueIndex('idx_catalog_items_uuid').on(table.uuid)]
 );
 
 // ── rate_tiers ───────────────────────────────────────────────────────
-export const rateTiers = pgTable('rate_tiers', {
-	id: serial('id').primaryKey(),
-	uuid: uuid('uuid').notNull().unique().defaultRandom(),
+export const rateTiers = sqliteTable('rate_tiers', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 	name: text('name').notNull().unique(),
 	description: text('description').default(''),
 	sort_order: integer('sort_order').default(0),
-	created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-	updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+	created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 
 // ── catalog_item_rates ───────────────────────────────────────────────
-export const catalogItemRates = pgTable(
+export const catalogItemRates = sqliteTable(
 	'catalog_item_rates',
 	{
-		id: serial('id').primaryKey(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
 		catalog_item_id: integer('catalog_item_id')
 			.notNull()
 			.references(() => catalogItems.id, { onDelete: 'cascade' }),
 		rate_tier_id: integer('rate_tier_id')
 			.notNull()
 			.references(() => rateTiers.id, { onDelete: 'cascade' }),
-		rate: doublePrecision('rate').notNull().default(0)
+		rate: real('rate').notNull().default(0)
 	},
 	(table) => [
 		uniqueIndex('idx_catalog_item_rates_unique').on(table.catalog_item_id, table.rate_tier_id)
@@ -139,9 +133,9 @@ export const catalogItemRates = pgTable(
 );
 
 // ── column_mappings ──────────────────────────────────────────────────
-export const columnMappings = pgTable('column_mappings', {
-	id: serial('id').primaryKey(),
-	uuid: uuid('uuid').notNull().unique().defaultRandom(),
+export const columnMappings = sqliteTable('column_mappings', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 	name: text('name').notNull(),
 	entity_type: text('entity_type').notNull().default('catalog'),
 	mapping: text('mapping').notNull().default('{}'),
@@ -150,23 +144,23 @@ export const columnMappings = pgTable('column_mappings', {
 	file_type: text('file_type').default('csv'),
 	sheet_name: text('sheet_name').default(''),
 	header_row: integer('header_row').default(1),
-	created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-	updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+	created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 
 // ── audit_log ────────────────────────────────────────────────────────
-export const auditLog = pgTable(
+export const auditLog = sqliteTable(
 	'audit_log',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').notNull().unique().defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 		entity_type: text('entity_type').notNull(),
 		entity_id: integer('entity_id'),
 		action: text('action').notNull(),
 		changes: text('changes').default('{}'),
 		context: text('context').default(''),
 		batch_id: text('batch_id'),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [
 		index('idx_audit_entity').on(table.entity_type, table.entity_id),
@@ -176,11 +170,11 @@ export const auditLog = pgTable(
 );
 
 // ── business_profile ─────────────────────────────────────────────────
-export const businessProfile = pgTable(
+export const businessProfile = sqliteTable(
 	'business_profile',
 	{
 		id: integer('id').primaryKey(),
-		uuid: uuid('uuid').notNull().unique().defaultRandom(),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 		name: text('name').notNull().default(''),
 		email: text('email').default(''),
 		phone: text('phone').default(''),
@@ -188,40 +182,39 @@ export const businessProfile = pgTable(
 		logo: text('logo').default(''),
 		metadata: text('metadata').default('{}'),
 		default_currency: text('default_currency').default('USD'),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
-	},
-	(table) => [check('business_profile_single_row', sql`${table.id} = 1`)]
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
+	}
 );
 
 // ── payers ───────────────────────────────────────────────────────────
-export const payers = pgTable('payers', {
-	id: serial('id').primaryKey(),
-	uuid: uuid('uuid').notNull().unique().defaultRandom(),
+export const payers = sqliteTable('payers', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 	name: text('name').notNull(),
 	email: text('email').default(''),
 	phone: text('phone').default(''),
 	address: text('address').default(''),
 	metadata: text('metadata').default('{}'),
-	created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-	updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+	created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 
 // ── estimates ────────────────────────────────────────────────────────
-export const estimates = pgTable(
+export const estimates = sqliteTable(
 	'estimates',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').unique().defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').unique().$defaultFn(() => crypto.randomUUID()),
 		estimate_number: text('estimate_number').unique().notNull(),
 		client_id: integer('client_id').references(() => clients.id),
 		date: text('date').notNull(),
 		valid_until: text('valid_until').notNull(),
-		subtotal: doublePrecision('subtotal').default(0),
-		tax_rate: doublePrecision('tax_rate').default(0),
+		subtotal: real('subtotal').default(0),
+		tax_rate: real('tax_rate').default(0),
 		tax_rate_id: integer('tax_rate_id').references(() => taxRates.id, { onDelete: 'set null' }),
-		tax_amount: doublePrecision('tax_amount').default(0),
-		total: doublePrecision('total').default(0),
+		tax_amount: real('tax_amount').default(0),
+		total: real('total').default(0),
 		notes: text('notes').default(''),
 		status: text('status').default('draft'),
 		currency_code: text('currency_code').default('USD'),
@@ -229,8 +222,8 @@ export const estimates = pgTable(
 		business_snapshot: text('business_snapshot').default('{}'),
 		client_snapshot: text('client_snapshot').default('{}'),
 		payer_snapshot: text('payer_snapshot').default('{}'),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [
 		index('idx_estimates_status').on(table.status),
@@ -239,14 +232,14 @@ export const estimates = pgTable(
 );
 
 // ── estimate_line_items ──────────────────────────────────────────────
-export const estimateLineItems = pgTable('estimate_line_items', {
-	id: serial('id').primaryKey(),
-	uuid: uuid('uuid').unique().defaultRandom(),
+export const estimateLineItems = sqliteTable('estimate_line_items', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	uuid: text('uuid').unique().$defaultFn(() => crypto.randomUUID()),
 	estimate_id: integer('estimate_id').references(() => estimates.id, { onDelete: 'cascade' }),
 	description: text('description').notNull(),
-	quantity: doublePrecision('quantity').default(1),
-	rate: doublePrecision('rate').default(0),
-	amount: doublePrecision('amount').default(0),
+	quantity: real('quantity').default(1),
+	rate: real('rate').default(0),
+	amount: real('amount').default(0),
 	notes: text('notes').default(''),
 	sort_order: integer('sort_order').default(0),
 	catalog_item_id: integer('catalog_item_id'),
@@ -254,51 +247,51 @@ export const estimateLineItems = pgTable('estimate_line_items', {
 });
 
 // ── tax_rates ────────────────────────────────────────────────────────
-export const taxRates = pgTable('tax_rates', {
-	id: serial('id').primaryKey(),
-	uuid: uuid('uuid').notNull().unique().defaultRandom(),
+export const taxRates = sqliteTable('tax_rates', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 	name: text('name').notNull(),
-	rate: doublePrecision('rate').notNull().default(0),
-	is_default: boolean('is_default').notNull().default(false),
-	created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-	updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+	rate: real('rate').notNull().default(0),
+	is_default: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+	created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 
 // ── payments ─────────────────────────────────────────────────────────
-export const payments = pgTable(
+export const payments = sqliteTable(
 	'payments',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').notNull().unique().defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 		invoice_id: integer('invoice_id')
 			.notNull()
 			.references(() => invoices.id, { onDelete: 'cascade' }),
-		amount: doublePrecision('amount').notNull(),
+		amount: real('amount').notNull(),
 		payment_date: text('payment_date').notNull(),
 		method: text('method').default(''),
 		notes: text('notes').default(''),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [index('idx_payments_invoice_id').on(table.invoice_id)]
 );
 
 // ── recurring_templates ──────────────────────────────────────────────
-export const recurringTemplates = pgTable(
+export const recurringTemplates = sqliteTable(
 	'recurring_templates',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').notNull().unique().defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 		client_id: integer('client_id').references(() => clients.id, { onDelete: 'set null' }),
 		name: text('name').notNull(),
 		frequency: text('frequency').notNull(),
 		next_due: text('next_due').notNull(),
 		line_items: text('line_items').notNull().default('[]'),
-		tax_rate: doublePrecision('tax_rate').notNull().default(0),
+		tax_rate: real('tax_rate').notNull().default(0),
 		notes: text('notes').notNull().default(''),
-		is_active: boolean('is_active').notNull().default(true),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		is_active: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [
 		index('idx_recurring_client').on(table.client_id),
@@ -307,24 +300,24 @@ export const recurringTemplates = pgTable(
 );
 
 // ── ai_chat_sessions ────────────────────────────────────────────────
-export const aiChatSessions = pgTable(
+export const aiChatSessions = sqliteTable(
 	'ai_chat_sessions',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').notNull().unique().defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 		title: text('title').notNull().default('New Chat'),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
-		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow()
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [index('idx_ai_sessions_created').on(table.created_at)]
 );
 
 // ── ai_chat_messages ────────────────────────────────────────────────
-export const aiChatMessages = pgTable(
+export const aiChatMessages = sqliteTable(
 	'ai_chat_messages',
 	{
-		id: serial('id').primaryKey(),
-		uuid: uuid('uuid').notNull().unique().defaultRandom(),
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
 		session_id: integer('session_id')
 			.notNull()
 			.references(() => aiChatSessions.id, { onDelete: 'cascade' }),
@@ -332,8 +325,8 @@ export const aiChatMessages = pgTable(
 		content: text('content').notNull().default(''),
 		tool_calls: text('tool_calls'),
 		tool_results: text('tool_results'),
-		is_streaming: boolean('is_streaming').notNull().default(false),
-		created_at: timestamp('created_at', { withTimezone: true }).defaultNow()
+		is_streaming: integer('is_streaming', { mode: 'boolean' }).notNull().default(false),
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [index('idx_ai_messages_session').on(table.session_id, table.created_at)]
 );

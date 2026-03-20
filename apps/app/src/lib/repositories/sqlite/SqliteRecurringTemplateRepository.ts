@@ -11,7 +11,7 @@ import {
 import type { RecurringTemplateRepository, CreateRecurringTemplateInput, UpdateRecurringTemplateInput } from '../interfaces/RecurringTemplateRepository.js';
 import type { RecurringTemplate } from '$lib/types/index.js';
 
-export class PgRecurringTemplateRepository implements RecurringTemplateRepository {
+export class SqliteRecurringTemplateRepository implements RecurringTemplateRepository {
 	async getRecurringTemplates(activeOnly = true): Promise<RecurringTemplate[]> {
 		return await getRecurringTemplates(activeOnly);
 	}

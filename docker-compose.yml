@@ -1,18 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: tallyo
-      POSTGRES_PASSWORD: tallyo
-      POSTGRES_DB: tallyo
-    volumes:
-      - pg-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tallyo"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   app:
     build:
       context: .
@@ -21,10 +7,9 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://tallyo:tallyo@postgres:5432/tallyo
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - DATA_DIR=/data
+    volumes:
+      - app-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
@@ -34,5 +19,5 @@ services:
       start_period: 10s
 
 volumes:
-  pg-data:
+  app-data:
     driver: local

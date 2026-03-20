@@ -34,7 +34,7 @@ export async function saveBusinessProfile(data: {
 			logo: data.logo ?? '',
 			metadata: data.metadata ?? '{}',
 			default_currency: data.default_currency ?? existing?.default_currency ?? 'USD',
-			updated_at: new Date()
+			updated_at: new Date().toISOString()
 		})
 		.onConflictDoUpdate({
 			target: businessProfile.id,
@@ -46,7 +46,7 @@ export async function saveBusinessProfile(data: {
 				logo: data.logo ?? '',
 				metadata: data.metadata ?? '{}',
 				default_currency: data.default_currency ?? existing?.default_currency ?? 'USD',
-				updated_at: new Date()
+				updated_at: new Date().toISOString()
 			}
 		});
 	await logAudit({
@@ -89,7 +89,7 @@ function mapRow(row: typeof businessProfile.$inferSelect): BusinessProfile {
 		logo: row.logo ?? '',
 		metadata: row.metadata ?? '{}',
 		default_currency: row.default_currency ?? 'USD',
-		created_at: row.created_at?.toISOString() ?? '',
-		updated_at: row.updated_at?.toISOString() ?? ''
+		created_at: (row.created_at as string) ?? '',
+		updated_at: (row.updated_at as string) ?? ''
 	};
 }
