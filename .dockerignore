@@ -1,9 +1,0 @@
-**/node_modules
-.git
-.github
-**/build
-*.log
-.env*
-coverage
-.turbo
-.svelte-kit
