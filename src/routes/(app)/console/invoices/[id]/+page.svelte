@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
@@ -15,10 +16,10 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let invoice: Invoice | null = $state(data.invoice);
-	let lineItems: LineItem[] = $state(data.lineItems);
-	let history: AuditLogEntry[] = $state(data.auditHistory);
-	let payments: Payment[] = $state(data.payments);
+	let invoice: Invoice | null = $state(untrack(() => data.invoice));
+	let lineItems: LineItem[] = $state(untrack(() => data.lineItems));
+	let history: AuditLogEntry[] = $state(untrack(() => data.auditHistory));
+	let payments: Payment[] = $state(untrack(() => data.payments));
 	let totalPaid = $derived(payments.reduce((sum, p) => sum + p.amount, 0));
 	let outstanding = $derived.by(() => (invoice ? invoice.total - totalPaid : 0));
 	let showDeleteConfirm = $state(false);

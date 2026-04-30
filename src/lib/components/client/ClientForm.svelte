@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { Client, Payer, KeyValuePair } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
@@ -13,13 +13,13 @@
 		onsubmit: (data: { name: string; email: string; phone: string; address: string; metadata: string; payer_id: number | null }) => void;
 	} = $props();
 
-	let name = $state(initialData?.name ?? '');
-	let email = $state(initialData?.email ?? '');
-	let phone = $state(initialData?.phone ?? '');
-	let address = $state(initialData?.address ?? '');
-	let payerId: number | null = $state(initialData?.payer_id ?? null);
+	let name = $state(untrack(() => initialData?.name ?? ''));
+	let email = $state(untrack(() => initialData?.email ?? ''));
+	let phone = $state(untrack(() => initialData?.phone ?? ''));
+	let address = $state(untrack(() => initialData?.address ?? ''));
+	let payerId: number | null = $state(untrack(() => initialData?.payer_id ?? null));
 	let payers: Payer[] = $state([]);
-	let metadataPairs: KeyValuePair[] = $state(parseMetadata(initialData?.metadata));
+	let metadataPairs: KeyValuePair[] = $state(untrack(() => parseMetadata(initialData?.metadata)));
 
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {

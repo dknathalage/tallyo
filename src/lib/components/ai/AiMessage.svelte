@@ -59,7 +59,6 @@
     {/if}
 
     {#if displayText}
-      <!-- svelte-ignore html_escape_unsafe -->
       <div class="text-sm leading-relaxed prose-sm">{@html formatContent(displayText)}{#if isStreaming}<span class="inline-block w-0.5 h-4 bg-current animate-pulse ml-0.5 align-middle"></span>{/if}</div>
     {/if}
   </div>

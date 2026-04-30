@@ -104,6 +104,7 @@
 			{@const tx = tipX(bx, bw)}
 			{@const ty = tipY(by)}
 
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<g
 				role="graphics-symbol"
 				aria-label="{point.label}: {formatCurrency(point.revenue, currency)}"

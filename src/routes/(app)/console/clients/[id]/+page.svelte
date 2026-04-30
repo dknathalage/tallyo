@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
@@ -14,7 +15,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let client = $state(data.client);
+	let client = $state(untrack(() => data.client));
 	let revenueSummary = $derived(data.revenueSummary);
 	let auditHistory = $derived(data.auditHistory);
 	let invoices = $derived(data.invoices ?? []);
