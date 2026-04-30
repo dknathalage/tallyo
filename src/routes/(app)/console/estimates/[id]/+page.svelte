@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
@@ -15,9 +16,9 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let estimate: Estimate | null = $state(data.estimate);
-	let lineItems: EstimateLineItem[] = $state(data.lineItems);
-	let history: AuditLogEntry[] = $state(data.auditHistory);
+	let estimate: Estimate | null = $state(untrack(() => data.estimate));
+	let lineItems: EstimateLineItem[] = $state(untrack(() => data.lineItems));
+	let history: AuditLogEntry[] = $state(untrack(() => data.auditHistory));
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
 	let converting = $state(false);

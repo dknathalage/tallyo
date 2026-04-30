@@ -182,7 +182,7 @@
 	<!-- Saved presets -->
 	{#if savedMappings.length > 0}
 		<div>
-			<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{i18n.t('importWizard.savedMappings')}</label>
+			<div class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{i18n.t('importWizard.savedMappings')}</div>
 			<div class="flex flex-wrap gap-2">
 				{#each savedMappings as mapping}
 					<div class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-3 py-1 text-sm">

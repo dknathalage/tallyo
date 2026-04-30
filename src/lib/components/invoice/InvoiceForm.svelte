@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { today, formatCurrency } from '$lib/utils/format.js';
 	import type { Client, Invoice, LineItem, KeyValuePair, TaxRate, RateTier } from '$lib/types/index.js';
 	import { parseSnapshot } from '$lib/utils/snapshot.js';
@@ -59,13 +59,13 @@
 	} = $props();
 
 	let clients: Client[] = $state([]);
-	let invoiceNumber = $state(initialData?.invoice_number ?? '');
-	let clientId: number | '' = $state(initialData?.client_id ?? '');
-	let date = $state(initialData?.date ?? today());
-	let dueDate = $state(initialData?.due_date ?? today());
-	let paymentTerms = $state(initialData?.payment_terms ?? 'custom');
+	let invoiceNumber = $state(untrack(() => initialData?.invoice_number ?? ''));
+	let clientId: number | '' = $state(untrack(() => initialData?.client_id ?? ''));
+	let date = $state(untrack(() => initialData?.date ?? today()));
+	let dueDate = $state(untrack(() => initialData?.due_date ?? today()));
+	let paymentTerms = $state(untrack(() => initialData?.payment_terms ?? 'custom'));
 	let taxRates = $state<TaxRate[]>([]);
-	let selectedTaxRateId = $state<number | null>(initialData?.tax_rate_id ?? null);
+	let selectedTaxRateId = $state<number | null>(untrack(() => initialData?.tax_rate_id ?? null));
 	let taxRate = $derived.by(() => {
 		if (selectedTaxRateId !== null) {
 			const tr = taxRates.find((r) => r.id === selectedTaxRateId);
@@ -78,9 +78,9 @@
 	let showNewTaxRate = $state(false);
 	let newTaxRateName = $state('');
 	let newTaxRateValue = $state(0);
-	let notes = $state(initialData?.notes ?? '');
-	let status = $state(initialData?.status ?? 'draft');
-	let currencyCode = $state(initialData?.currency_code ?? '');
+	let notes = $state(untrack(() => initialData?.notes ?? ''));
+	let status = $state(untrack(() => initialData?.status ?? 'draft'));
+	let currencyCode = $state(untrack(() => initialData?.currency_code ?? ''));
 
 	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string; notes?: string }>>(
 		[{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]

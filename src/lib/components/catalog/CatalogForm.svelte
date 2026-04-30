@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { CatalogItem, CatalogItemWithRates } from '$lib/types';
 	import Button from '$lib/components/shared/Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -20,12 +20,12 @@
 		}) => void;
 	} = $props();
 
-	let name = $state(initialData?.name ?? '');
-	let rate = $state(initialData?.rate ?? 0);
-	let unit = $state(initialData?.unit ?? '');
-	let category = $state(initialData?.category ?? '');
-	let sku = $state(initialData?.sku ?? '');
-	let metadata = $state(initialData?.metadata ?? '{}');
+	let name = $state(untrack(() => initialData?.name ?? ''));
+	let rate = $state(untrack(() => initialData?.rate ?? 0));
+	let unit = $state(untrack(() => initialData?.unit ?? ''));
+	let category = $state(untrack(() => initialData?.category ?? ''));
+	let sku = $state(untrack(() => initialData?.sku ?? ''));
+	let metadata = $state(untrack(() => initialData?.metadata ?? '{}'));
 
 	let categories = $state<string[]>([]);
 	let tiers = $state<{ id: number; name: string }[]>([]);

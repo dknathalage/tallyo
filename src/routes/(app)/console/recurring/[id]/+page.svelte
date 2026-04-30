@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
@@ -15,8 +15,8 @@
 	let isNew = $derived(!data.template);
 	let templateId = $derived(data.template?.id ?? null);
 
-	let template: RecurringTemplate | null = $state(data.template ?? null);
-	let clients: Client[] = $state(data.clients ?? []);
+	let template: RecurringTemplate | null = $state(untrack(() => data.template ?? null));
+	let clients: Client[] = $state(untrack(() => data.clients ?? []));
 
 	// Form fields
 	let name = $state('');

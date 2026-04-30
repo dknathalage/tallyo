@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { KeyValuePair } from '$lib/types';
 	import type { PageData } from './$types';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -23,7 +24,7 @@
 		}
 	}
 
-	const profile = data.businessProfile;
+	const profile = untrack(() => data.businessProfile);
 	let bpName = $state(profile?.name ?? '');
 	let bpEmail = $state(profile?.email ?? '');
 	let bpPhone = $state(profile?.phone ?? '');
@@ -232,14 +233,14 @@
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.logo')}</label>
+					<div class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.logo')}</div>
 					<div class="mt-1">
 						<LogoUploader bind:logo={bpLogo} />
 					</div>
 				</div>
 
 				<div>
-					<label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.additionalFields')}</label>
+					<div class="block text-sm font-medium text-gray-700 dark:text-gray-300">{i18n.t('settings.additionalFields')}</div>
 					<p class="text-xs text-gray-500 dark:text-gray-400">{i18n.t('settings.additionalFieldsHint')}</p>
 					<div class="mt-1">
 						<KeyValueEditor bind:pairs={bpMetadata} addLabel={i18n.t('common.addField')} />

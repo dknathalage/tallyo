@@ -56,7 +56,7 @@
 <div class="space-y-4">
 	<!-- File input -->
 	<div>
-		<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{i18n.t('importWizard.selectFileLabel')}</label>
+		<div class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{i18n.t('importWizard.selectFileLabel')}</div>
 		<div class="flex items-center gap-3">
 			<Button variant="secondary" size="sm" onclick={() => fileInput.click()}>
 				{i18n.t('importWizard.chooseFile')}

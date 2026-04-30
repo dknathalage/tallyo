@@ -3,6 +3,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { untrack } from 'svelte';
 
 	let {
 		initialData,
@@ -12,13 +13,13 @@
 		onsubmit: (data: { name: string; email: string; phone: string; address: string; metadata: string }) => void;
 	} = $props();
 
-	let name = $state(initialData?.name ?? '');
-	let email = $state(initialData?.email ?? '');
-	let phone = $state(initialData?.phone ?? '');
-	let address = $state(initialData?.address ?? '');
+	let name = $state(untrack(() => initialData?.name ?? ''));
+	let email = $state(untrack(() => initialData?.email ?? ''));
+	let phone = $state(untrack(() => initialData?.phone ?? ''));
+	let address = $state(untrack(() => initialData?.address ?? ''));
 
 	// Parse metadata from JSON string into pairs for editor
-	let metadataPairs: KeyValuePair[] = $state(parseMetadata(initialData?.metadata));
+	let metadataPairs: KeyValuePair[] = $state(untrack(() => parseMetadata(initialData?.metadata)));
 
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {
