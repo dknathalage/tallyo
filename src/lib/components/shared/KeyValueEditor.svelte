@@ -22,18 +22,18 @@
 </script>
 
 <div class="space-y-2">
-	{#each pairs as _, i}
+	{#each pairs as pair, i (i)}
 		<div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
 			<input
 				type="text"
-				bind:value={pairs[i].key}
+				bind:value={pair.key}
 				placeholder={i18n.t('common.fieldName')}
 				{readonly}
 				class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 sm:w-1/3 {readonly ? 'bg-gray-50 dark:bg-gray-900' : ''}"
 			/>
 			<input
 				type="text"
-				bind:value={pairs[i].value}
+				bind:value={pair.value}
 				placeholder={i18n.t('common.value')}
 				{readonly}
 				class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 {readonly ? 'bg-gray-50 dark:bg-gray-900' : ''}"

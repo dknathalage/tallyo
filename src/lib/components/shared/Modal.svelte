@@ -35,8 +35,9 @@
 			// Move focus into the modal after DOM renders
 			requestAnimationFrame(() => {
 				const focusable = getFocusableElements();
-				if (focusable.length > 0) {
-					focusable[0].focus();
+				const firstFocusable = focusable[0];
+				if (firstFocusable) {
+					firstFocusable.focus();
 				} else if (dialogEl) {
 					dialogEl.focus();
 				}
@@ -72,6 +73,7 @@
 
 			const first = focusable[0];
 			const last = focusable[focusable.length - 1];
+			if (!first || !last) return;
 
 			if (e.shiftKey) {
 				// Shift+Tab: if focus is on first element, wrap to last

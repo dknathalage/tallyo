@@ -29,11 +29,11 @@ export type AuditAction =
 
 export async function logAudit(params: {
 	entity_type: AuditEntityType;
-	entity_id?: number | null;
+	entity_id?: number | null | undefined;
 	action: AuditAction;
-	changes?: Record<string, { old: unknown; new: unknown }>;
-	context?: string;
-	batch_id?: string;
+	changes?: Record<string, { old: unknown; new: unknown }> | undefined;
+	context?: string | undefined;
+	batch_id?: string | undefined;
 }): Promise<void> {
 	const db = getDb();
 	await db.insert(auditLog).values({

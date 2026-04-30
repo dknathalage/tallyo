@@ -16,7 +16,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	const validated = validate(CreatePaymentSchema, data);
 	validated.invoice_id = fkOrNull(validated.invoice_id) as number;
 	try {
-		const id = await repositories.payments.createPayment(validated);
+		const input = {
+			invoice_id: validated.invoice_id,
+			amount: validated.amount,
+			payment_date: validated.payment_date,
+			...(validated.method !== undefined && { method: validated.method }),
+			...(validated.notes !== undefined && { notes: validated.notes })
+		};
+		const id = await repositories.payments.createPayment(input);
 		return json({ id }, { status: 201 });
 	} catch (err) {
 		dbError(err);

@@ -12,6 +12,7 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 	const validatedRows: CsvInvoiceRow[] = [];
 	for (let i = 0; i < data.length; i++) {
 		const row = data[i];
+		if (!row) continue;
 		const rowNum = i + 1;
 		let hasError = false;
 
@@ -73,6 +74,7 @@ export async function parseInvoicesCsv(file: File): Promise<ParsedInvoiceImport>
 
 	for (const [, rows] of groupMap) {
 		const first = rows[0];
+		if (!first) continue;
 		const invoiceUuid = first.invoice_uuid?.trim() || '';
 
 		// Skip groups whose UUID already exists

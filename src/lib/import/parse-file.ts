@@ -52,6 +52,7 @@ async function parseXlsx(file: File): Promise<ParsedFile> {
 	const sheets: ParsedSheet[] = [];
 	for (const sheetName of workbook.SheetNames) {
 		const worksheet = workbook.Sheets[sheetName];
+		if (!worksheet) continue;
 		const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
 			header: 1,
 			defval: '',
@@ -61,7 +62,9 @@ async function parseXlsx(file: File): Promise<ParsedFile> {
 		if (jsonData.length === 0) continue;
 
 		const rawRows = jsonData as unknown as string[][];
-		const headers = rawRows[0].map((h) => String(h ?? '').trim());
+		const firstRow = rawRows[0];
+		if (!firstRow) continue;
+		const headers = firstRow.map((h) => String(h ?? '').trim());
 		const rows: Record<string, string>[] = [];
 
 		for (let i = 1; i < rawRows.length; i++) {
@@ -69,7 +72,9 @@ async function parseXlsx(file: File): Promise<ParsedFile> {
 			let hasValue = false;
 			for (let j = 0; j < headers.length; j++) {
 				const val = String(rawRows[i]?.[j] ?? '').trim();
-				row[headers[j]] = val;
+				const headerKey = headers[j];
+				if (headerKey === undefined) continue;
+				row[headerKey] = val;
 				if (val) hasValue = true;
 			}
 			if (hasValue) rows.push(row);
@@ -98,17 +103,23 @@ export function getSheetWithHeaderRow(sheet: ParsedSheet, headerRow: number): Pa
 	const headerIdx = headerRow - 1;
 	if (headerIdx >= allRows.length) return sheet;
 
-	const headerValues = Object.values(allRows[headerIdx]);
+	const headerRowEntry = allRows[headerIdx];
+	if (!headerRowEntry) return sheet;
+	const headerValues = Object.values(headerRowEntry);
 	const newHeaders = headerValues.map((h) => String(h ?? '').trim());
 
 	const newRows: Record<string, string>[] = [];
 	for (let i = headerIdx + 1; i < allRows.length; i++) {
-		const rawValues = Object.values(allRows[i]);
+		const rowEntry = allRows[i];
+		if (!rowEntry) continue;
+		const rawValues = Object.values(rowEntry);
 		const row: Record<string, string> = {};
 		let hasValue = false;
 		for (let j = 0; j < newHeaders.length; j++) {
 			const val = String(rawValues[j] ?? '').trim();
-			row[newHeaders[j]] = val;
+			const headerKey = newHeaders[j];
+			if (headerKey === undefined) continue;
+			row[headerKey] = val;
 			if (val) hasValue = true;
 		}
 		if (hasValue) newRows.push(row);

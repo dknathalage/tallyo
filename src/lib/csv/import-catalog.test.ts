@@ -71,7 +71,7 @@ describe('parseCatalogCsv', () => {
 		mockValidateRequiredField.mockReturnValueOnce({ row: 1, field: 'name', message: 'name is required' });
 		const result = await parseCatalogCsv(makeFile());
 		expect(result.errors).toHaveLength(1);
-		expect(result.errors[0].field).toBe('name');
+		expect(result.errors[0]!.field).toBe('name');
 		expect(result.validRows).toHaveLength(0);
 	});
 
@@ -81,7 +81,7 @@ describe('parseCatalogCsv', () => {
 		mockValidateNumeric.mockReturnValueOnce({ row: 1, field: 'rate', message: 'rate must be a number' });
 		const result = await parseCatalogCsv(makeFile());
 		expect(result.errors).toHaveLength(1);
-		expect(result.errors[0].field).toBe('rate');
+		expect(result.errors[0]!.field).toBe('rate');
 	});
 
 	it('skips duplicates when UUID already exists', async () => {

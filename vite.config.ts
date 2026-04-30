@@ -4,8 +4,6 @@ import { defineConfig } from 'vitest/config';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
-
 function getGitSha(): string {
 	try {
 		return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();

@@ -17,8 +17,9 @@
 
   onMount(async () => {
     await aiChat.loadSessions();
-    if (aiChat.sessions.length > 0) {
-      await aiChat.selectSession(aiChat.sessions[0].id);
+    const firstSession = aiChat.sessions[0];
+    if (firstSession) {
+      await aiChat.selectSession(firstSession.id);
     } else {
       await aiChat.createSession();
     }

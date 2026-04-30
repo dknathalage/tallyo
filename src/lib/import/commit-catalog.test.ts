@@ -69,7 +69,8 @@ describe('commitCatalogImport', () => {
 	it('includes updateExisting: true in body when specified', async () => {
 		mockFetch.mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ inserted: 0, updated: 3, batchId: 'b2' }) });
 		await commitCatalogImport(makeDiffResult(), { updateExisting: true });
-		const callArgs = mockFetch.mock.calls[0][1];
+		const callArgs = mockFetch.mock.calls[0]?.[1];
+		if (!callArgs) throw new Error('expected fetch to be called');
 		const body = JSON.parse(callArgs.body);
 		expect(body.options.updateExisting).toBe(true);
 	});
@@ -77,7 +78,8 @@ describe('commitCatalogImport', () => {
 	it('includes updateExisting: false in body when specified', async () => {
 		mockFetch.mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ inserted: 0, updated: 0, batchId: 'b3' }) });
 		await commitCatalogImport(makeDiffResult(), { updateExisting: false });
-		const callArgs = mockFetch.mock.calls[0][1];
+		const callArgs = mockFetch.mock.calls[0]?.[1];
+		if (!callArgs) throw new Error('expected fetch to be called');
 		const body = JSON.parse(callArgs.body);
 		expect(body.options.updateExisting).toBe(false);
 	});

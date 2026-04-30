@@ -43,7 +43,7 @@ describe('parseFile', () => {
 			expect(result.fileType).toBe('csv');
 			expect(result.fileName).toBe('catalog.csv');
 			expect(result.sheets).toHaveLength(1);
-			expect(result.sheets[0].sheetName).toBe('Sheet1');
+			expect(result.sheets[0]?.sheetName).toBe('Sheet1');
 		});
 
 		it('extracts headers from CSV meta fields', async () => {
@@ -51,7 +51,7 @@ describe('parseFile', () => {
 				opts.complete({ data: [], meta: { fields: ['col1', 'col2', 'col3'] }, errors: [] });
 			});
 			const result = await parseFile(makeFile('test.csv'));
-			expect(result.sheets[0].headers).toEqual(['col1', 'col2', 'col3']);
+			expect(result.sheets[0]?.headers).toEqual(['col1', 'col2', 'col3']);
 		});
 
 		it('returns rows from CSV data', async () => {
@@ -60,7 +60,7 @@ describe('parseFile', () => {
 				opts.complete({ data: rows, meta: { fields: ['name', 'rate'] }, errors: [] });
 			});
 			const result = await parseFile(makeFile('test.csv'));
-			expect(result.sheets[0].rows).toEqual(rows);
+			expect(result.sheets[0]?.rows).toEqual(rows);
 		});
 
 		it('rejects when Papa.parse calls error callback', async () => {
@@ -75,7 +75,7 @@ describe('parseFile', () => {
 				opts.complete({ data: [], meta: { fields: null }, errors: [] });
 			});
 			const result = await parseFile(makeFile('test.csv'));
-			expect(result.sheets[0].headers).toEqual([]);
+			expect(result.sheets[0]?.headers).toEqual([]);
 		});
 	});
 
@@ -101,7 +101,7 @@ describe('parseFile', () => {
 			});
 			const result = await parseFile(file);
 			expect(result.sheets).toHaveLength(2);
-			expect(result.sheets[0].sheetName).toBe('Products');
+			expect(result.sheets[0]?.sheetName).toBe('Products');
 		});
 
 		it('skips empty sheets', async () => {
@@ -114,7 +114,7 @@ describe('parseFile', () => {
 			});
 			const result = await parseFile(file);
 			expect(result.sheets).toHaveLength(1);
-			expect(result.sheets[0].sheetName).toBe('Full');
+			expect(result.sheets[0]?.sheetName).toBe('Full');
 		});
 
 		it('also accepts .xls files', async () => {
@@ -138,8 +138,8 @@ describe('parseFile', () => {
 				arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0))
 			});
 			const result = await parseFile(file);
-			expect(result.sheets[0].rows).toHaveLength(1);
-			expect(result.sheets[0].rows[0]['Name']).toBe('Item A');
+			expect(result.sheets[0]?.rows).toHaveLength(1);
+			expect(result.sheets[0]?.rows[0]?.['Name']).toBe('Item A');
 		});
 	});
 });

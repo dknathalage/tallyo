@@ -5,13 +5,13 @@ import type { TaxRate } from '../../types/index.js';
 
 function mapRow(row: Record<string, unknown>): TaxRate {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		name: row.name as string,
-		rate: row.rate as number,
-		is_default: row.is_default === true ? 1 : 0,
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		name: row['name'] as string,
+		rate: row['rate'] as number,
+		is_default: row['is_default'] === true ? 1 : 0,
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
@@ -31,13 +31,15 @@ export async function getDefaultTaxRate(): Promise<TaxRate | null> {
 		.from(taxRates)
 		.where(eq(taxRates.is_default, true))
 		.limit(1);
-	return rows.length > 0 ? mapRow(rows[0] as Record<string, unknown>) : null;
+	const first = rows[0];
+	return first ? mapRow(first as Record<string, unknown>) : null;
 }
 
 export async function getTaxRate(id: number): Promise<TaxRate | null> {
 	const db = getDb();
 	const rows = await db.select().from(taxRates).where(eq(taxRates.id, id));
-	return rows.length > 0 ? mapRow(rows[0] as Record<string, unknown>) : null;
+	const first = rows[0];
+	return first ? mapRow(first as Record<string, unknown>) : null;
 }
 
 export async function createTaxRate(data: {
@@ -61,7 +63,9 @@ export async function createTaxRate(data: {
 		})
 		.returning({ id: taxRates.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert tax rate');
+	return inserted.id;
 }
 
 export async function updateTaxRate(

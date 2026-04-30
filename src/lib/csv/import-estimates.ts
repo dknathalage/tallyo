@@ -20,6 +20,7 @@ export async function parseEstimatesCsv(file: File): Promise<ParsedEstimateImpor
 	const validatedRows: CsvEstimateRow[] = [];
 	for (let i = 0; i < data.length; i++) {
 		const row = data[i];
+		if (!row) continue;
 		const rowNum = i + 1;
 		let hasError = false;
 
@@ -81,6 +82,7 @@ export async function parseEstimatesCsv(file: File): Promise<ParsedEstimateImpor
 
 	for (const [, rows] of groupMap) {
 		const first = rows[0];
+		if (!first) continue;
 		const estimateUuid = first.estimate_uuid?.trim() || '';
 
 		// Skip groups whose UUID already exists

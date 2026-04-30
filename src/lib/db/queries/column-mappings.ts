@@ -5,18 +5,18 @@ import type { ColumnMapping } from '../../types/index.js';
 
 function mapRow(row: Record<string, unknown>): ColumnMapping {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		name: row.name as string,
-		entity_type: (row.entity_type as string) ?? 'catalog',
-		mapping: (row.mapping as string) ?? '{}',
-		tier_mapping: (row.tier_mapping as string) ?? '{}',
-		metadata_mapping: (row.metadata_mapping as string) ?? '[]',
-		file_type: (row.file_type as string) ?? 'csv',
-		sheet_name: (row.sheet_name as string) ?? '',
-		header_row: (row.header_row as number) ?? 1,
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		name: row['name'] as string,
+		entity_type: (row['entity_type'] as string) ?? 'catalog',
+		mapping: (row['mapping'] as string) ?? '{}',
+		tier_mapping: (row['tier_mapping'] as string) ?? '{}',
+		metadata_mapping: (row['metadata_mapping'] as string) ?? '[]',
+		file_type: (row['file_type'] as string) ?? 'csv',
+		sheet_name: (row['sheet_name'] as string) ?? '',
+		header_row: (row['header_row'] as number) ?? 1,
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
@@ -43,7 +43,8 @@ export async function getColumnMapping(id: number): Promise<ColumnMapping | null
 		.select()
 		.from(columnMappings)
 		.where(eq(columnMappings.id, id));
-	return rows.length > 0 ? mapRow(rows[0] as Record<string, unknown>) : null;
+	const first = rows[0];
+	return first ? mapRow(first as Record<string, unknown>) : null;
 }
 
 export async function createColumnMapping(data: {
@@ -73,7 +74,9 @@ export async function createColumnMapping(data: {
 		})
 		.returning({ id: columnMappings.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert column mapping');
+	return inserted.id;
 }
 
 export async function updateColumnMapping(

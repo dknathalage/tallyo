@@ -16,7 +16,8 @@ export async function getPayers(search?: string): Promise<Payer[]> {
 export async function getPayer(id: number): Promise<Payer | null> {
 	const db = getDb();
 	const rows = await db.select().from(payers).where(eq(payers.id, id));
-	return rows.length > 0 ? mapRow(rows[0]) : null;
+	const first = rows[0];
+	return first ? mapRow(first) : null;
 }
 
 export async function createPayer(data: {
@@ -40,7 +41,9 @@ export async function createPayer(data: {
 			metadata: data.metadata ?? '{}'
 		})
 		.returning({ id: payers.id });
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert payer');
+	return inserted.id;
 }
 
 export async function updatePayer(

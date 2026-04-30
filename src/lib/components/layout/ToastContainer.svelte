@@ -20,7 +20,7 @@
 	{#each getToasts() as toast (toast.id)}
 		<div
 			class="flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg pointer-events-auto
-				{toastTypeClasses[toast.type] ?? toastTypeClasses.info}"
+				{toastTypeClasses[toast.type] ?? toastTypeClasses['info']}"
 			role="alert"
 		>
 			<span class="font-bold text-lg leading-none mt-0.5">{toastIcons[toast.type]}</span>

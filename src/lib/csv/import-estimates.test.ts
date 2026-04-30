@@ -68,7 +68,7 @@ describe('parseEstimatesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseEstimatesCsv(makeFile());
 		expect(result.groups).toHaveLength(1);
-		expect(result.groups[0].lineItems).toHaveLength(2);
+		expect(result.groups[0]!.lineItems).toHaveLength(2);
 	});
 
 	it('groups by estimate_number when uuid is empty', async () => {
@@ -141,7 +141,7 @@ describe('parseEstimatesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) })
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseEstimatesCsv(makeFile());
-		const g = result.groups[0];
+		const g = result.groups[0]!;
 		expect(g.status).toBe('draft');
 		expect(g.currencyCode).toBe('USD');
 		expect(g.businessSnapshot).toBe('{}');
@@ -156,7 +156,7 @@ describe('parseEstimatesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseEstimatesCsv(makeFile());
 		expect(result.errors).toHaveLength(0);
-		expect(result.groups[0].status).toBe('accepted');
+		expect(result.groups[0]!.status).toBe('accepted');
 	});
 
 	it('rejects invalid estimate status', async () => {
@@ -187,7 +187,7 @@ describe('parseEstimatesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) })
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseEstimatesCsv(makeFile());
-		expect(result.groups[0].isNew).toBe(true);
+		expect(result.groups[0]!.isNew).toBe(true);
 	});
 });
 

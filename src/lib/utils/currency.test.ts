@@ -7,7 +7,7 @@ describe('CURRENCIES', () => {
 	});
 
 	it('first entry is USD', () => {
-		expect(CURRENCIES[0].code).toBe('USD');
+		expect(CURRENCIES[0]?.code).toBe('USD');
 	});
 
 	it('every entry has required fields', () => {

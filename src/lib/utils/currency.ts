@@ -29,5 +29,9 @@ export const CURRENCIES: CurrencyInfo[] = [
 ];
 
 export function getCurrencyInfo(code: string): CurrencyInfo {
-	return CURRENCIES.find((c) => c.code === code) ?? CURRENCIES[0];
+	const found = CURRENCIES.find((c) => c.code === code);
+	if (found) return found;
+	const fallback = CURRENCIES[0];
+	if (!fallback) throw new Error('CURRENCIES list is empty');
+	return fallback;
 }

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {
 		total,

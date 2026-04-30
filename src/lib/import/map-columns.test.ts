@@ -108,44 +108,44 @@ describe('applyMapping', () => {
 	it('maps fields correctly from a row', () => {
 		const rows = [{ 'Item Name': 'Widget', 'SKU Code': 'WID-001', 'Unit': 'ea', 'Category': 'Products', 'Price': '25.00' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0].name).toBe('Widget');
-		expect(result[0].sku).toBe('WID-001');
-		expect(result[0].unit).toBe('ea');
-		expect(result[0].category).toBe('Products');
-		expect(result[0].rate).toBe(25);
+		expect(result[0]?.name).toBe('Widget');
+		expect(result[0]?.sku).toBe('WID-001');
+		expect(result[0]?.unit).toBe('ea');
+		expect(result[0]?.category).toBe('Products');
+		expect(result[0]?.rate).toBe(25);
 	});
 
 	it('trims whitespace from string fields', () => {
 		const rows = [{ 'Item Name': '  Widget  ', 'SKU Code': '  WID-001  ', 'Unit': '  ea  ', 'Category': '  Products  ', 'Price': '25' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0].name).toBe('Widget');
-		expect(result[0].sku).toBe('WID-001');
-		expect(result[0].unit).toBe('ea');
-		expect(result[0].category).toBe('Products');
+		expect(result[0]?.name).toBe('Widget');
+		expect(result[0]?.sku).toBe('WID-001');
+		expect(result[0]?.unit).toBe('ea');
+		expect(result[0]?.category).toBe('Products');
 	});
 
 	it('parses rate with dollar sign', () => {
 		const rows = [{ 'Item Name': 'X', 'Price': '$99.99', 'SKU Code': '', 'Unit': '', 'Category': '' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0].rate).toBe(99.99);
+		expect(result[0]?.rate).toBe(99.99);
 	});
 
 	it('parses rate with commas', () => {
 		const rows = [{ 'Item Name': 'X', 'Price': '1,500.00', 'SKU Code': '', 'Unit': '', 'Category': '' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0].rate).toBe(1500);
+		expect(result[0]?.rate).toBe(1500);
 	});
 
 	it('adds error when rate is invalid non-empty string', () => {
 		const rows = [{ 'Item Name': 'X', 'Price': 'not-a-rate', 'SKU Code': '', 'Unit': '', 'Category': '' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0]._errors).toContainEqual(expect.stringContaining('Invalid rate value'));
+		expect(result[0]?._errors).toContainEqual(expect.stringContaining('Invalid rate value'));
 	});
 
 	it('adds error when name is missing', () => {
 		const rows = [{ 'Item Name': '', 'SKU Code': '', 'Unit': '', 'Category': '', 'Price': '10' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0]._errors).toContainEqual('Name is required');
+		expect(result[0]?._errors).toContainEqual('Name is required');
 	});
 
 	it('handles skip field without adding errors', () => {
@@ -155,8 +155,8 @@ describe('applyMapping', () => {
 		};
 		const rows = [{ 'Item Name': 'Widget', 'Ignore': 'whatever' }];
 		const result = applyMapping(rows, config);
-		expect(result[0]._errors).toHaveLength(0);
-		expect(result[0].name).toBe('Widget');
+		expect(result[0]?._errors).toHaveLength(0);
+		expect(result[0]?.name).toBe('Widget');
 	});
 
 	it('includes tier rates when tierColumns is configured', () => {
@@ -167,8 +167,8 @@ describe('applyMapping', () => {
 		};
 		const rows = [{ 'Item Name': 'Widget', 'Tier1Price': '50', 'Tier2Price': '40' }];
 		const result = applyMapping(rows, config);
-		expect(result[0].tierRates[1]).toBe(50);
-		expect(result[0].tierRates[2]).toBe(40);
+		expect(result[0]?.tierRates[1]).toBe(50);
+		expect(result[0]?.tierRates[2]).toBe(40);
 	});
 
 	it('adds tier error when tier rate is invalid', () => {
@@ -179,7 +179,7 @@ describe('applyMapping', () => {
 		};
 		const rows = [{ 'Item Name': 'Widget', 'Tier1Price': 'bad-value' }];
 		const result = applyMapping(rows, config);
-		expect(result[0]._errors).toContainEqual(expect.stringContaining('Invalid tier rate'));
+		expect(result[0]?._errors).toContainEqual(expect.stringContaining('Invalid tier rate'));
 	});
 
 	it('collects metadata columns', () => {
@@ -189,8 +189,8 @@ describe('applyMapping', () => {
 		};
 		const rows = [{ 'Item Name': 'Widget', 'Notes': 'some notes', 'Tags': '  tag1  ' }];
 		const result = applyMapping(rows, config);
-		expect(result[0].metadata['Notes']).toBe('some notes');
-		expect(result[0].metadata['Tags']).toBe('tag1');
+		expect(result[0]?.metadata['Notes']).toBe('some notes');
+		expect(result[0]?.metadata['Tags']).toBe('tag1');
 	});
 
 	it('does not include empty metadata values', () => {
@@ -200,13 +200,13 @@ describe('applyMapping', () => {
 		};
 		const rows = [{ 'Item Name': 'Widget', 'Notes': '' }];
 		const result = applyMapping(rows, config);
-		expect(result[0].metadata['Notes']).toBeUndefined();
+		expect(result[0]?.metadata['Notes']).toBeUndefined();
 	});
 
 	it('stores raw row in _raw', () => {
 		const rows = [{ 'Item Name': 'Widget', 'Price': '10', 'SKU Code': '', 'Unit': '', 'Category': '' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0]._raw).toEqual(rows[0]);
+		expect(result[0]?._raw).toEqual(rows[0]);
 	});
 
 	it('handles multiple rows', () => {
@@ -216,8 +216,8 @@ describe('applyMapping', () => {
 		];
 		const result = applyMapping(rows, basicConfig);
 		expect(result).toHaveLength(2);
-		expect(result[0].name).toBe('Widget A');
-		expect(result[1].name).toBe('Widget B');
+		expect(result[0]?.name).toBe('Widget A');
+		expect(result[1]?.name).toBe('Widget B');
 	});
 
 	it('handles empty rows array', () => {
@@ -228,7 +228,7 @@ describe('applyMapping', () => {
 	it('defaults rate to 0 when price is empty', () => {
 		const rows = [{ 'Item Name': 'Widget', 'Price': '', 'SKU Code': '', 'Unit': '', 'Category': '' }];
 		const result = applyMapping(rows, basicConfig);
-		expect(result[0].rate).toBe(0);
-		expect(result[0]._errors).not.toContainEqual(expect.stringContaining('Invalid rate value'));
+		expect(result[0]?.rate).toBe(0);
+		expect(result[0]?._errors).not.toContainEqual(expect.stringContaining('Invalid rate value'));
 	});
 });

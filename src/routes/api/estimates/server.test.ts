@@ -144,8 +144,8 @@ describe('POST /api/estimates', () => {
 		const request = makeRequest({ client_id: 0, payer_id: '' });
 		await POST({ request } as any);
 
-		const calledWith = vi.mocked(repositories.estimates.createEstimate).mock.calls[0][0];
-		expect(calledWith.client_id).toBeNull();
+		const calledWith = vi.mocked(repositories.estimates.createEstimate).mock.calls[0]?.[0];
+		expect(calledWith?.client_id).toBeNull();
 		expect((calledWith as any).payer_id).toBeNull();
 	});
 

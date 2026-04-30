@@ -37,7 +37,7 @@ describe('diffCatalog', () => {
 			const rows = [makeMappedRow({ sku: 'NEW-SKU' })];
 			const result = diffCatalog(rows, [makeExistingItem({ sku: 'OTHER-SKU' })]);
 			expect(result.newItems).toHaveLength(1);
-			expect(result.newItems[0].sku).toBe('NEW-SKU');
+			expect(result.newItems[0]?.sku).toBe('NEW-SKU');
 		});
 
 		it('treats row as new when SKU is empty', () => {
@@ -52,42 +52,42 @@ describe('diffCatalog', () => {
 			const rows = [makeMappedRow({ sku: 'SKU-001', name: 'New Name' })];
 			const result = diffCatalog(rows, [makeExistingItem({ sku: 'SKU-001', name: 'Old Name' })]);
 			expect(result.updatedItems).toHaveLength(1);
-			expect(result.updatedItems[0].changes).toContainEqual(expect.stringContaining('Name:'));
+			expect(result.updatedItems[0]?.changes).toContainEqual(expect.stringContaining('Name:'));
 		});
 
 		it('detects rate change', () => {
 			const rows = [makeMappedRow({ sku: 'SKU-001', rate: 200 })];
 			const result = diffCatalog(rows, [makeExistingItem({ sku: 'SKU-001', rate: 100 })]);
 			expect(result.updatedItems).toHaveLength(1);
-			expect(result.updatedItems[0].changes).toContainEqual(expect.stringContaining('Rate:'));
+			expect(result.updatedItems[0]?.changes).toContainEqual(expect.stringContaining('Rate:'));
 		});
 
 		it('detects unit change', () => {
 			const rows = [makeMappedRow({ sku: 'SKU-001', unit: 'ea' })];
 			const result = diffCatalog(rows, [makeExistingItem({ sku: 'SKU-001', unit: 'hr' })]);
 			expect(result.updatedItems).toHaveLength(1);
-			expect(result.updatedItems[0].changes).toContainEqual(expect.stringContaining('Unit:'));
+			expect(result.updatedItems[0]?.changes).toContainEqual(expect.stringContaining('Unit:'));
 		});
 
 		it('detects category change', () => {
 			const rows = [makeMappedRow({ sku: 'SKU-001', category: 'New Category' })];
 			const result = diffCatalog(rows, [makeExistingItem({ sku: 'SKU-001', category: 'Services' })]);
 			expect(result.updatedItems).toHaveLength(1);
-			expect(result.updatedItems[0].changes).toContainEqual(expect.stringContaining('Category:'));
+			expect(result.updatedItems[0]?.changes).toContainEqual(expect.stringContaining('Category:'));
 		});
 
 		it('detects multiple changes at once', () => {
 			const rows = [makeMappedRow({ sku: 'SKU-001', name: 'New Name', rate: 999, unit: 'day' })];
 			const result = diffCatalog(rows, [makeExistingItem({ sku: 'SKU-001', name: 'Old Name', rate: 100, unit: 'hr' })]);
-			expect(result.updatedItems[0].changes).toHaveLength(3);
+			expect(result.updatedItems[0]?.changes).toHaveLength(3);
 		});
 
 		it('includes existing and incoming in updated item', () => {
 			const row = makeMappedRow({ sku: 'SKU-001', name: 'Updated' });
 			const existing = makeExistingItem({ sku: 'SKU-001', name: 'Original' });
 			const result = diffCatalog([row], [existing]);
-			expect(result.updatedItems[0].existing).toEqual(existing);
-			expect(result.updatedItems[0].incoming).toEqual(row);
+			expect(result.updatedItems[0]?.existing).toEqual(existing);
+			expect(result.updatedItems[0]?.incoming).toEqual(row);
 		});
 	});
 

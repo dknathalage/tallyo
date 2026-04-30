@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import type { CatalogItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
@@ -7,18 +6,16 @@
 	let {
 		open = false,
 		onclose,
-		onselect,
-		tierId
+		onselect
 	}: {
 		open: boolean;
 		onclose: () => void;
 		onselect: (item: CatalogItem) => void;
-		tierId?: number | null;
+		tierId?: number | null | undefined;
 	} = $props();
 
 	let search = $state('');
 	let selectedCategory = $state('');
-	let allCategories = $state<string[]>([]);
 	let allItems = $state<CatalogItem[]>([]);
 
 	$effect(() => {

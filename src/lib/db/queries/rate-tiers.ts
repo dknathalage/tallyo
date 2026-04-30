@@ -5,13 +5,13 @@ import type { RateTier } from '../../types/index.js';
 
 function mapRow(row: Record<string, unknown>): RateTier {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		name: row.name as string,
-		description: (row.description as string) ?? '',
-		sort_order: (row.sort_order as number) ?? 0,
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		name: row['name'] as string,
+		description: (row['description'] as string) ?? '',
+		sort_order: (row['sort_order'] as number) ?? 0,
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
@@ -27,7 +27,8 @@ export async function getRateTiers(): Promise<RateTier[]> {
 export async function getRateTier(id: number): Promise<RateTier | null> {
 	const db = getDb();
 	const rows = await db.select().from(rateTiers).where(eq(rateTiers.id, id));
-	return rows.length > 0 ? mapRow(rows[0] as Record<string, unknown>) : null;
+	const first = rows[0];
+	return first ? mapRow(first as Record<string, unknown>) : null;
 }
 
 export async function getDefaultTier(): Promise<RateTier | null> {
@@ -37,7 +38,8 @@ export async function getDefaultTier(): Promise<RateTier | null> {
 		.from(rateTiers)
 		.orderBy(asc(rateTiers.sort_order), asc(rateTiers.id))
 		.limit(1);
-	return rows.length > 0 ? mapRow(rows[0] as Record<string, unknown>) : null;
+	const first = rows[0];
+	return first ? mapRow(first as Record<string, unknown>) : null;
 }
 
 export async function createRateTier(data: {
@@ -60,7 +62,9 @@ export async function createRateTier(data: {
 		})
 		.returning({ id: rateTiers.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert rate tier');
+	return inserted.id;
 }
 
 export async function updateRateTier(
@@ -90,7 +94,8 @@ export async function deleteRateTier(id: number): Promise<void> {
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(rateTiers);
 
-	if (countResult[0].count <= 1) {
+	const firstCount = countResult[0];
+	if (!firstCount || firstCount.count <= 1) {
 		throw new Error('Cannot delete the last tier');
 	}
 

@@ -1,6 +1,6 @@
 import { getDb } from '../connection.js';
 import { estimates, estimateLineItems, invoices, lineItems, clients } from '../drizzle-schema.js';
-import { eq, and, or, like, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, like, desc, inArray } from 'drizzle-orm';
 import { generateInvoiceNumber, generateEstimateNumber } from '../number-generators.js';
 import type { Estimate, EstimateLineItem, PaginationParams, PaginatedResult } from '../../types/index.js';
 import { paginate } from '../../types/index.js';
@@ -13,43 +13,43 @@ function toISOString(d: string | null | undefined): string {
 
 function mapRowToEstimate(row: Record<string, unknown>): Estimate {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		estimate_number: row.estimate_number as string,
-		client_id: row.client_id as number,
-		client_name: (row.client_name as string) ?? undefined,
-		date: row.date as string,
-		valid_until: row.valid_until as string,
-		subtotal: row.subtotal as number,
-		tax_rate: row.tax_rate as number,
-		tax_rate_id: (row.tax_rate_id as number | null) ?? null,
-		tax_amount: row.tax_amount as number,
-		total: row.total as number,
-		notes: (row.notes as string) ?? '',
-		status: row.status as Estimate['status'],
-		currency_code: (row.currency_code as string) ?? 'USD',
-		converted_invoice_id: (row.converted_invoice_id as number | null) ?? null,
-		business_snapshot: (row.business_snapshot as string) ?? '{}',
-		client_snapshot: (row.client_snapshot as string) ?? '{}',
-		payer_snapshot: (row.payer_snapshot as string) ?? '{}',
-		created_at: toISOString(row.created_at as string | null),
-		updated_at: toISOString(row.updated_at as string | null)
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		estimate_number: row['estimate_number'] as string,
+		client_id: row['client_id'] as number,
+		client_name: (row['client_name'] as string) ?? undefined,
+		date: row['date'] as string,
+		valid_until: row['valid_until'] as string,
+		subtotal: row['subtotal'] as number,
+		tax_rate: row['tax_rate'] as number,
+		tax_rate_id: (row['tax_rate_id'] as number | null) ?? null,
+		tax_amount: row['tax_amount'] as number,
+		total: row['total'] as number,
+		notes: (row['notes'] as string) ?? '',
+		status: row['status'] as Estimate['status'],
+		currency_code: (row['currency_code'] as string) ?? 'USD',
+		converted_invoice_id: (row['converted_invoice_id'] as number | null) ?? null,
+		business_snapshot: (row['business_snapshot'] as string) ?? '{}',
+		client_snapshot: (row['client_snapshot'] as string) ?? '{}',
+		payer_snapshot: (row['payer_snapshot'] as string) ?? '{}',
+		created_at: toISOString(row['created_at'] as string | null),
+		updated_at: toISOString(row['updated_at'] as string | null)
 	};
 }
 
 function mapRowToEstimateLineItem(row: Record<string, unknown>): EstimateLineItem {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		estimate_id: row.estimate_id as number,
-		description: row.description as string,
-		quantity: row.quantity as number,
-		rate: row.rate as number,
-		amount: row.amount as number,
-		notes: (row.notes as string) ?? '',
-		sort_order: (row.sort_order as number) ?? 0,
-		catalog_item_id: (row.catalog_item_id as number | null) ?? null,
-		rate_tier_id: (row.rate_tier_id as number | null) ?? null
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		estimate_id: row['estimate_id'] as number,
+		description: row['description'] as string,
+		quantity: row['quantity'] as number,
+		rate: row['rate'] as number,
+		amount: row['amount'] as number,
+		notes: (row['notes'] as string) ?? '',
+		sort_order: (row['sort_order'] as number) ?? 0,
+		catalog_item_id: (row['catalog_item_id'] as number | null) ?? null,
+		rate_tier_id: (row['rate_tier_id'] as number | null) ?? null
 	};
 }
 
@@ -120,8 +120,9 @@ export async function getEstimate(id: number): Promise<Estimate | null> {
 		.leftJoin(clients, eq(estimates.client_id, clients.id))
 		.where(eq(estimates.id, id));
 
-	if (rows.length === 0) return null;
-	return mapRowToEstimate(rows[0] as unknown as Record<string, unknown>);
+	const first = rows[0];
+	if (!first) return null;
+	return mapRowToEstimate(first as unknown as Record<string, unknown>);
 }
 
 export async function getEstimateLineItems(estimateId: number): Promise<EstimateLineItem[]> {
@@ -166,6 +167,7 @@ export async function createEstimate(
 			})
 			.returning({ id: estimates.id });
 
+		if (!inserted) throw new Error('Failed to insert estimate');
 		const estimateId = inserted.id;
 
 		for (const item of items) {
@@ -325,6 +327,7 @@ export async function convertEstimateToInvoice(
 		})
 		.returning({ id: invoices.id });
 
+	if (!inserted) throw new Error('Failed to convert estimate to invoice');
 	const invoiceId = inserted.id;
 
 	for (const item of items) {
@@ -386,6 +389,7 @@ export async function duplicateEstimate(
 			})
 			.returning({ id: estimates.id });
 
+		if (!inserted) throw new Error('Failed to duplicate estimate');
 		const newId = inserted.id;
 
 		for (const item of originalItems) {

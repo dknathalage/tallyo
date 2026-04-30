@@ -14,7 +14,8 @@ export async function generateInvoiceNumber(): Promise<string> {
 		})
 		.from(invoices)
 		.where(sql`${invoices.invoice_number} LIKE 'INV-%'`);
-	const maxNum = result.length > 0 ? result[0].max_num : null;
+	const firstResult = result[0];
+	const maxNum = firstResult ? firstResult.max_num : null;
 	const next = maxNum !== null && maxNum > 0 ? maxNum + 1 : 1;
 	return `INV-${String(next).padStart(4, '0')}`;
 }
@@ -27,6 +28,7 @@ export async function generateEstimateNumber(): Promise<string> {
 		})
 		.from(estimates)
 		.where(sql`${estimates.estimate_number} LIKE 'EST-%'`);
-	const current = result.length > 0 && result[0].max_num != null ? result[0].max_num : 0;
+	const firstEstResult = result[0];
+	const current = firstEstResult && firstEstResult.max_num != null ? firstEstResult.max_num : 0;
 	return `EST-${String(current + 1).padStart(4, '0')}`;
 }

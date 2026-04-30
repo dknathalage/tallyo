@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let apiKey: string | undefined;
 	try {
 		const m = JSON.parse(profile?.metadata ?? '{}') as Record<string, string>;
-		apiKey = m.anthropic_api_key;
+		apiKey = m['anthropic_api_key'];
 	} catch {
 		/* noop */
 	}

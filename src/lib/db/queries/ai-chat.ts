@@ -5,25 +5,25 @@ import type { AiChatSession, AiChatMessage } from '../../types/index.js';
 
 function mapSession(row: Record<string, unknown>): AiChatSession {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		title: row.title as string,
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		title: row['title'] as string,
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
 function mapMessage(row: Record<string, unknown>): AiChatMessage {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		session_id: row.session_id as number,
-		role: row.role as 'user' | 'assistant',
-		content: (row.content as string) ?? '',
-		tool_calls: (row.tool_calls as string) ?? null,
-		tool_results: (row.tool_results as string) ?? null,
-		is_streaming: row.is_streaming === true ? 1 : 0,
-		created_at: (row.created_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		session_id: row['session_id'] as number,
+		role: row['role'] as 'user' | 'assistant',
+		content: (row['content'] as string) ?? '',
+		tool_calls: (row['tool_calls'] as string) ?? null,
+		tool_results: (row['tool_results'] as string) ?? null,
+		is_streaming: row['is_streaming'] === true ? 1 : 0,
+		created_at: (row['created_at'] as string) ?? ''
 	};
 }
 
@@ -42,7 +42,8 @@ export async function getSession(id: number): Promise<AiChatSession | null> {
 		.select()
 		.from(aiChatSessions)
 		.where(eq(aiChatSessions.id, id));
-	return rows.length > 0 ? mapSession(rows[0] as Record<string, unknown>) : null;
+	const first = rows[0];
+	return first ? mapSession(first as Record<string, unknown>) : null;
 }
 
 export async function createSession(title = 'New Chat'): Promise<number> {
@@ -55,7 +56,9 @@ export async function createSession(title = 'New Chat'): Promise<number> {
 		})
 		.returning({ id: aiChatSessions.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert AI chat session');
+	return inserted.id;
 }
 
 export async function updateSessionTitle(id: number, title: string): Promise<void> {
@@ -112,7 +115,9 @@ export async function addMessage(data: {
 		.set({ updated_at: new Date().toISOString() })
 		.where(eq(aiChatSessions.id, data.session_id));
 
-	return result[0].id;
+	const insertedMessage = result[0];
+	if (!insertedMessage) throw new Error('Failed to insert AI chat message');
+	return insertedMessage.id;
 }
 
 export async function finalizeMessage(

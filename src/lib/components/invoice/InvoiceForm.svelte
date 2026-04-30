@@ -82,7 +82,7 @@
 	let status = $state(untrack(() => initialData?.status ?? 'draft'));
 	let currencyCode = $state(untrack(() => initialData?.currency_code ?? ''));
 
-	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string; notes?: string }>>(
+	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string | undefined; notes?: string | undefined }>>(
 		[{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]
 	);
 
@@ -174,7 +174,6 @@
 	let payerPhone = $state('');
 	let payerAddress = $state('');
 	let payerMetadataPairs: KeyValuePair[] = $state([]);
-	let hasPayer = $derived(payerName.trim().length > 0);
 
 	// Initialize clients, invoice number, business snapshot, and edit-mode snapshots
 	onMount(async () => {
@@ -188,7 +187,7 @@
 		// Default to first available tax rate if none selected
 		if (selectedTaxRateId === null && taxRates.length > 0) {
 			const defaultRate = taxRates.find((r: TaxRate) => r.is_default === 1) ?? taxRates[0];
-			selectedTaxRateId = defaultRate.id;
+			if (defaultRate) selectedTaxRateId = defaultRate.id;
 		}
 		if (!initialData) {
 			invoiceNumber = nextInvoiceNumber ?? '';
@@ -428,8 +427,8 @@
 		</div>
 
 		<div class="space-y-2">
-			{#each lineItems as _, i}
-				<LineItemRow bind:item={lineItems[i]} onremove={() => removeLineItem(i)} tierId={activeTierId} {currencyCode} />
+			{#each lineItems as _, i (i)}
+				<LineItemRow bind:item={lineItems[i]!} onremove={() => removeLineItem(i)} tierId={activeTierId} {currencyCode} />
 			{/each}
 		</div>
 

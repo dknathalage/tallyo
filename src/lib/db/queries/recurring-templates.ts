@@ -14,19 +14,19 @@ function toISOString(d: string | null | undefined): string {
 
 function mapRowToTemplate(row: Record<string, unknown>): RecurringTemplate {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		client_id: row.client_id as number,
-		client_name: (row.client_name as string) ?? undefined,
-		name: row.name as string,
-		frequency: row.frequency as RecurringFrequency,
-		next_due: row.next_due as string,
-		line_items: row.line_items as string,
-		tax_rate: row.tax_rate as number,
-		notes: (row.notes as string) ?? '',
-		is_active: (row.is_active as boolean) ? 1 : 0,
-		created_at: toISOString(row.created_at as string | null),
-		updated_at: toISOString(row.updated_at as string | null)
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		client_id: row['client_id'] as number,
+		client_name: (row['client_name'] as string) ?? undefined,
+		name: row['name'] as string,
+		frequency: row['frequency'] as RecurringFrequency,
+		next_due: row['next_due'] as string,
+		line_items: row['line_items'] as string,
+		tax_rate: row['tax_rate'] as number,
+		notes: (row['notes'] as string) ?? '',
+		is_active: (row['is_active'] as boolean) ? 1 : 0,
+		created_at: toISOString(row['created_at'] as string | null),
+		updated_at: toISOString(row['updated_at'] as string | null)
 	};
 }
 
@@ -75,8 +75,9 @@ export async function getRecurringTemplate(id: number): Promise<RecurringTemplat
 		.leftJoin(clients, eq(recurringTemplates.client_id, clients.id))
 		.where(eq(recurringTemplates.id, id));
 
-	if (rows.length === 0) return null;
-	return mapRowToTemplate(rows[0] as unknown as Record<string, unknown>);
+	const first = rows[0];
+	if (!first) return null;
+	return mapRowToTemplate(first as unknown as Record<string, unknown>);
 }
 
 export async function getDueTemplates(): Promise<RecurringTemplate[]> {
@@ -124,6 +125,8 @@ export async function createRecurringTemplate(data: {
 			is_active: (data.is_active ?? 1) === 1
 		})
 		.returning({ id: recurringTemplates.id });
+
+	if (!inserted) throw new Error('Failed to insert recurring template');
 
 	await logAudit({
 		entity_type: 'recurring_template',
@@ -291,10 +294,12 @@ export async function createInvoiceFromTemplate(templateId: number): Promise<num
 			})
 			.returning({ id: invoices.id });
 
+		if (!inserted) throw new Error('Failed to create invoice from template');
 		const newInvoiceId = inserted.id;
 
 		for (let i = 0; i < templateLineItems.length; i++) {
 			const li = templateLineItems[i];
+			if (!li) continue;
 			await tx.insert(lineItems).values({
 				uuid: crypto.randomUUID(),
 				invoice_id: newInvoiceId,

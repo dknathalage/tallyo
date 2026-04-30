@@ -14,19 +14,19 @@ import { getBusinessProfile } from './business-profile.js';
 
 function mapRow(row: Record<string, unknown>): Client {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		name: row.name as string,
-		email: (row.email as string) ?? '',
-		phone: (row.phone as string) ?? '',
-		address: (row.address as string) ?? '',
-		pricing_tier_id: (row.pricing_tier_id as number | null) ?? null,
-		pricing_tier_name: (row.pricing_tier_name as string) ?? undefined,
-		metadata: (row.metadata as string) ?? '{}',
-		payer_id: (row.payer_id as number | null) ?? null,
-		payer_name: (row.payer_name as string) ?? undefined,
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		name: row['name'] as string,
+		email: (row['email'] as string) ?? '',
+		phone: (row['phone'] as string) ?? '',
+		address: (row['address'] as string) ?? '',
+		pricing_tier_id: (row['pricing_tier_id'] as number | null) ?? null,
+		pricing_tier_name: (row['pricing_tier_name'] as string) ?? undefined,
+		metadata: (row['metadata'] as string) ?? '{}',
+		payer_id: (row['payer_id'] as number | null) ?? null,
+		payer_name: (row['payer_name'] as string) ?? undefined,
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
@@ -93,7 +93,8 @@ export async function getClient(id: number): Promise<Client | null> {
 		.leftJoin(payers, eq(clients.payer_id, payers.id))
 		.where(eq(clients.id, id));
 
-	return rows.length > 0 ? mapRow(rows[0]) : null;
+	const first = rows[0];
+	return first ? mapRow(first) : null;
 }
 
 /**
@@ -119,7 +120,9 @@ export async function createClient(data: CreateClientInput): Promise<number> {
 		})
 		.returning({ id: clients.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert client');
+	return inserted.id;
 }
 
 /**
