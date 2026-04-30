@@ -16,6 +16,7 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 
 	for (let i = 0; i < data.length; i++) {
 		const row = data[i];
+		if (!row) continue;
 		const rowNum = i + 1;
 
 		// Validate required fields
@@ -46,8 +47,9 @@ export async function commitClientImport(
 	repos: { clients: ClientRepository }
 ): Promise<void> {
 	for (const row of rows) {
+		const uuid = row.uuid?.trim() || '';
 		await repos.clients.createClient({
-			uuid: row.uuid?.trim() || undefined,
+			...(uuid && { uuid }),
 			name: row.name?.trim() || '',
 			email: row.email?.trim() || '',
 			phone: row.phone?.trim() || '',

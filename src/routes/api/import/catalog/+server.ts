@@ -31,7 +31,9 @@ export const POST: RequestHandler = async ({ request }) => {
 					sku: row.sku,
 					metadata: Object.keys(row.metadata).length > 0 ? JSON.stringify(row.metadata) : '{}'
 				}).returning({ id: catalogItems.id }).all();
-				const newId = result[0].id;
+				const firstResult = result[0];
+				if (!firstResult) throw new Error('Failed to insert catalog item');
+				const newId = firstResult.id;
 
 				for (const [tierId, tierRate] of Object.entries(row.tierRates)) {
 					tx.insert(catalogItemRates).values({

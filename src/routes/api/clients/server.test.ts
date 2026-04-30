@@ -130,9 +130,9 @@ describe('POST /api/clients', () => {
 		const request = makeRequest({ name: 'Test', pricing_tier_id: 0, payer_id: '' });
 		await POST({ request } as any);
 
-		const calledWith = vi.mocked(repositories.clients.createClient).mock.calls[0][0];
-		expect(calledWith.pricing_tier_id).toBeNull();
-		expect(calledWith.payer_id).toBeNull();
+		const calledWith = vi.mocked(repositories.clients.createClient).mock.calls[0]?.[0];
+		expect(calledWith?.pricing_tier_id).toBeNull();
+		expect(calledWith?.payer_id).toBeNull();
 	});
 
 	it('bulk-deletes clients', async () => {

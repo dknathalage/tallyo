@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
 	import type { PageData } from './$types';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';

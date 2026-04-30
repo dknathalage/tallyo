@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import Button from './Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	let {

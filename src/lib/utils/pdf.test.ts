@@ -59,7 +59,7 @@ vi.mock('$lib/stores/i18n.svelte.js', () => ({
 				'pdf.rate': 'Rate',
 				'pdf.amount': 'Amount',
 				'pdf.subtotal': 'Subtotal:',
-				'pdf.tax': `Tax (${values?.rate ?? 0}%):`,
+				'pdf.tax': `Tax (${values?.['rate'] ?? 0}%):`,
 				'pdf.total': 'Total:',
 				'pdf.notes': 'NOTES',
 				'pdf.thankYou': 'Thank you for your business',
@@ -254,9 +254,10 @@ describe('exportInvoicePdf', () => {
 	});
 
 	it('shows Unknown when no client name and no snapshot name', () => {
+		const { client_name: _client_name, ...rest } = baseInvoice;
+		void _client_name;
 		const invoice = {
-			...baseInvoice,
-			client_name: undefined,
+			...rest,
 			client_snapshot: JSON.stringify({ email: '', phone: '', address: '', metadata: {} })
 		};
 		exportInvoicePdf(invoice, []);

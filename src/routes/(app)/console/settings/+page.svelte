@@ -91,9 +91,9 @@
 				if (pair.key.trim()) existing[pair.key.trim()] = pair.value;
 			}
 			if (aiApiKey.trim()) {
-				existing.anthropic_api_key = aiApiKey.trim();
+				existing['anthropic_api_key'] = aiApiKey.trim();
 			} else {
-				delete existing.anthropic_api_key;
+				delete existing['anthropic_api_key'];
 			}
 			await fetch('/api/settings', {
 				method: 'POST',

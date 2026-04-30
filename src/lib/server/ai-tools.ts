@@ -164,20 +164,20 @@ export async function executeTool(
 			case 'list_invoices': {
 				await repositories.invoices.markOverdueInvoices();
 				return repositories.invoices.getInvoices(
-					input.search as string | undefined,
-					input.status as string | undefined
+					input['search'] as string | undefined,
+					input['status'] as string | undefined
 				);
 			}
 			case 'get_invoice': {
-				const invoice = repositories.invoices.getInvoice(input.id as number);
-				if (!invoice) return { error: `Invoice ${input.id} not found` };
-				const lineItems = repositories.invoices.getInvoiceLineItems(input.id as number);
-				const payments = repositories.payments.getInvoicePayments(input.id as number);
+				const invoice = repositories.invoices.getInvoice(input['id'] as number);
+				if (!invoice) return { error: `Invoice ${input['id']} not found` };
+				const lineItems = repositories.invoices.getInvoiceLineItems(input['id'] as number);
+				const payments = repositories.payments.getInvoicePayments(input['id'] as number);
 				return { ...invoice, line_items: lineItems, payments };
 			}
 			case 'create_invoice': {
 				const rawItems = (
-					input.line_items as Array<{
+					input['line_items'] as Array<{
 						description: string;
 						quantity: number;
 						rate: number;
@@ -194,11 +194,11 @@ export async function executeTool(
 				const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
 				const invoiceData = {
 					invoice_number: `INV-${Date.now()}`,
-					client_id: input.client_id as number,
-					date: input.date as string,
-					due_date: input.due_date as string,
-					currency_code: (input.currency_code as string) ?? 'USD',
-					notes: (input.notes as string) ?? '',
+					client_id: input['client_id'] as number,
+					date: input['date'] as string,
+					due_date: input['due_date'] as string,
+					currency_code: (input['currency_code'] as string) ?? 'USD',
+					notes: (input['notes'] as string) ?? '',
 					subtotal,
 					tax_rate: 0,
 					tax_amount: 0,
@@ -210,25 +210,28 @@ export async function executeTool(
 			}
 			case 'update_invoice_status':
 				await repositories.invoices.updateInvoiceStatus(
-					input.id as number,
-					input.status as string
+					input['id'] as number,
+					input['status'] as string
 				);
-				return { success: true, message: `Invoice ${input.id} updated to ${input.status}` };
+				return { success: true, message: `Invoice ${input['id']} updated to ${input['status']}` };
 			case 'list_clients': {
-				return repositories.clients.getClients(input.search as string | undefined);
+				return repositories.clients.getClients(input['search'] as string | undefined);
 			}
 			case 'get_client': {
-				const client = repositories.clients.getClient(input.id as number);
-				if (!client) return { error: `Client ${input.id} not found` };
-				const revenue = repositories.clients.getClientRevenueSummary(input.id as number);
+				const client = repositories.clients.getClient(input['id'] as number);
+				if (!client) return { error: `Client ${input['id']} not found` };
+				const revenue = repositories.clients.getClientRevenueSummary(input['id'] as number);
 				return { ...client, revenue_summary: revenue };
 			}
 			case 'create_client': {
+				const email = input['email'] as string | undefined;
+				const phone = input['phone'] as string | undefined;
+				const address = input['address'] as string | undefined;
 				const id = await repositories.clients.createClient({
-					name: input.name as string,
-					email: input.email as string | undefined,
-					phone: input.phone as string | undefined,
-					address: input.address as string | undefined
+					name: input['name'] as string,
+					...(email !== undefined && { email }),
+					...(phone !== undefined && { phone }),
+					...(address !== undefined && { address })
 				});
 				return { id, message: `Client created with ID ${id}` };
 			}
@@ -238,24 +241,26 @@ export async function executeTool(
 				return repositories.invoices.getAgingReport();
 			case 'list_estimates': {
 				return repositories.estimates.getEstimates(
-					input.search as string | undefined,
-					input.status as string | undefined
+					input['search'] as string | undefined,
+					input['status'] as string | undefined
 				);
 			}
 			case 'record_payment': {
+				const method = input['method'] as string | undefined;
+				const notes = input['notes'] as string | undefined;
 				const id = await repositories.payments.createPayment({
-					invoice_id: input.invoice_id as number,
-					amount: input.amount as number,
-					payment_date: input.payment_date as string,
-					method: input.method as string | undefined,
-					notes: input.notes as string | undefined
+					invoice_id: input['invoice_id'] as number,
+					amount: input['amount'] as number,
+					payment_date: input['payment_date'] as string,
+					...(method !== undefined && { method }),
+					...(notes !== undefined && { notes })
 				});
 				return { id, message: `Payment recorded` };
 			}
 			case 'search_catalog': {
 				return repositories.catalog.searchCatalogItems(
-					input.term as string,
-					(input.limit as number) ?? 10
+					input['term'] as string,
+					(input['limit'] as number) ?? 10
 				);
 			}
 			default:

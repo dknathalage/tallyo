@@ -33,7 +33,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	validated.payer_id = fkOrNull(validated.payer_id);
 
 	try {
-		const id = await repositories.clients.createClient(validated);
+		const input = {
+			name: validated.name,
+			...(validated.email !== undefined && { email: validated.email }),
+			...(validated.phone !== undefined && { phone: validated.phone }),
+			...(validated.address !== undefined && { address: validated.address }),
+			...(validated.pricing_tier_id !== undefined && { pricing_tier_id: validated.pricing_tier_id }),
+			...(validated.payer_id !== undefined && { payer_id: validated.payer_id }),
+			...(validated.metadata !== undefined && { metadata: validated.metadata })
+		};
+		const id = await repositories.clients.createClient(input);
 		return json({ id }, { status: 201 });
 	} catch (err) {
 		dbError(err);

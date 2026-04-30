@@ -5,15 +5,15 @@ import type { Payment } from '../../types/index.js';
 
 function mapRow(row: Record<string, unknown>): Payment {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		invoice_id: row.invoice_id as number,
-		amount: row.amount as number,
-		payment_date: row.payment_date as string,
-		method: (row.method as string) ?? '',
-		notes: (row.notes as string) ?? '',
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		invoice_id: row['invoice_id'] as number,
+		amount: row['amount'] as number,
+		payment_date: row['payment_date'] as string,
+		method: (row['method'] as string) ?? '',
+		notes: (row['notes'] as string) ?? '',
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
@@ -59,7 +59,9 @@ export async function createPayment(data: {
 		})
 		.returning({ id: payments.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert payment');
+	return inserted.id;
 }
 
 export async function deletePayment(id: number): Promise<void> {

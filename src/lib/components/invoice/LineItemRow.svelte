@@ -12,10 +12,10 @@
 		tierId,
 		currencyCode = 'USD'
 	}: {
-		item: { description: string; quantity: number; rate: number; amount: number; unit?: string; notes?: string };
+		item: { description: string; quantity: number; rate: number; amount: number; unit?: string | undefined; notes?: string | undefined };
 		onremove: () => void;
-		tierId?: number | null;
-		currencyCode?: string;
+		tierId?: number | null | undefined;
+		currencyCode?: string | undefined;
 	} = $props();
 
 	let browseOpen = $state(false);

@@ -1,6 +1,5 @@
 import { getDb } from '$lib/db/connection.js';
 import { catalogItems } from '$lib/db/drizzle-schema.js';
-import { eq } from 'drizzle-orm';
 import { parseCsvFile, validateRequiredField, validateNumeric } from './parse.js';
 import type { CsvCatalogRow, ParsedImport, ValidationError } from './types.js';
 
@@ -18,6 +17,7 @@ export async function parseCatalogCsv(file: File): Promise<ParsedImport<CsvCatal
 
 	for (let i = 0; i < data.length; i++) {
 		const row = data[i];
+		if (!row) continue;
 		const rowNum = i + 1;
 		let hasError = false;
 

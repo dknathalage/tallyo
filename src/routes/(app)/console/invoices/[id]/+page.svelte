@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';

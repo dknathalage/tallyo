@@ -5,12 +5,11 @@
 
 	let {
 		value = $bindable(),
-		onselect,
-		tierId
+		onselect
 	}: {
 		value: string;
 		onselect: (item: CatalogItem) => void;
-		tierId?: number | null;
+		tierId?: number | null | undefined;
 	} = $props();
 
 	let suggestions = $state<CatalogItem[]>([]);
@@ -61,7 +60,8 @@
 			highlightedIndex = highlightedIndex <= 0 ? suggestions.length - 1 : highlightedIndex - 1;
 		} else if (e.key === 'Enter' && highlightedIndex >= 0) {
 			e.preventDefault();
-			selectItem(suggestions[highlightedIndex]);
+			const sel = suggestions[highlightedIndex];
+			if (sel) selectItem(sel);
 		} else if (e.key === 'Escape') {
 			showDropdown = false;
 			highlightedIndex = -1;

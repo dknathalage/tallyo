@@ -39,7 +39,7 @@ describe('parseClientsCsv', () => {
 		mockFetch.mockResolvedValue({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseClientsCsv(makeFile());
 		expect(result.validRows).toHaveLength(1);
-		expect(result.validRows[0].name).toBe('Alice');
+		expect(result.validRows[0]!.name).toBe('Alice');
 	});
 
 	it('collects errors when name is missing', async () => {
@@ -49,7 +49,7 @@ describe('parseClientsCsv', () => {
 		mockValidateRequiredField.mockReturnValue({ row: 1, field: 'name', message: 'name is required' });
 		const result = await parseClientsCsv(makeFile());
 		expect(result.errors).toHaveLength(1);
-		expect(result.errors[0].field).toBe('name');
+		expect(result.errors[0]!.field).toBe('name');
 		expect(result.validRows).toHaveLength(0);
 	});
 
@@ -126,11 +126,11 @@ describe('commitClientImport', () => {
 		});
 	});
 
-	it('passes undefined for uuid when empty', async () => {
+	it('omits uuid when empty', async () => {
 		const createClient = vi.fn().mockResolvedValue(1);
 		const rows = [{ uuid: '', name: 'Alice', email: '', phone: '', address: '', metadata: '', payer_name: '' }];
 		await commitClientImport(rows, { clients: { createClient } as any });
-		expect(createClient).toHaveBeenCalledWith(expect.objectContaining({ uuid: undefined }));
+		expect(createClient).toHaveBeenCalledWith(expect.not.objectContaining({ uuid: expect.anything() }));
 	});
 
 	it('handles empty rows array without calling createClient', async () => {

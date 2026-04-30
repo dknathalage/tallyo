@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
@@ -73,7 +73,9 @@
 
 	function updateLineItem(index: number, field: keyof FormLineItem, value: string | number) {
 		const items = [...lineItems];
-		const item = { ...items[index], [field]: value };
+		const existing = items[index];
+		if (!existing) return;
+		const item: FormLineItem = { ...existing, [field]: value };
 		if (field === 'quantity' || field === 'rate') {
 			item.amount = item.quantity * item.rate;
 		}
@@ -94,8 +96,8 @@
 
 	function validate(): boolean {
 		const errs: Record<string, string> = {};
-		if (!name.trim()) errs.name = i18n.t('validation.required');
-		if (!nextDue) errs.nextDue = i18n.t('validation.required');
+		if (!name.trim()) errs['name'] = i18n.t('validation.required');
+		if (!nextDue) errs['nextDue'] = i18n.t('validation.required');
 		errors = errs;
 		return Object.keys(errs).length === 0;
 	}
@@ -198,9 +200,9 @@
 						type="text"
 						bind:value={name}
 						placeholder={i18n.t('recurring.templateNamePlaceholder')}
-						class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white {errors.name ? 'border-red-500' : ''}"
+						class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white {errors['name'] ? 'border-red-500' : ''}"
 					/>
-					{#if errors.name}<p class="mt-1 text-xs text-red-500">{errors.name}</p>{/if}
+					{#if errors['name']}<p class="mt-1 text-xs text-red-500">{errors['name']}</p>{/if}
 				</div>
 
 				<!-- Client + Frequency row -->
@@ -246,9 +248,9 @@
 							id="tmpl-next-due"
 							type="date"
 							bind:value={nextDue}
-							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white {errors.nextDue ? 'border-red-500' : ''}"
+							class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white {errors['nextDue'] ? 'border-red-500' : ''}"
 						/>
-						{#if errors.nextDue}<p class="mt-1 text-xs text-red-500">{errors.nextDue}</p>{/if}
+						{#if errors['nextDue']}<p class="mt-1 text-xs text-red-500">{errors['nextDue']}</p>{/if}
 					</div>
 					<div>
 						<label for="tmpl-tax" class="block text-sm font-medium text-gray-700 dark:text-gray-300">

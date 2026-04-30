@@ -12,7 +12,7 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { profile, ...rest } = await request.json();
+	const { profile } = await request.json();
 	if (profile) {
 		try {
 			await repositories.businessProfile.saveBusinessProfile(profile);

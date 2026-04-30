@@ -14,43 +14,43 @@ function toISOString(d: string | null | undefined): string {
 
 function mapRowToInvoice(row: Record<string, unknown>): Invoice {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		invoice_number: row.invoice_number as string,
-		client_id: row.client_id as number,
-		client_name: (row.client_name as string) ?? undefined,
-		date: row.date as string,
-		due_date: row.due_date as string,
-		payment_terms: row.payment_terms as Invoice['payment_terms'],
-		subtotal: row.subtotal as number,
-		tax_rate: row.tax_rate as number,
-		tax_rate_id: (row.tax_rate_id as number | null) ?? null,
-		tax_amount: row.tax_amount as number,
-		total: row.total as number,
-		notes: (row.notes as string) ?? '',
-		status: row.status as Invoice['status'],
-		currency_code: (row.currency_code as string) ?? 'USD',
-		business_snapshot: (row.business_snapshot as string) ?? '{}',
-		client_snapshot: (row.client_snapshot as string) ?? '{}',
-		payer_snapshot: (row.payer_snapshot as string) ?? '{}',
-		created_at: toISOString(row.created_at as string | null),
-		updated_at: toISOString(row.updated_at as string | null)
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		invoice_number: row['invoice_number'] as string,
+		client_id: row['client_id'] as number,
+		client_name: (row['client_name'] as string) ?? undefined,
+		date: row['date'] as string,
+		due_date: row['due_date'] as string,
+		payment_terms: row['payment_terms'] as Invoice['payment_terms'],
+		subtotal: row['subtotal'] as number,
+		tax_rate: row['tax_rate'] as number,
+		tax_rate_id: (row['tax_rate_id'] as number | null) ?? null,
+		tax_amount: row['tax_amount'] as number,
+		total: row['total'] as number,
+		notes: (row['notes'] as string) ?? '',
+		status: row['status'] as Invoice['status'],
+		currency_code: (row['currency_code'] as string) ?? 'USD',
+		business_snapshot: (row['business_snapshot'] as string) ?? '{}',
+		client_snapshot: (row['client_snapshot'] as string) ?? '{}',
+		payer_snapshot: (row['payer_snapshot'] as string) ?? '{}',
+		created_at: toISOString(row['created_at'] as string | null),
+		updated_at: toISOString(row['updated_at'] as string | null)
 	};
 }
 
 function mapRowToLineItem(row: Record<string, unknown>): LineItem {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		invoice_id: row.invoice_id as number,
-		description: row.description as string,
-		quantity: row.quantity as number,
-		rate: row.rate as number,
-		amount: row.amount as number,
-		notes: (row.notes as string) ?? '',
-		sort_order: (row.sort_order as number) ?? 0,
-		catalog_item_id: (row.catalog_item_id as number | null) ?? null,
-		rate_tier_id: (row.rate_tier_id as number | null) ?? null
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		invoice_id: row['invoice_id'] as number,
+		description: row['description'] as string,
+		quantity: row['quantity'] as number,
+		rate: row['rate'] as number,
+		amount: row['amount'] as number,
+		notes: (row['notes'] as string) ?? '',
+		sort_order: (row['sort_order'] as number) ?? 0,
+		catalog_item_id: (row['catalog_item_id'] as number | null) ?? null,
+		rate_tier_id: (row['rate_tier_id'] as number | null) ?? null
 	};
 }
 
@@ -141,8 +141,9 @@ export async function getInvoice(id: number): Promise<Invoice | null> {
 		.leftJoin(clients, eq(invoices.client_id, clients.id))
 		.where(eq(invoices.id, id));
 
-	if (rows.length === 0) return null;
-	return mapRowToInvoice(rows[0] as unknown as Record<string, unknown>);
+	const first = rows[0];
+	if (!first) return null;
+	return mapRowToInvoice(first as unknown as Record<string, unknown>);
 }
 
 export async function getInvoiceLineItems(invoiceId: number): Promise<LineItem[]> {
@@ -188,6 +189,7 @@ export async function createInvoice(
 			})
 			.returning({ id: invoices.id });
 
+		if (!inserted) throw new Error('Failed to insert invoice');
 		const invoiceId = inserted.id;
 
 		for (const item of items) {
@@ -224,8 +226,9 @@ export async function updateInvoice(
 			.select({ rate: taxRates.rate })
 			.from(taxRates)
 			.where(eq(taxRates.id, data.tax_rate_id));
-		if (taxRateRows.length > 0) {
-			resolvedTaxRate = taxRateRows[0].rate;
+		const firstTaxRate = taxRateRows[0];
+		if (firstTaxRate) {
+			resolvedTaxRate = firstTaxRate.rate;
 		}
 	}
 
@@ -408,6 +411,7 @@ export async function duplicateInvoice(id: number): Promise<number> {
 			})
 			.returning({ id: invoices.id });
 
+		if (!inserted) throw new Error('Failed to duplicate invoice');
 		const newId = inserted.id;
 
 		for (const item of originalItems) {
@@ -467,28 +471,27 @@ export async function getAgingReport(): Promise<AgingBucket[]> {
 		)
 		.orderBy(invoices.due_date);
 
-	const buckets: AgingBucket[] = [
-		{ label: 'Current', total: 0, invoices: [] },
-		{ label: '1–30 days', total: 0, invoices: [] },
-		{ label: '31–60 days', total: 0, invoices: [] },
-		{ label: '61–90 days', total: 0, invoices: [] },
-		{ label: '90+ days', total: 0, invoices: [] }
-	];
+	const current: AgingBucket = { label: 'Current', total: 0, invoices: [] };
+	const b1to30: AgingBucket = { label: '1–30 days', total: 0, invoices: [] };
+	const b31to60: AgingBucket = { label: '31–60 days', total: 0, invoices: [] };
+	const b61to90: AgingBucket = { label: '61–90 days', total: 0, invoices: [] };
+	const b90plus: AgingBucket = { label: '90+ days', total: 0, invoices: [] };
+	const buckets: AgingBucket[] = [current, b1to30, b31to60, b61to90, b90plus];
 
 	for (const row of outstanding) {
 		const inv = mapRowToInvoice(row as unknown as Record<string, unknown>);
 		const days = row.days_overdue;
 		let bucket: AgingBucket;
 		if (days <= 0) {
-			bucket = buckets[0];
+			bucket = current;
 		} else if (days <= 30) {
-			bucket = buckets[1];
+			bucket = b1to30;
 		} else if (days <= 60) {
-			bucket = buckets[2];
+			bucket = b31to60;
 		} else if (days <= 90) {
-			bucket = buckets[3];
+			bucket = b61to90;
 		} else {
-			bucket = buckets[4];
+			bucket = b90plus;
 		}
 		bucket.invoices.push(inv);
 		bucket.total += inv.total;

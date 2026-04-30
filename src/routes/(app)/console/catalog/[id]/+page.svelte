@@ -4,7 +4,6 @@
 	import { base } from '$app/paths';
 	import type { PageData } from './$types';
 	import { formatCurrency } from '$lib/utils/format';
-	import type { AuditLogEntry } from '$lib/types/index.js';
 	import CatalogForm from '$lib/components/catalog/CatalogForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
@@ -27,8 +26,8 @@
 		unit: string;
 		category: string;
 		sku: string;
-		tierRates?: Record<number, number>;
-		metadata?: string;
+		tierRates?: Record<number, number> | undefined;
+		metadata?: string | undefined;
 	}) {
 		await fetch(`/api/catalog/${item.id}`, {
 			method: 'PUT',
@@ -160,11 +159,12 @@
 				<h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('catalog.tierRates')}</h2>
 				<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each tiers as tier}
+						{@const tierRate = itemWithRates.rates[tier.id]}
 						<div>
 							<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{tier.name}</dt>
 							<dd class="mt-1 text-sm text-gray-900 dark:text-white">
-								{#if itemWithRates.rates[tier.id] !== undefined}
-									{formatCurrency(itemWithRates.rates[tier.id])}
+								{#if tierRate !== undefined}
+									{formatCurrency(tierRate)}
 								{:else}
 									<span class="text-gray-400 dark:text-gray-500">{formatCurrency(item.rate)} {i18n.t('common.default')}</span>
 								{/if}

@@ -1,6 +1,6 @@
 import { getDb } from '../connection.js';
 import { catalogItems, catalogItemRates } from '../drizzle-schema.js';
-import { eq, like, or, and, ne, inArray, asc, sql } from 'drizzle-orm';
+import { eq, like, or, and, ne, inArray, asc } from 'drizzle-orm';
 import type {
 	CatalogItem,
 	CatalogItemWithRates,
@@ -11,16 +11,16 @@ import { paginate } from '../../types/index.js';
 
 function mapRow(row: Record<string, unknown>): CatalogItem {
 	return {
-		id: row.id as number,
-		uuid: row.uuid as string,
-		name: row.name as string,
-		rate: (row.rate as number) ?? 0,
-		unit: (row.unit as string) ?? '',
-		category: (row.category as string) ?? '',
-		sku: (row.sku as string) ?? '',
-		metadata: (row.metadata as string) ?? '{}',
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		id: row['id'] as number,
+		uuid: row['uuid'] as string,
+		name: row['name'] as string,
+		rate: (row['rate'] as number) ?? 0,
+		unit: (row['unit'] as string) ?? '',
+		category: (row['category'] as string) ?? '',
+		sku: (row['sku'] as string) ?? '',
+		metadata: (row['metadata'] as string) ?? '{}',
+		created_at: (row['created_at'] as string) ?? '',
+		updated_at: (row['updated_at'] as string) ?? ''
 	};
 }
 
@@ -60,7 +60,8 @@ export async function getCatalogItems(
 export async function getCatalogItem(id: number): Promise<CatalogItem | null> {
 	const db = getDb();
 	const rows = await db.select().from(catalogItems).where(eq(catalogItems.id, id));
-	return rows.length > 0 ? mapRow(rows[0]) : null;
+	const first = rows[0];
+	return first ? mapRow(first) : null;
 }
 
 export async function getCatalogCategories(): Promise<string[]> {
@@ -114,7 +115,9 @@ export async function createCatalogItem(data: {
 		})
 		.returning({ id: catalogItems.id });
 
-	return result[0].id;
+	const inserted = result[0];
+	if (!inserted) throw new Error('Failed to insert catalog item');
+	return inserted.id;
 }
 
 /**
@@ -183,9 +186,8 @@ export async function getCatalogItemWithRates(
 		.leftJoin(catalogItemRates, eq(catalogItems.id, catalogItemRates.catalog_item_id))
 		.where(eq(catalogItems.id, id));
 
-	if (rows.length === 0) return null;
-
 	const item = rows[0];
+	if (!item) return null;
 	const rates: Record<number, number> = {};
 	for (const row of rows) {
 		if (row.tier_id != null && row.tier_rate != null) {
@@ -280,10 +282,13 @@ export async function getCatalogItemsWithTierRate(
 
 	const rows = await query.orderBy(asc(catalogItems.name));
 
-	return rows.map((row) => ({
-		...mapRow(row as Record<string, unknown>),
-		tier_rate: 'tier_rate' in row ? (row.tier_rate as number | undefined) ?? undefined : undefined
-	}));
+	return rows.map((row) => {
+		const tierRate = 'tier_rate' in row ? (row.tier_rate as number | undefined) : undefined;
+		return {
+			...mapRow(row as Record<string, unknown>),
+			...(tierRate !== undefined && tierRate !== null && { tier_rate: tierRate })
+		};
+	});
 }
 
 export async function getEffectiveRate(
@@ -302,8 +307,9 @@ export async function getEffectiveRate(
 					eq(catalogItemRates.rate_tier_id, tierId)
 				)
 			);
-		if (results.length > 0) {
-			return results[0].rate;
+		const firstRate = results[0];
+		if (firstRate) {
+			return firstRate.rate;
 		}
 	}
 

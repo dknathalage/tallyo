@@ -3,7 +3,6 @@
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
 	import { base } from '$app/paths';
-	import type { AuditLogEntry } from '$lib/types/index.js';
 	import type { PageData } from './$types';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';

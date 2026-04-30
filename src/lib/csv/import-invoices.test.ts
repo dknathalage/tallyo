@@ -70,7 +70,7 @@ describe('parseInvoicesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseInvoicesCsv(makeFile());
 		expect(result.groups).toHaveLength(1);
-		expect(result.groups[0].lineItems).toHaveLength(2);
+		expect(result.groups[0]!.lineItems).toHaveLength(2);
 	});
 
 	it('groups rows by invoice_number when no uuid', async () => {
@@ -143,7 +143,7 @@ describe('parseInvoicesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseInvoicesCsv(makeFile());
 		expect(result.groups).toHaveLength(1);
-		const g = result.groups[0];
+		const g = result.groups[0]!;
 		expect(g.status).toBe('draft');
 		expect(g.currencyCode).toBe('USD');
 		expect(g.businessSnapshot).toBe('{}');
@@ -160,7 +160,7 @@ describe('parseInvoicesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) })
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		const result = await parseInvoicesCsv(makeFile());
-		const lineItem = result.groups[0].lineItems[0];
+		const lineItem = result.groups[0]!.lineItems[0]!;
 		expect(lineItem.quantity).toBe(3);
 		expect(lineItem.rate).toBe(75.5);
 		expect(lineItem.amount).toBe(226.5);

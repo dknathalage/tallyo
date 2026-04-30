@@ -120,17 +120,17 @@ class AiChatStore {
   private handleEvent(event: string, data: Record<string, unknown>) {
     switch (event) {
       case 'text_delta':
-        this.streaming = { ...this.streaming, text: this.streaming.text + (data.delta as string ?? '') };
+        this.streaming = { ...this.streaming, text: this.streaming.text + (data['delta'] as string ?? '') };
         break;
       case 'tool_start':
         this.streaming = {
           ...this.streaming,
-          toolCalls: [...this.streaming.toolCalls, { id: data.id as string, name: data.name as string }]
+          toolCalls: [...this.streaming.toolCalls, { id: data['id'] as string, name: data['name'] as string }]
         };
         break;
       case 'tool_result': {
         const updated = this.streaming.toolCalls.map(tc =>
-          tc.id === data.tool_use_id ? { ...tc, result: data.result as string, is_error: data.is_error as boolean } : tc
+          tc.id === data['tool_use_id'] ? { ...tc, result: data['result'] as string, is_error: data['is_error'] as boolean } : tc
         );
         this.streaming = { ...this.streaming, toolCalls: updated };
         break;
@@ -142,7 +142,7 @@ class AiChatStore {
         this.streaming = { text: '', toolCalls: [] };
         break;
       case 'error':
-        addToast({ message: (data.message as string) || 'AI error occurred', type: 'error' });
+        addToast({ message: (data['message'] as string) || 'AI error occurred', type: 'error' });
         this.streaming = { text: '', toolCalls: [] };
         this.isStreaming = false;
         break;

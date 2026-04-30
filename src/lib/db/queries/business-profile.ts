@@ -1,5 +1,5 @@
 import { getDb } from '../connection.js';
-import { businessProfile, auditLog } from '../drizzle-schema.js';
+import { businessProfile } from '../drizzle-schema.js';
 import { eq } from 'drizzle-orm';
 import { logAudit } from '../audit.js';
 import type { BusinessProfile, PartySnapshot } from '../../types/index.js';
@@ -7,8 +7,9 @@ import type { BusinessProfile, PartySnapshot } from '../../types/index.js';
 export async function getBusinessProfile(): Promise<BusinessProfile | null> {
 	const db = getDb();
 	const rows = await db.select().from(businessProfile).where(eq(businessProfile.id, 1));
-	if (rows.length === 0) return null;
-	return mapRow(rows[0]);
+	const first = rows[0];
+	if (!first) return null;
+	return mapRow(first);
 }
 
 export async function saveBusinessProfile(data: {
@@ -68,12 +69,13 @@ export async function buildBusinessSnapshot(): Promise<PartySnapshot> {
 	} catch (e) {
 		console.error('Failed to parse business profile metadata', e);
 	}
+	const logo = profile.logo || undefined;
 	return {
 		name: profile.name,
 		email: profile.email,
 		phone: profile.phone,
 		address: profile.address,
-		logo: profile.logo || undefined,
+		...(logo !== undefined && { logo }),
 		metadata
 	};
 }

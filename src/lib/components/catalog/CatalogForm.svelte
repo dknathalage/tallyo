@@ -15,8 +15,8 @@
 			unit: string;
 			category: string;
 			sku: string;
-			tierRates?: Record<number, number>;
-			metadata?: string;
+			tierRates?: Record<number, number> | undefined;
+			metadata?: string | undefined;
 		}) => void;
 	} = $props();
 

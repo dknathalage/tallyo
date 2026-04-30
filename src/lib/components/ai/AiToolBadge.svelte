@@ -1,8 +1,8 @@
 <script lang="ts">
   interface Props {
     name: string;
-    result?: string;
-    is_error?: boolean;
+    result?: string | undefined;
+    is_error?: boolean | undefined;
   }
   let { name, result, is_error = false }: Props = $props();
   let expanded = $state(false);
