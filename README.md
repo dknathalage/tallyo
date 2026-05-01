@@ -5,7 +5,7 @@ Self-hosted invoice manager. Local-first, SQLite-backed.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dknathalage/tallyo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dknathalage/tallyo/refs/heads/main/install.sh | bash
 ```
 
 Requires `git`, `node`, `npm`. Installs source to `~/.tallyo-src` and a `tallyo` symlink in `~/.local/bin`. Re-run to update.
