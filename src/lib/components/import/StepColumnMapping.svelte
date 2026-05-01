@@ -5,7 +5,7 @@
 	import type { RateTier, ColumnMapping } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		headers,
 		sampleRows,
 		fileType,
@@ -49,8 +49,9 @@
 		const initialMetadata: string[] = [];
 
 		for (const h of headers) {
-			if (detected.fieldMap[h]) {
-				initial[h] = detected.fieldMap[h]!;
+			const mapped = detected.fieldMap[h];
+			if (mapped) {
+				initial[h] = mapped;
 			} else if (detected.suggestedNewTiers.includes(h)) {
 				initialNewTiers.push(h);
 			} else if (detected.suggestedMetadata.includes(h)) {
@@ -76,8 +77,8 @@
 	function setMapping(header: string, value: string) {
 		const newFieldMap = { ...fieldMap };
 		const newTierCols = { ...tierColumns };
-		let updatedNewTiers = newTierColumns.filter((c) => c !== header);
-		let newMetadata = metadataColumns.filter((m) => m !== header);
+		const updatedNewTiers = newTierColumns.filter((c) => c !== header);
+		const newMetadata = metadataColumns.filter((m) => m !== header);
 
 		// Remove from all maps first
 		delete newFieldMap[header];
@@ -90,7 +91,7 @@
 		} else if (value.startsWith('tier:')) {
 			newTierCols[header] = Number(value.split(':')[1]);
 		} else {
-			newFieldMap[header] = value as TargetField;
+			newFieldMap[header] = value;
 		}
 
 		fieldMap = newFieldMap;
@@ -107,7 +108,7 @@
 
 			const newFieldMap: Record<string, TargetField> = {};
 			for (const h of headers) {
-				newFieldMap[h] = (parsed[h] as TargetField) ?? 'skip';
+				newFieldMap[h] = parsed[h] ?? 'skip';
 			}
 			fieldMap = newFieldMap;
 
@@ -132,7 +133,10 @@
 	}
 
 	async function savePreset() {
-		if (!saveName.trim()) return;
+		const name = saveName.trim();
+		if (!name) return;
+		saveName = '';
+		showSave = false;
 		const allMappings: Record<string, string> = {};
 		for (const h of headers) {
 			allMappings[h] = fieldMap[h] ?? 'skip';
@@ -142,7 +146,7 @@
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				name: saveName.trim(),
+				name,
 				entity_type: 'catalog',
 				mapping: allMappings,
 				tier_mapping: tierColumns,
@@ -155,8 +159,6 @@
 
 		const res = await fetch('/api/column-mappings?entity=catalog');
 		savedMappings = await res.json();
-		saveName = '';
-		showSave = false;
 	}
 
 	async function handleDeletePreset(id: number) {
@@ -165,7 +167,7 @@
 		savedMappings = await res.json();
 	}
 
-	let hasNameMapping = $derived(
+	const hasNameMapping = $derived(
 		Object.values(fieldMap).includes('name')
 	);
 
@@ -173,9 +175,9 @@
 		onmapped({ fieldMap, tierColumns, newTierColumns, metadataColumns });
 	}
 
-	let preview = $derived(sampleRows.slice(0, 3));
+	const preview = $derived(sampleRows.slice(0, 3));
 
-	let newTierCount = $derived(newTierColumns.length);
+	const newTierCount = $derived(newTierColumns.length);
 </script>
 
 <div class="space-y-4">
@@ -243,7 +245,7 @@
 							</select>
 						</td>
 						<td class="px-3 py-2 text-gray-500 dark:text-gray-400">
-							{preview.map((r) => r[header] || '').filter(Boolean).slice(0, 3).join(', ') || '-'}
+							{preview.map((r) => r[header] ?? '').filter(Boolean).slice(0, 3).join(', ') || '-'}
 						</td>
 					</tr>
 				{/each}

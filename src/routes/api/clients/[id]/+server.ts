@@ -3,35 +3,38 @@ import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/index.js';
 import { dbError, fkOrNull } from '$lib/server/db-error.js';
 
-export const GET: RequestHandler = async ({ params }) => {
-	const id = parseInt(params.id, 10);
+function parseId(raw: string): number {
+	const id = parseInt(raw, 10);
 	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
+	return id;
+}
+
+export const GET: RequestHandler = async ({ params }) => {
+	const id = parseId(params.id);
 	const client = await repositories.clients.getClient(id);
 	if (!client) throw error(404, 'Client not found');
 	return json(client);
 };
 
 export const PUT: RequestHandler = async ({ params, request }) => {
-	const id = parseInt(params.id, 10);
-	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
-	const data = await request.json();
-	data.pricing_tier_id = fkOrNull(data.pricing_tier_id);
-	data.payer_id = fkOrNull(data.payer_id);
+	const id = parseId(params.id);
+	const data = (await request.json()) as Record<string, unknown>;
+	data['pricing_tier_id'] = fkOrNull(data['pricing_tier_id']);
+	data['payer_id'] = fkOrNull(data['payer_id']);
 	try {
-		await repositories.clients.updateClient(id, data);
-		return json({ success: true });
+		await repositories.clients.updateClient(id, data as unknown as Parameters<typeof repositories.clients.updateClient>[1]);
 	} catch (err) {
-		dbError(err);
+		throw dbError(err);
 	}
+	return json({ success: true });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
-	const id = parseInt(params.id, 10);
-	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
+	const id = parseId(params.id);
 	try {
 		await repositories.clients.deleteClient(id);
-		return json({ success: true });
 	} catch (err) {
-		dbError(err);
+		throw dbError(err);
 	}
+	return json({ success: true });
 };

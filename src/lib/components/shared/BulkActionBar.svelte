@@ -3,7 +3,7 @@
 	import { fly } from 'svelte/transition';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		count,
 		ondeselect,
 		children

@@ -11,7 +11,7 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 
 	// Get existing UUIDs for deduplication via API
 	const existingRes = await fetch('/api/clients');
-	const existingClients = await existingRes.json() as Array<{ uuid: string }>;
+	const existingClients = await existingRes.json() as { uuid: string }[];
 	const existingUuids = new Set(existingClients.map((r) => r.uuid).filter(Boolean));
 
 	for (let i = 0; i < data.length; i++) {
@@ -27,7 +27,7 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 		}
 
 		// Skip duplicates by UUID
-		if (row.uuid?.trim() && existingUuids.has(row.uuid.trim())) {
+		if (row.uuid.trim() && existingUuids.has(row.uuid.trim())) {
 			skippedDuplicates++;
 			continue;
 		}
@@ -47,13 +47,13 @@ export async function commitClientImport(
 	repos: { clients: ClientRepository }
 ): Promise<void> {
 	for (const row of rows) {
-		const uuid = row.uuid?.trim() || '';
+		const uuid = row.uuid.trim();
 		await repos.clients.createClient({
 			...(uuid && { uuid }),
-			name: row.name?.trim() || '',
-			email: row.email?.trim() || '',
-			phone: row.phone?.trim() || '',
-			address: row.address?.trim() || ''
+			name: row.name.trim(),
+			email: row.email.trim(),
+			phone: row.phone.trim(),
+			address: row.address.trim()
 		});
 	}
 }

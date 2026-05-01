@@ -3,7 +3,7 @@
 
 	type Status = 'draft' | 'sent' | 'paid' | 'overdue' | 'accepted' | 'rejected' | 'expired';
 
-	let { status }: { status: Status } = $props();
+	const { status }: { status: Status } = $props();
 
 	const statusClasses: Record<Status, string> = {
 		draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',

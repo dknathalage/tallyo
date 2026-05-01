@@ -1,19 +1,22 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let mobileMenuOpen = $state(false);
 
 	const navLinks = [
-		{ href: `${base}/docs`, label: 'Home' },
-		{ href: `${base}/docs/getting-started`, label: 'Getting Started' },
-		{ href: `${base}/docs/guides/invoices`, label: 'Guides' }
+		{ href: resolve('/(docs)/docs'), label: 'Home' },
+		{ href: resolve('/(docs)/docs/getting-started'), label: 'Getting Started' },
+		{ href: resolve('/(docs)/docs/guides/invoices'), label: 'Guides' }
 	];
+
+	const docsHome = resolve('/(docs)/docs');
+	const consoleHref = resolve('/console');
 
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
-		if (href === `${base}/docs`) return path === `${base}/docs` || path === `${base}/docs/`;
+		if (href === docsHome) return path === docsHome || path === `${docsHome}/`;
 		return path.startsWith(href);
 	}
 </script>
@@ -23,7 +26,7 @@
 		<div class="flex h-16 items-center justify-between">
 			<!-- Left: Logo + Nav Links -->
 			<div class="flex items-center gap-8">
-				<a href="{base}/docs" class="flex items-center gap-2">
+				<a href={docsHome} class="flex items-center gap-2">
 					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
 						IM
 					</div>
@@ -32,7 +35,7 @@
 
 				<!-- Desktop nav -->
 				<div class="hidden items-center gap-1 sm:flex">
-					{#each navLinks as link}
+					{#each navLinks as link (link.href)}
 						<a
 							href={link.href}
 							class="rounded-md px-3 py-2 text-sm font-medium transition-colors {isActive(link.href)
@@ -63,7 +66,7 @@
 					{/if}
 				</button>
 				<a
-					href="{base}/console"
+					href={consoleHref}
 					class="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-700"
 				>
 					Open App
@@ -122,7 +125,7 @@
 					</a>
 				{/each}
 				<a
-					href="{base}/console"
+					href={consoleHref}
 					onclick={() => (mobileMenuOpen = false)}
 					class="block rounded-md px-3 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/50"
 				>

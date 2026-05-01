@@ -12,7 +12,7 @@ export async function getBusinessProfile(): Promise<BusinessProfile | null> {
 	return mapRow(first);
 }
 
-export async function saveBusinessProfile(data: {
+interface SaveBusinessProfileInput {
 	name: string;
 	email?: string;
 	phone?: string;
@@ -20,35 +20,47 @@ export async function saveBusinessProfile(data: {
 	logo?: string;
 	metadata?: string;
 	default_currency?: string;
-}): Promise<void> {
+}
+
+function normalizeProfileFields(
+	data: SaveBusinessProfileInput,
+	existingDefaultCurrency: string | undefined
+): {
+	name: string;
+	email: string;
+	phone: string;
+	address: string;
+	logo: string;
+	metadata: string;
+	default_currency: string;
+	updated_at: string;
+} {
+	return {
+		name: data.name,
+		email: data.email ?? '',
+		phone: data.phone ?? '',
+		address: data.address ?? '',
+		logo: data.logo ?? '',
+		metadata: data.metadata ?? '{}',
+		default_currency: data.default_currency ?? existingDefaultCurrency ?? 'USD',
+		updated_at: new Date().toISOString()
+	};
+}
+
+export async function saveBusinessProfile(data: SaveBusinessProfileInput): Promise<void> {
 	const db = getDb();
 	const existing = await getBusinessProfile();
+	const fields = normalizeProfileFields(data, existing?.default_currency);
 	await db
 		.insert(businessProfile)
 		.values({
 			id: 1,
 			uuid: existing?.uuid ?? crypto.randomUUID(),
-			name: data.name,
-			email: data.email ?? '',
-			phone: data.phone ?? '',
-			address: data.address ?? '',
-			logo: data.logo ?? '',
-			metadata: data.metadata ?? '{}',
-			default_currency: data.default_currency ?? existing?.default_currency ?? 'USD',
-			updated_at: new Date().toISOString()
+			...fields
 		})
 		.onConflictDoUpdate({
 			target: businessProfile.id,
-			set: {
-				name: data.name,
-				email: data.email ?? '',
-				phone: data.phone ?? '',
-				address: data.address ?? '',
-				logo: data.logo ?? '',
-				metadata: data.metadata ?? '{}',
-				default_currency: data.default_currency ?? existing?.default_currency ?? 'USD',
-				updated_at: new Date().toISOString()
-			}
+			set: fields
 		});
 	await logAudit({
 		entity_type: 'business_profile',
@@ -65,7 +77,7 @@ export async function buildBusinessSnapshot(): Promise<PartySnapshot> {
 	}
 	let metadata: Record<string, string> = {};
 	try {
-		metadata = JSON.parse(profile.metadata);
+		metadata = JSON.parse(profile.metadata) as Record<string, string>;
 	} catch (e) {
 		console.error('Failed to parse business profile metadata', e);
 	}
@@ -91,7 +103,7 @@ function mapRow(row: typeof businessProfile.$inferSelect): BusinessProfile {
 		logo: row.logo ?? '',
 		metadata: row.metadata ?? '{}',
 		default_currency: row.default_currency ?? 'USD',
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		created_at: row.created_at ?? '',
+		updated_at: row.updated_at ?? ''
 	};
 }

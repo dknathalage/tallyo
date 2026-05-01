@@ -8,8 +8,8 @@ function mapSession(row: Record<string, unknown>): AiChatSession {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		title: row['title'] as string,
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -19,11 +19,11 @@ function mapMessage(row: Record<string, unknown>): AiChatMessage {
 		uuid: row['uuid'] as string,
 		session_id: row['session_id'] as number,
 		role: row['role'] as 'user' | 'assistant',
-		content: (row['content'] as string) ?? '',
-		tool_calls: (row['tool_calls'] as string) ?? null,
-		tool_results: (row['tool_results'] as string) ?? null,
+		content: (row['content'] as string | null | undefined) ?? '',
+		tool_calls: (row['tool_calls'] as string | null | undefined) ?? null,
+		tool_results: (row['tool_results'] as string | null | undefined) ?? null,
 		is_streaming: row['is_streaming'] === true ? 1 : 0,
-		created_at: (row['created_at'] as string) ?? ''
+		created_at: (row['created_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -43,7 +43,7 @@ export async function getSession(id: number): Promise<AiChatSession | null> {
 		.from(aiChatSessions)
 		.where(eq(aiChatSessions.id, id));
 	const first = rows[0];
-	return first ? mapSession(first as Record<string, unknown>) : null;
+	return first ? mapSession(first) : null;
 }
 
 export async function createSession(title = 'New Chat'): Promise<number> {

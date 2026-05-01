@@ -3,7 +3,7 @@
 	import Sidebar from './Sidebar.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { children }: { children: Snippet } = $props();
+	const { children }: { children: Snippet } = $props();
 
 	let sidebarOpen = $state(false);
 </script>

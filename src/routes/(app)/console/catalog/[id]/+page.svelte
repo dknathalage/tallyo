@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { formatCurrency } from '$lib/utils/format';
 	import CatalogForm from '$lib/components/catalog/CatalogForm.svelte';
@@ -10,17 +10,17 @@
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
-	let item = $derived(data.item);
-	let itemWithRates = $derived(data.itemWithRates);
-	let tiers = $derived(data.rateTiers);
-	let history = $derived(data.auditHistory);
+	const item = $derived(data.item);
+	const itemWithRates = $derived(data.itemWithRates);
+	const tiers = $derived(data.rateTiers);
+	const history = $derived(data.auditHistory);
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
 
-	async function handleUpdate(data: {
+	async function handleUpdate(updates: {
 		name: string;
 		rate: number;
 		unit: string;
@@ -32,7 +32,7 @@
 		await fetch(`/api/catalog/${item.id}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(data)
+			body: JSON.stringify(updates)
 		});
 
 		editing = false;
@@ -41,7 +41,7 @@
 
 	async function handleDelete() {
 		await fetch(`/api/catalog/${item.id}`, { method: 'DELETE' });
-		goto(`${base}/console/catalog`);
+		void goto(resolve('/(app)/console/catalog'));
 	}
 
 	function formatMetadata(meta: string): string {
@@ -106,7 +106,7 @@
 
 {#if !item}
 	<EmptyState title={i18n.t('catalog.itemNotFound')} message={i18n.t('catalog.itemNotFoundMessage')}>
-		<a href="{base}/console/catalog">
+		<a href={resolve('/(app)/console/catalog')}>
 			<Button variant="secondary">{i18n.t('catalog.backToCatalog')}</Button>
 		</a>
 	</EmptyState>
@@ -115,7 +115,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/console/catalog" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('catalog.backToCatalog')}</a>
+				<a href={resolve('/(app)/console/catalog')} class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('catalog.backToCatalog')}</a>
 				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{item.name}</h1>
 			</div>
 			<div class="flex gap-2">

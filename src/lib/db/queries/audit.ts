@@ -23,6 +23,6 @@ function mapAuditRow(row: typeof auditLog.$inferSelect): AuditLogEntry {
 		changes: row.changes ?? '{}',
 		context: row.context ?? '',
 		batch_id: row.batch_id ?? null,
-		created_at: (row.created_at as string) ?? ''
+		created_at: row.created_at ?? ''
 	};
 }

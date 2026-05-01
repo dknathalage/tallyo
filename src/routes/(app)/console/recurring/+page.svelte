@@ -7,17 +7,17 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { base, resolve } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let showAll = $state(false);
 	let showDeleteConfirm = $state(false);
 	let templateToDelete: RecurringTemplate | null = $state(null);
 	let creatingFrom: number | null = $state(null);
 
-	let templates = $derived(
+	const templates = $derived(
 		showAll ? data.templates : data.templates.filter((t: RecurringTemplate) => t.is_active)
 	);
 
@@ -27,7 +27,7 @@
 			const res = await fetch(`/api/recurring/${template.id}`, { method: 'PATCH' });
 			const { invoiceId } = await res.json();
 			await invalidateAll();
-			goto(`${base}/console/invoices/${invoiceId}`);
+			void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoiceId) }));
 		} finally {
 			creatingFrom = null;
 		}
@@ -54,9 +54,10 @@
 
 	async function handleDelete() {
 		if (!templateToDelete) return;
-		await fetch(`/api/recurring/${templateToDelete.id}`, { method: 'DELETE' });
+		const templateId = templateToDelete.id;
 		templateToDelete = null;
 		showDeleteConfirm = false;
+		await fetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
 		await invalidateAll();
 	}
 
@@ -74,7 +75,7 @@
 		}
 	}
 
-	let today = new Date().toISOString().slice(0, 10);
+	const today = new Date().toISOString().slice(0, 10);
 
 	function isDue(template: RecurringTemplate): boolean {
 		return template.next_due <= today && template.is_active === 1;
@@ -94,13 +95,13 @@
 				/>
 				Show inactive
 			</label>
-			<Button onclick={() => goto(`${base}/console/recurring/new`)}>{i18n.t('recurring.newTemplate')}</Button>
+			<Button onclick={() => void goto(`${base}/console/recurring/new`)}>{i18n.t('recurring.newTemplate')}</Button>
 		</div>
 	</div>
 
 	{#if templates.length === 0}
 		<EmptyState title={i18n.t('recurring.noTemplates')} message={i18n.t('recurring.noTemplatesMessage')}>
-			<Button onclick={() => goto(`${base}/console/recurring/new`)}>{i18n.t('recurring.newTemplate')}</Button>
+			<Button onclick={() => void goto(`${base}/console/recurring/new`)}>{i18n.t('recurring.newTemplate')}</Button>
 		</EmptyState>
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -121,7 +122,7 @@
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700 {isDue(template) ? 'bg-amber-50 dark:bg-amber-900/20' : ''}">
 							<td
 								class="cursor-pointer px-4 py-3 text-sm font-medium text-primary-600"
-								onclick={() => goto(`${base}/console/recurring/${template.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/recurring/[id]', { id: String(template.id) }))}
 							>
 								{template.name}
 								{#if isDue(template)}
@@ -164,7 +165,7 @@
 									<Button
 										variant="secondary"
 										size="sm"
-										onclick={() => goto(`${base}/console/recurring/${template.id}`)}
+										onclick={() => void goto(resolve('/(app)/console/recurring/[id]', { id: String(template.id) }))}
 									>
 										{i18n.t('common.edit')}
 									</Button>

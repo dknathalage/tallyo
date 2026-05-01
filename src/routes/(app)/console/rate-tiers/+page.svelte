@@ -8,10 +8,10 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	// ── Rate Tiers ──────────────────────────────────────────
-	let tiers = $derived(data.rateTiers);
+	const tiers = $derived(data.rateTiers);
 
 	let showForm = $state(false);
 	let editingTier: RateTier | null = $state(null);
@@ -81,10 +81,11 @@
 
 	async function handleDelete() {
 		if (!deletingTier) return;
+		const tierId = deletingTier.id;
+		deletingTier = null;
+		showDeleteConfirm = false;
 		try {
-			await fetch(`/api/rate-tiers/${deletingTier.id}`, { method: 'DELETE' });
-			showDeleteConfirm = false;
-			deletingTier = null;
+			await fetch(`/api/rate-tiers/${tierId}`, { method: 'DELETE' });
 			await invalidateAll();
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'An unexpected error occurred';

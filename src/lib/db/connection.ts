@@ -30,14 +30,14 @@ export function getDb() {
 
 export type Database = ReturnType<typeof getDb>;
 
-export async function ensureMigrations(): Promise<void> {
+export function ensureMigrations(): void {
 	if (_migrated) return;
 	const db = getDb();
 	migrate(db, { migrationsFolder: './drizzle' });
 	_migrated = true;
 }
 
-export async function healthCheck(): Promise<void> {
+export function healthCheck(): void {
 	const sqlite = getSqlite();
 	sqlite.prepare('SELECT 1').get();
 }

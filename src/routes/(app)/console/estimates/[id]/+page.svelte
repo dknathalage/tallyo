@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportEstimatePdf } from '$lib/utils/pdf.js';
@@ -13,27 +13,27 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { addToast } from '$lib/stores/toast.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let estimate: Estimate | null = $state(untrack(() => data.estimate));
-	let lineItems: EstimateLineItem[] = $state(untrack(() => data.lineItems));
-	let history: AuditLogEntry[] = $state(untrack(() => data.auditHistory));
+	const lineItems: EstimateLineItem[] = $state(untrack(() => data.lineItems));
+	const history: AuditLogEntry[] = $state(untrack(() => data.auditHistory));
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
 	let converting = $state(false);
 
 	const allStatuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
 
-	let businessSnap = $derived.by(() => parseSnapshot(estimate?.business_snapshot ?? '{}'));
-	let clientSnap = $derived.by(() => parseSnapshot(estimate?.client_snapshot ?? '{}'));
-	let payerSnap = $derived.by(() => parseSnapshot(estimate?.payer_snapshot ?? '{}'));
+	const businessSnap = $derived.by(() => parseSnapshot(estimate?.business_snapshot ?? '{}'));
+	const clientSnap = $derived.by(() => parseSnapshot(estimate?.client_snapshot ?? '{}'));
+	const payerSnap = $derived.by(() => parseSnapshot(estimate?.payer_snapshot ?? '{}'));
 
 
 
 	async function handleDelete() {
 		if (!estimate) return;
 		await fetch(`/api/estimates/${estimate.id}`, { method: 'DELETE' });
-		goto(`${base}/console/estimates`);
+		void goto(resolve('/(app)/console/estimates'));
 	}
 
 	async function handleDuplicate() {
@@ -44,17 +44,19 @@
 			body: JSON.stringify({ action: 'duplicate' })
 		});
 		const { newId } = await res.json();
-		goto(`${base}/console/estimates/${newId}/edit`);
+		void goto(resolve('/(app)/console/estimates/[id]/edit', { id: String(newId) }));
 	}
 
 	async function handleStatusChange(status: string) {
 		if (!estimate) return;
-		await fetch(`/api/estimates/${estimate.id}`, {
+		const id = estimate.id;
+		await fetch(`/api/estimates/${id}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'status', status })
 		});
-		const res = await fetch(`/api/estimates/${estimate.id}`);
+		const res = await fetch(`/api/estimates/${id}`);
+		// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance, refresh after server mutation
 		estimate = await res.json();
 		showStatusMenu = false;
 	}
@@ -69,7 +71,7 @@
 				body: JSON.stringify({ action: 'convert' })
 			});
 			const { invoiceId } = await res.json();
-			goto(`${base}/console/invoices/${invoiceId}`);
+			void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoiceId) }));
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'An unexpected error occurred';
 			addToast({ type: 'error', message: message || 'Failed to convert estimate to invoice' });
@@ -131,14 +133,14 @@
 {#if !estimate}
 	<div class="py-12 text-center">
 		<p class="text-gray-500 dark:text-gray-400">{i18n.t('estimate.notFound')}</p>
-		<a href="{base}/console/estimates" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">{i18n.t('estimate.backToEstimates')}</a>
+		<a href={resolve('/(app)/console/estimates')} class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">{i18n.t('estimate.backToEstimates')}</a>
 	</div>
 {:else}
 	<div class="space-y-6">
 		<!-- Header -->
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex items-center gap-3">
-				<a href="{base}/console/estimates" class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToEstimates')}>
+				<a href={resolve('/(app)/console/estimates')} class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToEstimates')}>
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
 					</svg>
@@ -157,7 +159,7 @@
 
 				<!-- Link to converted invoice -->
 				{#if estimate.converted_invoice_id !== null}
-					<a href="{base}/console/invoices/{estimate.converted_invoice_id}" class="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-primary-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-primary-400 dark:hover:bg-gray-600">
+					<a href={resolve('/(app)/console/invoices/[id]', { id: String(estimate.converted_invoice_id) })} class="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-primary-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-primary-400 dark:hover:bg-gray-600">
 						{i18n.t('estimate.viewInvoice')}
 					</a>
 				{/if}
@@ -189,7 +191,7 @@
 					Duplicate
 				</Button>
 
-				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/console/estimates/${estimate?.id}/edit`)}>
+				<Button variant="secondary" size="sm" onclick={() => void goto(resolve('/(app)/console/estimates/[id]/edit', { id: String(estimate?.id) }))}>
 					{i18n.t('common.edit')}
 				</Button>
 
@@ -225,6 +227,7 @@
 				<div>
 					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.serviceFor')}</h3>
 					<div class="mt-1">
+						<!-- eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty strings should fall through to next fallback -->
 						<p class="text-sm font-medium text-gray-900 dark:text-white">{clientSnap.name || estimate.client_name || i18n.t('common.unknown')}</p>
 						{#if clientSnap.email}<p class="text-sm text-gray-500 dark:text-gray-400">{clientSnap.email}</p>{/if}
 						{#if clientSnap.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{clientSnap.phone}</p>{/if}

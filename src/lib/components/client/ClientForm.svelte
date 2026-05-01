@@ -5,7 +5,7 @@
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		initialData,
 		onsubmit
 	}: {
@@ -23,7 +23,7 @@
 
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {
-			const obj = JSON.parse(metaStr || '{}');
+			const obj = JSON.parse(metaStr ?? '{}') as Record<string, unknown>;
 			return Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
 		} catch {
 			return [];
@@ -32,7 +32,7 @@
 
 	onMount(async () => {
 		const res = await fetch('/api/payers');
-		payers = await res.json();
+		payers = await res.json() as Payer[];
 	});
 
 	function handleSubmit(e: SubmitEvent) {
@@ -103,7 +103,7 @@
 				class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 			>
 				<option value={null}>{i18n.t('common.none')}</option>
-				{#each payers as payer}
+				{#each payers as payer (payer.id)}
 					<option value={payer.id}>{payer.name}</option>
 				{/each}
 			</select>

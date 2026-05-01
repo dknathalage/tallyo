@@ -3,7 +3,7 @@
 	import type { DiffResult } from '$lib/import/diff-catalog.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		diff,
 		importMode,
 		oncommit,
@@ -17,11 +17,11 @@
 
 	let activeTab: 'new' | 'updated' | 'errors' = $state('new');
 
-	let effectiveUpdated = $derived(importMode === 'upsert' ? diff.updatedItems : []);
-	let effectiveUnchanged = $derived(
+	const effectiveUpdated = $derived(importMode === 'upsert' ? diff.updatedItems : []);
+	const effectiveUnchanged = $derived(
 		importMode === 'upsert' ? diff.unchangedCount : diff.unchangedCount + diff.updatedItems.length
 	);
-	let importableCount = $derived(diff.newItems.length + effectiveUpdated.length);
+	const importableCount = $derived(diff.newItems.length + effectiveUpdated.length);
 </script>
 
 <div class="space-y-4">

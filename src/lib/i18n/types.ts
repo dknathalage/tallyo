@@ -1,4 +1,6 @@
-export interface Messages {
+import type { MessagesExtras } from './types-extras.js';
+
+export interface Messages extends MessagesExtras {
 	nav: {
 		dashboard: string;
 		invoices: string;
@@ -442,94 +444,5 @@ export interface Messages {
 		changeHistoryTable: string;
 		payersTable: string;
 		tiersTable: string;
-	};
-	pwa: {
-		offlineReady: string;
-		newVersionAvailable: string;
-		reload: string;
-		dismiss: string;
-	};
-	pdf: {
-		invoice: string;
-		estimate: string;
-		serviceFor: string;
-		billTo: string;
-		invoiceNumber: string;
-		estimateNumber: string;
-		date: string;
-		due: string;
-		validUntil: string;
-		status: string;
-		description: string;
-		quantity: string;
-		rate: string;
-		amount: string;
-		subtotal: string;
-		tax: string;
-		total: string;
-		notes: string;
-		thankYou: string;
-	};
-	shortcuts: {
-		title: string;
-		newItem: string;
-		newInvoice: string;
-		newEstimate: string;
-		newClient: string;
-		focusSearch: string;
-		closeModal: string;
-		showHelp: string;
-	};
-	quickAdd: {
-		label: string;
-		newInvoice: string;
-		newEstimate: string;
-		newClient: string;
-	};
-	recurring: {
-		title: string;
-		newTemplate: string;
-		editTemplate: string;
-		templateName: string;
-		frequency: string;
-		nextDue: string;
-		clientName: string;
-		taxRate: string;
-		notes: string;
-		lineItems: string;
-		isActive: string;
-		weekly: string;
-		monthly: string;
-		quarterly: string;
-		createTemplate: string;
-		updateTemplate: string;
-		deleteTemplate: string;
-		deleteConfirmTitle: string;
-		deleteConfirmMessage: string;
-		noTemplates: string;
-		noTemplatesMessage: string;
-		notFound: string;
-		backToTemplates: string;
-		createFromTemplate: string;
-		saveAsRecurring: string;
-		saveAsRecurringTitle: string;
-		templateNamePlaceholder: string;
-		dueNoticeTitle: string;
-		dueNoticeMessage: string;
-		viewDue: string;
-		inactive: string;
-		active: string;
-		deactivate: string;
-		activate: string;
-		created: string;
-		namePlaceholder: string;
-	};
-	fileGate: {
-		appName: string;
-		appDescription: string;
-		reconnectTo: string;
-		createNewDatabase: string;
-		openExistingDatabase: string;
-		dataStaysOnDevice: string;
 	};
 }

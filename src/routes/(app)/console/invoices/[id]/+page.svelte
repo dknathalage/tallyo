@@ -1,8 +1,9 @@
 <script lang="ts">
+	/* eslint-disable max-lines -- detail page combines invoice display, edit, payment, and recurring affordances; refactor planned separately */
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import { exportInvoicePdf } from '$lib/utils/pdf.js';
 	import type { Invoice, LineItem, AuditLogEntry, Payment } from '$lib/types/index.js';
@@ -13,14 +14,14 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let invoice: Invoice | null = $state(untrack(() => data.invoice));
-	let lineItems: LineItem[] = $state(untrack(() => data.lineItems));
-	let history: AuditLogEntry[] = $state(untrack(() => data.auditHistory));
+	const lineItems: LineItem[] = $state(untrack(() => data.lineItems));
+	const history: AuditLogEntry[] = $state(untrack(() => data.auditHistory));
 	let payments: Payment[] = $state(untrack(() => data.payments));
-	let totalPaid = $derived(payments.reduce((sum, p) => sum + p.amount, 0));
-	let outstanding = $derived.by(() => (invoice ? invoice.total - totalPaid : 0));
+	const totalPaid = $derived(payments.reduce((sum, p) => sum + p.amount, 0));
+	const outstanding = $derived.by(() => (invoice ? invoice.total - totalPaid : 0));
 	let showDeleteConfirm = $state(false);
 	let showStatusMenu = $state(false);
 	let showPaymentModal = $state(false);
@@ -37,14 +38,14 @@
 
 	const allStatuses = ['draft', 'sent', 'paid', 'overdue'] as const;
 
-	let businessSnap = $derived.by(() => parseSnapshot(invoice?.business_snapshot ?? '{}'));
-	let clientSnap = $derived.by(() => parseSnapshot(invoice?.client_snapshot ?? '{}'));
-	let payerSnap = $derived.by(() => parseSnapshot(invoice?.payer_snapshot ?? '{}'));
+	const businessSnap = $derived.by(() => parseSnapshot(invoice?.business_snapshot ?? '{}'));
+	const clientSnap = $derived.by(() => parseSnapshot(invoice?.client_snapshot ?? '{}'));
+	const payerSnap = $derived.by(() => parseSnapshot(invoice?.payer_snapshot ?? '{}'));
 
 	async function handleDelete() {
 		if (!invoice) return;
 		await fetch(`/api/invoices/${invoice.id}`, { method: 'DELETE' });
-		goto(`${base}/console/invoices`);
+		void goto(resolve('/(app)/console/invoices'));
 	}
 
 	async function handleDuplicate() {
@@ -55,7 +56,7 @@
 			body: JSON.stringify({ action: 'duplicate' })
 		});
 		const { id: newId } = await res.json();
-		goto(`${base}/console/invoices/${newId}/edit`);
+		void goto(resolve('/(app)/console/invoices/[id]/edit', { id: String(newId) }));
 	}
 
 	async function handleSaveAsRecurring() {
@@ -67,7 +68,7 @@
 				quantity: li.quantity,
 				rate: li.rate,
 				amount: li.amount,
-				notes: li.notes ?? '',
+				notes: li.notes,
 				sort_order: i
 			}));
 			const res = await fetch('/api/recurring', {
@@ -80,14 +81,15 @@
 					next_due: recurringNextDue,
 					line_items: JSON.stringify(templateLineItems),
 					tax_rate: invoice.tax_rate,
-					notes: invoice.notes ?? '',
+					notes: invoice.notes,
 					is_active: 1
 				})
 			});
 			const { id } = await res.json();
 			showSaveAsRecurring = false;
+			// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance
 			recurringName = '';
-			goto(`${base}/console/recurring/${id}`);
+			void goto(resolve('/(app)/console/recurring/[id]', { id: String(id) }));
 		} finally {
 			savingRecurring = false;
 		}
@@ -108,39 +110,50 @@
 		});
 		await invalidateAll();
 		// Refresh payments from server
-		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoice.id}`);
+		const invoiceId = invoice.id;
+		const invoiceTotal = invoice.total;
+		const invoiceStatus = invoice.status;
+		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoiceId}`);
 		payments = await paymentsRes.json();
 		// Auto-update status based on paid amount
 		const newTotalPaid = payments.reduce((s: number, p: Payment) => s + p.amount, 0);
-		if (newTotalPaid >= invoice.total && invoice.status !== 'paid') {
-			await fetch(`/api/invoices/${invoice.id}`, {
+		if (newTotalPaid >= invoiceTotal && invoiceStatus !== 'paid') {
+			await fetch(`/api/invoices/${invoiceId}`, {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ action: 'status', status: 'paid' })
 			});
-			const invoiceRes = await fetch(`/api/invoices/${invoice.id}`);
+			const invoiceRes = await fetch(`/api/invoices/${invoiceId}`);
+			// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance
 			invoice = await invoiceRes.json();
 		}
 		showPaymentModal = false;
+		// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance
 		paymentAmount = 0;
+		// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance
 		paymentMethod = '';
+		// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance
 		paymentNotes = '';
 	}
 
 	async function handleDeletePayment(paymentId: number) {
+		if (!invoice) return;
+		const invoiceId = invoice.id;
 		await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
-		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoice!.id}`);
+		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoiceId}`);
 		payments = await paymentsRes.json();
 	}
 
 	async function handleStatusChange(status: string) {
 		if (!invoice) return;
-		await fetch(`/api/invoices/${invoice.id}`, {
+		const invoiceId = invoice.id;
+		await fetch(`/api/invoices/${invoiceId}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'status', status })
 		});
-		const res = await fetch(`/api/invoices/${invoice.id}`);
+		const res = await fetch(`/api/invoices/${invoiceId}`);
+		// eslint-disable-next-line require-atomic-updates -- single-flight by UI affordance
 		invoice = await res.json();
 		showStatusMenu = false;
 	}
@@ -152,7 +165,7 @@
 
 	function handleSendToClient() {
 		if (!invoice) return;
-		const email = clientSnap.email?.trim();
+		const email = clientSnap.email.trim();
 		if (!email) {
 			showNoEmailMessage = true;
 			return;
@@ -213,14 +226,14 @@
 {#if !invoice}
 	<div class="py-12 text-center">
 		<p class="text-gray-500 dark:text-gray-400">{i18n.t('invoice.notFound')}</p>
-		<a href="{base}/console/invoices" class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">{i18n.t('invoice.backToInvoices')}</a>
+		<a href={resolve('/(app)/console/invoices')} class="mt-2 inline-block text-sm text-primary-600 hover:text-primary-700">{i18n.t('invoice.backToInvoices')}</a>
 	</div>
 {:else}
 	<div class="space-y-6">
 		<!-- Header -->
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex items-center gap-3">
-				<a href="{base}/console/invoices" class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToInvoices')}>
+				<a href={resolve('/(app)/console/invoices')} class="text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" aria-label={i18n.t('a11y.backToInvoices')}>
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
 					</svg>
@@ -263,7 +276,7 @@
 					</Button>
 				{/if}
 
-				<Button variant="secondary" size="sm" onclick={() => goto(`${base}/console/invoices/${invoice?.id}/edit`)}>
+				<Button variant="secondary" size="sm" onclick={() => void goto(resolve('/(app)/console/invoices/[id]/edit', { id: String(invoice?.id) }))}>
 					{i18n.t('invoice.edit')}
 				</Button>
 
@@ -303,6 +316,7 @@
 				<div>
 					<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.serviceFor')}</h3>
 					<div class="mt-1">
+						<!-- eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty strings should fall through to next fallback -->
 						<p class="text-sm font-medium text-gray-900 dark:text-white">{clientSnap.name || invoice.client_name || i18n.t('common.unknown')}</p>
 						{#if clientSnap.email}<p class="text-sm text-gray-500 dark:text-gray-400">{clientSnap.email}</p>{/if}
 						{#if clientSnap.phone}<p class="text-sm text-gray-500 dark:text-gray-400">{clientSnap.phone}</p>{/if}
@@ -350,7 +364,7 @@
 					<div>
 						<h3 class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{i18n.t('invoice.dueDate')}</h3>
 						<p class="mt-1 text-sm text-gray-900 dark:text-white">{formatDate(invoice.due_date)}</p>
-						{#if invoice.payment_terms && invoice.payment_terms !== 'custom'}
+						{#if invoice.payment_terms !== 'custom'}
 							<p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{invoice.payment_terms.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</p>
 						{/if}
 					</div>

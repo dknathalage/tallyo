@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { formatCurrency } from '$lib/utils/format';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
@@ -14,7 +14,7 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let selectedCategory = $state('');
@@ -24,13 +24,13 @@
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let tiers = $derived(data.rateTiers);
-	let categories = $derived(data.categories);
-	let paginationResult = $derived(data.catalogResult);
+	const tiers = $derived(data.rateTiers);
+	const categories = $derived(data.categories);
+	const paginationResult = $derived(data.catalogResult);
 
-	let items = $derived.by((): (CatalogItem & { tier_rate?: number })[] => {
+	const items = $derived.by((): (CatalogItem & { tier_rate?: number })[] => {
 		return paginationResult.data.filter((item: CatalogItem) => {
-			const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku ?? '').toLowerCase().includes(search.toLowerCase());
+			const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || (item.sku || '').toLowerCase().includes(search.toLowerCase());
 			const matchesCategory = !selectedCategory || item.category === selectedCategory;
 			return matchesSearch && matchesCategory;
 		});
@@ -38,13 +38,13 @@
 
 	$effect(() => {
 		// Clear selection when filters change
-		search;
-		selectedCategory;
-		selectedTierId;
+		void search;
+		void selectedCategory;
+		void selectedTierId;
 		selectedIds = new Set();
 	});
 
-	let allSelected = $derived(items.length > 0 && selectedIds.size === items.length);
+	const allSelected = $derived(items.length > 0 && selectedIds.size === items.length);
 
 	function toggleAll() {
 		if (allSelected) {
@@ -65,13 +65,14 @@
 	}
 
 	async function handleBulkDelete() {
+		const ids = [...selectedIds];
+		selectedIds = new Set();
+		showDeleteConfirm = false;
 		await fetch('/api/catalog', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+			body: JSON.stringify({ action: 'bulk-delete', ids })
 		});
-		selectedIds = new Set();
-		showDeleteConfirm = false;
 		await invalidateAll();
 	}
 
@@ -85,7 +86,7 @@
 	}
 
 	function getDisplayRate(item: CatalogItem & { tier_rate?: number }): number {
-		if (selectedTierId && item.tier_rate != null) {
+		if (selectedTierId && item.tier_rate !== undefined) {
 			return item.tier_rate;
 		}
 		return item.rate;
@@ -99,7 +100,7 @@
 		<div class="flex items-center gap-3">
 			<Button variant="secondary" size="sm" onclick={exportCatalog}>{i18n.t('csv.exportCsv')}</Button>
 			<Button variant="secondary" size="sm" onclick={handleImport}>{i18n.t('csv.import')}</Button>
-			<a href="{base}/console/catalog/new">
+			<a href={resolve('/(app)/console/catalog/new')}>
 				<Button>{i18n.t('catalog.newItem')}</Button>
 			</a>
 		</div>
@@ -143,7 +144,7 @@
 			<EmptyState title={i18n.t('common.noResults')} message={i18n.t('catalog.noResultsMessage')} />
 		{:else}
 			<EmptyState title={i18n.t('catalog.noItems')} message={i18n.t('catalog.noItemsMessage')}>
-				<a href="{base}/console/catalog/new">
+				<a href={resolve('/(app)/console/catalog/new')}>
 					<Button>{i18n.t('catalog.newItem')}</Button>
 				</a>
 			</EmptyState>
@@ -180,13 +181,13 @@
 								/>
 							</td>
 							<td class="px-6 py-4">
-								<a href="{base}/console/catalog/{item.id}" class="font-medium text-primary-600 hover:text-primary-700">
+								<a href={resolve('/(app)/console/catalog/[id]', { id: String(item.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 									{item.name}
 								</a>
 							</td>
 							<td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">
 								{formatCurrency(getDisplayRate(item))}
-								{#if selectedTierId && item.tier_rate == null}
+								{#if selectedTierId && item.tier_rate === undefined}
 									<span class="text-xs text-gray-400 dark:text-gray-500">{i18n.t('common.default')}</span>
 								{/if}
 							</td>

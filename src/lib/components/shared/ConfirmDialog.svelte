@@ -3,7 +3,7 @@
 	import Button from './Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		open = false,
 		title = 'Confirm',
 		message = '',

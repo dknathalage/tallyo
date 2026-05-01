@@ -114,7 +114,7 @@ describe('POST /api/clients', () => {
 	});
 
 	it('creates a client and returns 201', async () => {
-		vi.mocked(repositories.clients.createClient).mockResolvedValue(42 as any);
+		vi.mocked(repositories.clients.createClient).mockResolvedValue(42);
 
 		const request = makeRequest({ name: 'Acme Corp', email: 'a@b.com' });
 		const result = await POST({ request } as any);
@@ -125,7 +125,7 @@ describe('POST /api/clients', () => {
 	});
 
 	it('handles fkOrNull for pricing_tier_id and payer_id', async () => {
-		vi.mocked(repositories.clients.createClient).mockResolvedValue(1 as any);
+		vi.mocked(repositories.clients.createClient).mockResolvedValue(1);
 
 		const request = makeRequest({ name: 'Test', pricing_tier_id: 0, payer_id: '' });
 		await POST({ request } as any);
@@ -136,7 +136,7 @@ describe('POST /api/clients', () => {
 	});
 
 	it('bulk-deletes clients', async () => {
-		vi.mocked(repositories.clients.bulkDeleteClients).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.clients.bulkDeleteClients).mockResolvedValue(undefined);
 
 		const request = makeRequest({ action: 'bulk-delete', ids: [1, 2, 3] });
 		const result = await POST({ request } as any);
@@ -207,7 +207,7 @@ describe('PUT /api/clients/[id]', () => {
 	});
 
 	it('updates a client', async () => {
-		vi.mocked(repositories.clients.updateClient).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.clients.updateClient).mockResolvedValue(undefined);
 
 		const request = makeRequest({ name: 'Updated', pricing_tier_id: 5, payer_id: 3 });
 		const result = await PUT({ params: { id: '1' }, request } as any);
@@ -237,7 +237,7 @@ describe('DELETE /api/clients/[id]', () => {
 	});
 
 	it('deletes a client', async () => {
-		vi.mocked(repositories.clients.deleteClient).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.clients.deleteClient).mockResolvedValue(undefined);
 
 		const result = await DELETE({ params: { id: '1' } } as any);
 		expect(repositories.clients.deleteClient).toHaveBeenCalledWith(1);

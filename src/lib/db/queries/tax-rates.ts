@@ -10,8 +10,8 @@ function mapRow(row: Record<string, unknown>): TaxRate {
 		name: row['name'] as string,
 		rate: row['rate'] as number,
 		is_default: row['is_default'] === true ? 1 : 0,
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -32,14 +32,14 @@ export async function getDefaultTaxRate(): Promise<TaxRate | null> {
 		.where(eq(taxRates.is_default, true))
 		.limit(1);
 	const first = rows[0];
-	return first ? mapRow(first as Record<string, unknown>) : null;
+	return first ? mapRow(first) : null;
 }
 
 export async function getTaxRate(id: number): Promise<TaxRate | null> {
 	const db = getDb();
 	const rows = await db.select().from(taxRates).where(eq(taxRates.id, id));
 	const first = rows[0];
-	return first ? mapRow(first as Record<string, unknown>) : null;
+	return first ? mapRow(first) : null;
 }
 
 export async function createTaxRate(data: {

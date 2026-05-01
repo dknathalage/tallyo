@@ -5,7 +5,7 @@ import { repositories } from '$lib/repositories/index.js';
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);
 	const client = await repositories.clients.getClient(id);
-	if (!client) throw error(404, 'Client not found');
+	if (!client) error(404, 'Client not found');
 	return {
 		client,
 		rateTiers: await repositories.rateTiers.getRateTiers(),

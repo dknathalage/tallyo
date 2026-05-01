@@ -81,7 +81,7 @@ describe('parseFile', () => {
 
 	describe('XLSX files', () => {
 		it('parses an xlsx file and returns xlsx fileType', async () => {
-			mockXlsxRead.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } } as any);
+			mockXlsxRead.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } });
 			mockSheetToJson.mockReturnValue([['Name', 'Rate'], ['Item A', '100'], ['Item B', '200']] as any);
 			const file = Object.assign(makeFile('catalog.xlsx'), {
 				arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0))
@@ -92,7 +92,7 @@ describe('parseFile', () => {
 		});
 
 		it('extracts sheet names from workbook', async () => {
-			mockXlsxRead.mockReturnValue({ SheetNames: ['Products', 'Services'], Sheets: { Products: {}, Services: {} } } as any);
+			mockXlsxRead.mockReturnValue({ SheetNames: ['Products', 'Services'], Sheets: { Products: {}, Services: {} } });
 			mockSheetToJson
 				.mockReturnValueOnce([['Name'], ['Item A']] as any)
 				.mockReturnValueOnce([['Name'], ['Service B']] as any);
@@ -105,7 +105,7 @@ describe('parseFile', () => {
 		});
 
 		it('skips empty sheets', async () => {
-			mockXlsxRead.mockReturnValue({ SheetNames: ['Empty', 'Full'], Sheets: { Empty: {}, Full: {} } } as any);
+			mockXlsxRead.mockReturnValue({ SheetNames: ['Empty', 'Full'], Sheets: { Empty: {}, Full: {} } });
 			mockSheetToJson
 				.mockReturnValueOnce([] as any)
 				.mockReturnValueOnce([['Name'], ['Item A']] as any);
@@ -118,7 +118,7 @@ describe('parseFile', () => {
 		});
 
 		it('also accepts .xls files', async () => {
-			mockXlsxRead.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } } as any);
+			mockXlsxRead.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } });
 			mockSheetToJson.mockReturnValue([['Name'], ['Item']] as any);
 			const file = Object.assign(makeFile('data.xls'), {
 				arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0))
@@ -128,7 +128,7 @@ describe('parseFile', () => {
 		});
 
 		it('skips empty rows in xlsx data', async () => {
-			mockXlsxRead.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } } as any);
+			mockXlsxRead.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: {} } });
 			mockSheetToJson.mockReturnValue([
 				['Name', 'Rate'],
 				['', ''],

@@ -3,14 +3,8 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { announcer } from '$lib/stores/announcer.svelte.js';
 
-	let {
-		value = $bindable(),
-		onselect
-	}: {
-		value: string;
-		onselect: (item: CatalogItem) => void;
-		tierId?: number | null | undefined;
-	} = $props();
+	// eslint-disable-next-line prefer-const, svelte/no-unused-props -- `value` is bindable and `$bindable` requires `let`; `tierId` is reserved for future tier-aware pricing API
+	let { value = $bindable(), onselect }: { value: string; onselect: (item: CatalogItem) => void; tierId?: number | null | undefined } = $props();
 
 	let suggestions = $state<CatalogItem[]>([]);
 	let showDropdown = $state(false);
@@ -19,13 +13,13 @@
 
 	const listboxId = 'catalog-autocomplete-listbox';
 
-	let activeDescendantId = $derived(
+	const activeDescendantId = $derived(
 		highlightedIndex >= 0 ? `catalog-option-${highlightedIndex}` : undefined
 	);
 
 	function handleInput() {
 		if (value.trim().length > 0) {
-			fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json()).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
+			void fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json() as Promise<CatalogItem[]>).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
 			showDropdown = suggestions.length > 0;
 			highlightedIndex = -1;
 			if (suggestions.length > 0) {
@@ -80,7 +74,7 @@
 			clearTimeout(blurTimeout);
 		}
 		if (value.trim().length > 0) {
-			fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json()).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
+			void fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json() as Promise<CatalogItem[]>).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
 			showDropdown = suggestions.length > 0;
 		}
 	}
@@ -112,7 +106,7 @@
 			aria-label={i18n.t('a11y.catalogSuggestions')}
 			class="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-1 shadow-lg"
 		>
-			{#each suggestions as item, i}
+			{#each suggestions as item, i (item.id)}
 				<button
 					type="button"
 					id="catalog-option-{i}"

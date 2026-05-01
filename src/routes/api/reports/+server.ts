@@ -5,6 +5,6 @@ import { repositories } from '$lib/repositories/index.js';
 export const GET: RequestHandler = async () => {
 	return json({
 		agingBuckets: await repositories.invoices.getAgingReport(),
-		defaultCurrency: (await repositories.businessProfile.getBusinessProfile())?.default_currency || 'USD'
+		defaultCurrency: (await repositories.businessProfile.getBusinessProfile())?.default_currency ?? 'USD'
 	});
 };

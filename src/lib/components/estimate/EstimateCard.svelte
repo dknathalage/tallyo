@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { Estimate } from '$lib/types/index.js';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { estimate }: { estimate: Estimate } = $props();
+	const { estimate }: { estimate: Estimate } = $props();
 </script>
 
 <a
-	href="{base}/console/estimates/{estimate.id}"
+	href={resolve(`/console/estimates/${estimate.id}`)}
 	class="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 transition-shadow hover:shadow-md"
 >
 	<div class="flex items-center justify-between">

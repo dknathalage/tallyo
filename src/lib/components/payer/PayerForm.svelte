@@ -5,7 +5,7 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { untrack } from 'svelte';
 
-	let {
+	const {
 		initialData,
 		onsubmit
 	}: {
@@ -23,7 +23,7 @@
 
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {
-			const obj = JSON.parse(metaStr || '{}');
+			const obj = JSON.parse(metaStr ?? '{}') as Record<string, unknown>;
 			return Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
 		} catch {
 			return [];

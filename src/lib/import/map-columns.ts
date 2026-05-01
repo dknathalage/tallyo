@@ -1,4 +1,8 @@
-export type TargetField = 'name' | 'sku' | 'unit' | 'category' | 'rate' | 'skip' | string;
+/**
+ * Destination key for a source column. Canonical values: 'name', 'sku', 'unit',
+ * 'category', 'rate', 'skip'. Other values represent tier or metadata column names.
+ */
+export type TargetField = string;
 
 export interface ColumnMappingConfig {
 	fieldMap: Record<string, TargetField>;
@@ -82,6 +86,46 @@ interface ColumnProfile {
 	nonEmptyCount: number;
 }
 
+interface ColumnCounts {
+	totalLength: number;
+	maxLength: number;
+	space: number;
+	price: number;
+	decimal: number;
+	currency: number;
+	numeric: number;
+	unit: number;
+	code: number;
+}
+
+function emptyCounts(): ColumnCounts {
+	return {
+		totalLength: 0,
+		maxLength: 0,
+		space: 0,
+		price: 0,
+		decimal: 0,
+		currency: 0,
+		numeric: 0,
+		unit: 0,
+		code: 0
+	};
+}
+
+function tallyValue(v: string, counts: ColumnCounts): void {
+	counts.totalLength += v.length;
+	if (v.length > counts.maxLength) counts.maxLength = v.length;
+	if (/\s/.test(v)) counts.space++;
+	if (looksLikePrice(v)) counts.price++;
+	const stripped = v.replace(/[$,\s]/g, '');
+	if (/\.\d{1,2}/.test(stripped)) counts.decimal++;
+	if (/[$]/.test(v)) counts.currency++;
+	if (stripped && !isNaN(Number(stripped))) counts.numeric++;
+	if (KNOWN_UNITS.has(v.toLowerCase())) counts.unit++;
+	// Code-like: alphanumeric with dashes, underscores, dots, slashes; no spaces; 2+ chars
+	if (/^[A-Za-z0-9][A-Za-z0-9._\-/]{1,}$/.test(v) && !/\s/.test(v)) counts.code++;
+}
+
 function profileColumn(header: string, rows: Record<string, string>[]): ColumnProfile {
 	const values = rows.map((r) => (r[header] ?? '').trim());
 	const nonEmpty = values.filter((v) => v.length > 0);
@@ -90,45 +134,142 @@ function profileColumn(header: string, rows: Record<string, string>[]): ColumnPr
 	const cardinality = distinct.size;
 	const uniquenessRatio = nonEmptyCount > 0 ? cardinality / nonEmptyCount : 0;
 
-	let totalLength = 0;
-	let maxLength = 0;
-	let spaceCount = 0;
-	let priceCount = 0;
-	let decimalCount = 0;
-	let currencyCount = 0;
-	let numericCount = 0;
-	let unitCount = 0;
-	let codeCount = 0;
+	const counts = emptyCounts();
+	for (const v of nonEmpty) tallyValue(v, counts);
 
-	for (const v of nonEmpty) {
-		totalLength += v.length;
-		if (v.length > maxLength) maxLength = v.length;
-		if (/\s/.test(v)) spaceCount++;
-		if (looksLikePrice(v)) priceCount++;
-		if (/\.\d{1,2}/.test(v.replace(/[$,\s]/g, ''))) decimalCount++;
-		if (/[$]/.test(v)) currencyCount++;
-		const cleaned = v.replace(/[$,\s]/g, '');
-		if (cleaned && !isNaN(Number(cleaned))) numericCount++;
-		if (KNOWN_UNITS.has(v.toLowerCase())) unitCount++;
-		// Code-like: alphanumeric with dashes, underscores, dots, slashes; no spaces; 2+ chars
-		if (/^[A-Za-z0-9][A-Za-z0-9._\-/]{1,}$/.test(v) && !/\s/.test(v)) codeCount++;
-	}
-
+	const denom = nonEmptyCount > 0 ? nonEmptyCount : 1;
 	return {
 		header,
 		uniquenessRatio,
-		avgLength: nonEmptyCount > 0 ? totalLength / nonEmptyCount : 0,
-		maxLength,
-		spaceFraction: nonEmptyCount > 0 ? spaceCount / nonEmptyCount : 0,
-		priceFraction: nonEmptyCount > 0 ? priceCount / nonEmptyCount : 0,
-		decimalFraction: nonEmptyCount > 0 ? decimalCount / nonEmptyCount : 0,
-		currencyFraction: nonEmptyCount > 0 ? currencyCount / nonEmptyCount : 0,
-		numericFraction: nonEmptyCount > 0 ? numericCount / nonEmptyCount : 0,
-		unitMatchFraction: nonEmptyCount > 0 ? unitCount / nonEmptyCount : 0,
-		codeLikeFraction: nonEmptyCount > 0 ? codeCount / nonEmptyCount : 0,
+		avgLength: nonEmptyCount > 0 ? counts.totalLength / denom : 0,
+		maxLength: counts.maxLength,
+		spaceFraction: nonEmptyCount > 0 ? counts.space / denom : 0,
+		priceFraction: nonEmptyCount > 0 ? counts.price / denom : 0,
+		decimalFraction: nonEmptyCount > 0 ? counts.decimal / denom : 0,
+		currencyFraction: nonEmptyCount > 0 ? counts.currency / denom : 0,
+		numericFraction: nonEmptyCount > 0 ? counts.numeric / denom : 0,
+		unitMatchFraction: nonEmptyCount > 0 ? counts.unit / denom : 0,
+		codeLikeFraction: nonEmptyCount > 0 ? counts.code / denom : 0,
 		cardinality,
 		nonEmptyCount
 	};
+}
+
+function scorePriceColumn(p: ColumnProfile): number | null {
+	if (p.numericFraction < 0.5) return null;
+	if (p.currencyFraction === 0 && p.decimalFraction < 0.1 && p.uniquenessRatio < 0.2) return null;
+	let score = 0;
+	if (p.currencyFraction > 0.1) score += 3;
+	if (p.decimalFraction > 0.3) score += 3;
+	if (p.priceFraction > 0.5) score += 1;
+	if (p.uniquenessRatio > 0.3) score += 1;
+	return score >= 2 ? score : null;
+}
+
+function scoreUnitColumn(p: ColumnProfile): number {
+	let score = 0;
+	if (p.unitMatchFraction > 0.3) score += 5;
+	if (p.cardinality <= 15 && p.cardinality >= 1) score += 2;
+	if (p.avgLength < 12) score += 1;
+	return score;
+}
+
+function scoreSkuColumn(p: ColumnProfile): number {
+	let score = 0;
+	if (p.uniquenessRatio > 0.8) score += 3;
+	else if (p.uniquenessRatio > 0.5) score += 1;
+	if (p.codeLikeFraction > 0.5) score += 3;
+	else if (p.codeLikeFraction > 0.3) score += 1;
+	if (p.avgLength >= 3 && p.avgLength <= 30) score += 1;
+	if (p.spaceFraction < 0.2) score += 1;
+	if (p.spaceFraction > 0.5 && p.avgLength > 20) score -= 2;
+	return score;
+}
+
+function scoreNameColumn(p: ColumnProfile): number {
+	let score = 0;
+	if (p.avgLength > 20) score += 3;
+	else if (p.avgLength > 10) score += 2;
+	else if (p.avgLength > 5) score += 1;
+	if (p.spaceFraction > 0.5) score += 2;
+	if (p.uniquenessRatio > 0.5) score += 2;
+	else if (p.uniquenessRatio > 0.3) score += 1;
+	if (p.numericFraction < 0.3) score += 1;
+	if (p.maxLength > 30) score += 1;
+	return score;
+}
+
+function scoreCategoryColumn(p: ColumnProfile): number {
+	if (p.nonEmptyCount === 0) return 0;
+	let score = 0;
+	const cardinalityRatio = p.cardinality / p.nonEmptyCount;
+	if (cardinalityRatio < 0.1) score += 3;
+	else if (cardinalityRatio < 0.3) score += 2;
+	if (p.cardinality >= 2 && p.cardinality <= 50) score += 2;
+	if (p.avgLength > 1) score += 1;
+	if (p.unitMatchFraction > 0.3) score -= 2;
+	return score;
+}
+
+function pickBest(
+	remaining: Set<string>,
+	profiles: Map<string, ColumnProfile>,
+	scorer: (p: ColumnProfile) => number,
+	threshold: number
+): string | null {
+	let best: { header: string; score: number } | null = null;
+	for (const header of remaining) {
+		const p = profiles.get(header);
+		if (!p || p.nonEmptyCount === 0) continue;
+		const score = scorer(p);
+		if (score >= threshold && (!best || score > best.score)) {
+			best = { header, score };
+		}
+	}
+	return best ? best.header : null;
+}
+
+interface AssignmentState {
+	remaining: Set<string>;
+	profiles: Map<string, ColumnProfile>;
+	assigned: Set<TargetField>;
+	fieldMap: Record<string, TargetField>;
+	newTiers: string[];
+}
+
+function assignPriceColumns(state: AssignmentState): void {
+	const { remaining, profiles, assigned, fieldMap, newTiers } = state;
+	const priceColumns: { header: string; score: number }[] = [];
+	for (const header of remaining) {
+		const p = profiles.get(header);
+		if (!p || p.nonEmptyCount === 0) continue;
+		const score = scorePriceColumn(p);
+		if (score !== null) priceColumns.push({ header, score });
+	}
+	priceColumns.sort((a, b) => b.score - a.score);
+	for (const { header } of priceColumns) {
+		if (!assigned.has('rate')) {
+			fieldMap[header] = 'rate';
+			assigned.add('rate');
+		} else {
+			newTiers.push(header);
+		}
+		remaining.delete(header);
+	}
+}
+
+function assignSingleField(
+	state: AssignmentState,
+	field: TargetField,
+	threshold: number,
+	scorer: (p: ColumnProfile) => number
+): void {
+	if (state.assigned.has(field)) return;
+	const winner = pickBest(state.remaining, state.profiles, scorer, threshold);
+	if (!winner) return;
+	state.fieldMap[winner] = field;
+	state.assigned.add(field);
+	state.remaining.delete(winner);
 }
 
 /**
@@ -141,150 +282,24 @@ function smartAssignFields(
 	profiles: Map<string, ColumnProfile>,
 	alreadyAssigned: Set<TargetField>
 ): { fieldMap: Record<string, TargetField>; newTiers: string[]; metadata: string[] } {
-	const fieldMap: Record<string, TargetField> = {};
-	const newTiers: string[] = [];
+	const state: AssignmentState = {
+		remaining: new Set(unmappedHeaders),
+		profiles,
+		assigned: new Set(alreadyAssigned),
+		fieldMap: {},
+		newTiers: []
+	};
+
+	assignPriceColumns(state);
+	assignSingleField(state, 'unit', 5, scoreUnitColumn);
+	assignSingleField(state, 'sku', 4, scoreSkuColumn);
+	assignSingleField(state, 'name', 3, scoreNameColumn);
+	assignSingleField(state, 'category', 3, scoreCategoryColumn);
+
 	const metadata: string[] = [];
-	const assigned = new Set(alreadyAssigned);
-	const remaining = new Set(unmappedHeaders);
+	for (const header of state.remaining) metadata.push(header);
 
-	// Phase 1: Identify and assign price/rate columns
-	// Uses currency symbols ($), decimal patterns, and high cardinality to distinguish
-	// real prices from numeric category codes
-	const priceColumns: { header: string; score: number }[] = [];
-	for (const header of remaining) {
-		const p = profiles.get(header);
-		if (!p || p.nonEmptyCount === 0) continue;
-		if (p.numericFraction < 0.5) continue;
-
-		let score = 0;
-		if (p.currencyFraction > 0.1) score += 3;
-		if (p.decimalFraction > 0.3) score += 3;
-		if (p.priceFraction > 0.5) score += 1;
-		if (p.uniquenessRatio > 0.3) score += 1;
-		// Reject low-cardinality integers without decimals/currency (likely category codes)
-		if (p.currencyFraction === 0 && p.decimalFraction < 0.1 && p.uniquenessRatio < 0.2) continue;
-
-		if (score >= 2) {
-			priceColumns.push({ header, score });
-		}
-	}
-	priceColumns.sort((a, b) => b.score - a.score);
-
-	for (const { header } of priceColumns) {
-		if (!assigned.has('rate')) {
-			fieldMap[header] = 'rate';
-			assigned.add('rate');
-		} else {
-			newTiers.push(header);
-		}
-		remaining.delete(header);
-	}
-
-	// Phase 2: Unit detection — very specific pattern, check early
-	// Looks for columns where values match known unit abbreviations (H, EA, Day, etc.)
-	if (!assigned.has('unit')) {
-		let best: { header: string; score: number } | null = null;
-		for (const header of remaining) {
-			const p = profiles.get(header)!;
-			if (!p || p.nonEmptyCount === 0) continue;
-			let score = 0;
-			if (p.unitMatchFraction > 0.3) score += 5;
-			if (p.cardinality <= 15 && p.cardinality >= 1) score += 2;
-			if (p.avgLength < 12) score += 1;
-			if (score >= 5 && (!best || score > best.score)) {
-				best = { header, score };
-			}
-		}
-		if (best) {
-			fieldMap[best.header] = 'unit';
-			assigned.add('unit');
-			remaining.delete(best.header);
-		}
-	}
-
-	// Phase 3: SKU detection — high uniqueness + code-like patterns (alphanumeric with dashes/underscores)
-	if (!assigned.has('sku')) {
-		let best: { header: string; score: number } | null = null;
-		for (const header of remaining) {
-			const p = profiles.get(header)!;
-			if (!p || p.nonEmptyCount === 0) continue;
-			let score = 0;
-			if (p.uniquenessRatio > 0.8) score += 3;
-			else if (p.uniquenessRatio > 0.5) score += 1;
-			if (p.codeLikeFraction > 0.5) score += 3;
-			else if (p.codeLikeFraction > 0.3) score += 1;
-			if (p.avgLength >= 3 && p.avgLength <= 30) score += 1;
-			if (p.spaceFraction < 0.2) score += 1;
-			// Penalize descriptive text
-			if (p.spaceFraction > 0.5 && p.avgLength > 20) score -= 2;
-			if (score >= 4 && (!best || score > best.score)) {
-				best = { header, score };
-			}
-		}
-		if (best) {
-			fieldMap[best.header] = 'sku';
-			assigned.add('sku');
-			remaining.delete(best.header);
-		}
-	}
-
-	// Phase 4: Name detection — long descriptive text, high uniqueness, contains spaces
-	if (!assigned.has('name')) {
-		let best: { header: string; score: number } | null = null;
-		for (const header of remaining) {
-			const p = profiles.get(header)!;
-			if (!p || p.nonEmptyCount === 0) continue;
-			let score = 0;
-			if (p.avgLength > 20) score += 3;
-			else if (p.avgLength > 10) score += 2;
-			else if (p.avgLength > 5) score += 1;
-			if (p.spaceFraction > 0.5) score += 2;
-			if (p.uniquenessRatio > 0.5) score += 2;
-			else if (p.uniquenessRatio > 0.3) score += 1;
-			if (p.numericFraction < 0.3) score += 1;
-			if (p.maxLength > 30) score += 1;
-			if (score >= 3 && (!best || score > best.score)) {
-				best = { header, score };
-			}
-		}
-		if (best) {
-			fieldMap[best.header] = 'name';
-			assigned.add('name');
-			remaining.delete(best.header);
-		}
-	}
-
-	// Phase 5: Category detection — low cardinality grouping column
-	if (!assigned.has('category')) {
-		let best: { header: string; score: number } | null = null;
-		for (const header of remaining) {
-			const p = profiles.get(header)!;
-			if (!p || p.nonEmptyCount === 0) continue;
-			let score = 0;
-			const cardinalityRatio = p.cardinality / p.nonEmptyCount;
-			if (cardinalityRatio < 0.1) score += 3;
-			else if (cardinalityRatio < 0.3) score += 2;
-			if (p.cardinality >= 2 && p.cardinality <= 50) score += 2;
-			if (p.avgLength > 1) score += 1;
-			// Don't confuse with unit columns
-			if (p.unitMatchFraction > 0.3) score -= 2;
-			if (score >= 3 && (!best || score > best.score)) {
-				best = { header, score };
-			}
-		}
-		if (best) {
-			fieldMap[best.header] = 'category';
-			assigned.add('category');
-			remaining.delete(best.header);
-		}
-	}
-
-	// Phase 6: Everything remaining → metadata
-	for (const header of remaining) {
-		metadata.push(header);
-	}
-
-	return { fieldMap, newTiers, metadata };
+	return { fieldMap: state.fieldMap, newTiers: state.newTiers, metadata };
 }
 
 export interface AutoDetectResult {
@@ -341,68 +356,104 @@ function looksLikePrice(value: string): boolean {
 	return /^\d+(\.\d{1,2})?$/.test(cleaned);
 }
 
+interface CoreFields {
+	name: string;
+	sku: string;
+	unit: string;
+	category: string;
+	rate: number;
+}
+
+function applyFieldMap(
+	row: Record<string, string>,
+	fieldMap: ColumnMappingConfig['fieldMap'],
+	errors: string[]
+): CoreFields {
+	const result: CoreFields = { name: '', sku: '', unit: '', category: '', rate: 0 };
+	for (const [sourceCol, targetField] of Object.entries(fieldMap)) {
+		const value = row[sourceCol] ?? '';
+		assignField(result, targetField, value, errors);
+	}
+	return result;
+}
+
+function assignField(
+	result: CoreFields,
+	targetField: string,
+	value: string,
+	errors: string[]
+): void {
+	switch (targetField) {
+		case 'name':
+			result.name = value.trim();
+			return;
+		case 'sku':
+			result.sku = value.trim();
+			return;
+		case 'unit':
+			result.unit = value.trim();
+			return;
+		case 'category':
+			result.category = value.trim();
+			return;
+		case 'rate': {
+			const parsed = parseRate(value);
+			if (parsed !== null) {
+				result.rate = parsed;
+			} else if (value.trim()) {
+				errors.push(`Invalid rate value: "${value}"`);
+			}
+			return;
+		}
+		case 'skip':
+			return;
+		default:
+			return;
+	}
+}
+
+function applyTierColumns(
+	row: Record<string, string>,
+	tierColumns: ColumnMappingConfig['tierColumns'],
+	errors: string[]
+): Record<number, number> {
+	const tierRates: Record<number, number> = {};
+	for (const [sourceCol, tierId] of Object.entries(tierColumns)) {
+		const value = row[sourceCol] ?? '';
+		const parsed = parseRate(value);
+		if (parsed !== null) {
+			tierRates[tierId] = parsed;
+		} else if (value.trim()) {
+			errors.push(`Invalid tier rate for "${sourceCol}": "${value}"`);
+		}
+	}
+	return tierRates;
+}
+
+function applyMetadataColumns(
+	row: Record<string, string>,
+	metadataColumns: ColumnMappingConfig['metadataColumns']
+): Record<string, string> {
+	const metadata: Record<string, string> = {};
+	for (const sourceCol of metadataColumns) {
+		const value = row[sourceCol] ?? '';
+		if (value.trim()) {
+			metadata[sourceCol] = value.trim();
+		}
+	}
+	return metadata;
+}
+
 export function applyMapping(rows: Record<string, string>[], config: ColumnMappingConfig): MappedRow[] {
 	return rows.map((row) => {
 		const errors: string[] = [];
-		let name = '';
-		let sku = '';
-		let unit = '';
-		let category = '';
-		let rate = 0;
-		const tierRates: Record<number, number> = {};
-		const metadata: Record<string, string> = {};
-
-		for (const [sourceCol, targetField] of Object.entries(config.fieldMap)) {
-			const value = row[sourceCol] ?? '';
-			switch (targetField) {
-				case 'name':
-					name = value.trim();
-					break;
-				case 'sku':
-					sku = value.trim();
-					break;
-				case 'unit':
-					unit = value.trim();
-					break;
-				case 'category':
-					category = value.trim();
-					break;
-				case 'rate': {
-					const parsed = parseRate(value);
-					if (parsed !== null) {
-						rate = parsed;
-					} else if (value.trim()) {
-						errors.push(`Invalid rate value: "${value}"`);
-					}
-					break;
-				}
-				case 'skip':
-					break;
-			}
-		}
-
-		for (const [sourceCol, tierId] of Object.entries(config.tierColumns)) {
-			const value = row[sourceCol] ?? '';
-			const parsed = parseRate(value);
-			if (parsed !== null) {
-				tierRates[tierId] = parsed;
-			} else if (value.trim()) {
-				errors.push(`Invalid tier rate for "${sourceCol}": "${value}"`);
-			}
-		}
-
-		for (const sourceCol of config.metadataColumns) {
-			const value = row[sourceCol] ?? '';
-			if (value.trim()) {
-				metadata[sourceCol] = value.trim();
-			}
-		}
-
-		if (!name) {
+		const core = applyFieldMap(row, config.fieldMap, errors);
+		const tierRates = applyTierColumns(row, config.tierColumns, errors);
+		const metadata = applyMetadataColumns(row, config.metadataColumns);
+		if (!core.name) {
 			errors.push('Name is required');
 		}
-
-		return { name, sku, unit, category, rate, tierRates, metadata, _raw: row, _errors: errors };
+		return { ...core, tierRates, metadata, _raw: row, _errors: errors };
 	});
 }
 

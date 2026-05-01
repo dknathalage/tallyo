@@ -24,17 +24,17 @@ declare global {
 	interface Window {
 		showOpenFilePicker(options?: {
 			multiple?: boolean;
-			types?: Array<{
+			types?: {
 				description?: string;
 				accept: Record<string, string[]>;
-			}>;
+			}[];
 		}): Promise<FileSystemFileHandle[]>;
 		showSaveFilePicker(options?: {
 			suggestedName?: string;
-			types?: Array<{
+			types?: {
 				description?: string;
 				accept: Record<string, string[]>;
-			}>;
+			}[];
 		}): Promise<FileSystemFileHandle>;
 	}
 }

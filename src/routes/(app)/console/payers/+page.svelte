@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -9,24 +9,24 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let payers = $derived(
+	const payers = $derived(
 		data.payers.filter(p =>
-			!search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.email ?? '').toLowerCase().includes(search.toLowerCase())
+			!search || p.name.toLowerCase().includes(search.toLowerCase()) || p.email.toLowerCase().includes(search.toLowerCase())
 		)
 	);
 
 	$effect(() => {
-		search;
+		void search;
 		selectedIds = new Set();
 	});
 
-	let allSelected = $derived(payers.length > 0 && selectedIds.size === payers.length);
+	const allSelected = $derived(payers.length > 0 && selectedIds.size === payers.length);
 
 	function toggleAll() {
 		if (allSelected) {
@@ -47,13 +47,14 @@
 	}
 
 	async function handleBulkDelete() {
+		const ids = [...selectedIds];
+		selectedIds = new Set();
+		showDeleteConfirm = false;
 		await fetch('/api/payers', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+			body: JSON.stringify({ action: 'bulk-delete', ids })
 		});
-		selectedIds = new Set();
-		showDeleteConfirm = false;
 		await invalidateAll();
 	}
 </script>
@@ -62,7 +63,7 @@
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('payer.title')}</h1>
-		<a href="{base}/console/payers/new">
+		<a href={resolve('/(app)/console/payers/new')}>
 			<Button>{i18n.t('payer.newPayer')}</Button>
 		</a>
 	</div>
@@ -83,7 +84,7 @@
 			<EmptyState title={i18n.t('common.noResults')} message={i18n.t('payer.noResultsMessage')} />
 		{:else}
 			<EmptyState title={i18n.t('payer.noPayers')} message={i18n.t('payer.noPayersMessage')}>
-				<a href="{base}/console/payers/new">
+				<a href={resolve('/(app)/console/payers/new')}>
 					<Button>{i18n.t('payer.newPayer')}</Button>
 				</a>
 			</EmptyState>
@@ -119,7 +120,7 @@
 								/>
 							</td>
 							<td class="px-6 py-4">
-								<a href="{base}/console/payers/{payer.id}" class="font-medium text-primary-600 hover:text-primary-700">
+								<a href={resolve('/(app)/console/payers/[id]', { id: String(payer.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 									{payer.name}
 								</a>
 							</td>

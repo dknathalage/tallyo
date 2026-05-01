@@ -21,7 +21,7 @@ export const GET: RequestHandler = async () => {
 			const tierRate = withRates?.rates[tier.id];
 			row[`Rate: ${tier.name}`] = tierRate ?? '';
 		}
-		row['metadata'] = item.metadata ?? '';
+		row['metadata'] = item.metadata;
 		rows.push(row);
 	}
 

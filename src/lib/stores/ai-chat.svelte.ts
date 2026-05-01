@@ -2,7 +2,7 @@ import { addToast } from './toast.svelte.js';
 
 export interface AiStreamingState {
   text: string;
-  toolCalls: Array<{ id: string; name: string; result?: string; is_error?: boolean }>;
+  toolCalls: { id: string; name: string; result?: string; is_error?: boolean }[];
 }
 
 class AiChatStore {
@@ -66,14 +66,9 @@ class AiChatStore {
   private abortController: AbortController | null = null;
 
   async sendMessage(text: string) {
-    if (!this.activeSessionId || this.isStreaming || !text.trim()) return;
+    if (this.activeSessionId === null || this.isStreaming || !text.trim()) return;
 
-    // Optimistic user message
-    this.messages = [...this.messages, {
-      id: -Date.now(), uuid: crypto.randomUUID(), session_id: this.activeSessionId,
-      role: 'user', content: text, tool_calls: null, tool_results: null,
-      is_streaming: 0, created_at: new Date().toISOString()
-    }];
+    this.appendOptimisticUserMessage(text, this.activeSessionId);
     this.isStreaming = true;
     this.streaming = { text: '', toolCalls: [] };
     this.abortController = new AbortController();
@@ -86,28 +81,7 @@ class AiChatStore {
         signal: this.abortController.signal
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split('\n\n');
-        buf = parts.pop() ?? '';
-        for (const part of parts) {
-          const lines = part.split('\n');
-          let ev = '', data = '';
-          for (const l of lines) {
-            if (l.startsWith('event: ')) ev = l.slice(7).trim();
-            if (l.startsWith('data: ')) data = l.slice(6).trim();
-          }
-          if (!ev || !data) continue;
-          try { this.handleEvent(ev, JSON.parse(data)); } catch { /* noop */ }
-        }
-      }
+      await this.consumeStream(res.body);
     } catch (e) {
       if (e instanceof Error && e.name !== 'AbortError') {
         addToast({ message: 'AI error: ' + e.message, type: 'error' });
@@ -117,10 +91,43 @@ class AiChatStore {
     }
   }
 
+  private appendOptimisticUserMessage(text: string, sessionId: number) {
+    this.messages = [...this.messages, {
+      id: -Date.now(), uuid: crypto.randomUUID(), session_id: sessionId,
+      role: 'user', content: text, tool_calls: null, tool_results: null,
+      is_streaming: 0, created_at: new Date().toISOString()
+    }];
+  }
+
+  private async consumeStream(body: ReadableStream<Uint8Array>) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() ?? '';
+      for (const part of parts) this.dispatchSseFrame(part);
+    }
+  }
+
+  private dispatchSseFrame(part: string) {
+    const lines = part.split('\n');
+    let ev = '', data = '';
+    for (const l of lines) {
+      if (l.startsWith('event: ')) ev = l.slice(7).trim();
+      else if (l.startsWith('data: ')) data = l.slice(6).trim();
+    }
+    if (!ev || !data) return;
+    try { this.handleEvent(ev, JSON.parse(data) as Record<string, unknown>); } catch { /* malformed frame */ }
+  }
+
   private handleEvent(event: string, data: Record<string, unknown>) {
     switch (event) {
       case 'text_delta':
-        this.streaming = { ...this.streaming, text: this.streaming.text + (data['delta'] as string ?? '') };
+        this.streaming = { ...this.streaming, text: this.streaming.text + ((data['delta'] as string | undefined) ?? '') };
         break;
       case 'tool_start':
         this.streaming = {
@@ -136,13 +143,13 @@ class AiChatStore {
         break;
       }
       case 'done':
-        if (this.activeSessionId) {
-          this.selectSession(this.activeSessionId).then(() => this.loadSessions());
+        if (this.activeSessionId !== null) {
+          void this.selectSession(this.activeSessionId).then(() => this.loadSessions());
         }
         this.streaming = { text: '', toolCalls: [] };
         break;
       case 'error':
-        addToast({ message: (data['message'] as string) || 'AI error occurred', type: 'error' });
+        addToast({ message: ((data['message'] as string | undefined) ?? '') || 'AI error occurred', type: 'error' });
         this.streaming = { text: '', toolCalls: [] };
         this.isStreaming = false;
         break;

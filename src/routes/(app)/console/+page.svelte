@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -8,10 +8,10 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import type { PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
-	let stats = $derived(data.stats);
-	let defaultCurrency = $derived(data.defaultCurrency);
-	let monthlyRevenue = $derived(data.monthlyRevenue);
+	const { data }: { data: PageData } = $props();
+	const stats = $derived(data.stats);
+	const defaultCurrency = $derived(data.defaultCurrency);
+	const monthlyRevenue = $derived(data.monthlyRevenue);
 </script>
 
 <div class="space-y-6">
@@ -19,13 +19,13 @@
 	<div class="flex flex-wrap items-center justify-between gap-4">
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('dashboard.title')}</h1>
 		<div class="flex flex-wrap gap-2">
-			<a href="{base}/console/invoices/new">
+			<a href={resolve("/(app)/console/invoices/new")}>
 				<Button>{i18n.t('dashboard.newInvoice')}</Button>
 			</a>
-			<a href="{base}/console/estimates/new">
+			<a href={resolve("/(app)/console/estimates/new")}>
 				<Button variant="secondary">{i18n.t('dashboard.newEstimate')}</Button>
 			</a>
-			<a href="{base}/console/clients/new">
+			<a href={resolve("/(app)/console/clients/new")}>
 				<Button variant="secondary">{i18n.t('dashboard.newClient')}</Button>
 			</a>
 		</div>
@@ -126,14 +126,14 @@
 		<div class="flex items-center justify-between">
 			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('dashboard.recentInvoices')}</h2>
 			{#if stats.total_invoices > 0}
-				<a href="{base}/console/invoices" class="text-sm text-primary-600 hover:text-primary-700">{i18n.t('dashboard.viewAll')}</a>
+				<a href={resolve("/(app)/console/invoices")} class="text-sm text-primary-600 hover:text-primary-700">{i18n.t('dashboard.viewAll')}</a>
 			{/if}
 		</div>
 
 		{#if stats.recent_invoices.length === 0}
 			<div class="mt-4">
 				<EmptyState title={i18n.t('dashboard.noInvoicesYet')} message={i18n.t('dashboard.noInvoicesMessage')}>
-					<a href="{base}/console/invoices/new">
+					<a href={resolve("/(app)/console/invoices/new")}>
 						<Button>{i18n.t('dashboard.createInvoice')}</Button>
 					</a>
 				</EmptyState>
@@ -152,10 +152,10 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-						{#each stats.recent_invoices as invoice}
+						{#each stats.recent_invoices as invoice (invoice.id)}
 							<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 								<td class="px-6 py-4">
-									<a href="{base}/console/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
+									<a href={resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 										{invoice.invoice_number}
 									</a>
 								</td>
@@ -184,14 +184,14 @@
 		<div class="flex items-center justify-between">
 			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('dashboard.recentEstimates')}</h2>
 			{#if stats.total_estimates > 0}
-				<a href="{base}/console/estimates" class="text-sm text-primary-600 hover:text-primary-700">{i18n.t('dashboard.viewAll')}</a>
+				<a href={resolve("/(app)/console/estimates")} class="text-sm text-primary-600 hover:text-primary-700">{i18n.t('dashboard.viewAll')}</a>
 			{/if}
 		</div>
 
 		{#if stats.recent_estimates.length === 0}
 			<div class="mt-4">
 				<EmptyState title={i18n.t('dashboard.noEstimatesYet')} message={i18n.t('dashboard.noEstimatesMessage')}>
-					<a href="{base}/console/estimates/new">
+					<a href={resolve("/(app)/console/estimates/new")}>
 						<Button>{i18n.t('dashboard.createEstimate')}</Button>
 					</a>
 				</EmptyState>
@@ -210,10 +210,10 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-						{#each stats.recent_estimates as estimate}
+						{#each stats.recent_estimates as estimate (estimate.id)}
 							<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 								<td class="px-6 py-4">
-									<a href="{base}/console/estimates/{estimate.id}" class="font-medium text-primary-600 hover:text-primary-700">
+									<a href={resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 										{estimate.estimate_number}
 									</a>
 								</td>

@@ -4,7 +4,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		initialData,
 		onsubmit
 	}: {
@@ -38,12 +38,12 @@
 		]);
 		const catalogItems = await catalogRes.json() as CatalogItem[];
 		categories = [...new Set(catalogItems.map((i: CatalogItem) => i.category).filter(Boolean))];
-		tiers = await tiersRes.json();
+		tiers = await tiersRes.json() as { id: number; name: string }[];
 
 		// Load existing tier rates if editing
 		if (initialData?.id) {
 			const res = await fetch(`/api/catalog/${initialData.id}`);
-			const data = await res.json();
+			const data = await res.json() as { itemWithRates?: CatalogItemWithRates } & CatalogItemWithRates;
 			itemWithRates = data.itemWithRates ?? data;
 		}
 	});
@@ -125,7 +125,7 @@
 				placeholder={i18n.t('catalog.categoryPlaceholder')}
 			/>
 			<datalist id="category-options">
-				{#each categories as cat}
+				{#each categories as cat (cat)}
 					<option value={cat}></option>
 				{/each}
 			</datalist>
@@ -163,7 +163,7 @@
 			<fieldset class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 m-0">
 				<legend class="text-sm font-medium text-gray-700 dark:text-gray-300 px-1">{i18n.t('catalog.tierRates')}</legend>
 				<div class="space-y-3">
-					{#each tiers as tier}
+					{#each tiers as tier (tier.id)}
 						<div class="flex items-center gap-3">
 							<label for="tier-rate-{tier.id}" class="w-32 text-sm text-gray-600 dark:text-gray-300 truncate" title={tier.name}>
 								{tier.name}

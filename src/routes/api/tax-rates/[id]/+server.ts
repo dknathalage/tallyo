@@ -3,25 +3,35 @@ import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/index.js';
 import { dbError } from '$lib/server/db-error.js';
 
-export const PUT: RequestHandler = async ({ params, request }) => {
-	const id = parseInt(params.id, 10);
+interface TaxRateInput {
+	name: string;
+	rate: number;
+	is_default?: boolean;
+}
+
+function parseId(raw: string): number {
+	const id = parseInt(raw, 10);
 	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
-	const data = await request.json();
+	return id;
+}
+
+export const PUT: RequestHandler = async ({ params, request }) => {
+	const id = parseId(params.id);
+	const data = (await request.json()) as TaxRateInput;
 	try {
 		await repositories.taxRates.updateTaxRate(id, data);
-		return json({ success: true });
 	} catch (err) {
-		dbError(err);
+		throw dbError(err);
 	}
+	return json({ success: true });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
-	const id = parseInt(params.id, 10);
-	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
+	const id = parseId(params.id);
 	try {
 		await repositories.taxRates.deleteTaxRate(id);
-		return json({ success: true });
 	} catch (err) {
-		dbError(err);
+		throw dbError(err);
 	}
+	return json({ success: true });
 };

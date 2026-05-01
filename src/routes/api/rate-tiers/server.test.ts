@@ -47,7 +47,7 @@ describe('POST /api/rate-tiers', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a rate tier', async () => {
-		vi.mocked(repositories.rateTiers.createRateTier).mockResolvedValue(3 as any);
+		vi.mocked(repositories.rateTiers.createRateTier).mockResolvedValue(3);
 		const result = await POST({ request: makeRequest({ name: 'Premium' }) } as any);
 		expect((result as any).status).toBe(201);
 		expect((result as any).body).toEqual({ id: 3 });
@@ -94,7 +94,7 @@ describe('PUT /api/rate-tiers/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('updates a rate tier', async () => {
-		vi.mocked(repositories.rateTiers.updateRateTier).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.rateTiers.updateRateTier).mockResolvedValue(undefined);
 		const result = await PUT({ params: { id: '1' }, request: makeRequest({ name: 'Updated' }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.rateTiers.updateRateTier).toHaveBeenCalledWith(1, { name: 'Updated' });
@@ -140,7 +140,7 @@ describe('DELETE /api/rate-tiers/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes a rate tier', async () => {
-		vi.mocked(repositories.rateTiers.deleteRateTier).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.rateTiers.deleteRateTier).mockResolvedValue(undefined);
 		const result = await DELETE({ params: { id: '1' } } as any);
 		expect((result as any).body).toEqual({ success: true });
 	});

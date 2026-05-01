@@ -14,13 +14,13 @@ function mapRow(row: Record<string, unknown>): CatalogItem {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		name: row['name'] as string,
-		rate: (row['rate'] as number) ?? 0,
-		unit: (row['unit'] as string) ?? '',
-		category: (row['category'] as string) ?? '',
-		sku: (row['sku'] as string) ?? '',
-		metadata: (row['metadata'] as string) ?? '{}',
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		rate: (row['rate'] as number | null | undefined) ?? 0,
+		unit: (row['unit'] as string | null | undefined) ?? '',
+		category: (row['category'] as string | null | undefined) ?? '',
+		sku: (row['sku'] as string | null | undefined) ?? '',
+		metadata: (row['metadata'] as string | null | undefined) ?? '{}',
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -30,29 +30,10 @@ export async function getCatalogItems(
 	pagination?: PaginationParams
 ): Promise<PaginatedResult<CatalogItem>> {
 	const db = getDb();
-
-	const conditions = [];
-	if (search) {
-		conditions.push(
-			or(like(catalogItems.name, `%${search}%`), like(catalogItems.sku, `%${search}%`))!
-		);
-	}
-	if (category) {
-		conditions.push(eq(catalogItems.category, category));
-	}
-
-	let query;
-	if (conditions.length > 0) {
-		query = db
-			.select()
-			.from(catalogItems)
-			.where(and(...conditions))
-			.orderBy(asc(catalogItems.name));
-	} else {
-		query = db.select().from(catalogItems).orderBy(asc(catalogItems.name));
-	}
-
-	const rows = await query;
+	const conditions = buildCatalogConditions(search, category);
+	const base = db.select().from(catalogItems);
+	const filtered = conditions.length > 0 ? base.where(and(...conditions)) : base;
+	const rows = await filtered.orderBy(asc(catalogItems.name));
 	const all = rows.map(mapRow);
 	return paginate(all, pagination);
 }
@@ -76,7 +57,7 @@ export async function getCatalogCategories(): Promise<string[]> {
 
 export async function searchCatalogItems(
 	term: string,
-	limit: number = 10
+	limit = 10
 ): Promise<CatalogItem[]> {
 	const db = getDb();
 	const rows = await db
@@ -98,7 +79,8 @@ export async function createCatalogItem(data: {
 	category?: string;
 	sku?: string;
 }): Promise<number> {
-	if (!data.name?.trim()) {
+	const name = data.name as string | null | undefined;
+	if (!name?.trim()) {
 		throw new Error('Catalog item name is required');
 	}
 	const db = getDb();
@@ -127,7 +109,8 @@ export async function updateCatalogItem(
 	id: number,
 	data: { name: string; rate?: number; unit?: string; category?: string; sku?: string }
 ): Promise<void> {
-	if (!data.name?.trim()) {
+	const name = data.name as string | null | undefined;
+	if (!name?.trim()) {
 		throw new Error('Catalog item name is required');
 	}
 	const db = getDb();
@@ -190,25 +173,53 @@ export async function getCatalogItemWithRates(
 	if (!item) return null;
 	const rates: Record<number, number> = {};
 	for (const row of rows) {
-		if (row.tier_id != null && row.tier_rate != null) {
+		if (row.tier_id !== null && row.tier_rate !== null) {
 			rates[row.tier_id] = row.tier_rate;
 		}
 	}
 
 	return {
 		id: item.id,
-		uuid: item.uuid as string,
+		uuid: item.uuid ?? '',
 		name: item.name,
 		rate: item.rate,
 		unit: item.unit ?? '',
 		category: item.category ?? '',
 		sku: item.sku ?? '',
 		metadata: item.metadata ?? '{}',
-		created_at: (item.created_at as string | null) ?? '',
-		updated_at: (item.updated_at as string | null) ?? '',
+		created_at: item.created_at ?? '',
+		updated_at: item.updated_at ?? '',
 		rates
 	};
 }
+
+function buildCatalogConditions(search?: string, category?: string) {
+	const conditions = [];
+	if (search) {
+		const clause = or(
+			like(catalogItems.name, `%${search}%`),
+			like(catalogItems.sku, `%${search}%`)
+		);
+		if (clause) conditions.push(clause);
+	}
+	if (category) {
+		conditions.push(eq(catalogItems.category, category));
+	}
+	return conditions;
+}
+
+const catalogBaseSelect = {
+	id: catalogItems.id,
+	uuid: catalogItems.uuid,
+	name: catalogItems.name,
+	rate: catalogItems.rate,
+	unit: catalogItems.unit,
+	category: catalogItems.category,
+	sku: catalogItems.sku,
+	metadata: catalogItems.metadata,
+	created_at: catalogItems.created_at,
+	updated_at: catalogItems.updated_at
+};
 
 export async function getCatalogItemsWithTierRate(
 	search?: string,
@@ -216,79 +227,42 @@ export async function getCatalogItemsWithTierRate(
 	tierId?: number
 ): Promise<(CatalogItem & { tier_rate?: number })[]> {
 	const db = getDb();
-
-	const conditions = [];
-	if (search) {
-		conditions.push(
-			or(like(catalogItems.name, `%${search}%`), like(catalogItems.sku, `%${search}%`))!
-		);
-	}
-	if (category) {
-		conditions.push(eq(catalogItems.category, category));
-	}
-
-	let query;
-	if (tierId) {
-		const baseQuery = db
-			.select({
-				id: catalogItems.id,
-				uuid: catalogItems.uuid,
-				name: catalogItems.name,
-				rate: catalogItems.rate,
-				unit: catalogItems.unit,
-				category: catalogItems.category,
-				sku: catalogItems.sku,
-				metadata: catalogItems.metadata,
-				created_at: catalogItems.created_at,
-				updated_at: catalogItems.updated_at,
-				tier_rate: catalogItemRates.rate
-			})
-			.from(catalogItems)
-			.leftJoin(
-				catalogItemRates,
-				and(
-					eq(catalogItems.id, catalogItemRates.catalog_item_id),
-					eq(catalogItemRates.rate_tier_id, tierId)
-				)
-			);
-
-		if (conditions.length > 0) {
-			query = baseQuery.where(and(...conditions));
-		} else {
-			query = baseQuery;
-		}
-	} else {
-		const baseQuery = db
-			.select({
-				id: catalogItems.id,
-				uuid: catalogItems.uuid,
-				name: catalogItems.name,
-				rate: catalogItems.rate,
-				unit: catalogItems.unit,
-				category: catalogItems.category,
-				sku: catalogItems.sku,
-				metadata: catalogItems.metadata,
-				created_at: catalogItems.created_at,
-				updated_at: catalogItems.updated_at
-			})
-			.from(catalogItems);
-
-		if (conditions.length > 0) {
-			query = baseQuery.where(and(...conditions));
-		} else {
-			query = baseQuery;
-		}
-	}
-
-	const rows = await query.orderBy(asc(catalogItems.name));
+	const conditions = buildCatalogConditions(search, category);
+	const rows = tierId
+		? await runTieredQuery(db, conditions, tierId)
+		: await runUntieredQuery(db, conditions);
 
 	return rows.map((row) => {
-		const tierRate = 'tier_rate' in row ? (row.tier_rate as number | undefined) : undefined;
+		const tierRate = 'tier_rate' in row ? (row.tier_rate as number | null | undefined) : undefined;
 		return {
-			...mapRow(row as Record<string, unknown>),
+			...mapRow(row),
 			...(tierRate !== undefined && tierRate !== null && { tier_rate: tierRate })
 		};
 	});
+}
+
+type Db = ReturnType<typeof getDb>;
+type Conditions = ReturnType<typeof buildCatalogConditions>;
+
+async function runTieredQuery(db: Db, conditions: Conditions, tierId: number) {
+	const baseQuery = db
+		.select({ ...catalogBaseSelect, tier_rate: catalogItemRates.rate })
+		.from(catalogItems)
+		.leftJoin(
+			catalogItemRates,
+			and(
+				eq(catalogItems.id, catalogItemRates.catalog_item_id),
+				eq(catalogItemRates.rate_tier_id, tierId)
+			)
+		);
+	const filtered = conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
+	return filtered.orderBy(asc(catalogItems.name));
+}
+
+async function runUntieredQuery(db: Db, conditions: Conditions) {
+	const baseQuery = db.select(catalogBaseSelect).from(catalogItems);
+	const filtered = conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
+	return filtered.orderBy(asc(catalogItems.name));
 }
 
 export async function getEffectiveRate(

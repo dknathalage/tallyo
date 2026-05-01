@@ -3,7 +3,7 @@
 	import { fade, scale } from 'svelte/transition';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		open = false,
 		onclose,
 		title,

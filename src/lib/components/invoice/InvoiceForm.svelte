@@ -8,13 +8,14 @@
 	import KeyValueEditor from '$lib/components/shared/KeyValueEditor.svelte';
 	import CurrencySelect from '$lib/components/shared/CurrencySelect.svelte';
 	import LineItemRow from './LineItemRow.svelte';
+	import InvoicePayerFieldset from './InvoicePayerFieldset.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	type PaymentTermsOption = {
+	interface PaymentTermsOption {
 		value: string;
 		label: string;
 		days: number | null;
-	};
+	}
 
 	const PAYMENT_TERMS_OPTIONS: PaymentTermsOption[] = [
 		{ value: 'due_on_receipt', label: 'Due on Receipt', days: 0 },
@@ -26,7 +27,7 @@
 		{ value: 'custom', label: 'Custom', days: null }
 	];
 
-	let {
+	const {
 		initialData,
 		initialLineItems,
 		nextInvoiceNumber,
@@ -54,7 +55,7 @@
 				client_snapshot: string;
 				payer_snapshot: string;
 			},
-			lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; sort_order: number; notes: string }>
+			lineItems: { description: string; quantity: number; rate: number; amount: number; sort_order: number; notes: string }[]
 		) => void;
 	} = $props();
 
@@ -66,7 +67,7 @@
 	let paymentTerms = $state(untrack(() => initialData?.payment_terms ?? 'custom'));
 	let taxRates = $state<TaxRate[]>([]);
 	let selectedTaxRateId = $state<number | null>(untrack(() => initialData?.tax_rate_id ?? null));
-	let taxRate = $derived.by(() => {
+	const taxRate = $derived.by(() => {
 		if (selectedTaxRateId !== null) {
 			const tr = taxRates.find((r) => r.id === selectedTaxRateId);
 			return tr ? tr.rate : 0;
@@ -82,7 +83,7 @@
 	let status = $state(untrack(() => initialData?.status ?? 'draft'));
 	let currencyCode = $state(untrack(() => initialData?.currency_code ?? ''));
 
-	let lineItems = $state<Array<{ description: string; quantity: number; rate: number; amount: number; unit?: string | undefined; notes?: string | undefined }>>(
+	let lineItems = $state<{ description: string; quantity: number; rate: number; amount: number; unit?: string | undefined; notes?: string | undefined }[]>(
 		[{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]
 	);
 
@@ -98,14 +99,14 @@
 
 	$effect(() => {
 		if (initialData) {
-			clientId = initialData.client_id ?? 0;
-			date = initialData.date ?? today();
-			dueDate = initialData.due_date ?? today();
-			paymentTerms = initialData.payment_terms ?? 'custom';
-			selectedTaxRateId = initialData.tax_rate_id ?? null;
-			notes = initialData.notes ?? '';
-			status = initialData.status ?? 'draft';
-			currencyCode = initialData.currency_code ?? '';
+			clientId = initialData.client_id;
+			date = initialData.date;
+			dueDate = initialData.due_date;
+			paymentTerms = initialData.payment_terms;
+			selectedTaxRateId = initialData.tax_rate_id;
+			notes = initialData.notes;
+			status = initialData.status;
+			currencyCode = initialData.currency_code;
 		}
 		if (initialLineItems) {
 			lineItems = initialLineItems.map((li) => ({
@@ -113,7 +114,7 @@
 				quantity: li.quantity,
 				rate: li.rate,
 				amount: li.amount,
-				notes: li.notes ?? ''
+				notes: li.notes
 			}));
 		}
 	});
@@ -129,25 +130,25 @@
 	$effect(() => {
 		const id = clientId;
 		if (id) {
-			fetch(`/api/clients/${id}`).then(r => r.json()).then(c => { selectedClient = c; });
+			void fetch(`/api/clients/${id}`).then(r => r.json()).then(c => { selectedClient = c; });
 		} else {
 			selectedClient = null;
 		}
 	});
 
-	let activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
-	let activeTierName = $derived(tiers.find(t => t.id === activeTierId)?.name ?? null);
+	const activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
+	const activeTierName = $derived(tiers.find(t => t.id === activeTierId)?.name ?? null);
 
-	let subtotal = $derived(
+	const subtotal = $derived(
 		Math.round(lineItems.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
 	);
-	let taxAmount = $derived(Math.round(subtotal * (taxRate / 100) * 100) / 100);
-	let total = $derived(Math.round((subtotal + taxAmount) * 100) / 100);
+	const taxAmount = $derived(Math.round(subtotal * (taxRate / 100) * 100) / 100);
+	const total = $derived(Math.round((subtotal + taxAmount) * 100) / 100);
 
 	// --- Snapshot helpers ---
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {
-			const obj = JSON.parse(metaStr || '{}');
+			const obj = JSON.parse(metaStr ?? '{}');
 			return Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
 		} catch {
 			return [];
@@ -175,6 +176,34 @@
 	let payerAddress = $state('');
 	let payerMetadataPairs: KeyValuePair[] = $state([]);
 
+	function applyDefaultTaxRate() {
+		if (selectedTaxRateId !== null || taxRates.length === 0) return;
+		const defaultRate = taxRates.find((r: TaxRate) => r.is_default === 1) ?? taxRates[0];
+		if (defaultRate) selectedTaxRateId = defaultRate.id;
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- profile shape comes from JSON API
+	function buildBusinessSnapshot(profile: any): PartySnapshot {
+		return {
+			name: profile.name ?? '',
+			email: profile.email ?? '',
+			phone: profile.phone ?? '',
+			address: profile.address ?? '',
+			metadata: (() => { try { return JSON.parse(profile.metadata ?? '{}'); } catch { return {}; } })()
+		};
+	}
+
+	function loadEditSnapshots(data: Invoice) {
+		const cs = parseSnapshot(data.client_snapshot);
+		clientMetadataPairs = Object.entries(cs.metadata).map(([key, value]) => ({ key, value }));
+		const ps = parseSnapshot(data.payer_snapshot);
+		payerName = ps.name;
+		payerEmail = ps.email;
+		payerPhone = ps.phone;
+		payerAddress = ps.address;
+		payerMetadataPairs = Object.entries(ps.metadata).map(([key, value]) => ({ key, value }));
+	}
+
 	// Initialize clients, invoice number, business snapshot, and edit-mode snapshots
 	onMount(async () => {
 		const [clientsRes, settingsRes] = await Promise.all([
@@ -184,44 +213,17 @@
 		clients = await clientsRes.json();
 		const settings = await settingsRes.json();
 		taxRates = settings.taxRates ?? [];
-		// Default to first available tax rate if none selected
-		if (selectedTaxRateId === null && taxRates.length > 0) {
-			const defaultRate = taxRates.find((r: TaxRate) => r.is_default === 1) ?? taxRates[0];
-			if (defaultRate) selectedTaxRateId = defaultRate.id;
-		}
+		applyDefaultTaxRate();
 		if (!initialData) {
 			invoiceNumber = nextInvoiceNumber ?? '';
 			const profile = settings.profile;
 			if (profile && !currencyCode) {
-				currencyCode = profile.default_currency || 'USD';
+				currencyCode = profile.default_currency ?? 'USD';
 			}
 		}
 		if (!currencyCode) currencyCode = 'USD';
-
-		// Build business snapshot from profile
-		const p = settings.profile;
-		if (p) {
-			businessSnapshot = {
-				name: p.name ?? '',
-				email: p.email ?? '',
-				phone: p.phone ?? '',
-				address: p.address ?? '',
-				metadata: (() => { try { return JSON.parse(p.metadata ?? '{}'); } catch { return {}; } })()
-			};
-		}
-
-		// If editing existing invoice, load snapshots from the invoice
-		if (initialData) {
-			const cs = parseSnapshot(initialData.client_snapshot);
-			clientMetadataPairs = Object.entries(cs.metadata).map(([key, value]) => ({ key, value }));
-
-			const ps = parseSnapshot(initialData.payer_snapshot);
-			payerName = ps.name;
-			payerEmail = ps.email;
-			payerPhone = ps.phone;
-			payerAddress = ps.address;
-			payerMetadataPairs = Object.entries(ps.metadata).map(([key, value]) => ({ key, value }));
-		}
+		if (settings.profile) businessSnapshot = buildBusinessSnapshot(settings.profile);
+		if (initialData) loadEditSnapshots(initialData);
 	});
 
 	// Auto-populate client metadata and payer when client changes (new invoices only)
@@ -230,7 +232,7 @@
 		if (!id || initialData) return;
 
 		// Auto-populate client metadata from client record
-		fetch(`/api/clients/${id}`).then(r => r.json()).then(async (client) => {
+		void fetch(`/api/clients/${id}`).then(r => r.json()).then(async (client) => {
 			if (!client) return;
 			clientMetadataPairs = parseMetadata(client.metadata);
 
@@ -253,6 +255,25 @@
 			}
 		});
 	});
+
+	async function addTaxRate() {
+		const name = newTaxRateName.trim();
+		const rate = newTaxRateValue;
+		if (!name) return;
+		newTaxRateName = '';
+		newTaxRateValue = 0;
+		const res = await fetch('/api/tax-rates', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name, rate })
+		});
+		const { id: newId } = await res.json();
+		const settingsRes = await fetch('/api/settings');
+		const settings = await settingsRes.json();
+		taxRates = settings.taxRates ?? [];
+		selectedTaxRateId = newId;
+		showNewTaxRate = false;
+	}
 
 	function addLineItem() {
 		lineItems.push({ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' });
@@ -364,7 +385,7 @@
 					{/each}
 				</select>
 				{#if activeTierName}
-					<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{i18n.t('invoice.pricing', { tier: activeTierName ?? '' })}</p>
+					<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{i18n.t('invoice.pricing', { tier: activeTierName })}</p>
 				{/if}
 			</div>
 
@@ -427,8 +448,10 @@
 		</div>
 
 		<div class="space-y-2">
-			{#each lineItems as _, i (i)}
-				<LineItemRow bind:item={lineItems[i]!} onremove={() => removeLineItem(i)} tierId={activeTierId} {currencyCode} />
+			{#each lineItems as _item, i (i)}
+				{#if lineItems[i]}
+					<LineItemRow bind:item={lineItems[i]} onremove={() => removeLineItem(i)} tierId={activeTierId} {currencyCode} />
+				{/if}
 			{/each}
 		</div>
 
@@ -451,57 +474,7 @@
 
 	<!-- Payer / Bill-To -->
 	{#if clientId}
-		<fieldset class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 m-0">
-			<legend class="text-sm font-medium text-gray-700 dark:text-gray-300 px-1">{i18n.t('invoice.billToPayer')}</legend>
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<div>
-					<label for="payer-name" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.name')}</label>
-					<input
-						id="payer-name"
-						type="text"
-						bind:value={payerName}
-						placeholder={i18n.t('invoice.payerNamePlaceholder')}
-						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-					/>
-				</div>
-				<div>
-					<label for="payer-email" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.email')}</label>
-					<input
-						id="payer-email"
-						type="email"
-						bind:value={payerEmail}
-						placeholder={i18n.t('invoice.payerEmailPlaceholder')}
-						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-					/>
-				</div>
-				<div>
-					<label for="payer-phone" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.phone')}</label>
-					<input
-						id="payer-phone"
-						type="tel"
-						bind:value={payerPhone}
-						placeholder={i18n.t('invoice.payerPhonePlaceholder')}
-						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-					/>
-				</div>
-				<div>
-					<label for="payer-address" class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('client.address')}</label>
-					<input
-						id="payer-address"
-						type="text"
-						bind:value={payerAddress}
-						placeholder={i18n.t('invoice.payerAddressPlaceholder')}
-						class="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-					/>
-				</div>
-			</div>
-			<div class="mt-3">
-				<span class="block text-xs font-medium text-gray-500 dark:text-gray-400">{i18n.t('common.additionalFields')}</span>
-				<div class="mt-1">
-					<KeyValueEditor bind:pairs={payerMetadataPairs} addLabel={i18n.t('common.addField')} />
-				</div>
-			</div>
-		</fieldset>
+		<InvoicePayerFieldset bind:payerName bind:payerEmail bind:payerPhone bind:payerAddress bind:payerMetadataPairs />
 	{/if}
 
 	<!-- Tax and totals -->
@@ -550,22 +523,7 @@
 					/>
 					<button
 						type="button"
-						onclick={async () => {
-							if (!newTaxRateName.trim()) return;
-							const res = await fetch('/api/tax-rates', {
-								method: 'POST',
-								headers: { 'Content-Type': 'application/json' },
-								body: JSON.stringify({ name: newTaxRateName, rate: newTaxRateValue })
-							});
-							const { id: newId } = await res.json();
-							const settingsRes = await fetch('/api/settings');
-							const settings = await settingsRes.json();
-							taxRates = settings.taxRates ?? [];
-							selectedTaxRateId = newId;
-							showNewTaxRate = false;
-							newTaxRateName = '';
-							newTaxRateValue = 0;
-						}}
+						onclick={() => void addTaxRate()}
 						class="text-xs bg-primary-600 text-white px-2 py-1 rounded cursor-pointer hover:bg-primary-700"
 					>Add</button>
 				</div>

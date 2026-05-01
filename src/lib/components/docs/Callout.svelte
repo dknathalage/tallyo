@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	let { type = 'tip', children }: { type?: 'tip' | 'warning'; children: Snippet } = $props();
+	const { type = 'tip', children }: { type?: 'tip' | 'warning'; children: Snippet } = $props();
 
 	const styles = {
 		tip: {

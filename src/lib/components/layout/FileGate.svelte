@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	let { children }: { children: Snippet } = $props();
+	const { children }: { children: Snippet } = $props();
 </script>
 
 <!-- FileGate removed: server-side DB is always available -->

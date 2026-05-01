@@ -29,6 +29,6 @@ export async function generateEstimateNumber(): Promise<string> {
 		.from(estimates)
 		.where(sql`${estimates.estimate_number} LIKE 'EST-%'`);
 	const firstEstResult = result[0];
-	const current = firstEstResult && firstEstResult.max_num != null ? firstEstResult.max_num : 0;
+	const current = firstEstResult?.max_num ?? 0;
 	return `EST-${String(current + 1).padStart(4, '0')}`;
 }

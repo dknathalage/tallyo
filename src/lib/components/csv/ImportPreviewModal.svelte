@@ -4,7 +4,7 @@
 	import type { ValidationError } from '$lib/csv/types.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		open,
 		onclose,
 		onconfirm,
@@ -30,8 +30,8 @@
 		newClients?: string[];
 	} = $props();
 
-	let displayErrors = $derived(errors.slice(0, 20));
-	let displayRows = $derived(previewRows.slice(0, 50));
+	const displayErrors = $derived(errors.slice(0, 20));
+	const displayRows = $derived(previewRows.slice(0, 50));
 </script>
 
 <Modal {open} {onclose} {title} maxWidth="max-w-4xl">
@@ -75,7 +75,7 @@
 					{i18n.t('csv.errorsShowing', { count: String(errors.length), extra: errors.length > 20 ? ', showing first 20' : '' })}
 				</p>
 				<ul class="space-y-1 text-sm text-red-700">
-					{#each displayErrors as err}
+					{#each displayErrors as err, ei (ei)}
 						<li>Row {err.row}: {err.field} - {err.message}</li>
 					{/each}
 				</ul>
@@ -92,7 +92,7 @@
 					<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
 						<thead class="sticky top-0 bg-gray-50 dark:bg-gray-900">
 							<tr>
-								{#each columns as col}
+								{#each columns as col (col)}
 									<th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
 										{col}
 									</th>
@@ -100,11 +100,11 @@
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
-							{#each displayRows as row}
+							{#each displayRows as row, ri (ri)}
 								<tr>
-									{#each columns as col}
+									{#each columns as col (col)}
 										<td class="whitespace-nowrap px-3 py-1.5 text-gray-700 dark:text-gray-300">
-											{row[col] || ''}
+											{row[col] ?? ''}
 										</td>
 									{/each}
 								</tr>

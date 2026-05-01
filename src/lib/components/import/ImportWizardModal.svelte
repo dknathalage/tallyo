@@ -11,7 +11,7 @@
 	import type { ParsedFile, ParsedSheet } from '$lib/import/parse-file.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		open,
 		onclose,
 		oncomplete
@@ -30,7 +30,7 @@
 	let committing = $state(false);
 	let error = $state('');
 
-	let STEPS = $derived([i18n.t('importWizard.file'), i18n.t('importWizard.mapping'), i18n.t('importWizard.mode'), i18n.t('importWizard.preview')] as const);
+	const STEPS = $derived([i18n.t('importWizard.file'), i18n.t('importWizard.mapping'), i18n.t('importWizard.mode'), i18n.t('importWizard.preview')] as const);
 
 	function stepTitle(): string {
 		switch (currentStep) {

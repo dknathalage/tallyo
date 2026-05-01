@@ -8,8 +8,11 @@
 
 	let {
 		item = $bindable(),
+		// eslint-disable-next-line prefer-const -- destructure shares a `let` with bindable `item`
 		onremove,
+		// eslint-disable-next-line prefer-const -- destructure shares a `let` with bindable `item`
 		tierId,
+		// eslint-disable-next-line prefer-const -- destructure shares a `let` with bindable `item`
 		currencyCode = 'USD'
 	}: {
 		item: { description: string; quantity: number; rate: number; amount: number; unit?: string | undefined; notes?: string | undefined };

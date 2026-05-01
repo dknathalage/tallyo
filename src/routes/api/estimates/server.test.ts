@@ -115,7 +115,7 @@ describe('POST /api/estimates', () => {
 	});
 
 	it('creates an estimate with lineItems and returns 201', async () => {
-		vi.mocked(repositories.estimates.createEstimate).mockResolvedValue(20 as any);
+		vi.mocked(repositories.estimates.createEstimate).mockResolvedValue(20);
 
 		const lineItems = [{ description: 'Service', quantity: 2, unit_price: 75 }];
 		const request = makeRequest({ client_id: 3, estimate_number: 'EST-001', lineItems });
@@ -130,7 +130,7 @@ describe('POST /api/estimates', () => {
 	});
 
 	it('defaults lineItems to empty array', async () => {
-		vi.mocked(repositories.estimates.createEstimate).mockResolvedValue(1 as any);
+		vi.mocked(repositories.estimates.createEstimate).mockResolvedValue(1);
 
 		const request = makeRequest({ client_id: 1 });
 		await POST({ request } as any);
@@ -139,7 +139,7 @@ describe('POST /api/estimates', () => {
 	});
 
 	it('applies fkOrNull to client_id and payer_id', async () => {
-		vi.mocked(repositories.estimates.createEstimate).mockResolvedValue(1 as any);
+		vi.mocked(repositories.estimates.createEstimate).mockResolvedValue(1);
 
 		const request = makeRequest({ client_id: 0, payer_id: '' });
 		await POST({ request } as any);
@@ -150,7 +150,7 @@ describe('POST /api/estimates', () => {
 	});
 
 	it('bulk-deletes estimates', async () => {
-		vi.mocked(repositories.estimates.bulkDeleteEstimates).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.estimates.bulkDeleteEstimates).mockResolvedValue(undefined);
 
 		const request = makeRequest({ action: 'bulk-delete', ids: [1, 2] });
 		const result = await POST({ request } as any);
@@ -160,7 +160,7 @@ describe('POST /api/estimates', () => {
 	});
 
 	it('bulk-updates estimate status', async () => {
-		vi.mocked(repositories.estimates.bulkUpdateEstimateStatus).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.estimates.bulkUpdateEstimateStatus).mockResolvedValue(undefined);
 
 		const request = makeRequest({ action: 'bulk-status', ids: [3, 4], status: 'accepted' });
 		const result = await POST({ request } as any);
@@ -213,7 +213,7 @@ describe('PUT /api/estimates/[id]', () => {
 	});
 
 	it('updates an estimate with lineItems', async () => {
-		vi.mocked(repositories.estimates.updateEstimate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.estimates.updateEstimate).mockResolvedValue(undefined);
 
 		const lineItems = [{ description: 'Updated', quantity: 1, unit_price: 200 }];
 		const request = makeRequest({ client_id: 5, payer_id: 2, lineItems });
@@ -228,7 +228,7 @@ describe('PUT /api/estimates/[id]', () => {
 	});
 
 	it('defaults lineItems to empty array', async () => {
-		vi.mocked(repositories.estimates.updateEstimate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.estimates.updateEstimate).mockResolvedValue(undefined);
 
 		const request = makeRequest({ client_id: 1 });
 		await PUT({ params: { id: '1' }, request } as any);
@@ -253,7 +253,7 @@ describe('DELETE /api/estimates/[id]', () => {
 	});
 
 	it('deletes an estimate', async () => {
-		vi.mocked(repositories.estimates.deleteEstimate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.estimates.deleteEstimate).mockResolvedValue(undefined);
 
 		const result = await DELETE({ params: { id: '7' } } as any);
 		expect(repositories.estimates.deleteEstimate).toHaveBeenCalledWith(7);
@@ -276,7 +276,7 @@ describe('PATCH /api/estimates/[id]', () => {
 	});
 
 	it('updates estimate status', async () => {
-		vi.mocked(repositories.estimates.updateEstimateStatus).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.estimates.updateEstimateStatus).mockResolvedValue(undefined);
 
 		const request = makeRequest({ action: 'status', status: 'accepted' });
 		const result = await PATCH({ params: { id: '1' }, request } as any);

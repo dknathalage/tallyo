@@ -8,10 +8,10 @@ function mapRow(row: Record<string, unknown>): RateTier {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		name: row['name'] as string,
-		description: (row['description'] as string) ?? '',
-		sort_order: (row['sort_order'] as number) ?? 0,
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		description: (row['description'] as string | null | undefined) ?? '',
+		sort_order: (row['sort_order'] as number | null | undefined) ?? 0,
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -28,7 +28,7 @@ export async function getRateTier(id: number): Promise<RateTier | null> {
 	const db = getDb();
 	const rows = await db.select().from(rateTiers).where(eq(rateTiers.id, id));
 	const first = rows[0];
-	return first ? mapRow(first as Record<string, unknown>) : null;
+	return first ? mapRow(first) : null;
 }
 
 export async function getDefaultTier(): Promise<RateTier | null> {
@@ -39,7 +39,7 @@ export async function getDefaultTier(): Promise<RateTier | null> {
 		.orderBy(asc(rateTiers.sort_order), asc(rateTiers.id))
 		.limit(1);
 	const first = rows[0];
-	return first ? mapRow(first as Record<string, unknown>) : null;
+	return first ? mapRow(first) : null;
 }
 
 export async function createRateTier(data: {
@@ -47,7 +47,7 @@ export async function createRateTier(data: {
 	description?: string;
 	sort_order?: number;
 }): Promise<number> {
-	if (!data.name?.trim()) {
+	if (!data.name.trim()) {
 		throw new Error('Tier name is required');
 	}
 	const db = getDb();
@@ -71,7 +71,7 @@ export async function updateRateTier(
 	id: number,
 	data: { name: string; description?: string; sort_order?: number }
 ): Promise<void> {
-	if (!data.name?.trim()) {
+	if (!data.name.trim()) {
 		throw new Error('Tier name is required');
 	}
 	const db = getDb();

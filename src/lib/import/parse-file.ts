@@ -64,7 +64,7 @@ async function parseXlsx(file: File): Promise<ParsedFile> {
 		const rawRows = jsonData as unknown as string[][];
 		const firstRow = rawRows[0];
 		if (!firstRow) continue;
-		const headers = firstRow.map((h) => String(h ?? '').trim());
+		const headers = firstRow.map((h) => String(h).trim());
 		const rows: Record<string, string>[] = [];
 
 		for (let i = 1; i < rawRows.length; i++) {
@@ -106,7 +106,7 @@ export function getSheetWithHeaderRow(sheet: ParsedSheet, headerRow: number): Pa
 	const headerRowEntry = allRows[headerIdx];
 	if (!headerRowEntry) return sheet;
 	const headerValues = Object.values(headerRowEntry);
-	const newHeaders = headerValues.map((h) => String(h ?? '').trim());
+	const newHeaders = headerValues.map((h) => String(h).trim());
 
 	const newRows: Record<string, string>[] = [];
 	for (let i = headerIdx + 1; i < allRows.length; i++) {
