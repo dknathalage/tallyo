@@ -12,7 +12,7 @@ else
   BOLD=""; DIM=""; RESET=""; CYAN=""; GREEN=""; YELLOW=""; RED=""; MAGENTA=""
 fi
 
-TOTAL=4
+TOTAL=5
 STEP=0
 
 banner() {
@@ -79,12 +79,20 @@ step "Building"
 run_quiet bash -c "cd '$SRC_DIR' && npm run build --silent"
 ok "build complete"
 
+SHA=$(git -C "$SRC_DIR" rev-parse --short HEAD)
+BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+printf '{"commit":"%s","builtAt":"%s"}\n' "$SHA" "$BUILT_AT" > "$SRC_DIR/bin/.tallyo-build.json"
+
 ln -sf "$SRC_DIR/bin/tallyo.js" "$BIN_DIR/tallyo"
 chmod +x "$SRC_DIR/bin/tallyo.js"
 
+step "Running migrations"
+run_quiet node "$SRC_DIR/bin/tallyo.js" --migrate
+ok "database up to date"
+
 VERSION=$(node -p "require('$SRC_DIR/package.json').version" 2>/dev/null || echo "?")
 
-printf '\n  %s✓ Installed%s tallyo %sv%s%s\n' "$GREEN$BOLD" "$RESET" "$DIM" "$VERSION" "$RESET"
+printf '\n  %s✓ Installed%s tallyo %sv%s (%s)%s\n' "$GREEN$BOLD" "$RESET" "$DIM" "$VERSION" "$SHA" "$RESET"
 printf '    %s→%s %s%s/tallyo%s\n' "$DIM" "$RESET" "$CYAN" "$BIN_DIR" "$RESET"
 
 case ":$PATH:" in
