@@ -68,7 +68,7 @@ describe('GET /api/payers', () => {
 	});
 
 	it('passes search param', async () => {
-		vi.mocked(repositories.payers.getPayers).mockResolvedValue([] as any);
+		vi.mocked(repositories.payers.getPayers).mockResolvedValue([]);
 		await GET({ url: makeUrl('/api/payers', { search: 'acme' }) } as any);
 		expect(repositories.payers.getPayers).toHaveBeenCalledWith('acme');
 	});
@@ -89,14 +89,14 @@ describe('POST /api/payers', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a payer', async () => {
-		vi.mocked(repositories.payers.createPayer).mockResolvedValue(5 as any);
+		vi.mocked(repositories.payers.createPayer).mockResolvedValue(5);
 		const result = await POST({ request: makeRequest({ name: 'Acme Corp' }) } as any);
 		expect((result as any).status).toBe(201);
 		expect((result as any).body).toEqual({ id: 5 });
 	});
 
 	it('handles bulk-delete action', async () => {
-		vi.mocked(repositories.payers.bulkDeletePayers).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.payers.bulkDeletePayers).mockResolvedValue(undefined);
 		const result = await POST({ request: makeRequest({ action: 'bulk-delete', ids: [1, 2] }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.payers.bulkDeletePayers).toHaveBeenCalledWith([1, 2]);
@@ -148,7 +148,7 @@ describe('PUT /api/payers/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('updates payer', async () => {
-		vi.mocked(repositories.payers.updatePayer).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.payers.updatePayer).mockResolvedValue(undefined);
 		const result = await PUT({ params: { id: '1' }, request: makeRequest({ name: 'Updated' }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.payers.updatePayer).toHaveBeenCalledWith(1, { name: 'Updated' });
@@ -168,7 +168,7 @@ describe('DELETE /api/payers/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes payer', async () => {
-		vi.mocked(repositories.payers.deletePayer).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.payers.deletePayer).mockResolvedValue(undefined);
 		const result = await DELETE({ params: { id: '1' } } as any);
 		expect((result as any).body).toEqual({ success: true });
 	});

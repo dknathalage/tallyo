@@ -98,14 +98,14 @@ describe('POST /api/catalog', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a catalog item', async () => {
-		vi.mocked(repositories.catalog.createCatalogItem).mockResolvedValue(42 as any);
+		vi.mocked(repositories.catalog.createCatalogItem).mockResolvedValue(42);
 		const result = await POST({ request: makeRequest({ name: 'Widget', price: 10 }) } as any);
 		expect((result as any).status).toBe(201);
 		expect((result as any).body).toEqual({ id: 42 });
 	});
 
 	it('handles bulk-delete action', async () => {
-		vi.mocked(repositories.catalog.bulkDeleteCatalogItems).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.catalog.bulkDeleteCatalogItems).mockResolvedValue(undefined);
 		const result = await POST({ request: makeRequest({ action: 'bulk-delete', ids: [1, 2, 3] }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.catalog.bulkDeleteCatalogItems).toHaveBeenCalledWith([1, 2, 3]);
@@ -167,7 +167,7 @@ describe('PUT /api/catalog/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('updates item', async () => {
-		vi.mocked(repositories.catalog.updateCatalogItem).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.catalog.updateCatalogItem).mockResolvedValue(undefined);
 		const result = await PUT({ params: { id: '1' }, request: makeRequest({ name: 'Updated' }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.catalog.updateCatalogItem).toHaveBeenCalledWith(1, { name: 'Updated' });
@@ -192,7 +192,7 @@ describe('DELETE /api/catalog/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes item', async () => {
-		vi.mocked(repositories.catalog.deleteCatalogItem).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.catalog.deleteCatalogItem).mockResolvedValue(undefined);
 		const result = await DELETE({ params: { id: '1' } } as any);
 		expect((result as any).body).toEqual({ success: true });
 	});

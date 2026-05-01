@@ -17,10 +17,10 @@
 	import type { ParsedEstimateImport } from '$lib/csv/types.js';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let statusFilter = $state('');
@@ -31,9 +31,9 @@
 	let showDeleteConfirm = $state(false);
 
 	const statuses = ['', 'draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
-	let paginationResult = $derived(data.estimatesResult);
+	const paginationResult = $derived(data.estimatesResult);
 
-	let estimates: Estimate[] = $derived(
+	const estimates: Estimate[] = $derived(
 		paginationResult.data.filter((est: Estimate) => {
 			const matchesSearch = !search || est.estimate_number.toLowerCase().includes(search.toLowerCase()) || (est.client_name ?? '').toLowerCase().includes(search.toLowerCase());
 			const matchesStatus = !statusFilter || est.status === statusFilter;
@@ -41,7 +41,7 @@
 		})
 	);
 
-	let allSelected = $derived(estimates.length > 0 && selectedIds.size === estimates.length);
+	const allSelected = $derived(estimates.length > 0 && selectedIds.size === estimates.length);
 
 	function toggleAll() {
 		if (allSelected) {
@@ -62,23 +62,25 @@
 	}
 
 	async function handleBulkDelete() {
+		const ids = [...selectedIds];
+		selectedIds = new Set();
+		showDeleteConfirm = false;
 		await fetch('/api/estimates', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+			body: JSON.stringify({ action: 'bulk-delete', ids })
 		});
-		selectedIds = new Set();
-		showDeleteConfirm = false;
 		await invalidateAll();
 	}
 
 	async function handleBulkStatus(status: string) {
+		const ids = [...selectedIds];
+		selectedIds = new Set();
 		await fetch('/api/estimates', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'bulk-status', ids: [...selectedIds], status })
+			body: JSON.stringify({ action: 'bulk-status', ids, status })
 		});
-		selectedIds = new Set();
 		await invalidateAll();
 	}
 
@@ -110,7 +112,7 @@
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('estimate.title')}</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportEstimates} onimport={handleImport} />
-			<Button onclick={() => goto(`${base}/console/estimates/new`)}>{i18n.t('estimate.newEstimate')}</Button>
+			<Button onclick={() => void goto(resolve('/(app)/console/estimates/new'))}>{i18n.t('estimate.newEstimate')}</Button>
 		</div>
 	</div>
 
@@ -138,7 +140,7 @@
 			onchange={(e) => {
 				const val = e.currentTarget.value;
 				if (val) {
-					handleBulkStatus(val);
+					void handleBulkStatus(val);
 					e.currentTarget.value = '';
 				}
 			}}
@@ -157,7 +159,7 @@
 	<!-- Estimate list -->
 	{#if estimates.length === 0}
 		<EmptyState title={i18n.t('estimate.noEstimatesFound')} message={i18n.t('estimate.noEstimatesMessage')}>
-			<Button onclick={() => goto(`${base}/console/estimates/new`)}>{i18n.t('estimate.newEstimate')}</Button>
+			<Button onclick={() => void goto(resolve('/(app)/console/estimates/new'))}>{i18n.t('estimate.newEstimate')}</Button>
 		</EmptyState>
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -199,37 +201,37 @@
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm font-medium text-primary-600"
-								onclick={() => goto(`${base}/console/estimates/${estimate.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) }))}
 							>
 								{estimate.estimate_number}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-900 dark:text-white"
-								onclick={() => goto(`${base}/console/estimates/${estimate.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) }))}
 							>
 								{estimate.client_name ?? i18n.t('common.unknown')}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
-								onclick={() => goto(`${base}/console/estimates/${estimate.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) }))}
 							>
 								{formatDate(estimate.date)}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
-								onclick={() => goto(`${base}/console/estimates/${estimate.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) }))}
 							>
 								{formatDate(estimate.valid_until)}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3"
-								onclick={() => goto(`${base}/console/estimates/${estimate.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) }))}
 							>
 								<StatusBadge status={estimate.status} />
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900"
-								onclick={() => goto(`${base}/console/estimates/${estimate.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) }))}
 							>
 								{formatCurrency(estimate.total, estimate.currency_code)}
 							</td>

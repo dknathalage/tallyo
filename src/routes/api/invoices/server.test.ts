@@ -115,7 +115,7 @@ describe('POST /api/invoices', () => {
 	});
 
 	it('creates an invoice with lineItems and returns 201', async () => {
-		vi.mocked(repositories.invoices.createInvoice).mockResolvedValue(10 as any);
+		vi.mocked(repositories.invoices.createInvoice).mockResolvedValue(10);
 
 		const lineItems = [{ description: 'Widget', quantity: 1, unit_price: 100 }];
 		const request = makeRequest({ client_id: 5, invoice_number: 'INV-001', lineItems });
@@ -130,7 +130,7 @@ describe('POST /api/invoices', () => {
 	});
 
 	it('defaults lineItems to empty array', async () => {
-		vi.mocked(repositories.invoices.createInvoice).mockResolvedValue(1 as any);
+		vi.mocked(repositories.invoices.createInvoice).mockResolvedValue(1);
 
 		const request = makeRequest({ client_id: 1 });
 		await POST({ request } as any);
@@ -142,7 +142,7 @@ describe('POST /api/invoices', () => {
 	});
 
 	it('applies fkOrNull to client_id and payer_id', async () => {
-		vi.mocked(repositories.invoices.createInvoice).mockResolvedValue(1 as any);
+		vi.mocked(repositories.invoices.createInvoice).mockResolvedValue(1);
 
 		const request = makeRequest({ client_id: 0, payer_id: '' });
 		await POST({ request } as any);
@@ -196,7 +196,7 @@ describe('PUT /api/invoices/[id]', () => {
 	});
 
 	it('updates an invoice with lineItems', async () => {
-		vi.mocked(repositories.invoices.updateInvoice).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.invoices.updateInvoice).mockResolvedValue(undefined);
 
 		const lineItems = [{ description: 'Updated', quantity: 2, unit_price: 50 }];
 		const request = makeRequest({ client_id: 3, payer_id: 7, lineItems });
@@ -211,7 +211,7 @@ describe('PUT /api/invoices/[id]', () => {
 	});
 
 	it('defaults lineItems to empty array', async () => {
-		vi.mocked(repositories.invoices.updateInvoice).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.invoices.updateInvoice).mockResolvedValue(undefined);
 
 		const request = makeRequest({ client_id: 1 });
 		await PUT({ params: { id: '1' }, request } as any);
@@ -236,7 +236,7 @@ describe('DELETE /api/invoices/[id]', () => {
 	});
 
 	it('deletes an invoice', async () => {
-		vi.mocked(repositories.invoices.deleteInvoice).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.invoices.deleteInvoice).mockResolvedValue(undefined);
 
 		const result = await DELETE({ params: { id: '5' } } as any);
 		expect(repositories.invoices.deleteInvoice).toHaveBeenCalledWith(5);
@@ -259,7 +259,7 @@ describe('PATCH /api/invoices/[id]', () => {
 	});
 
 	it('updates invoice status', async () => {
-		vi.mocked(repositories.invoices.updateInvoiceStatus).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.invoices.updateInvoiceStatus).mockResolvedValue(undefined);
 
 		const request = makeRequest({ action: 'status', status: 'paid' });
 		const result = await PATCH({ params: { id: '1' }, request } as any);
@@ -269,7 +269,7 @@ describe('PATCH /api/invoices/[id]', () => {
 	});
 
 	it('duplicates an invoice', async () => {
-		vi.mocked(repositories.invoices.duplicateInvoice).mockResolvedValue(99 as any);
+		vi.mocked(repositories.invoices.duplicateInvoice).mockResolvedValue(99);
 
 		const request = makeRequest({ action: 'duplicate' });
 		const result = await PATCH({ params: { id: '1' }, request } as any);

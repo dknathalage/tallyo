@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import PayerForm from '$lib/components/payer/PayerForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -10,18 +10,18 @@
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let payer = $state(untrack(() => data.payer));
-	let history = $derived(data.auditHistory);
-	let linkedClients = $derived(data.linkedClients ?? []);
+	const history = $derived(data.auditHistory);
+	const linkedClients = $derived(data.linkedClients);
 
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
 
 	function parseMetadataObj(metaStr?: string): Record<string, string> {
 		try {
-			const obj = JSON.parse(metaStr || '{}');
+			const obj = JSON.parse(metaStr ?? '{}');
 			return typeof obj === 'object' ? obj : {};
 		} catch {
 			return {};
@@ -41,7 +41,7 @@
 
 	async function handleDelete() {
 		await fetch(`/api/payers/${payer.id}`, { method: 'DELETE' });
-		goto(`${base}/console/payers`);
+		void goto(resolve('/(app)/console/payers'));
 	}
 
 	function formatTimestamp(ts: string): string {
@@ -87,7 +87,7 @@
 
 {#if !payer}
 	<EmptyState title={i18n.t('payer.notFound')} message={i18n.t('payer.notFoundMessage')}>
-		<a href="{base}/console/payers">
+		<a href={resolve('/(app)/console/payers')}>
 			<Button variant="secondary">{i18n.t('payer.backToPayers')}</Button>
 		</a>
 	</EmptyState>
@@ -96,7 +96,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/console/payers" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('payer.backToPayers')}</a>
+				<a href={resolve('/(app)/console/payers')} class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('payer.backToPayers')}</a>
 				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{payer.name}</h1>
 			</div>
 			<div class="flex gap-2">
@@ -167,7 +167,7 @@
 							{#each linkedClients as client}
 								<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 									<td class="px-6 py-4">
-										<a href="{base}/console/clients/{client.id}" class="font-medium text-primary-600 hover:text-primary-700">
+										<a href={resolve('/(app)/console/clients/[id]', { id: String(client.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 											{client.name}
 										</a>
 									</td>

@@ -8,15 +8,15 @@ function mapRow(row: Record<string, unknown>): ColumnMapping {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		name: row['name'] as string,
-		entity_type: (row['entity_type'] as string) ?? 'catalog',
-		mapping: (row['mapping'] as string) ?? '{}',
-		tier_mapping: (row['tier_mapping'] as string) ?? '{}',
-		metadata_mapping: (row['metadata_mapping'] as string) ?? '[]',
-		file_type: (row['file_type'] as string) ?? 'csv',
-		sheet_name: (row['sheet_name'] as string) ?? '',
-		header_row: (row['header_row'] as number) ?? 1,
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		entity_type: (row['entity_type'] as string | null | undefined) ?? 'catalog',
+		mapping: (row['mapping'] as string | null | undefined) ?? '{}',
+		tier_mapping: (row['tier_mapping'] as string | null | undefined) ?? '{}',
+		metadata_mapping: (row['metadata_mapping'] as string | null | undefined) ?? '[]',
+		file_type: (row['file_type'] as string | null | undefined) ?? 'csv',
+		sheet_name: (row['sheet_name'] as string | null | undefined) ?? '',
+		header_row: (row['header_row'] as number | null | undefined) ?? 1,
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -44,7 +44,7 @@ export async function getColumnMapping(id: number): Promise<ColumnMapping | null
 		.from(columnMappings)
 		.where(eq(columnMappings.id, id));
 	const first = rows[0];
-	return first ? mapRow(first as Record<string, unknown>) : null;
+	return first ? mapRow(first) : null;
 }
 
 export async function createColumnMapping(data: {

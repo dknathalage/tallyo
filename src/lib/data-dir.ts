@@ -6,7 +6,7 @@ let _dataDir: string | null = null;
 
 export function getDataDir(): string {
 	if (_dataDir) return _dataDir;
-	_dataDir = process.env['DATA_DIR'] || join(homedir(), '.tallyo');
+	_dataDir = process.env['DATA_DIR'] ?? join(homedir(), '.tallyo');
 	mkdirSync(_dataDir, { recursive: true });
 	return _dataDir;
 }

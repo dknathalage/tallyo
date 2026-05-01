@@ -17,17 +17,8 @@ import type {
 	EstimateRepository,
 	ClientRepository,
 	PayerRepository,
-	CatalogRepository,
-	RateTierRepository,
-	TaxRateRepository,
-	PaymentRepository,
-	BusinessProfileRepository,
-	DashboardRepository,
-	AuditRepository,
-	ColumnMappingsRepository,
-	RecurringTemplateRepository
+	CatalogRepository
 } from '../interfaces/index.js';
-import type { AiChatRepository } from '../interfaces/AiChatRepository.js';
 
 const auditRepo = new SqliteAuditRepository();
 
@@ -37,15 +28,15 @@ export const repositories = {
 	clients: new SqliteClientRepository(auditRepo) as ClientRepository,
 	payers: new SqlitePayerRepository(auditRepo) as PayerRepository,
 	catalog: new SqliteCatalogRepository(auditRepo) as CatalogRepository,
-	rateTiers: new SqliteRateTierRepository() as RateTierRepository,
-	taxRates: new SqliteTaxRateRepository() as TaxRateRepository,
-	payments: new SqlitePaymentRepository() as PaymentRepository,
-	businessProfile: new SqliteBusinessProfileRepository() as BusinessProfileRepository,
-	dashboard: new SqliteDashboardRepository() as DashboardRepository,
-	audit: auditRepo as AuditRepository,
-	columnMappings: new SqliteColumnMappingsRepository() as ColumnMappingsRepository,
-	recurringTemplates: new SqliteRecurringTemplateRepository() as RecurringTemplateRepository,
-	aiChat: new SqliteAiChatRepository() as AiChatRepository
+	rateTiers: new SqliteRateTierRepository(),
+	taxRates: new SqliteTaxRateRepository(),
+	payments: new SqlitePaymentRepository(),
+	businessProfile: new SqliteBusinessProfileRepository(),
+	dashboard: new SqliteDashboardRepository(),
+	audit: auditRepo,
+	columnMappings: new SqliteColumnMappingsRepository(),
+	recurringTemplates: new SqliteRecurringTemplateRepository(),
+	aiChat: new SqliteAiChatRepository()
 };
 
 export type Repositories = typeof repositories;

@@ -59,7 +59,7 @@ describe('GET /api/recurring', () => {
 	});
 
 	it('returns all templates when all=true', async () => {
-		vi.mocked(repositories.recurringTemplates.getRecurringTemplates).mockResolvedValue([] as any);
+		vi.mocked(repositories.recurringTemplates.getRecurringTemplates).mockResolvedValue([]);
 		await GET({ url: makeUrl('/api/recurring', { all: 'true' }) } as any);
 		expect(repositories.recurringTemplates.getRecurringTemplates).toHaveBeenCalledWith(false);
 	});
@@ -69,7 +69,7 @@ describe('POST /api/recurring', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a recurring template', async () => {
-		vi.mocked(repositories.recurringTemplates.createRecurringTemplate).mockResolvedValue(8 as any);
+		vi.mocked(repositories.recurringTemplates.createRecurringTemplate).mockResolvedValue(8);
 		const result = await POST({ request: makeRequest({ name: 'Weekly', interval: 'weekly' }) } as any);
 		expect((result as any).status).toBe(201);
 		expect((result as any).body).toEqual({ id: 8 });
@@ -116,7 +116,7 @@ describe('PUT /api/recurring/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('updates a template', async () => {
-		vi.mocked(repositories.recurringTemplates.updateRecurringTemplate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.recurringTemplates.updateRecurringTemplate).mockResolvedValue(undefined);
 		const result = await PUT({ params: { id: '1' }, request: makeRequest({ name: 'Updated' }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.recurringTemplates.updateRecurringTemplate).toHaveBeenCalledWith(1, { name: 'Updated' });
@@ -141,7 +141,7 @@ describe('DELETE /api/recurring/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes a template', async () => {
-		vi.mocked(repositories.recurringTemplates.deleteRecurringTemplate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.recurringTemplates.deleteRecurringTemplate).mockResolvedValue(undefined);
 		const result = await DELETE({ params: { id: '1' } } as any);
 		expect((result as any).body).toEqual({ success: true });
 	});
@@ -165,7 +165,7 @@ describe('PATCH /api/recurring/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates invoice from template', async () => {
-		vi.mocked(repositories.recurringTemplates.createInvoiceFromTemplate).mockResolvedValue(42 as any);
+		vi.mocked(repositories.recurringTemplates.createInvoiceFromTemplate).mockResolvedValue(42);
 		const result = await PATCH({ params: { id: '1' } } as any);
 		expect((result as any).body).toEqual({ invoiceId: 42 });
 		expect(repositories.recurringTemplates.createInvoiceFromTemplate).toHaveBeenCalledWith(1);

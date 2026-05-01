@@ -155,117 +155,130 @@ export const AI_TOOLS: Anthropic.Tool[] = [
 	}
 ];
 
+async function toolListInvoices(input: Record<string, unknown>): Promise<unknown> {
+	await repositories.invoices.markOverdueInvoices();
+	return repositories.invoices.getInvoices(
+		input['search'] as string | undefined,
+		input['status'] as string | undefined
+	);
+}
+
+async function toolGetInvoice(input: Record<string, unknown>): Promise<unknown> {
+	const id = input['id'] as number;
+	const invoice = await repositories.invoices.getInvoice(id);
+	if (invoice === null) return { error: `Invoice ${String(id)} not found` };
+	const lineItems = await repositories.invoices.getInvoiceLineItems(id);
+	const payments = await repositories.payments.getInvoicePayments(id);
+	return { ...invoice, line_items: lineItems, payments };
+}
+
+async function toolCreateInvoice(input: Record<string, unknown>): Promise<unknown> {
+	const rawItems =
+		(input['line_items'] as
+			| { description: string; quantity: number; rate: number }[]
+			| undefined) ?? [];
+	const lineItems = rawItems.map((item, idx) => ({
+		description: item.description,
+		quantity: item.quantity,
+		rate: item.rate,
+		amount: item.quantity * item.rate,
+		sort_order: idx,
+		notes: ''
+	}));
+	const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
+	const invoiceData = {
+		invoice_number: `INV-${String(Date.now())}`,
+		client_id: input['client_id'] as number,
+		date: input['date'] as string,
+		due_date: input['due_date'] as string,
+		currency_code: (input['currency_code'] as string | undefined) ?? 'USD',
+		notes: (input['notes'] as string | undefined) ?? '',
+		subtotal,
+		tax_rate: 0,
+		tax_amount: 0,
+		total: subtotal,
+		status: 'draft'
+	};
+	const id = await repositories.invoices.createInvoice(invoiceData, lineItems);
+	return { id, message: `Invoice created with ID ${String(id)}` };
+}
+
+async function toolUpdateInvoiceStatus(input: Record<string, unknown>): Promise<unknown> {
+	const id = input['id'] as number;
+	const status = input['status'] as string;
+	await repositories.invoices.updateInvoiceStatus(id, status);
+	return { success: true, message: `Invoice ${String(id)} updated to ${status}` };
+}
+
+async function toolGetClient(input: Record<string, unknown>): Promise<unknown> {
+	const id = input['id'] as number;
+	const client = await repositories.clients.getClient(id);
+	if (client === null) return { error: `Client ${String(id)} not found` };
+	const revenue = await repositories.clients.getClientRevenueSummary(id);
+	return { ...client, revenue_summary: revenue };
+}
+
+async function toolCreateClient(input: Record<string, unknown>): Promise<unknown> {
+	const email = input['email'] as string | undefined;
+	const phone = input['phone'] as string | undefined;
+	const address = input['address'] as string | undefined;
+	const id = await repositories.clients.createClient({
+		name: input['name'] as string,
+		...(email !== undefined && { email }),
+		...(phone !== undefined && { phone }),
+		...(address !== undefined && { address })
+	});
+	return { id, message: `Client created with ID ${String(id)}` };
+}
+
+async function toolRecordPayment(input: Record<string, unknown>): Promise<unknown> {
+	const method = input['method'] as string | undefined;
+	const notes = input['notes'] as string | undefined;
+	const id = await repositories.payments.createPayment({
+		invoice_id: input['invoice_id'] as number,
+		amount: input['amount'] as number,
+		payment_date: input['payment_date'] as string,
+		...(method !== undefined && { method }),
+		...(notes !== undefined && { notes })
+	});
+	return { id, message: `Payment recorded` };
+}
+
+type ToolHandler = (input: Record<string, unknown>) => Promise<unknown>;
+
+const toolHandlers: Record<string, ToolHandler> = {
+	list_invoices: toolListInvoices,
+	get_invoice: toolGetInvoice,
+	create_invoice: toolCreateInvoice,
+	update_invoice_status: toolUpdateInvoiceStatus,
+	list_clients: (input) => repositories.clients.getClients(input['search'] as string | undefined),
+	get_client: toolGetClient,
+	create_client: toolCreateClient,
+	get_dashboard_stats: () => repositories.dashboard.getDashboardStats(),
+	get_aging_report: () => repositories.invoices.getAgingReport(),
+	list_estimates: (input) =>
+		repositories.estimates.getEstimates(
+			input['search'] as string | undefined,
+			input['status'] as string | undefined
+		),
+	record_payment: toolRecordPayment,
+	search_catalog: (input) =>
+		repositories.catalog.searchCatalogItems(
+			input['term'] as string,
+			(input['limit'] as number | undefined) ?? 10
+		)
+};
+
 export async function executeTool(
 	name: string,
 	input: Record<string, unknown>
 ): Promise<unknown> {
+	const handler = toolHandlers[name];
+	if (handler === undefined) {
+		return { error: `Unknown tool: ${name}` };
+	}
 	try {
-		switch (name) {
-			case 'list_invoices': {
-				await repositories.invoices.markOverdueInvoices();
-				return repositories.invoices.getInvoices(
-					input['search'] as string | undefined,
-					input['status'] as string | undefined
-				);
-			}
-			case 'get_invoice': {
-				const invoice = repositories.invoices.getInvoice(input['id'] as number);
-				if (!invoice) return { error: `Invoice ${input['id']} not found` };
-				const lineItems = repositories.invoices.getInvoiceLineItems(input['id'] as number);
-				const payments = repositories.payments.getInvoicePayments(input['id'] as number);
-				return { ...invoice, line_items: lineItems, payments };
-			}
-			case 'create_invoice': {
-				const rawItems = (
-					input['line_items'] as Array<{
-						description: string;
-						quantity: number;
-						rate: number;
-					}>
-				) ?? [];
-				const lineItems = rawItems.map((item, idx) => ({
-					description: item.description,
-					quantity: item.quantity,
-					rate: item.rate,
-					amount: item.quantity * item.rate,
-					sort_order: idx,
-					notes: ''
-				}));
-				const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
-				const invoiceData = {
-					invoice_number: `INV-${Date.now()}`,
-					client_id: input['client_id'] as number,
-					date: input['date'] as string,
-					due_date: input['due_date'] as string,
-					currency_code: (input['currency_code'] as string) ?? 'USD',
-					notes: (input['notes'] as string) ?? '',
-					subtotal,
-					tax_rate: 0,
-					tax_amount: 0,
-					total: subtotal,
-					status: 'draft'
-				};
-				const id = await repositories.invoices.createInvoice(invoiceData, lineItems);
-				return { id, message: `Invoice created with ID ${id}` };
-			}
-			case 'update_invoice_status':
-				await repositories.invoices.updateInvoiceStatus(
-					input['id'] as number,
-					input['status'] as string
-				);
-				return { success: true, message: `Invoice ${input['id']} updated to ${input['status']}` };
-			case 'list_clients': {
-				return repositories.clients.getClients(input['search'] as string | undefined);
-			}
-			case 'get_client': {
-				const client = repositories.clients.getClient(input['id'] as number);
-				if (!client) return { error: `Client ${input['id']} not found` };
-				const revenue = repositories.clients.getClientRevenueSummary(input['id'] as number);
-				return { ...client, revenue_summary: revenue };
-			}
-			case 'create_client': {
-				const email = input['email'] as string | undefined;
-				const phone = input['phone'] as string | undefined;
-				const address = input['address'] as string | undefined;
-				const id = await repositories.clients.createClient({
-					name: input['name'] as string,
-					...(email !== undefined && { email }),
-					...(phone !== undefined && { phone }),
-					...(address !== undefined && { address })
-				});
-				return { id, message: `Client created with ID ${id}` };
-			}
-			case 'get_dashboard_stats':
-				return repositories.dashboard.getDashboardStats();
-			case 'get_aging_report':
-				return repositories.invoices.getAgingReport();
-			case 'list_estimates': {
-				return repositories.estimates.getEstimates(
-					input['search'] as string | undefined,
-					input['status'] as string | undefined
-				);
-			}
-			case 'record_payment': {
-				const method = input['method'] as string | undefined;
-				const notes = input['notes'] as string | undefined;
-				const id = await repositories.payments.createPayment({
-					invoice_id: input['invoice_id'] as number,
-					amount: input['amount'] as number,
-					payment_date: input['payment_date'] as string,
-					...(method !== undefined && { method }),
-					...(notes !== undefined && { notes })
-				});
-				return { id, message: `Payment recorded` };
-			}
-			case 'search_catalog': {
-				return repositories.catalog.searchCatalogItems(
-					input['term'] as string,
-					(input['limit'] as number) ?? 10
-				);
-			}
-			default:
-				return { error: `Unknown tool: ${name}` };
-		}
+		return await handler(input);
 	} catch (e) {
 		return { error: e instanceof Error ? e.message : String(e) };
 	}

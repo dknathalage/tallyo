@@ -13,26 +13,27 @@ function toISOString(d: string | null | undefined): string {
 }
 
 function mapRowToInvoice(row: Record<string, unknown>): Invoice {
+	const clientName = row['client_name'] as string | null | undefined;
 	return {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		invoice_number: row['invoice_number'] as string,
 		client_id: row['client_id'] as number,
-		client_name: (row['client_name'] as string) ?? undefined,
+		...(clientName !== null && clientName !== undefined ? { client_name: clientName } : {}),
 		date: row['date'] as string,
 		due_date: row['due_date'] as string,
 		payment_terms: row['payment_terms'] as Invoice['payment_terms'],
 		subtotal: row['subtotal'] as number,
 		tax_rate: row['tax_rate'] as number,
-		tax_rate_id: (row['tax_rate_id'] as number | null) ?? null,
+		tax_rate_id: (row['tax_rate_id'] as number | null | undefined) ?? null,
 		tax_amount: row['tax_amount'] as number,
 		total: row['total'] as number,
-		notes: (row['notes'] as string) ?? '',
+		notes: (row['notes'] as string | null | undefined) ?? '',
 		status: row['status'] as Invoice['status'],
-		currency_code: (row['currency_code'] as string) ?? 'USD',
-		business_snapshot: (row['business_snapshot'] as string) ?? '{}',
-		client_snapshot: (row['client_snapshot'] as string) ?? '{}',
-		payer_snapshot: (row['payer_snapshot'] as string) ?? '{}',
+		currency_code: (row['currency_code'] as string | null | undefined) ?? 'USD',
+		business_snapshot: (row['business_snapshot'] as string | null | undefined) ?? '{}',
+		client_snapshot: (row['client_snapshot'] as string | null | undefined) ?? '{}',
+		payer_snapshot: (row['payer_snapshot'] as string | null | undefined) ?? '{}',
 		created_at: toISOString(row['created_at'] as string | null),
 		updated_at: toISOString(row['updated_at'] as string | null)
 	};
@@ -47,10 +48,10 @@ function mapRowToLineItem(row: Record<string, unknown>): LineItem {
 		quantity: row['quantity'] as number,
 		rate: row['rate'] as number,
 		amount: row['amount'] as number,
-		notes: (row['notes'] as string) ?? '',
-		sort_order: (row['sort_order'] as number) ?? 0,
-		catalog_item_id: (row['catalog_item_id'] as number | null) ?? null,
-		rate_tier_id: (row['rate_tier_id'] as number | null) ?? null
+		notes: (row['notes'] as string | null | undefined) ?? '',
+		sort_order: (row['sort_order'] as number | null | undefined) ?? 0,
+		catalog_item_id: (row['catalog_item_id'] as number | null | undefined) ?? null,
+		rate_tier_id: (row['rate_tier_id'] as number | null | undefined) ?? null
 	};
 }
 
@@ -63,12 +64,12 @@ export async function getInvoices(
 	const conditions: ReturnType<typeof eq>[] = [];
 
 	if (search) {
-		conditions.push(
-			or(
-				like(invoices.invoice_number, `%${search}%`),
-				like(clients.name, `%${search}%`)
-			)!
+		const searchCondition = or(
+			like(invoices.invoice_number, `%${search}%`),
+			like(clients.name, `%${search}%`)
 		);
+		if (!searchCondition) throw new Error('Failed to build search condition');
+		conditions.push(searchCondition);
 	}
 	if (status) {
 		conditions.push(eq(invoices.status, status));
@@ -143,7 +144,7 @@ export async function getInvoice(id: number): Promise<Invoice | null> {
 
 	const first = rows[0];
 	if (!first) return null;
-	return mapRowToInvoice(first as unknown as Record<string, unknown>);
+	return mapRowToInvoice(first);
 }
 
 export async function getInvoiceLineItems(invoiceId: number): Promise<LineItem[]> {
@@ -350,7 +351,7 @@ export async function getClientInvoices(clientId: number): Promise<Invoice[]> {
  * Marks any 'sent' invoice whose due_date is before today as 'overdue'.
  * Returns the list of invoices that were updated (for audit use).
  */
-export async function markOverdueInvoices(): Promise<Array<{ id: number; invoice_number: string }>> {
+export async function markOverdueInvoices(): Promise<{ id: number; invoice_number: string }[]> {
 	const db = getDb();
 
 	const overdue = await db
@@ -402,12 +403,12 @@ export async function duplicateInvoice(id: number): Promise<number> {
 				tax_rate: original.tax_rate,
 				tax_amount: original.tax_amount,
 				total: original.total,
-				notes: original.notes ?? '',
+				notes: original.notes,
 				status: 'draft',
-				currency_code: original.currency_code ?? 'USD',
-				business_snapshot: original.business_snapshot ?? '{}',
-				client_snapshot: original.client_snapshot ?? '{}',
-				payer_snapshot: original.payer_snapshot ?? '{}'
+				currency_code: original.currency_code,
+				business_snapshot: original.business_snapshot,
+				client_snapshot: original.client_snapshot,
+				payer_snapshot: original.payer_snapshot
 			})
 			.returning({ id: invoices.id });
 
@@ -422,7 +423,7 @@ export async function duplicateInvoice(id: number): Promise<number> {
 				quantity: item.quantity,
 				rate: item.rate,
 				amount: item.amount,
-				notes: item.notes ?? '',
+				notes: item.notes,
 				sort_order: item.sort_order
 			});
 		}
@@ -431,9 +432,21 @@ export async function duplicateInvoice(id: number): Promise<number> {
 	});
 }
 
+function bucketForDays(
+	days: number,
+	buckets: { current: AgingBucket; b1to30: AgingBucket; b31to60: AgingBucket; b61to90: AgingBucket; b90plus: AgingBucket }
+): AgingBucket {
+	if (days <= 0) return buckets.current;
+	if (days <= 30) return buckets.b1to30;
+	if (days <= 60) return buckets.b31to60;
+	if (days <= 90) return buckets.b61to90;
+	return buckets.b90plus;
+}
+
 export async function getAgingReport(): Promise<AgingBucket[]> {
 	const profile = await getBusinessProfile();
-	const defaultCurrency = profile?.default_currency || 'USD';
+	const defaultCurrency =
+		profile && profile.default_currency !== '' ? profile.default_currency : 'USD';
 
 	const db = getDb();
 	const outstanding = await db
@@ -478,21 +491,10 @@ export async function getAgingReport(): Promise<AgingBucket[]> {
 	const b90plus: AgingBucket = { label: '90+ days', total: 0, invoices: [] };
 	const buckets: AgingBucket[] = [current, b1to30, b31to60, b61to90, b90plus];
 
+	const bucketSet = { current, b1to30, b31to60, b61to90, b90plus };
 	for (const row of outstanding) {
-		const inv = mapRowToInvoice(row as unknown as Record<string, unknown>);
-		const days = row.days_overdue;
-		let bucket: AgingBucket;
-		if (days <= 0) {
-			bucket = current;
-		} else if (days <= 30) {
-			bucket = b1to30;
-		} else if (days <= 60) {
-			bucket = b31to60;
-		} else if (days <= 90) {
-			bucket = b61to90;
-		} else {
-			bucket = b90plus;
-		}
+		const inv = mapRowToInvoice(row);
+		const bucket = bucketForDays(row.days_overdue, bucketSet);
 		bucket.invoices.push(inv);
 		bucket.total += inv.total;
 	}

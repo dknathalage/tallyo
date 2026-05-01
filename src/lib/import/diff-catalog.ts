@@ -14,14 +14,14 @@ export interface DiffResult {
 
 export function diffCatalog(
 	mappedRows: MappedRow[],
-	existingItems: Array<{
+	existingItems: {
 		id: number;
 		name: string;
 		sku: string;
 		rate: number;
 		unit: string;
 		category: string;
-	}>
+	}[]
 ): DiffResult {
 	const existingBySku = new Map<string, (typeof existingItems)[number]>();
 	for (const item of existingItems) {

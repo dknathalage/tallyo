@@ -1,7 +1,7 @@
 <script lang="ts">
 
 		import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -11,7 +11,7 @@
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(data)
 	});
-		goto(`${base}/console/clients`);
+		void goto(resolve('/(app)/console/clients'));
 	}
 </script>
 

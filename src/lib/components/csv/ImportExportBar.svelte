@@ -2,7 +2,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { onexport, onimport }: { onexport: () => void; onimport: (file: File) => void } = $props();
+	const { onexport, onimport }: { onexport: () => void; onimport: (file: File) => void } = $props();
 
 	let fileInput: HTMLInputElement;
 

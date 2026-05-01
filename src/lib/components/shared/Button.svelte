@@ -4,7 +4,7 @@
 	type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 	type Size = 'sm' | 'md' | 'lg';
 
-	let {
+	const {
 		variant = 'primary',
 		size = 'md',
 		disabled = false,

@@ -1,13 +1,13 @@
 <script lang="ts">
 	
 		import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import CatalogForm from '$lib/components/catalog/CatalogForm.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
 	async function handleSubmit(data: { name: string; rate: number; unit: string; category: string; sku: string }) {
 		await fetch('/api/catalog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-		goto(`${base}/console/catalog`);
+		void goto(resolve('/(app)/console/catalog'));
 	}
 </script>
 

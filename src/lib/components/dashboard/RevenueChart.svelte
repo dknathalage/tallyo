@@ -7,7 +7,7 @@
 		currency?: string;
 	}
 
-	let { data, currency = 'USD' }: Props = $props();
+	const { data, currency = 'USD' }: Props = $props();
 
 	const chartWidth = 600;
 	const chartHeight = 220;
@@ -19,15 +19,15 @@
 	const plotWidth = chartWidth - paddingLeft - paddingRight;
 	const plotHeight = chartHeight - paddingTop - paddingBottom;
 
-	let maxRevenue = $derived(Math.max(...data.map((d) => d.revenue), 1));
+	const maxRevenue = $derived(Math.max(...data.map((d) => d.revenue), 1));
 
-	let yMax = $derived((() => {
+	const yMax = $derived((() => {
 		const mag = Math.pow(10, Math.floor(Math.log10(maxRevenue)));
 		return Math.ceil(maxRevenue / mag) * mag;
 	})());
 
-	let barWidth = $derived(plotWidth / data.length);
-	let barGap = $derived(Math.max(2, barWidth * 0.15));
+	const barWidth = $derived(plotWidth / data.length);
+	const barGap = $derived(Math.max(2, barWidth * 0.15));
 
 	function barX(i: number): number {
 		return paddingLeft + i * barWidth + barGap / 2;
@@ -41,7 +41,7 @@
 		return paddingTop + plotHeight - barH(revenue);
 	}
 
-	let yTicks = $derived(
+	const yTicks = $derived(
 		[0, 0.25, 0.5, 0.75, 1].map((f) => ({
 			value: yMax * f,
 			y: paddingTop + plotHeight - f * plotHeight
@@ -68,7 +68,7 @@
 		aria-label="Monthly revenue bar chart"
 	>
 		<!-- Y-axis gridlines and labels -->
-		{#each yTicks as tick}
+		{#each yTicks as tick (tick.value)}
 			<line
 				x1={paddingLeft}
 				y1={tick.y}
@@ -95,7 +95,7 @@
 		{/each}
 
 		<!-- Bars -->
-		{#each data as point, i}
+		{#each data as point, i (i)}
 			{@const bx = barX(i)}
 			{@const bw = barWidth - barGap}
 			{@const bh = barH(point.revenue)}

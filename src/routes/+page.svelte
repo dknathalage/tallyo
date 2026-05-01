@@ -1,16 +1,31 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { theme } from '$lib/stores/theme.svelte';
+
+	const features = [
+		{ title: 'Fully Offline', details: 'Works entirely in your browser with no backend server. Data is stored locally using IndexedDB and SQL.js.' },
+		{ title: 'Invoice Management', details: 'Create, edit, and track invoices with line items, client linking, and automatic numbering.' },
+		{ title: 'PDF Export', details: 'Generate professional PDF invoices with your business branding, ready to send.' },
+		{ title: 'Import & Export', details: 'Bulk import and export data via CSV and Excel files with a guided wizard.' },
+		{ title: 'Estimates & Quotes', details: 'Send prospective pricing to clients and convert accepted estimates into invoices with one click.' },
+		{ title: 'Multi-Currency', details: 'Create invoices and estimates in 20+ currencies with locale-aware formatting.' },
+		{ title: 'Dark Mode', details: 'Switch between light, dark, and system themes for comfortable viewing any time of day.' },
+		{ title: 'Internationalization', details: 'Locale-aware date and number formatting with a translation-ready architecture.' }
+	];
+
+	interface NavigatorWithStandalone extends Navigator {
+		standalone?: boolean;
+	}
 
 	onMount(() => {
 		const isPWA =
 			window.matchMedia('(display-mode: standalone)').matches ||
-			(navigator as any).standalone === true;
+			(navigator as NavigatorWithStandalone).standalone === true;
 
 		if (isPWA) {
-			goto(`${base}/console`, { replaceState: true });
+			void goto(resolve('/console'), { replaceState: true });
 		}
 	});
 </script>
@@ -45,13 +60,13 @@
 					{/if}
 				</button>
 				<a
-					href="{base}/docs"
+					href={resolve('/(docs)/docs')}
 					class="rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
 				>
 					Docs
 				</a>
 				<a
-					href="{base}/console"
+					href={resolve('/console')}
 					class="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-700"
 				>
 					Open App
@@ -75,13 +90,13 @@
 		</p>
 		<div class="mt-8 flex items-center justify-center gap-4">
 			<a
-				href="{base}/console"
+				href={resolve('/console')}
 				class="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700"
 			>
 				Open App
 			</a>
 			<a
-				href="{base}/docs/getting-started"
+				href={resolve('/(docs)/docs/getting-started')}
 				class="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
 			>
 				Get Started
@@ -91,7 +106,7 @@
 
 	<div class="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
 		<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-			{#each features as feature}
+			{#each features as feature (feature.title)}
 				<div class="rounded-xl border border-gray-200 p-6 dark:border-gray-700">
 					<h3 class="font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
 					<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{feature.details}</p>
@@ -101,15 +116,3 @@
 	</div>
 </div>
 
-<script module>
-	const features = [
-		{ title: 'Fully Offline', details: 'Works entirely in your browser with no backend server. Data is stored locally using IndexedDB and SQL.js.' },
-		{ title: 'Invoice Management', details: 'Create, edit, and track invoices with line items, client linking, and automatic numbering.' },
-		{ title: 'PDF Export', details: 'Generate professional PDF invoices with your business branding, ready to send.' },
-		{ title: 'Import & Export', details: 'Bulk import and export data via CSV and Excel files with a guided wizard.' },
-		{ title: 'Estimates & Quotes', details: 'Send prospective pricing to clients and convert accepted estimates into invoices with one click.' },
-		{ title: 'Multi-Currency', details: 'Create invoices and estimates in 20+ currencies with locale-aware formatting.' },
-		{ title: 'Dark Mode', details: 'Switch between light, dark, and system themes for comfortable viewing any time of day.' },
-		{ title: 'Internationalization', details: 'Locale-aware date and number formatting with a translation-ready architecture.' }
-	];
-</script>

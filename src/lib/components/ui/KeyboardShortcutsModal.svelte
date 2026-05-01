@@ -3,7 +3,7 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { keyboardShortcuts } from '$lib/stores/keyboard-shortcuts.svelte.js';
 
-	let {
+	const {
 		open = false,
 		onclose
 	}: {
@@ -15,7 +15,7 @@
 <Modal {open} {onclose} title={i18n.t('shortcuts.title')}>
 	<table class="w-full text-sm">
 		<tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-			{#each keyboardShortcuts.shortcuts as shortcut}
+			{#each keyboardShortcuts.shortcuts as shortcut (shortcut.label)}
 				<tr class="py-2">
 					<td class="py-2 pr-4">
 						<kbd

@@ -10,101 +10,105 @@ function toISOString(d: string | null | undefined): string {
 }
 
 function mapRowToInvoice(row: Record<string, unknown>): Invoice {
+	const clientName = row['client_name'] as string | null | undefined;
 	return {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		invoice_number: row['invoice_number'] as string,
 		client_id: row['client_id'] as number,
-		client_name: (row['client_name'] as string) ?? undefined,
+		...(clientName !== null && clientName !== undefined ? { client_name: clientName } : {}),
 		date: row['date'] as string,
 		due_date: row['due_date'] as string,
 		payment_terms: row['payment_terms'] as Invoice['payment_terms'],
 		subtotal: row['subtotal'] as number,
 		tax_rate: row['tax_rate'] as number,
-		tax_rate_id: (row['tax_rate_id'] as number | null) ?? null,
+		tax_rate_id: (row['tax_rate_id'] as number | null | undefined) ?? null,
 		tax_amount: row['tax_amount'] as number,
 		total: row['total'] as number,
-		notes: (row['notes'] as string) ?? '',
+		notes: (row['notes'] as string | null | undefined) ?? '',
 		status: row['status'] as Invoice['status'],
-		currency_code: (row['currency_code'] as string) ?? 'USD',
-		business_snapshot: (row['business_snapshot'] as string) ?? '{}',
-		client_snapshot: (row['client_snapshot'] as string) ?? '{}',
-		payer_snapshot: (row['payer_snapshot'] as string) ?? '{}',
+		currency_code: (row['currency_code'] as string | null | undefined) ?? 'USD',
+		business_snapshot: (row['business_snapshot'] as string | null | undefined) ?? '{}',
+		client_snapshot: (row['client_snapshot'] as string | null | undefined) ?? '{}',
+		payer_snapshot: (row['payer_snapshot'] as string | null | undefined) ?? '{}',
 		created_at: toISOString(row['created_at'] as string | null),
 		updated_at: toISOString(row['updated_at'] as string | null)
 	};
 }
 
 function mapRowToEstimate(row: Record<string, unknown>): Estimate {
+	const clientName = row['client_name'] as string | null | undefined;
 	return {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		estimate_number: row['estimate_number'] as string,
 		client_id: row['client_id'] as number,
-		client_name: (row['client_name'] as string) ?? undefined,
+		...(clientName !== null && clientName !== undefined ? { client_name: clientName } : {}),
 		date: row['date'] as string,
 		valid_until: row['valid_until'] as string,
 		subtotal: row['subtotal'] as number,
 		tax_rate: row['tax_rate'] as number,
-		tax_rate_id: (row['tax_rate_id'] as number | null) ?? null,
+		tax_rate_id: (row['tax_rate_id'] as number | null | undefined) ?? null,
 		tax_amount: row['tax_amount'] as number,
 		total: row['total'] as number,
-		notes: (row['notes'] as string) ?? '',
+		notes: (row['notes'] as string | null | undefined) ?? '',
 		status: row['status'] as Estimate['status'],
-		currency_code: (row['currency_code'] as string) ?? 'USD',
-		converted_invoice_id: (row['converted_invoice_id'] as number | null) ?? null,
-		business_snapshot: (row['business_snapshot'] as string) ?? '{}',
-		client_snapshot: (row['client_snapshot'] as string) ?? '{}',
-		payer_snapshot: (row['payer_snapshot'] as string) ?? '{}',
+		currency_code: (row['currency_code'] as string | null | undefined) ?? 'USD',
+		converted_invoice_id: (row['converted_invoice_id'] as number | null | undefined) ?? null,
+		business_snapshot: (row['business_snapshot'] as string | null | undefined) ?? '{}',
+		client_snapshot: (row['client_snapshot'] as string | null | undefined) ?? '{}',
+		payer_snapshot: (row['payer_snapshot'] as string | null | undefined) ?? '{}',
 		created_at: toISOString(row['created_at'] as string | null),
 		updated_at: toISOString(row['updated_at'] as string | null)
 	};
 }
 
-export async function getDashboardStats(): Promise<DashboardStats> {
-	const db = getDb();
-	const profile = await getBusinessProfile();
-	const defaultCurrency = profile?.default_currency || 'USD';
+type Db = ReturnType<typeof getDb>;
 
+async function fetchInvoiceTotals(db: Db, defaultCurrency: string) {
 	const revenueResult = await db
 		.select({ total: sql<number>`COALESCE(SUM(${invoices.total}), 0)` })
 		.from(invoices)
 		.where(
 			sql`${invoices.status} = 'paid' AND COALESCE(${invoices.currency_code}, 'USD') = ${defaultCurrency}`
 		);
-	const total_revenue = revenueResult[0]?.total ?? 0;
-
 	const outstandingResult = await db
 		.select({ total: sql<number>`COALESCE(SUM(${invoices.total}), 0)` })
 		.from(invoices)
 		.where(
 			sql`${invoices.status} IN ('sent', 'overdue') AND COALESCE(${invoices.currency_code}, 'USD') = ${defaultCurrency}`
 		);
-	const outstanding_amount = outstandingResult[0]?.total ?? 0;
-
 	const overdueResult = await db
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(invoices)
 		.where(eq(invoices.status, 'overdue'));
-	const overdue_count = overdueResult[0]?.count ?? 0;
+	return {
+		total_revenue: revenueResult[0]?.total ?? 0,
+		outstanding_amount: outstandingResult[0]?.total ?? 0,
+		overdue_count: overdueResult[0]?.count ?? 0
+	};
+}
 
+async function fetchCounts(db: Db, defaultCurrency: string) {
 	const clientResult = await db
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(clients);
-	const total_clients = clientResult[0]?.count ?? 0;
-
 	const invoiceResult = await db
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(invoices);
-	const total_invoices = invoiceResult[0]?.count ?? 0;
-
 	const excludedResult = await db
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(invoices)
 		.where(sql`COALESCE(${invoices.currency_code}, 'USD') != ${defaultCurrency}`);
-	const excluded_currency_count = excludedResult[0]?.count ?? 0;
+	return {
+		total_clients: clientResult[0]?.count ?? 0,
+		total_invoices: invoiceResult[0]?.count ?? 0,
+		excluded_currency_count: excludedResult[0]?.count ?? 0
+	};
+}
 
-	const recentInvoiceRows = await db
+async function fetchRecentInvoices(db: Db) {
+	const rows = await db
 		.select({
 			id: invoices.id,
 			uuid: invoices.uuid,
@@ -132,23 +136,18 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 		.leftJoin(clients, eq(invoices.client_id, clients.id))
 		.orderBy(desc(invoices.created_at))
 		.limit(5);
-	const recent_invoices = recentInvoiceRows.map((r) =>
-		mapRowToInvoice(r as unknown as Record<string, unknown>)
-	);
+	return rows.map((r) => mapRowToInvoice(r as unknown as Record<string, unknown>));
+}
 
-	// Estimate stats
+async function fetchEstimateStats(db: Db) {
 	const estimateResult = await db
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(estimates);
-	const total_estimates = estimateResult[0]?.count ?? 0;
-
 	const pendingResult = await db
 		.select({ count: sql<number>`COUNT(*)` })
 		.from(estimates)
 		.where(inArray(estimates.status, ['draft', 'sent']));
-	const pending_estimates = pendingResult[0]?.count ?? 0;
-
-	const recentEstimateRows = await db
+	const rows = await db
 		.select({
 			id: estimates.id,
 			uuid: estimates.uuid,
@@ -176,28 +175,33 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 		.leftJoin(clients, eq(estimates.client_id, clients.id))
 		.orderBy(desc(estimates.created_at))
 		.limit(5);
-	const recent_estimates = recentEstimateRows.map((r) =>
-		mapRowToEstimate(r as unknown as Record<string, unknown>)
-	);
-
 	return {
-		total_revenue,
-		outstanding_amount,
-		overdue_count,
-		total_clients,
-		total_invoices,
-		excluded_currency_count,
+		total_estimates: estimateResult[0]?.count ?? 0,
+		pending_estimates: pendingResult[0]?.count ?? 0,
+		recent_estimates: rows.map((r) => mapRowToEstimate(r as unknown as Record<string, unknown>))
+	};
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+	const db = getDb();
+	const profile = await getBusinessProfile();
+	const defaultCurrency = profile?.default_currency ?? 'USD';
+	const totals = await fetchInvoiceTotals(db, defaultCurrency);
+	const counts = await fetchCounts(db, defaultCurrency);
+	const recent_invoices = await fetchRecentInvoices(db);
+	const estimateStats = await fetchEstimateStats(db);
+	return {
+		...totals,
+		...counts,
 		recent_invoices,
-		total_estimates,
-		pending_estimates,
-		recent_estimates
+		...estimateStats
 	};
 }
 
 export async function getMonthlyRevenue(): Promise<MonthlyRevenue[]> {
 	const db = getDb();
 	const profile = await getBusinessProfile();
-	const defaultCurrency = profile?.default_currency || 'USD';
+	const defaultCurrency = profile?.default_currency ?? 'USD';
 
 	// Generate the last 12 months as YYYY-MM strings
 	const months: string[] = [];

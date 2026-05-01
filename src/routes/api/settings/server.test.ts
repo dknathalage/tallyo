@@ -63,7 +63,7 @@ describe('POST /api/settings', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('saves profile data when provided', async () => {
-		vi.mocked(repositories.businessProfile.saveBusinessProfile).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.businessProfile.saveBusinessProfile).mockResolvedValue(undefined);
 		const profileData = { business_name: 'New Name' };
 		const result = await POST({ request: makeRequest({ profile: profileData }) } as any);
 		expect((result as any).body).toEqual({ success: true });

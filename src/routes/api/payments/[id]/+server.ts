@@ -8,8 +8,8 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	if (!Number.isFinite(id) || id <= 0) throw error(400, 'Invalid ID');
 	try {
 		await repositories.payments.deletePayment(id);
-		return json({ success: true });
 	} catch (err) {
-		dbError(err);
+		throw dbError(err);
 	}
+	return json({ success: true });
 };

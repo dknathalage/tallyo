@@ -4,7 +4,7 @@ import type { Invoice, LineItem, Estimate, EstimateLineItem } from '$lib/types';
 import { i18n } from '$lib/stores/i18n.svelte.js';
 import { parseSnapshot } from '$lib/utils/snapshot.js';
 
-function formatPdfCurrencyWithCode(amount: number, currencyCode: string = 'USD'): string {
+function formatPdfCurrencyWithCode(amount: number, currencyCode = 'USD'): string {
 	return new Intl.NumberFormat('en-US', {
 		style: 'currency',
 		currency: currencyCode
@@ -28,54 +28,62 @@ interface PdfDocumentData {
 	businessSnapshot: string;
 	clientSnapshot: string;
 	payerSnapshot: string;
-	lineItems: Array<{ description: string; quantity: number; rate: number; amount: number; notes: string }>;
+	lineItems: { description: string; quantity: number; rate: number; amount: number; notes: string }[];
 	fileName: string;
 }
 
-function renderPdf(data: PdfDocumentData): void {
-	const doc = new jsPDF();
-	const pageWidth = doc.internal.pageSize.getWidth();
-	let y = 20;
-
-	const business = parseSnapshot(data.businessSnapshot);
-	const client = parseSnapshot(data.clientSnapshot);
-	const payer = parseSnapshot(data.payerSnapshot);
-
-	// --- Header with logo ---
-	let headerTextX = 14;
-
-	if (business.logo) {
-		try {
-			doc.addImage(business.logo, 'AUTO', 14, y - 5, 20, 20);
-			headerTextX = 38;
-		} catch {
-			// Skip logo if it fails to load
-		}
+function renderBusinessLogo(
+	doc: jsPDF,
+	business: ReturnType<typeof parseSnapshot>,
+	y: number
+): number {
+	if (business.logo === undefined || business.logo === '') return 14;
+	try {
+		doc.addImage(business.logo, 'AUTO', 14, y - 5, 20, 20);
+		return 38;
+	} catch {
+		return 14;
 	}
+}
 
-	if (business.name) {
-		doc.setFontSize(16);
-		doc.setTextColor(17, 24, 39);
-		doc.text(business.name, headerTextX, y);
-		y += 6;
+function renderBusinessBlock(
+	doc: jsPDF,
+	business: ReturnType<typeof parseSnapshot>,
+	headerTextX: number,
+	startY: number
+): number {
+	let y = startY;
+	if (!business.name) return y;
+	doc.setFontSize(16);
+	doc.setTextColor(17, 24, 39);
+	doc.text(business.name, headerTextX, y);
+	y += 6;
 
-		doc.setFontSize(9);
-		doc.setTextColor(107, 114, 128);
-		if (business.address) {
-			const addressLines = business.address.split('\n');
-			for (const line of addressLines) {
-				doc.text(line, headerTextX, y);
-				y += 4;
-			}
-		}
-		// Business metadata (e.g., ABN)
-		for (const [key, value] of Object.entries(business.metadata)) {
-			doc.text(`${key}: ${value}`, headerTextX, y);
+	doc.setFontSize(9);
+	doc.setTextColor(107, 114, 128);
+	if (business.address) {
+		const addressLines = business.address.split('\n');
+		for (const line of addressLines) {
+			doc.text(line, headerTextX, y);
 			y += 4;
 		}
 	}
+	for (const [key, value] of Object.entries(business.metadata)) {
+		doc.text(`${key}: ${value}`, headerTextX, y);
+		y += 4;
+	}
+	return y;
+}
 
-	// Document title on the right
+function renderHeader(
+	doc: jsPDF,
+	data: PdfDocumentData,
+	business: ReturnType<typeof parseSnapshot>
+): number {
+	const pageWidth = doc.internal.pageSize.getWidth();
+	const headerTextX = renderBusinessLogo(doc, business, 20);
+	let y = renderBusinessBlock(doc, business, headerTextX, 20);
+
 	doc.setFontSize(28);
 	doc.setTextColor(37, 99, 235);
 	doc.text(data.title, pageWidth - 14, 20, { align: 'right' });
@@ -84,104 +92,116 @@ function renderPdf(data: PdfDocumentData): void {
 	doc.setTextColor(107, 114, 128);
 	doc.text(data.number, pageWidth - 14, 28, { align: 'right' });
 
-	y = Math.max(y, 40);
-	y += 4;
+	y = Math.max(y, 40) + 4;
 
-	// Divider
 	doc.setDrawColor(229, 231, 235);
 	doc.setLineWidth(0.5);
 	doc.line(14, y, pageWidth - 14, y);
-	y += 10;
+	return y + 10;
+}
 
-	// --- Service For / Bill To sections side by side ---
-	const hasPayer = payer.name.trim().length > 0;
-	const colWidth = hasPayer ? (pageWidth - 28) / 2 : pageWidth - 28;
+interface PartyRenderOpts {
+	party: ReturnType<typeof parseSnapshot>;
+	x: number;
+	startY: number;
+	heading: string;
+	displayName: string;
+}
 
-	// SERVICE FOR (left)
-	const serviceForY = y;
+function renderParty(doc: jsPDF, opts: PartyRenderOpts): number {
+	const { party, x, heading, displayName } = opts;
+	let y = opts.startY;
 	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	doc.text(i18n.t('pdf.serviceFor'), 14, y);
+	doc.text(heading, x, y);
 	y += 6;
 
 	doc.setFontSize(11);
 	doc.setTextColor(17, 24, 39);
-	doc.text(client.name || data.clientName || i18n.t('common.unknown'), 14, y);
+	doc.text(displayName, x, y);
 	y += 5;
 
 	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	if (client.email) { doc.text(client.email, 14, y); y += 4; }
-	if (client.phone) { doc.text(client.phone, 14, y); y += 4; }
-	if (client.address) {
-		const lines = client.address.split('\n');
-		for (const line of lines) { doc.text(line, 14, y); y += 4; }
+	if (party.email) { doc.text(party.email, x, y); y += 4; }
+	if (party.phone) { doc.text(party.phone, x, y); y += 4; }
+	if (party.address) {
+		const lines = party.address.split('\n');
+		for (const line of lines) { doc.text(line, x, y); y += 4; }
 	}
-	for (const [key, value] of Object.entries(client.metadata)) {
-		doc.text(`${key}: ${value}`, 14, y);
+	for (const [key, value] of Object.entries(party.metadata)) {
+		doc.text(`${key}: ${value}`, x, y);
 		y += 4;
 	}
+	return y;
+}
 
-	// BILL TO (right) if payer exists
-	let rightY = serviceForY;
+interface PartiesArgs {
+	data: PdfDocumentData;
+	client: ReturnType<typeof parseSnapshot>;
+	payer: ReturnType<typeof parseSnapshot>;
+	startY: number;
+}
+
+function renderParties(doc: jsPDF, args: PartiesArgs): number {
+	const { data, client, payer, startY } = args;
+	const pageWidth = doc.internal.pageSize.getWidth();
+	const hasPayer = payer.name.trim().length > 0;
+	const colWidth = hasPayer ? (pageWidth - 28) / 2 : pageWidth - 28;
+
+	const clientName = client.name !== '' ? client.name : (data.clientName ?? i18n.t('common.unknown'));
+	const leftY = renderParty(doc, {
+		party: client,
+		x: 14,
+		startY,
+		heading: i18n.t('pdf.serviceFor'),
+		displayName: clientName
+	});
+
+	let rightY = startY;
 	if (hasPayer) {
 		const rightX = 14 + colWidth + 4;
-		doc.setFontSize(9);
-		doc.setTextColor(107, 114, 128);
-		doc.text(i18n.t('pdf.billTo'), rightX, rightY);
-		rightY += 6;
-
-		doc.setFontSize(11);
-		doc.setTextColor(17, 24, 39);
-		doc.text(payer.name, rightX, rightY);
-		rightY += 5;
-
-		doc.setFontSize(9);
-		doc.setTextColor(107, 114, 128);
-		if (payer.email) { doc.text(payer.email, rightX, rightY); rightY += 4; }
-		if (payer.phone) { doc.text(payer.phone, rightX, rightY); rightY += 4; }
-		if (payer.address) {
-			const lines = payer.address.split('\n');
-			for (const line of lines) { doc.text(line, rightX, rightY); rightY += 4; }
-		}
-		for (const [key, value] of Object.entries(payer.metadata)) {
-			doc.text(`${key}: ${value}`, rightX, rightY);
-			rightY += 4;
-		}
+		rightY = renderParty(doc, {
+			party: payer,
+			x: rightX,
+			startY,
+			heading: i18n.t('pdf.billTo'),
+			displayName: payer.name
+		});
 	}
 
-	y = Math.max(y, rightY) + 6;
+	return Math.max(leftY, rightY) + 6;
+}
 
-	// --- Details row ---
+function renderDetailsRow(doc: jsPDF, data: PdfDocumentData, y: number): number {
+	const pageWidth = doc.internal.pageSize.getWidth();
 	doc.setFontSize(9);
 	doc.setTextColor(107, 114, 128);
-	const detailsY = y;
 
 	const numberLabel = data.title === i18n.t('pdf.estimate') ? i18n.t('pdf.estimateNumber') : i18n.t('pdf.invoiceNumber');
-	doc.text(numberLabel, 14, detailsY);
+	doc.text(numberLabel, 14, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(data.number, 40, detailsY);
+	doc.text(data.number, 40, y);
 
 	doc.setTextColor(107, 114, 128);
-	doc.text(i18n.t('pdf.date'), 80, detailsY);
+	doc.text(i18n.t('pdf.date'), 80, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfDate(data.date), 96, detailsY);
+	doc.text(formatPdfDate(data.date), 96, y);
 
 	doc.setTextColor(107, 114, 128);
-	doc.text(data.secondDateLabel, 130, detailsY);
+	doc.text(data.secondDateLabel, 130, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(formatPdfDate(data.secondDate), 152, detailsY);
+	doc.text(formatPdfDate(data.secondDate), 152, y);
 
 	doc.setTextColor(107, 114, 128);
-	doc.text(i18n.t('pdf.status'), 170, detailsY);
+	doc.text(i18n.t('pdf.status'), 170, y);
 	doc.setTextColor(17, 24, 39);
-	doc.text(data.status.charAt(0).toUpperCase() + data.status.slice(1), pageWidth - 14, detailsY, { align: 'right' });
+	doc.text(data.status.charAt(0).toUpperCase() + data.status.slice(1), pageWidth - 14, y, { align: 'right' });
 
-	y = detailsY + 10;
+	return y + 10;
+}
 
-	const cc = data.currencyCode || 'USD';
-
-	// --- Line items table ---
+function renderLineItemsTable(doc: jsPDF, data: PdfDocumentData, startY: number, cc: string): number {
 	const tableBody = data.lineItems.map((item) => [
 		item.notes ? `${item.description}\n${item.notes}` : item.description,
 		String(item.quantity),
@@ -190,7 +210,7 @@ function renderPdf(data: PdfDocumentData): void {
 	]);
 
 	autoTable(doc, {
-		startY: y,
+		startY,
 		head: [[i18n.t('pdf.description'), i18n.t('pdf.quantity'), i18n.t('pdf.rate'), i18n.t('pdf.amount')]],
 		body: tableBody,
 		theme: 'striped',
@@ -213,8 +233,16 @@ function renderPdf(data: PdfDocumentData): void {
 		margin: { left: 14, right: 14 }
 	});
 
-	// Summary section
-	y = (doc as any).lastAutoTable.finalY + 10;
+	const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY;
+	if (finalY === undefined) {
+		throw new Error('autoTable did not produce a finalY value');
+	}
+	return finalY + 10;
+}
+
+function renderSummary(doc: jsPDF, data: PdfDocumentData, startY: number, cc: string): number {
+	const pageWidth = doc.internal.pageSize.getWidth();
+	let y = startY;
 	const summaryX = pageWidth - 80;
 	const summaryValueX = pageWidth - 14;
 
@@ -239,12 +267,19 @@ function renderPdf(data: PdfDocumentData): void {
 
 	doc.setFontSize(12);
 	doc.setTextColor(17, 24, 39);
+	// eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- jsPDF setFont requires fontName arg; passing undefined keeps current font per its API
 	doc.setFont(undefined!, 'bold');
 	doc.text(i18n.t('pdf.total'), summaryX, y);
 	doc.text(formatPdfCurrencyWithCode(data.total, cc), summaryValueX, y, { align: 'right' });
+	// eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- jsPDF setFont requires fontName arg; passing undefined keeps current font per its API
 	doc.setFont(undefined!, 'normal');
 
-	// Notes
+	return y;
+}
+
+function renderNotesAndFooter(doc: jsPDF, data: PdfDocumentData, startY: number): void {
+	const pageWidth = doc.internal.pageSize.getWidth();
+	let y = startY;
 	if (data.notes) {
 		y += 16;
 		doc.setFontSize(9);
@@ -257,11 +292,26 @@ function renderPdf(data: PdfDocumentData): void {
 		doc.text(noteLines, 14, y);
 	}
 
-	// Footer
 	const footerY = doc.internal.pageSize.getHeight() - 20;
 	doc.setFontSize(10);
 	doc.setTextColor(156, 163, 175);
 	doc.text(i18n.t('pdf.thankYou'), pageWidth / 2, footerY, { align: 'center' });
+}
+
+function renderPdf(data: PdfDocumentData): void {
+	const doc = new jsPDF();
+	const business = parseSnapshot(data.businessSnapshot);
+	const client = parseSnapshot(data.clientSnapshot);
+	const payer = parseSnapshot(data.payerSnapshot);
+
+	let y = renderHeader(doc, data, business);
+	y = renderParties(doc, { data, client, payer, startY: y });
+	y = renderDetailsRow(doc, data, y);
+
+	const cc = data.currencyCode !== '' ? data.currencyCode : 'USD';
+	y = renderLineItemsTable(doc, data, y, cc);
+	y = renderSummary(doc, data, y, cc);
+	renderNotesAndFooter(doc, data, y);
 
 	doc.save(data.fileName);
 }

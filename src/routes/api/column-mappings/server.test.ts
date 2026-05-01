@@ -47,7 +47,7 @@ describe('GET /api/column-mappings', () => {
 	});
 
 	it('returns mappings for specified entity', async () => {
-		vi.mocked(repositories.columnMappings.getColumnMappings).mockResolvedValue([] as any);
+		vi.mocked(repositories.columnMappings.getColumnMappings).mockResolvedValue([]);
 		await GET({ url: makeUrl('/api/column-mappings', { entity: 'invoices' }) } as any);
 		expect(repositories.columnMappings.getColumnMappings).toHaveBeenCalledWith('invoices');
 	});
@@ -57,7 +57,7 @@ describe('POST /api/column-mappings', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a column mapping', async () => {
-		vi.mocked(repositories.columnMappings.createColumnMapping).mockResolvedValue(5 as any);
+		vi.mocked(repositories.columnMappings.createColumnMapping).mockResolvedValue(5);
 		const data = { entity: 'catalog', source: 'col_a', target: 'name' };
 		const result = await POST({ request: makeRequest(data) } as any);
 		expect((result as any).status).toBe(201);
@@ -70,14 +70,14 @@ describe('DELETE /api/column-mappings', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes a column mapping by id param', async () => {
-		vi.mocked(repositories.columnMappings.deleteColumnMapping).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.columnMappings.deleteColumnMapping).mockResolvedValue(undefined);
 		const result = await DELETE({ url: makeUrl('/api/column-mappings', { id: '3' }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.columnMappings.deleteColumnMapping).toHaveBeenCalledWith(3);
 	});
 
 	it('passes 0 when id param is missing', async () => {
-		vi.mocked(repositories.columnMappings.deleteColumnMapping).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.columnMappings.deleteColumnMapping).mockResolvedValue(undefined);
 		const result = await DELETE({ url: makeUrl('/api/column-mappings') } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.columnMappings.deleteColumnMapping).toHaveBeenCalledWith(0);

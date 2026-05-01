@@ -10,14 +10,14 @@
     streamText?: string;
     streamToolCalls?: AiStreamingState['toolCalls'];
   }
-  let { role, content, toolCalls, isStreaming = false, streamText = '', streamToolCalls = [] }: Props = $props();
+  const { role, content, toolCalls, isStreaming = false, streamText = '', streamToolCalls = [] }: Props = $props();
 
   const displayText = $derived(isStreaming ? streamText : content);
 
   function parseResults(toolResultsStr: string | null): Record<string, { content: string; is_error: boolean }> {
     if (!toolResultsStr) return {};
     try {
-      const arr: Array<{ tool_use_id: string; content: string; is_error?: boolean }> = JSON.parse(toolResultsStr);
+      const arr = JSON.parse(toolResultsStr) as { tool_use_id: string; content: string; is_error?: boolean }[];
       return Object.fromEntries(arr.map(r => [r.tool_use_id, { content: r.content, is_error: r.is_error ?? false }]));
     } catch { return {}; }
   }
@@ -40,7 +40,7 @@
     {#if role === 'assistant'}
       <!-- Tool calls from persisted message -->
       {#if toolCalls}
-        {@const tcs = (() => { try { return JSON.parse(toolCalls) as Array<{id: string; name: string}>; } catch { return []; } })()}
+        {@const tcs = (() => { try { return JSON.parse(toolCalls) as {id: string; name: string}[]; } catch { return []; } })()}
         {@const trs = parseResults(null)}
         <div class="flex flex-wrap gap-1 mb-2">
           {#each tcs as tc (tc.id)}
@@ -52,13 +52,14 @@
       {#if isStreaming && streamToolCalls.length > 0}
         <div class="flex flex-wrap gap-1 mb-2">
           {#each streamToolCalls as tc (tc.id)}
-            <AiToolBadge name={tc.name} result={tc.result as string | undefined} is_error={tc.is_error} />
+            <AiToolBadge name={tc.name} result={tc.result} is_error={tc.is_error} />
           {/each}
         </div>
       {/if}
     {/if}
 
     {#if displayText}
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- formatContent escapes &, <, > before adding markup, so the HTML is safe -->
       <div class="text-sm leading-relaxed prose-sm">{@html formatContent(displayText)}{#if isStreaming}<span class="inline-block w-0.5 h-4 bg-current animate-pulse ml-0.5 align-middle"></span>{/if}</div>
     {/if}
   </div>

@@ -12,20 +12,20 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const data = await request.json();
+	const data = (await request.json()) as Record<string, unknown>;
 	const validated = validate(CreatePaymentSchema, data);
-	validated.invoice_id = fkOrNull(validated.invoice_id) as number;
+	const invoice_id = fkOrNull(validated.invoice_id);
 	try {
 		const input = {
-			invoice_id: validated.invoice_id,
+			invoice_id,
 			amount: validated.amount,
 			payment_date: validated.payment_date,
 			...(validated.method !== undefined && { method: validated.method }),
 			...(validated.notes !== undefined && { notes: validated.notes })
 		};
-		const id = await repositories.payments.createPayment(input);
+		const id = await repositories.payments.createPayment(input as unknown as Parameters<typeof repositories.payments.createPayment>[0]);
 		return json({ id }, { status: 201 });
 	} catch (err) {
-		dbError(err);
+		throw dbError(err);
 	}
 };

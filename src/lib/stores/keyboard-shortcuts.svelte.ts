@@ -32,40 +32,14 @@ function focusSearch(): void {
 
 function createShortcutsStore() {
 	let showHelp = $state(false);
+	const nav = (path: string): void => { void goto(`${base}${path}`); };
 
 	const shortcuts: Shortcut[] = [
-		{
-			key: 'n',
-			label: 'N',
-			i18nKey: 'shortcuts.newInvoice',
-			action: () => goto(`${base}/console/invoices/new`)
-		},
-		{
-			key: 'e',
-			label: 'E',
-			i18nKey: 'shortcuts.newEstimate',
-			action: () => goto(`${base}/console/estimates/new`)
-		},
-		{
-			key: 'c',
-			label: 'C',
-			i18nKey: 'shortcuts.newClient',
-			action: () => goto(`${base}/console/clients/new`)
-		},
-		{
-			key: '/',
-			label: '/',
-			i18nKey: 'shortcuts.focusSearch',
-			action: () => focusSearch()
-		},
-		{
-			key: '?',
-			label: '?',
-			i18nKey: 'shortcuts.showHelp',
-			action: () => {
-				showHelp = !showHelp;
-			}
-		}
+		{ key: 'n', label: 'N', i18nKey: 'shortcuts.newInvoice', action: () => nav('/console/invoices/new') },
+		{ key: 'e', label: 'E', i18nKey: 'shortcuts.newEstimate', action: () => nav('/console/estimates/new') },
+		{ key: 'c', label: 'C', i18nKey: 'shortcuts.newClient', action: () => nav('/console/clients/new') },
+		{ key: '/', label: '/', i18nKey: 'shortcuts.focusSearch', action: () => { focusSearch(); } },
+		{ key: '?', label: '?', i18nKey: 'shortcuts.showHelp', action: () => { showHelp = !showHelp; } }
 	];
 
 	function handleKeydown(e: KeyboardEvent) {

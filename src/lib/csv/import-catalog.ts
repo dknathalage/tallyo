@@ -38,7 +38,7 @@ export async function parseCatalogCsv(file: File): Promise<ParsedImport<CsvCatal
 		if (hasError) continue;
 
 		// Skip duplicates by UUID
-		if (row.uuid?.trim() && existingUuids.has(row.uuid.trim())) {
+		if (row.uuid.trim() && existingUuids.has(row.uuid.trim())) {
 			skippedDuplicates++;
 			continue;
 		}
@@ -53,15 +53,15 @@ export async function commitCatalogImport(rows: CsvCatalogRow[]): Promise<void> 
 	const db = getDb();
 
 	for (const row of rows) {
-		const uuid = row.uuid?.trim() || crypto.randomUUID();
+		const uuid = row.uuid.trim() || crypto.randomUUID();
 		const rate = Number(row.rate) || 0;
 		await db.insert(catalogItems).values({
 			uuid,
-			name: row.name?.trim() ?? '',
+			name: row.name.trim(),
 			rate,
-			unit: row.unit?.trim() || '',
-			category: row.category?.trim() || '',
-			sku: row.sku?.trim() || ''
+			unit: row.unit.trim(),
+			category: row.category.trim(),
+			sku: row.sku.trim()
 		});
 	}
 }

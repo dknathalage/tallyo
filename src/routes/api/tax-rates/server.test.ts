@@ -55,7 +55,7 @@ describe('POST /api/tax-rates', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a tax rate', async () => {
-		vi.mocked(repositories.taxRates.createTaxRate).mockResolvedValue(7 as any);
+		vi.mocked(repositories.taxRates.createTaxRate).mockResolvedValue(7);
 		const result = await POST({ request: makeRequest({ name: 'GST', rate: 5 }) } as any);
 		expect((result as any).status).toBe(201);
 		expect((result as any).body).toEqual({ id: 7 });
@@ -71,7 +71,7 @@ describe('PUT /api/tax-rates/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('updates a tax rate', async () => {
-		vi.mocked(repositories.taxRates.updateTaxRate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.taxRates.updateTaxRate).mockResolvedValue(undefined);
 		const result = await PUT({ params: { id: '1' }, request: makeRequest({ rate: 15 }) } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.taxRates.updateTaxRate).toHaveBeenCalledWith(1, { rate: 15 });
@@ -96,7 +96,7 @@ describe('DELETE /api/tax-rates/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes a tax rate', async () => {
-		vi.mocked(repositories.taxRates.deleteTaxRate).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.taxRates.deleteTaxRate).mockResolvedValue(undefined);
 		const result = await DELETE({ params: { id: '1' } } as any);
 		expect((result as any).body).toEqual({ success: true });
 	});

@@ -10,10 +10,10 @@ function mapRow(row: Record<string, unknown>): Payment {
 		invoice_id: row['invoice_id'] as number,
 		amount: row['amount'] as number,
 		payment_date: row['payment_date'] as string,
-		method: (row['method'] as string) ?? '',
-		notes: (row['notes'] as string) ?? '',
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		method: (row['method'] as string | null | undefined) ?? '',
+		notes: (row['notes'] as string | null | undefined) ?? '',
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 

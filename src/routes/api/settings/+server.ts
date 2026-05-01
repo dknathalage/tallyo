@@ -2,6 +2,11 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/index.js';
 import { dbError } from '$lib/server/db-error.js';
+import type { SaveBusinessProfileInput } from '$lib/repositories/interfaces/types.js';
+
+interface SettingsPostBody {
+	profile?: SaveBusinessProfileInput;
+}
 
 export const GET: RequestHandler = async () => {
 	return json({
@@ -12,12 +17,12 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { profile } = await request.json();
+	const { profile } = (await request.json()) as SettingsPostBody;
 	if (profile) {
 		try {
 			await repositories.businessProfile.saveBusinessProfile(profile);
 		} catch (err) {
-			dbError(err);
+			throw dbError(err);
 		}
 	}
 	return json({ success: true });

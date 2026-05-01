@@ -12,12 +12,12 @@
 	function exportDatabase() { alert('To backup, copy ~/.invoices/invoices.db (or your DB_PATH)'); }
 	async function importDatabase(_file: File): Promise<void> { alert('To restore, replace ~/.invoices/invoices.db (or your DB_PATH)'); }
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	// ── Business Profile ────────────────────────────────────
 	function parseMetadata(metaStr?: string): KeyValuePair[] {
 		try {
-			const obj = JSON.parse(metaStr || '{}');
+			const obj = JSON.parse(metaStr ?? '{}');
 			return Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
 		} catch {
 			return [];
@@ -71,8 +71,9 @@
 	// ── AI Assistant ─────────────────────────────────────────
 	function getApiKeyFromProfile(): string {
 		try {
-			const obj = JSON.parse(profile?.metadata ?? '{}');
-			return (obj.anthropic_api_key as string) ?? '';
+			const obj = JSON.parse(profile?.metadata ?? '{}') as Record<string, unknown>;
+			const value = obj['anthropic_api_key'];
+			return typeof value === 'string' ? value : '';
 		} catch {
 			return '';
 		}

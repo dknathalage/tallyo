@@ -4,7 +4,9 @@
 
 	let {
 		pairs = $bindable(),
+		// eslint-disable-next-line prefer-const -- destructure shares a `let` with bindable `pairs`
 		readonly = false,
+		// eslint-disable-next-line prefer-const -- destructure shares a `let` with bindable `pairs`
 		addLabel = 'Add Field'
 	}: {
 		pairs: KeyValuePair[];

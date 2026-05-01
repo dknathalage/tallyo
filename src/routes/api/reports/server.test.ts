@@ -40,15 +40,15 @@ describe('GET /api/reports', () => {
 	});
 
 	it('defaults to USD when profile is missing', async () => {
-		vi.mocked(repositories.invoices.getAgingReport).mockResolvedValue([] as any);
-		vi.mocked(repositories.businessProfile.getBusinessProfile).mockResolvedValue(null as any);
+		vi.mocked(repositories.invoices.getAgingReport).mockResolvedValue([]);
+		vi.mocked(repositories.businessProfile.getBusinessProfile).mockResolvedValue(null);
 
 		const result = await GET({} as any);
 		expect((result as any).body).toEqual({ agingBuckets: [], defaultCurrency: 'USD' });
 	});
 
 	it('defaults to USD when default_currency is not set', async () => {
-		vi.mocked(repositories.invoices.getAgingReport).mockResolvedValue([] as any);
+		vi.mocked(repositories.invoices.getAgingReport).mockResolvedValue([]);
 		vi.mocked(repositories.businessProfile.getBusinessProfile).mockResolvedValue({} as any);
 
 		const result = await GET({} as any);

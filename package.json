@@ -17,7 +17,10 @@
     "start": "node bin/tallyo.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "verify": "npm run check && npm run lint && npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
@@ -36,6 +39,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@sveltejs/adapter-auto": "^7.0.0",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.50.2",
@@ -44,9 +48,14 @@
     "@types/papaparse": "^5.5.2",
     "@vitest/coverage-v8": "^4.1.0",
     "drizzle-kit": "^0.31.0",
+    "eslint": "^10.2.1",
+    "eslint-plugin-svelte": "^3.17.1",
+    "globals": "^17.5.0",
     "svelte": "^5.51.0",
     "svelte-check": "^4.3.6",
+    "svelte-eslint-parser": "^1.6.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.1",
     "vite": "^7.3.1",
     "vitest": "^4.1.0"
   }

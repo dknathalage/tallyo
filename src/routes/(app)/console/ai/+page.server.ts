@@ -5,8 +5,8 @@ export const load: PageServerLoad = async () => {
   const profile = await repositories.businessProfile.getBusinessProfile();
   let apiKeyConfigured = false;
   try {
-    const meta = JSON.parse(profile?.metadata ?? '{}');
-    apiKeyConfigured = !!meta.anthropic_api_key;
+    const meta = JSON.parse(profile?.metadata ?? '{}') as { anthropic_api_key?: unknown };
+    apiKeyConfigured = Boolean(meta.anthropic_api_key);
   } catch { /* noop */ }
   return { apiKeyConfigured };
 };

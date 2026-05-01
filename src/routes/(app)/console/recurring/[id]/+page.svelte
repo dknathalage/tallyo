@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import type { RecurringTemplate, RecurringFrequency } from '$lib/types/index.js';
 	import type { Client } from '$lib/types/index.js';
@@ -10,13 +10,12 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
-	let isNew = $derived(!data.template);
-	let templateId = $derived(data.template?.id ?? null);
+	const templateId = $derived(data.template.id);
 
-	let template: RecurringTemplate | null = $state(untrack(() => data.template ?? null));
-	let clients: Client[] = $state(untrack(() => data.clients ?? []));
+	const template: RecurringTemplate = $state(untrack(() => data.template));
+	const clients: Client[] = $state(untrack(() => data.clients));
 
 	// Form fields
 	let name = $state('');
@@ -45,29 +44,27 @@
 	let showDeleteConfirm = $state(false);
 	let creatingInvoice = $state(false);
 
-	let subtotal = $derived(lineItems.reduce((sum, li) => sum + li.amount, 0));
-	let taxAmount = $derived(subtotal * (taxRate / 100));
-	let total = $derived(subtotal + taxAmount);
+	const subtotal = $derived(lineItems.reduce((sum, li) => sum + li.amount, 0));
+	const taxAmount = $derived(subtotal * (taxRate / 100));
+	const total = $derived(subtotal + taxAmount);
 
 	// Initialize form fields from server data
 	$effect(() => {
 		const t = template;
-		if (t) {
-			name = t.name;
-			clientId = t.client_id ?? '';
-			frequency = t.frequency;
-			nextDue = t.next_due;
-			taxRate = t.tax_rate;
-			notes = t.notes ?? '';
-			isActive = t.is_active === 1;
-			try {
-				const parsed = JSON.parse(t.line_items);
-				if (Array.isArray(parsed) && parsed.length > 0) {
-					lineItems = parsed.map((li: FormLineItem, i: number) => ({ ...li, sort_order: i }));
-				}
-			} catch {
-				lineItems = [{ description: '', quantity: 1, rate: 0, amount: 0, notes: '', sort_order: 0 }];
+		name = t.name;
+		clientId = t.client_id;
+		frequency = t.frequency;
+		nextDue = t.next_due;
+		taxRate = t.tax_rate;
+		notes = t.notes;
+		isActive = t.is_active === 1;
+		try {
+			const parsed = JSON.parse(t.line_items);
+			if (Array.isArray(parsed) && parsed.length > 0) {
+				lineItems = parsed.map((li: FormLineItem, i: number) => ({ ...li, sort_order: i }));
 			}
+		} catch {
+			lineItems = [{ description: '', quantity: 1, rate: 0, amount: 0, notes: '', sort_order: 0 }];
 		}
 	});
 
@@ -106,7 +103,7 @@
 		if (!validate()) return;
 		saving = true;
 		try {
-			const data = {
+			const payload = {
 				client_id: clientId === '' ? 0 : Number(clientId),
 				name: name.trim(),
 				frequency,
@@ -116,22 +113,12 @@
 				notes: notes.trim(),
 				is_active: isActive ? 1 : 0
 			};
-			if (isNew) {
-				const res = await fetch('/api/recurring', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(data)
-				});
-				const { id: newId } = await res.json();
-				goto(`${base}/console/recurring/${newId}`);
-			} else if (templateId) {
-				await fetch(`/api/recurring/${templateId}`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(data)
-				});
-				await invalidateAll();
-			}
+			await fetch(`/api/recurring/${templateId}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			await invalidateAll();
 		} finally {
 			saving = false;
 		}
@@ -140,7 +127,7 @@
 	async function handleDelete() {
 		if (!templateId) return;
 		await fetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
-		goto(`${base}/console/recurring`);
+		void goto(resolve('/(app)/console/recurring'));
 	}
 
 	async function handleCreateInvoice() {
@@ -149,7 +136,7 @@
 		try {
 			const res = await fetch(`/api/recurring/${templateId}`, { method: 'PATCH' });
 			const { invoiceId } = await res.json();
-			goto(`${base}/console/invoices/${invoiceId}`);
+			void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoiceId) }));
 		} finally {
 			creatingInvoice = false;
 		}
@@ -164,31 +151,26 @@
 	<!-- Header -->
 	<div class="flex flex-wrap items-center justify-between gap-4">
 		<div>
-			<a href="{base}/console/recurring" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+			<a href={resolve('/(app)/console/recurring')} class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
 				← {i18n.t('recurring.backToTemplates')}
 			</a>
 			<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-				{isNew ? i18n.t('recurring.newTemplate') : (template?.name ?? i18n.t('recurring.editTemplate'))}
+				{template.name}
 			</h1>
 		</div>
-		{#if !isNew && template}
-			<div class="flex items-center gap-2">
-				{#if template.is_active}
-					<Button onclick={handleCreateInvoice} disabled={creatingInvoice}>
-						{creatingInvoice ? 'Creating...' : i18n.t('recurring.createFromTemplate')}
-					</Button>
-				{/if}
-				<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>
-					{i18n.t('recurring.deleteTemplate')}
+		<div class="flex items-center gap-2">
+			{#if template.is_active}
+				<Button onclick={handleCreateInvoice} disabled={creatingInvoice}>
+					{creatingInvoice ? 'Creating...' : i18n.t('recurring.createFromTemplate')}
 				</Button>
-			</div>
-		{/if}
+			{/if}
+			<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>
+				{i18n.t('recurring.deleteTemplate')}
+			</Button>
+		</div>
 	</div>
 
-	{#if !isNew && templateId && !template}
-		<p class="text-gray-600 dark:text-gray-300">{i18n.t('recurring.notFound')}</p>
-	{:else}
-		<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+	<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
 			<div class="space-y-4">
 				<!-- Name -->
 				<div>
@@ -384,14 +366,13 @@
 
 				<!-- Actions -->
 				<div class="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
-					<Button variant="secondary" onclick={() => goto(`${base}/console/recurring`)}>{i18n.t('common.cancel')}</Button>
+					<Button variant="secondary" onclick={() => void goto(resolve('/(app)/console/recurring'))}>{i18n.t('common.cancel')}</Button>
 					<Button onclick={handleSave} disabled={saving}>
-						{saving ? i18n.t('common.loading') : (isNew ? i18n.t('recurring.createTemplate') : i18n.t('recurring.updateTemplate'))}
+						{saving ? i18n.t('common.loading') : i18n.t('recurring.updateTemplate')}
 					</Button>
 				</div>
 			</div>
 		</div>
-	{/if}
 </div>
 
 <Modal open={showDeleteConfirm} onclose={() => (showDeleteConfirm = false)} title={i18n.t('recurring.deleteConfirmTitle')}>

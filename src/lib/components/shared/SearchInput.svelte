@@ -3,6 +3,7 @@
 
 	let {
 		value = $bindable(''),
+		// eslint-disable-next-line prefer-const -- destructure shares a `let` with bindable `value`
 		placeholder = 'Search...'
 	}: {
 		value: string;

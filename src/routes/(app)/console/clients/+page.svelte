@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { PageData } from './$types';
 	import SearchInput from '$lib/components/shared/SearchInput.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -16,21 +17,21 @@
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let showPreview = $state(false);
 	let previewData: ParsedImport<CsvClientRow> | null = $state(null);
 
-	let selectedIds: Set<number> = $state(new Set());
+	const selectedIds = new SvelteSet<number>();
 	let showDeleteConfirm = $state(false);
 
-	let tiers = $derived(data.rateTiers);
-	let paginationResult = $derived(data.clientsResult);
+	const tiers = $derived(data.rateTiers);
+	const paginationResult = $derived(data.clientsResult);
 
-	let clients = $derived(
+	const clients = $derived(
 		paginationResult.data.filter(c =>
-			!search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.email ?? '').toLowerCase().includes(search.toLowerCase())
+			search === '' || c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase())
 		)
 	);
 
@@ -45,28 +46,27 @@
 
 	$effect(() => {
 		// Clear selection when search changes
-		search;
-		selectedIds = new Set();
+		void search;
+		selectedIds.clear();
 	});
 
-	let allSelected = $derived(clients.length > 0 && selectedIds.size === clients.length);
+	const allSelected = $derived(clients.length > 0 && selectedIds.size === clients.length);
 
 	function toggleAll() {
 		if (allSelected) {
-			selectedIds = new Set();
+			selectedIds.clear();
 		} else {
-			selectedIds = new Set(clients.map((c) => c.id));
+			selectedIds.clear();
+			for (const c of clients) selectedIds.add(c.id);
 		}
 	}
 
 	function toggleOne(id: number) {
-		const next = new Set(selectedIds);
-		if (next.has(id)) {
-			next.delete(id);
+		if (selectedIds.has(id)) {
+			selectedIds.delete(id);
 		} else {
-			next.add(id);
+			selectedIds.add(id);
 		}
-		selectedIds = next;
 	}
 
 	async function handleBulkDelete() {
@@ -75,7 +75,7 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
 		});
-		selectedIds = new Set();
+		selectedIds.clear();
 		showDeleteConfirm = false;
 		await invalidateAll();
 	}
@@ -107,7 +107,7 @@
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('client.title')}</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportClients} onimport={handleImport} />
-			<a href="{base}/console/clients/new">
+			<a href={resolve('/(app)/console/clients/new')}>
 				<Button>{i18n.t('client.newClient')}</Button>
 			</a>
 		</div>
@@ -119,7 +119,7 @@
 	</div>
 
 	<!-- Bulk action bar -->
-	<BulkActionBar count={selectedIds.size} ondeselect={() => (selectedIds = new Set())}>
+	<BulkActionBar count={selectedIds.size} ondeselect={() => selectedIds.clear()}>
 		<Button variant="danger" size="sm" onclick={() => (showDeleteConfirm = true)}>{i18n.t('common.delete')}</Button>
 	</BulkActionBar>
 
@@ -129,7 +129,7 @@
 			<EmptyState title={i18n.t('common.noResults')} message={i18n.t('client.noResultsMessage')} />
 		{:else}
 			<EmptyState title={i18n.t('client.noClients')} message={i18n.t('client.noClientsMessage')}>
-				<a href="{base}/console/clients/new">
+				<a href={resolve('/(app)/console/clients/new')}>
 					<Button>{i18n.t('client.newClient')}</Button>
 				</a>
 			</EmptyState>
@@ -154,7 +154,7 @@
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-					{#each clients as client}
+					{#each clients as client (client.id)}
 						<tr class="transition-colors {selectedIds.has(client.id) ? 'bg-primary-50 dark:bg-primary-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}">
 							<td class="w-10 px-4 py-3">
 								<input
@@ -165,27 +165,27 @@
 								/>
 							</td>
 							<td class="px-6 py-4">
-								<a href="{base}/console/clients/{client.id}" class="font-medium text-primary-600 hover:text-primary-700">
+								<a href={resolve('/(app)/console/clients/[id]', { id: String(client.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 									{client.name}
 								</a>
 							</td>
 							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
-								{client.email || '-'}
+								{client.email !== '' ? client.email : '-'}
 							</td>
 							<td class="hidden px-6 py-4 text-sm text-gray-500 dark:text-gray-400 md:table-cell">
-								{client.phone || '-'}
+								{client.phone !== '' ? client.phone : '-'}
 							</td>
 							<td class="hidden px-6 py-4 lg:table-cell">
 								<select
 									value={client.pricing_tier_id ?? ''}
 									onchange={(e) => {
 										const val = (e.target as HTMLSelectElement).value;
-										handleTierChange(client, val ? Number(val) : null);
+										void handleTierChange(client, val !== '' ? Number(val) : null);
 									}}
 									class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
 								>
 									<option value="">{i18n.t('client.noTier')}</option>
-									{#each tiers as tier}
+									{#each tiers as tier (tier.id)}
 										<option value={tier.id}>{tier.name}</option>
 									{/each}
 								</select>

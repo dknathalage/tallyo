@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { formatCurrency, formatDate } from '$lib/utils/format.js';
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import type { PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
-	let agingBuckets = $derived(data.agingBuckets);
-	let defaultCurrency = $derived(data.defaultCurrency);
+	const { data }: { data: PageData } = $props();
+	const agingBuckets = $derived(data.agingBuckets);
+	const defaultCurrency = $derived(data.defaultCurrency);
 
 	let expandedBuckets = $state<Set<string>>(new Set());
 
@@ -19,8 +19,8 @@
 		expandedBuckets = new Set(expandedBuckets);
 	}
 
-	let totalOutstanding = $derived(agingBuckets.reduce((sum, b) => sum + b.total, 0));
-	let totalInvoices = $derived(agingBuckets.reduce((sum, b) => sum + b.invoices.length, 0));
+	const totalOutstanding = $derived(agingBuckets.reduce((sum, b) => sum + b.total, 0));
+	const totalInvoices = $derived(agingBuckets.reduce((sum, b) => sum + b.invoices.length, 0));
 
 	const bucketColors: Record<string, string> = {
 		'Current': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -113,7 +113,7 @@
 								{#each bucket.invoices as invoice}
 									<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 										<td class="px-5 py-3">
-											<a href="{base}/console/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
+											<a href={resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 												{invoice.invoice_number}
 											</a>
 										</td>

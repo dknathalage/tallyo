@@ -12,26 +12,27 @@ function toISOString(d: string | null | undefined): string {
 }
 
 function mapRowToEstimate(row: Record<string, unknown>): Estimate {
+	const clientName = row['client_name'] as string | null | undefined;
 	return {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		estimate_number: row['estimate_number'] as string,
 		client_id: row['client_id'] as number,
-		client_name: (row['client_name'] as string) ?? undefined,
+		...(clientName !== null && clientName !== undefined ? { client_name: clientName } : {}),
 		date: row['date'] as string,
 		valid_until: row['valid_until'] as string,
 		subtotal: row['subtotal'] as number,
 		tax_rate: row['tax_rate'] as number,
-		tax_rate_id: (row['tax_rate_id'] as number | null) ?? null,
+		tax_rate_id: (row['tax_rate_id'] as number | null | undefined) ?? null,
 		tax_amount: row['tax_amount'] as number,
 		total: row['total'] as number,
-		notes: (row['notes'] as string) ?? '',
+		notes: (row['notes'] as string | null | undefined) ?? '',
 		status: row['status'] as Estimate['status'],
-		currency_code: (row['currency_code'] as string) ?? 'USD',
-		converted_invoice_id: (row['converted_invoice_id'] as number | null) ?? null,
-		business_snapshot: (row['business_snapshot'] as string) ?? '{}',
-		client_snapshot: (row['client_snapshot'] as string) ?? '{}',
-		payer_snapshot: (row['payer_snapshot'] as string) ?? '{}',
+		currency_code: (row['currency_code'] as string | null | undefined) ?? 'USD',
+		converted_invoice_id: (row['converted_invoice_id'] as number | null | undefined) ?? null,
+		business_snapshot: (row['business_snapshot'] as string | null | undefined) ?? '{}',
+		client_snapshot: (row['client_snapshot'] as string | null | undefined) ?? '{}',
+		payer_snapshot: (row['payer_snapshot'] as string | null | undefined) ?? '{}',
 		created_at: toISOString(row['created_at'] as string | null),
 		updated_at: toISOString(row['updated_at'] as string | null)
 	};
@@ -46,10 +47,10 @@ function mapRowToEstimateLineItem(row: Record<string, unknown>): EstimateLineIte
 		quantity: row['quantity'] as number,
 		rate: row['rate'] as number,
 		amount: row['amount'] as number,
-		notes: (row['notes'] as string) ?? '',
-		sort_order: (row['sort_order'] as number) ?? 0,
-		catalog_item_id: (row['catalog_item_id'] as number | null) ?? null,
-		rate_tier_id: (row['rate_tier_id'] as number | null) ?? null
+		notes: (row['notes'] as string | null | undefined) ?? '',
+		sort_order: (row['sort_order'] as number | null | undefined) ?? 0,
+		catalog_item_id: (row['catalog_item_id'] as number | null | undefined) ?? null,
+		rate_tier_id: (row['rate_tier_id'] as number | null | undefined) ?? null
 	};
 }
 
@@ -86,12 +87,11 @@ export async function getEstimates(
 	const conditions: ReturnType<typeof eq>[] = [];
 
 	if (search) {
-		conditions.push(
-			or(
-				like(estimates.estimate_number, `%${search}%`),
-				like(clients.name, `%${search}%`)
-			)!
+		const clause = or(
+			like(estimates.estimate_number, `%${search}%`),
+			like(clients.name, `%${search}%`)
 		);
+		if (clause) conditions.push(clause);
 	}
 	if (status) {
 		conditions.push(eq(estimates.status, status));
@@ -122,7 +122,7 @@ export async function getEstimate(id: number): Promise<Estimate | null> {
 
 	const first = rows[0];
 	if (!first) return null;
-	return mapRowToEstimate(first as unknown as Record<string, unknown>);
+	return mapRowToEstimate(first);
 }
 
 export async function getEstimateLineItems(estimateId: number): Promise<EstimateLineItem[]> {
@@ -338,7 +338,7 @@ export async function convertEstimateToInvoice(
 			quantity: item.quantity,
 			rate: item.rate,
 			amount: item.amount,
-			notes: item.notes ?? '',
+			notes: item.notes,
 			sort_order: item.sort_order
 		});
 	}
@@ -380,12 +380,12 @@ export async function duplicateEstimate(
 				tax_rate: original.tax_rate,
 				tax_amount: original.tax_amount,
 				total: original.total,
-				notes: original.notes ?? '',
+				notes: original.notes,
 				status: 'draft',
-				currency_code: original.currency_code ?? 'USD',
-				business_snapshot: original.business_snapshot ?? '{}',
-				client_snapshot: original.client_snapshot ?? '{}',
-				payer_snapshot: original.payer_snapshot ?? '{}'
+				currency_code: original.currency_code,
+				business_snapshot: original.business_snapshot,
+				client_snapshot: original.client_snapshot,
+				payer_snapshot: original.payer_snapshot
 			})
 			.returning({ id: estimates.id });
 
@@ -400,7 +400,7 @@ export async function duplicateEstimate(
 				quantity: item.quantity,
 				rate: item.rate,
 				amount: item.amount,
-				notes: item.notes ?? '',
+				notes: item.notes,
 				sort_order: item.sort_order
 			});
 		}

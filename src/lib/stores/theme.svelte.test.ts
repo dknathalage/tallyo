@@ -118,7 +118,7 @@ describe('theme store', () => {
 	it('init() does not change preference when localStorage has no value', () => {
 		// Set to a known value first
 		theme.set('light');
-		localStorageMock.getItem.mockReturnValueOnce(null as any);
+		localStorageMock.getItem.mockReturnValueOnce(null);
 		mockMatchMedia.mockReturnValue({
 			matches: false,
 			media: '',
@@ -141,7 +141,7 @@ describe('theme store', () => {
 	});
 
 	it('init() applies dark when system prefers dark', () => {
-		localStorageMock.getItem.mockReturnValueOnce(null as any);
+		localStorageMock.getItem.mockReturnValueOnce(null);
 		mockMatchMedia.mockReturnValue({
 			matches: true,
 			media: '',

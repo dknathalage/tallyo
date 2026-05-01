@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 
-	let {
+	const {
 		total,
 		currentPage,
 		totalPages,
@@ -19,7 +19,8 @@
 	function navigate(newPage: number) {
 		const url = new URL(page.url);
 		url.searchParams.set('page', String(newPage));
-		goto(url.toString(), { keepFocus: true, noScroll: true });
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- target is the current page URL with a single query param change; resolve() expects a static route ID and cannot represent runtime query strings
+		void goto(url.toString(), { keepFocus: true, noScroll: true });
 	}
 </script>
 

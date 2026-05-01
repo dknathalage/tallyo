@@ -34,10 +34,10 @@ export function getConfig(): AppConfig {
 
 	if (existsSync(configPath)) {
 		try {
-			const raw = JSON.parse(readFileSync(configPath, 'utf-8'));
+			const raw = JSON.parse(readFileSync(configPath, 'utf-8')) as Partial<AppConfig>;
 			_config = {
-				server: { ...defaults.server, ...raw.server },
-				app: { ...defaults.app, ...raw.app }
+				server: { ...defaults.server, ...(raw.server ?? {}) },
+				app: { ...defaults.app, ...(raw.app ?? {}) }
 			};
 		} catch {
 			_config = { ...defaults };

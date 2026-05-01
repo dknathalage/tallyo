@@ -3,7 +3,7 @@
 	import { parseFile, getSheetWithHeaderRow, type ParsedFile, type ParsedSheet } from '$lib/import/parse-file.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		onparsed
 	}: {
 		onparsed: (file: ParsedFile, selectedSheet: ParsedSheet) => void;
@@ -16,7 +16,7 @@
 	let loading = $state(false);
 	let error = $state('');
 
-	let activeSheet: ParsedSheet | null = $derived.by(() => {
+	const activeSheet: ParsedSheet | null = $derived.by(() => {
 		if (!parsedFile || parsedFile.sheets.length === 0) return null;
 		const raw = parsedFile.sheets[selectedSheetIndex];
 		if (!raw) return null;
@@ -26,7 +26,7 @@
 		return raw;
 	});
 
-	let previewRows = $derived(activeSheet?.rows.slice(0, 5) ?? []);
+	const previewRows = $derived(activeSheet?.rows.slice(0, 5) ?? []);
 
 	async function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -141,7 +141,7 @@
 								<tr>
 									{#each activeSheet.headers as header}
 										<td class="whitespace-nowrap px-3 py-1.5 text-gray-700 dark:text-gray-300">
-											{row[header] || ''}
+											{row[header] ?? ''}
 										</td>
 									{/each}
 								</tr>

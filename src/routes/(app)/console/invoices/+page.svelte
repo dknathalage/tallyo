@@ -17,10 +17,10 @@
 	import type { ParsedInvoiceImport } from '$lib/csv/types.js';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let search = $state('');
 	let statusFilter = $state('');
@@ -30,12 +30,12 @@
 	let selectedIds: Set<number> = $state(new Set());
 	let showDeleteConfirm = $state(false);
 
-	let dueTemplatesCount = $derived(data.dueTemplatesCount);
-	let paginationResult = $derived(data.invoicesResult);
+	const dueTemplatesCount = $derived(data.dueTemplatesCount);
+	const paginationResult = $derived(data.invoicesResult);
 
 	const statuses = ['', 'draft', 'sent', 'paid', 'overdue'] as const;
 
-	let invoices: Invoice[] = $derived(
+	const invoices: Invoice[] = $derived(
 		paginationResult.data.filter((inv: Invoice) => {
 			const matchesSearch = !search || inv.invoice_number.toLowerCase().includes(search.toLowerCase()) || (inv.client_name ?? '').toLowerCase().includes(search.toLowerCase());
 			const matchesStatus = !statusFilter || inv.status === statusFilter;
@@ -43,7 +43,7 @@
 		})
 	);
 
-	let allSelected = $derived(invoices.length > 0 && selectedIds.size === invoices.length);
+	const allSelected = $derived(invoices.length > 0 && selectedIds.size === invoices.length);
 
 	function toggleAll() {
 		if (allSelected) {
@@ -64,23 +64,25 @@
 	}
 
 	async function handleBulkDelete() {
+		const ids = [...selectedIds];
+		selectedIds = new Set();
+		showDeleteConfirm = false;
 		await fetch('/api/invoices', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
+			body: JSON.stringify({ action: 'bulk-delete', ids })
 		});
-		selectedIds = new Set();
-		showDeleteConfirm = false;
 		await invalidateAll();
 	}
 
 	async function handleBulkStatus(status: string) {
+		const ids = [...selectedIds];
+		selectedIds = new Set();
 		await fetch('/api/invoices', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ action: 'bulk-status', ids: [...selectedIds], status })
+			body: JSON.stringify({ action: 'bulk-status', ids, status })
 		});
-		selectedIds = new Set();
 		await invalidateAll();
 	}
 
@@ -120,7 +122,7 @@
 				</span>
 			</div>
 			<a
-				href="{base}/console/recurring"
+				href={resolve('/(app)/console/recurring')}
 				class="ml-4 shrink-0 text-sm font-medium text-amber-700 underline hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
 			>
 				{i18n.t('recurring.viewDue')}
@@ -133,7 +135,7 @@
 		<h1 class="text-2xl font-bold text-gray-900 dark:text-white">{i18n.t('invoice.title')}</h1>
 		<div class="flex items-center gap-3">
 			<ImportExportBar onexport={exportInvoices} onimport={handleImport} />
-			<Button onclick={() => goto(`${base}/console/invoices/new`)}>{i18n.t('invoice.newInvoice')}</Button>
+			<Button onclick={() => void goto(resolve('/(app)/console/invoices/new'))}>{i18n.t('invoice.newInvoice')}</Button>
 		</div>
 	</div>
 
@@ -161,7 +163,7 @@
 			onchange={(e) => {
 				const val = e.currentTarget.value;
 				if (val) {
-					handleBulkStatus(val);
+					void handleBulkStatus(val);
 					e.currentTarget.value = '';
 				}
 			}}
@@ -179,7 +181,7 @@
 	<!-- Invoice list -->
 	{#if invoices.length === 0}
 		<EmptyState title={i18n.t('invoice.noInvoicesFound')} message={i18n.t('invoice.noInvoicesMessage')}>
-			<Button onclick={() => goto(`${base}/console/invoices/new`)}>{i18n.t('invoice.newInvoice')}</Button>
+			<Button onclick={() => void goto(resolve('/(app)/console/invoices/new'))}>{i18n.t('invoice.newInvoice')}</Button>
 		</EmptyState>
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -220,31 +222,31 @@
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm font-medium text-primary-600"
-								onclick={() => goto(`${base}/console/invoices/${invoice.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) }))}
 							>
 								{invoice.invoice_number}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-900 dark:text-white"
-								onclick={() => goto(`${base}/console/invoices/${invoice.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) }))}
 							>
 								{invoice.client_name ?? i18n.t('common.unknown')}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
-								onclick={() => goto(`${base}/console/invoices/${invoice.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) }))}
 							>
 								{formatDate(invoice.date)}
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3"
-								onclick={() => goto(`${base}/console/invoices/${invoice.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) }))}
 							>
 								<StatusBadge status={invoice.status} />
 							</td>
 							<td
 								class="cursor-pointer whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900"
-								onclick={() => goto(`${base}/console/invoices/${invoice.id}`)}
+								onclick={() => void goto(resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) }))}
 							>
 								{formatCurrency(invoice.total, invoice.currency_code)}
 							</td>

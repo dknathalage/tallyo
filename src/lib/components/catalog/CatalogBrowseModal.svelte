@@ -3,7 +3,8 @@
 	import type { CatalogItem } from '$lib/types/index.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	// eslint-disable-next-line svelte/no-unused-props -- `tierId` is reserved for future tier-aware pricing API
+	const {
 		open = false,
 		onclose,
 		onselect
@@ -20,13 +21,13 @@
 
 	$effect(() => {
 		if (open) {
-			fetch('/api/catalog').then(r => r.json()).then(d => { allItems = d; });
+			void fetch('/api/catalog').then(r => r.json() as Promise<CatalogItem[]>).then(d => { allItems = d; });
 			// Get categories from loaded items
 		}
 	});
 
-	let categories = $derived(open ? [...new Set(allItems.map((i: CatalogItem) => i.category).filter(Boolean))] : []);
-	let items = $derived(
+	const categories = $derived(open ? [...new Set(allItems.map((i: CatalogItem) => i.category).filter(Boolean))] : []);
+	const items = $derived(
 		open ? allItems.filter((item: CatalogItem) => {
 			const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
 			const matchesCategory = !selectedCategory || item.category === selectedCategory;
@@ -58,7 +59,7 @@
 					class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
 				>
 					<option value="">{i18n.t('catalog.allCategories')}</option>
-					{#each categories as category}
+					{#each categories as category (category)}
 						<option value={category}>{category}</option>
 					{/each}
 				</select>
@@ -73,7 +74,7 @@
 				</div>
 			{:else}
 				<div class="divide-y divide-gray-100 dark:divide-gray-800">
-					{#each items as item}
+					{#each items as item (item.id)}
 						<button
 							type="button"
 							class="flex w-full cursor-pointer items-center justify-between px-3 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"

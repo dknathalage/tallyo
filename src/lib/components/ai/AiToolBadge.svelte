@@ -4,7 +4,7 @@
     result?: string | undefined;
     is_error?: boolean | undefined;
   }
-  let { name, result, is_error = false }: Props = $props();
+  const { name, result, is_error = false }: Props = $props();
   let expanded = $state(false);
   const done = $derived(result !== undefined);
 </script>
@@ -18,7 +18,7 @@
   {:else}
     <span class="text-green-500">✓</span>
   {/if}
-  <button onclick={() => expanded = !expanded} class="font-mono hover:underline">
+  <button onclick={() => { expanded = !expanded; }} class="font-mono hover:underline">
     {name}
   </button>
   {#if expanded && result}

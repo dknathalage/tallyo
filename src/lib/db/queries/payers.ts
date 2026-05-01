@@ -27,7 +27,7 @@ export async function createPayer(data: {
 	address?: string;
 	metadata?: string;
 }): Promise<number> {
-	if (!data.name?.trim()) {
+	if (!data.name.trim()) {
 		throw new Error('Payer name is required');
 	}
 	const db = getDb();
@@ -50,7 +50,7 @@ export async function updatePayer(
 	id: number,
 	data: { name: string; email?: string; phone?: string; address?: string; metadata?: string }
 ): Promise<void> {
-	if (!data.name?.trim()) {
+	if (!data.name.trim()) {
 		throw new Error('Payer name is required');
 	}
 	const db = getDb();
@@ -95,8 +95,8 @@ export async function getPayerClients(payerId: number): Promise<Client[]> {
 		pricing_tier_id: r.pricing_tier_id,
 		metadata: r.metadata ?? '{}',
 		payer_id: r.payer_id,
-		created_at: (r.created_at as string) ?? '',
-		updated_at: (r.updated_at as string) ?? ''
+		created_at: r.created_at ?? '',
+		updated_at: r.updated_at ?? ''
 	}));
 }
 
@@ -132,7 +132,7 @@ function mapRow(row: typeof payers.$inferSelect): Payer {
 		phone: row.phone ?? '',
 		address: row.address ?? '',
 		metadata: row.metadata ?? '{}',
-		created_at: (row.created_at as string) ?? '',
-		updated_at: (row.updated_at as string) ?? ''
+		created_at: row.created_at ?? '',
+		updated_at: row.updated_at ?? ''
 	};
 }

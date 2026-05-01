@@ -3,7 +3,7 @@
   import AiMessage from '$lib/components/ai/AiMessage.svelte';
   import { aiChat } from '$lib/stores/ai-chat.svelte.js';
 
-  let { data } = $props();
+  const { data } = $props();
   let inputText = $state('');
   let messagesEl = $state<HTMLElement | null>(null);
   let inputEl = $state<HTMLTextAreaElement | null>(null);
@@ -42,7 +42,7 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      void handleSubmit();
     }
   }
 </script>
@@ -74,7 +74,7 @@
             {session.title}
           </button>
           <button
-            onclick={(e) => { e.stopPropagation(); aiChat.deleteSession(session.id); }}
+            onclick={(e) => { e.stopPropagation(); void aiChat.deleteSession(session.id); }}
             class="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/40 text-red-500 transition-opacity"
             aria-label="Delete session"
           >

@@ -13,20 +13,22 @@ import type { CreateClientInput } from '../../repositories/interfaces/types.js';
 import { getBusinessProfile } from './business-profile.js';
 
 function mapRow(row: Record<string, unknown>): Client {
+	const tierName = row['pricing_tier_name'] as string | null | undefined;
+	const payerName = row['payer_name'] as string | null | undefined;
 	return {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		name: row['name'] as string,
-		email: (row['email'] as string) ?? '',
-		phone: (row['phone'] as string) ?? '',
-		address: (row['address'] as string) ?? '',
-		pricing_tier_id: (row['pricing_tier_id'] as number | null) ?? null,
-		pricing_tier_name: (row['pricing_tier_name'] as string) ?? undefined,
-		metadata: (row['metadata'] as string) ?? '{}',
-		payer_id: (row['payer_id'] as number | null) ?? null,
-		payer_name: (row['payer_name'] as string) ?? undefined,
-		created_at: (row['created_at'] as string) ?? '',
-		updated_at: (row['updated_at'] as string) ?? ''
+		email: (row['email'] as string | null | undefined) ?? '',
+		phone: (row['phone'] as string | null | undefined) ?? '',
+		address: (row['address'] as string | null | undefined) ?? '',
+		pricing_tier_id: (row['pricing_tier_id'] as number | null | undefined) ?? null,
+		...(tierName !== null && tierName !== undefined ? { pricing_tier_name: tierName } : {}),
+		metadata: (row['metadata'] as string | null | undefined) ?? '{}',
+		payer_id: (row['payer_id'] as number | null | undefined) ?? null,
+		...(payerName !== null && payerName !== undefined ? { payer_name: payerName } : {}),
+		created_at: (row['created_at'] as string | null | undefined) ?? '',
+		updated_at: (row['updated_at'] as string | null | undefined) ?? ''
 	};
 }
 
@@ -101,7 +103,8 @@ export async function getClient(id: number): Promise<Client | null> {
  * Inserts a client and returns the new id.
  */
 export async function createClient(data: CreateClientInput): Promise<number> {
-	if (!data.name?.trim()) {
+	const name = data.name as string | null | undefined;
+	if (!name?.trim()) {
 		throw new Error('Client name is required');
 	}
 	const db = getDb();
@@ -140,7 +143,8 @@ export async function updateClient(
 		payer_id?: number | null;
 	}
 ): Promise<void> {
-	if (!data.name?.trim()) {
+	const name = data.name as string | null | undefined;
+	if (!name?.trim()) {
 		throw new Error('Client name is required');
 	}
 	const db = getDb();
@@ -184,7 +188,7 @@ export async function buildClientSnapshot(clientId: number): Promise<PartySnapsh
 	}
 	let metadata: Record<string, string> = {};
 	try {
-		metadata = JSON.parse(client.metadata || '{}');
+		metadata = JSON.parse(client.metadata || '{}') as Record<string, string>;
 	} catch (e) {
 		console.error('Failed to parse client metadata', e);
 	}
@@ -201,7 +205,7 @@ export async function getClientRevenueSummary(
 	clientId: number
 ): Promise<ClientRevenueSummary> {
 	const profile = await getBusinessProfile();
-	const defaultCurrency = profile?.default_currency || 'USD';
+	const defaultCurrency = profile?.default_currency ?? 'USD';
 
 	const db = getDb();
 	const result = await db

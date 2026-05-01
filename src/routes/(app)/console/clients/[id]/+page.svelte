@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import ClientForm from '$lib/components/client/ClientForm.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -12,20 +12,20 @@
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let { data }: { data: PageData } = $props();
+	const { data }: { data: PageData } = $props();
 
 	let client = $state(untrack(() => data.client));
-	let revenueSummary = $derived(data.revenueSummary);
-	let auditHistory = $derived(data.auditHistory);
-	let invoices = $derived(data.invoices ?? []);
-	let estimates = $derived(data.estimates ?? []);
-	let payer = $derived(data.payer);
+	const revenueSummary = $derived(data.revenueSummary);
+	const auditHistory = $derived(data.auditHistory);
+	const invoices = $derived(data.invoices);
+	const estimates = $derived(data.estimates);
+	const payer = $derived(data.payer);
 	let editing = $state(false);
 	let showDeleteConfirm = $state(false);
 
 	function parseMetadataObj(metaStr?: string): Record<string, string> {
 		try {
-			const obj = JSON.parse(metaStr || '{}');
+			const obj = JSON.parse(metaStr ?? '{}');
 			return typeof obj === 'object' ? obj : {};
 		} catch {
 			return {};
@@ -45,7 +45,7 @@
 
 	async function handleDelete() {
 		await fetch(`/api/clients/${client.id}`, { method: 'DELETE' });
-		goto(`${base}/console/clients`);
+		void goto(resolve('/(app)/console/clients'));
 	}
 
 	function formatTimestamp(ts: string): string {
@@ -91,7 +91,7 @@
 
 {#if !client}
 	<EmptyState title={i18n.t('client.notFound')} message={i18n.t('client.notFoundMessage')}>
-		<a href="{base}/console/clients">
+		<a href={resolve('/(app)/console/clients')}>
 			<Button variant="secondary">{i18n.t('client.backToClients')}</Button>
 		</a>
 	</EmptyState>
@@ -100,7 +100,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<a href="{base}/console/clients" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('client.backToClients')}</a>
+				<a href={resolve('/(app)/console/clients')} class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">&larr; {i18n.t('client.backToClients')}</a>
 				<h1 class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{client.name}</h1>
 			</div>
 			<div class="flex gap-2">
@@ -194,7 +194,7 @@
 		<div>
 			<div class="flex items-center justify-between">
 				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.invoices')}</h2>
-				<a href="{base}/console/invoices/new?client_id={client.id}">
+				<a href={`${resolve('/(app)/console/invoices/new')}?client_id=${client.id}`}>
 					<Button size="sm">{i18n.t('client.newInvoice')}</Button>
 				</a>
 			</div>
@@ -218,7 +218,7 @@
 							{#each invoices as invoice}
 								<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 									<td class="px-6 py-4">
-										<a href="{base}/console/invoices/{invoice.id}" class="font-medium text-primary-600 hover:text-primary-700">
+										<a href={resolve('/(app)/console/invoices/[id]', { id: String(invoice.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 											{invoice.invoice_number}
 										</a>
 									</td>
@@ -243,7 +243,7 @@
 		<div>
 			<div class="flex items-center justify-between">
 				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('client.estimates')}</h2>
-				<a href="{base}/estimates/new">
+				<a href={resolve('/(app)/console/estimates/new')}>
 					<Button size="sm">{i18n.t('client.newEstimate')}</Button>
 				</a>
 			</div>
@@ -267,7 +267,7 @@
 							{#each estimates as estimate}
 								<tr class="transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
 									<td class="px-6 py-4">
-										<a href="{base}/estimates/{estimate.id}" class="font-medium text-primary-600 hover:text-primary-700">
+										<a href={resolve('/(app)/console/estimates/[id]', { id: String(estimate.id) })} class="font-medium text-primary-600 hover:text-primary-700">
 											{estimate.estimate_number}
 										</a>
 									</td>

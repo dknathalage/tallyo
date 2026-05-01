@@ -3,9 +3,9 @@
 	import LiveAnnouncer from '$lib/components/shared/LiveAnnouncer.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 
-	let { children } = $props();
+	const { children }: { children: Snippet } = $props();
 
 	onMount(() => {
 		theme.init();

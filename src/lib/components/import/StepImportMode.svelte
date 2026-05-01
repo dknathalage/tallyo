@@ -2,7 +2,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
-	let {
+	const {
 		onselect
 	}: {
 		onselect: (mode: 'insert_only' | 'upsert') => void;

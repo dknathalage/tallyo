@@ -13,17 +13,18 @@ function toISOString(d: string | null | undefined): string {
 }
 
 function mapRowToTemplate(row: Record<string, unknown>): RecurringTemplate {
+	const clientName = row['client_name'] as string | null | undefined;
 	return {
 		id: row['id'] as number,
 		uuid: row['uuid'] as string,
 		client_id: row['client_id'] as number,
-		client_name: (row['client_name'] as string) ?? undefined,
+		...(clientName !== null && clientName !== undefined ? { client_name: clientName } : {}),
 		name: row['name'] as string,
 		frequency: row['frequency'] as RecurringFrequency,
 		next_due: row['next_due'] as string,
 		line_items: row['line_items'] as string,
 		tax_rate: row['tax_rate'] as number,
-		notes: (row['notes'] as string) ?? '',
+		notes: (row['notes'] as string | null | undefined) ?? '',
 		is_active: (row['is_active'] as boolean) ? 1 : 0,
 		created_at: toISOString(row['created_at'] as string | null),
 		updated_at: toISOString(row['updated_at'] as string | null)
@@ -77,7 +78,7 @@ export async function getRecurringTemplate(id: number): Promise<RecurringTemplat
 
 	const first = rows[0];
 	if (!first) return null;
-	return mapRowToTemplate(first as unknown as Record<string, unknown>);
+	return mapRowToTemplate(first);
 }
 
 export async function getDueTemplates(): Promise<RecurringTemplate[]> {
@@ -216,17 +217,18 @@ export async function advanceTemplateNextDue(id: number): Promise<void> {
 		.where(eq(recurringTemplates.id, id));
 }
 
-/** Create a draft invoice from a recurring template and advance next_due */
-export async function createInvoiceFromTemplate(templateId: number): Promise<number> {
-	const template = await getRecurringTemplate(templateId);
-	if (!template) throw new Error(`Recurring template ${templateId} not found`);
+interface TemplateLineItem {
+	description: string;
+	quantity: number;
+	rate: number;
+	amount?: number;
+	notes?: string;
+	sort_order?: number;
+}
 
-	const invoiceNumber = await generateInvoiceNumber();
-	const todayStr = new Date().toISOString().slice(0, 10);
-
-	// Build snapshots
+async function buildBusinessSnap(): Promise<{ snap: string; defaultCurrency: string }> {
 	const profile = await getBusinessProfile();
-	const businessSnap = JSON.stringify({
+	const snap = JSON.stringify({
 		name: profile?.name ?? '',
 		email: profile?.email ?? '',
 		phone: profile?.phone ?? '',
@@ -234,69 +236,46 @@ export async function createInvoiceFromTemplate(templateId: number): Promise<num
 		logo: profile?.logo ?? '',
 		metadata: {}
 	});
+	const defaultCurrency = profile?.default_currency ?? 'USD';
+	return { snap, defaultCurrency };
+}
 
-	const client = template.client_id ? await getClient(template.client_id) : null;
-	const clientSnap = JSON.stringify({
+async function buildClientSnap(clientId: number | null): Promise<string> {
+	const client = clientId !== null && clientId !== 0 ? await getClient(clientId) : null;
+	return JSON.stringify({
 		name: client?.name ?? '',
 		email: client?.email ?? '',
 		phone: client?.phone ?? '',
 		address: client?.address ?? '',
 		metadata: {}
 	});
+}
 
-	// Parse line items from template JSON
-	interface TemplateLineItem {
-		description: string;
-		quantity: number;
-		rate: number;
-		amount: number;
-		notes?: string;
-		sort_order?: number;
-	}
-	let templateLineItems: TemplateLineItem[] = [];
+function parseTemplateLineItems(json: string): TemplateLineItem[] {
 	try {
-		templateLineItems = JSON.parse(template.line_items);
+		const parsed: unknown = JSON.parse(json);
+		return Array.isArray(parsed) ? (parsed as TemplateLineItem[]) : [];
 	} catch {
-		templateLineItems = [];
+		return [];
 	}
+}
 
-	// Calculate totals from line items
-	const subtotal = templateLineItems.reduce(
-		(sum: number, li: TemplateLineItem) => sum + (li.amount ?? li.quantity * li.rate),
-		0
-	);
-	const taxAmount = subtotal * (template.tax_rate / 100);
-	const total = subtotal + taxAmount;
+function lineItemAmount(li: TemplateLineItem): number {
+	return li.amount ?? li.quantity * li.rate;
+}
 
-	const defaultCurrency = profile?.default_currency ?? 'USD';
-
+async function insertInvoiceWithLines(
+	values: typeof invoices.$inferInsert,
+	templateLineItems: TemplateLineItem[]
+): Promise<number> {
 	const db = getDb();
-	const invoiceId = await db.transaction(async (tx) => {
+	return db.transaction(async (tx) => {
 		const [inserted] = await tx
 			.insert(invoices)
-			.values({
-				uuid: crypto.randomUUID(),
-				invoice_number: invoiceNumber,
-				client_id: template.client_id,
-				date: todayStr,
-				due_date: todayStr,
-				payment_terms: 'custom',
-				subtotal,
-				tax_rate: template.tax_rate,
-				tax_amount: taxAmount,
-				total,
-				notes: template.notes ?? '',
-				status: 'draft',
-				currency_code: defaultCurrency,
-				business_snapshot: businessSnap,
-				client_snapshot: clientSnap,
-				payer_snapshot: '{}'
-			})
+			.values(values)
 			.returning({ id: invoices.id });
-
 		if (!inserted) throw new Error('Failed to create invoice from template');
 		const newInvoiceId = inserted.id;
-
 		for (let i = 0; i < templateLineItems.length; i++) {
 			const li = templateLineItems[i];
 			if (!li) continue;
@@ -306,14 +285,51 @@ export async function createInvoiceFromTemplate(templateId: number): Promise<num
 				description: li.description,
 				quantity: li.quantity,
 				rate: li.rate,
-				amount: li.amount ?? li.quantity * li.rate,
+				amount: lineItemAmount(li),
 				notes: li.notes ?? '',
 				sort_order: li.sort_order ?? i
 			});
 		}
-
 		return newInvoiceId;
 	});
+}
+
+/** Create a draft invoice from a recurring template and advance next_due */
+export async function createInvoiceFromTemplate(templateId: number): Promise<number> {
+	const template = await getRecurringTemplate(templateId);
+	if (!template) throw new Error(`Recurring template ${templateId} not found`);
+
+	const invoiceNumber = await generateInvoiceNumber();
+	const todayStr = new Date().toISOString().slice(0, 10);
+
+	const { snap: businessSnap, defaultCurrency } = await buildBusinessSnap();
+	const clientSnap = await buildClientSnap(template.client_id);
+
+	const templateLineItems = parseTemplateLineItems(template.line_items);
+	const subtotal = templateLineItems.reduce((sum, li) => sum + lineItemAmount(li), 0);
+	const taxAmount = subtotal * (template.tax_rate / 100);
+	const total = subtotal + taxAmount;
+
+	const db = getDb();
+	const invoiceValues = {
+		uuid: crypto.randomUUID(),
+		invoice_number: invoiceNumber,
+		client_id: template.client_id,
+		date: todayStr,
+		due_date: todayStr,
+		payment_terms: 'custom' as const,
+		subtotal,
+		tax_rate: template.tax_rate,
+		tax_amount: taxAmount,
+		total,
+		notes: template.notes,
+		status: 'draft' as const,
+		currency_code: defaultCurrency,
+		business_snapshot: businessSnap,
+		client_snapshot: clientSnap,
+		payer_snapshot: '{}'
+	};
+	const invoiceId = await insertInvoiceWithLines(invoiceValues, templateLineItems);
 
 	await logAudit({
 		entity_type: 'invoice',
@@ -322,7 +338,6 @@ export async function createInvoiceFromTemplate(templateId: number): Promise<num
 		context: `${invoiceNumber} (from recurring template: ${template.name})`
 	});
 
-	// Advance template next_due
 	const newDate = advanceNextDue(template.next_due, template.frequency);
 	await db
 		.update(recurringTemplates)

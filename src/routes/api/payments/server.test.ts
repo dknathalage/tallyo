@@ -74,7 +74,7 @@ describe('POST /api/payments', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('creates a payment', async () => {
-		vi.mocked(repositories.payments.createPayment).mockResolvedValue(10 as any);
+		vi.mocked(repositories.payments.createPayment).mockResolvedValue(10);
 		const result = await POST({ request: makeRequest({ invoice_id: 5, amount: 100 }) } as any);
 		expect((result as any).status).toBe(201);
 		expect((result as any).body).toEqual({ id: 10 });
@@ -82,7 +82,7 @@ describe('POST /api/payments', () => {
 	});
 
 	it('converts invalid invoice_id via fkOrNull', async () => {
-		vi.mocked(repositories.payments.createPayment).mockResolvedValue(11 as any);
+		vi.mocked(repositories.payments.createPayment).mockResolvedValue(11);
 		await POST({ request: makeRequest({ invoice_id: 'invalid', amount: 50 }) } as any);
 		expect(repositories.payments.createPayment).toHaveBeenCalledWith({ invoice_id: null, amount: 50 });
 	});
@@ -97,7 +97,7 @@ describe('DELETE /api/payments/[id]', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('deletes a payment', async () => {
-		vi.mocked(repositories.payments.deletePayment).mockResolvedValue(undefined as any);
+		vi.mocked(repositories.payments.deletePayment).mockResolvedValue(undefined);
 		const result = await DELETE({ params: { id: '3' } } as any);
 		expect((result as any).body).toEqual({ success: true });
 		expect(repositories.payments.deletePayment).toHaveBeenCalledWith(3);

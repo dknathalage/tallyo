@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { base } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import type { Client } from '$lib/types';
 
-	let { client }: { client: Client } = $props();
+	const { client }: { client: Client } = $props();
 </script>
 
 <a
-	href="{base}/console/clients/{client.id}"
+	href={resolve(`/console/clients/${client.id}`)}
 	class="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 transition-shadow hover:shadow-md"
 >
 	<h3 class="font-semibold text-gray-900 dark:text-white">{client.name}</h3>
