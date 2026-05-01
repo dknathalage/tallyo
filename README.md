@@ -5,8 +5,10 @@ Self-hosted invoice manager. Local-first, SQLite-backed.
 ## Install
 
 ```bash
-npm install -g tallyo
+curl -fsSL https://raw.githubusercontent.com/dknathalage/tallyo/main/install.sh | bash
 ```
+
+Requires `git`, `node`, `npm`. Installs source to `~/.tallyo-src` and a `tallyo` symlink in `~/.local/bin`. Re-run to update.
 
 ## Run
 
@@ -35,7 +37,7 @@ Everything (database, config) lives in `~/.tallyo` by default. Back this directo
 ## Develop
 
 ```bash
-git clone <repo>
+git clone https://github.com/dknathalage/tallyo.git
 cd tallyo
 npm install
 npm run dev          # Vite dev server at http://localhost:5173
