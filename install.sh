@@ -17,9 +17,9 @@ STEP=0
 
 banner() {
   printf '\n'
-  printf '  %s╭─────────────────────────────╮%s\n' "$MAGENTA" "$RESET"
-  printf '  %s│%s   %sTallyo%s installer            %s│%s\n' "$MAGENTA" "$RESET" "$BOLD$CYAN" "$RESET" "$MAGENTA" "$RESET"
-  printf '  %s╰─────────────────────────────╯%s\n' "$MAGENTA" "$RESET"
+  printf '  %s╭──────────────────────────╮%s\n' "$MAGENTA" "$RESET"
+  printf '  %s│%s   %sTallyo%s installer       %s│%s\n' "$MAGENTA" "$RESET" "$BOLD$CYAN" "$RESET" "$MAGENTA" "$RESET"
+  printf '  %s╰──────────────────────────╯%s\n' "$MAGENTA" "$RESET"
   printf '\n'
 }
 
