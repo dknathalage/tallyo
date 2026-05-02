@@ -1,22 +1,14 @@
 {
   "name": "tallyo",
   "version": "2.1.0",
-  "description": "Self-hosted invoice manager. Run `tallyo` to launch.",
+  "description": "Self-hosted invoice manager desktop app.",
+  "private": true,
   "type": "module",
   "main": "electron/main.cjs",
-  "bin": {
-    "tallyo": "bin/tallyo.js"
-  },
-  "files": [
-    "bin",
-    "build",
-    "drizzle",
-    "electron"
-  ],
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "node bin/tallyo.js",
+    "start": "npm run electron:dev",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -38,7 +30,6 @@
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "mdsvex": "^0.12.6",
-    "open": "^10.1.0",
     "papaparse": "^5.5.3",
     "tailwindcss": "^4.2.1",
     "xlsx": "^0.18.5",
