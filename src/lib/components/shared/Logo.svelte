@@ -1,0 +1,14 @@
+<script lang="ts">
+	const { size = 32 }: { size?: number } = $props();
+</script>
+
+<svg width={size} height={size} viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+	<defs>
+		<linearGradient id="tallyo-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#3b82f6" />
+			<stop offset="100%" stop-color="#1d4ed8" />
+		</linearGradient>
+	</defs>
+	<rect x="20" y="20" width="120" height="120" rx="28" fill="url(#tallyo-logo-grad)" />
+	<path d="M56 52 C53 52 52 53 52 56 L52 62 C52 65 53 66 56 66 L72 66 L72 104 C72 107 73 108 76 108 L84 108 C87 108 88 107 88 104 L88 66 L104 66 C107 66 108 65 108 62 L108 56 C108 53 107 52 104 52 Z" fill="white"/>
+</svg>

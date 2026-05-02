@@ -4,6 +4,7 @@
 	// db connection is server-side only; no client reference needed
 	import { theme } from '$lib/stores/theme.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import Logo from '$lib/components/shared/Logo.svelte';
 
 	// __PKG_VERSION__ is a Vite-defined global (see vite.config.ts), typed in src/app.d.ts
 	// eslint-disable-next-line no-undef -- Vite define replaces this at build time
@@ -97,9 +98,7 @@
 	<!-- Top: Logo + close -->
 	<div class="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-4 dark:border-gray-700">
 		<a href={consoleHome} class="flex items-center gap-2" onclick={handleNavClick}>
-			<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
-				T
-			</div>
+			<Logo size={32} />
 			<span class="text-lg font-semibold text-gray-900 dark:text-white">{i18n.t('nav.appName')}</span>
 		</a>
 		<button

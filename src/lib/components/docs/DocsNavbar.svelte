@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
 	import { theme } from '$lib/stores/theme.svelte';
+	import Logo from '$lib/components/shared/Logo.svelte';
 
 	let mobileMenuOpen = $state(false);
 
@@ -27,9 +28,7 @@
 			<!-- Left: Logo + Nav Links -->
 			<div class="flex items-center gap-8">
 				<a href={docsHome} class="flex items-center gap-2">
-					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
-						T
-					</div>
+					<Logo size={32} />
 					<span class="text-lg font-semibold text-gray-900 dark:text-white">Tallyo</span>
 				</a>
 

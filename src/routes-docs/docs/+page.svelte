@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { base } from '$app/paths';
+	import Logo from '$lib/components/shared/Logo.svelte';
 
 	const features = [
 		{ title: 'Fully Offline', details: 'Works entirely in your browser with no backend server. Data is stored locally using IndexedDB and SQL.js.' },
@@ -19,9 +20,7 @@
 
 <div class="not-prose">
 	<div class="py-16 text-center">
-		<div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-600 text-3xl font-bold text-white">
-			T
-		</div>
+		<div class="mb-6 flex justify-center"><Logo size={96} /></div>
 		<h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
 			Tallyo
 		</h1>
