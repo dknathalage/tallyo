@@ -1,6 +1,6 @@
 # Getting Started
 
-Invoice Manager is a Progressive Web App that runs entirely in your browser. There is no account to create and no server to connect to — your data stays on your device.
+Tallyo is a Progressive Web App that runs entirely in your browser. There is no account to create and no server to connect to — your data stays on your device.
 
 ## Access the App
 
@@ -8,7 +8,7 @@ Visit [dknathalage.github.io/invoices](https://dknathalage.github.io/invoices/) 
 
 ## Install as an App
 
-Invoice Manager can be installed on your device for a native-like experience:
+Tallyo can be installed on your device for a native-like experience:
 
 - **Desktop (Chrome/Edge):** Click the install icon in the address bar
 - **iOS Safari:** Tap Share → Add to Home Screen
@@ -34,7 +34,7 @@ Once installed, the app launches in its own window and works offline.
 
 ## Browser Support
 
-Invoice Manager works in all modern browsers. It uses IndexedDB for data storage, which is supported in:
+Tallyo works in all modern browsers. It uses IndexedDB for data storage, which is supported in:
 
 - Chrome / Edge 79+
 - Firefox 78+
