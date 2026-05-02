@@ -19,7 +19,10 @@ asarUnpack:
 mac:
   target: dmg
   category: public.app-category.finance
+  icon: electron/assets/icon.png
 win:
   target: nsis
+  icon: electron/assets/icon.png
 linux:
   target: AppImage
+  icon: electron/assets/icon.png
