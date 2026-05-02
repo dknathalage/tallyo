@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/dknathalage/tallyo/compare/v3.2.0...v3.3.0) (2026-05-02)
+
+
+### Features
+
+* new Tallyo logo (gradient T mark) ([7e9cbaa](https://github.com/dknathalage/tallyo/commit/7e9cbaa58f3557a565b09debe42e67576e977bea))
+
 ## [3.2.0](https://github.com/dknathalage/tallyo/compare/v3.1.0...v3.2.0) (2026-05-02)
 
 
