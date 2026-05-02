@@ -1,28 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<svg width="1024" height="1024" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#1e40af"/>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
     </linearGradient>
-    <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>
-      <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.15"/>
+    </filter>
   </defs>
-
-  <rect width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
-  <rect width="1024" height="1024" rx="224" ry="224" fill="url(#hl)"/>
-
-  <g fill="#ffffff">
-    <rect x="208" y="282" width="608" height="132" rx="28" ry="28"/>
-    <rect x="446" y="282" width="132" height="528" rx="28" ry="28"/>
-  </g>
-
-  <g fill="#ffffff" fill-opacity="0.92">
-    <rect x="346" y="852" width="44" height="64" rx="12" ry="12"/>
-    <rect x="406" y="852" width="44" height="64" rx="12" ry="12"/>
-    <rect x="466" y="852" width="44" height="64" rx="12" ry="12"/>
-    <rect x="526" y="852" width="44" height="64" rx="12" ry="12"/>
-    <rect x="572" y="852" width="106" height="64" rx="12" ry="12" transform="rotate(-22 625 884)"/>
-  </g>
+  <rect x="20" y="20" width="120" height="120" rx="28" fill="url(#logoGradient)" filter="url(#shadow)"/>
+  <path d="M56 52 C53 52 52 53 52 56 L52 62 C52 65 53 66 56 66 L72 66 L72 104 C72 107 73 108 76 108 L84 108 C87 108 88 107 88 104 L88 66 L104 66 C107 66 108 65 108 62 L108 56 C108 53 107 52 104 52 Z" fill="white"/>
 </svg>

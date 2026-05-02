@@ -2,6 +2,7 @@
 	import { base } from '$app/paths';
 	import DocsNavbar from '$lib/components/docs/DocsNavbar.svelte';
 	import DocsSidebar from '$lib/components/docs/DocsSidebar.svelte';
+	import Logo from '$lib/components/shared/Logo.svelte';
 	import type { Snippet } from 'svelte';
 
 	const { children }: { children: Snippet } = $props();
@@ -25,9 +26,7 @@
 		<div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 			<div class="flex flex-col items-center justify-between gap-4 sm:flex-row">
 				<div class="flex items-center gap-2">
-					<div class="flex h-6 w-6 items-center justify-center rounded bg-primary-600 text-xs font-bold text-white">
-						T
-					</div>
+					<Logo size={24} />
 					<span class="text-sm font-medium text-gray-900 dark:text-white">Tallyo</span>
 				</div>
 				<nav class="flex gap-6" aria-label="Footer navigation">
