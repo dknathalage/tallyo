@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.1.0](https://github.com/dknathalage/tallyo/compare/v3.0.0...v3.1.0) (2026-05-02)
+
+
+### Features
+
+* **electron:** brand the app with a Tallyo icon ([efdccc3](https://github.com/dknathalage/tallyo/commit/efdccc3ef64a10fe9c5400c01cdd1b6e2921512d))
+
+
+### Bug Fixes
+
+* **electron:** unpack node_modules so server bundle resolves deps ([a050bb8](https://github.com/dknathalage/tallyo/commit/a050bb8e2884561abd051dea8bf70ec4ae0e916b))
+* **install:** repair dmg mount + add download progress bar ([086c5b6](https://github.com/dknathalage/tallyo/commit/086c5b6c9521c55dc6ec4da518639e34a551a8c3))
+
 ## [3.0.0](https://github.com/dknathalage/tallyo/compare/v2.1.1...v3.0.0) (2026-05-02)
 
 
