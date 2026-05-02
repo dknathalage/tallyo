@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/dknathalage/tallyo/compare/v2.1.0...v2.1.1) (2026-05-02)
+
+
+### Bug Fixes
+
+* resolve drizzle migrations folder from package root at runtime ([6f73daa](https://github.com/dknathalage/tallyo/commit/6f73daabfef54743de35f4f6378210d5164d6c8b))
+
 ## [2.1.0](https://github.com/dknathalage/tallyo/compare/v2.0.0...v2.1.0) (2026-05-02)
 
 
