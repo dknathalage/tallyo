@@ -299,34 +299,3 @@ export const recurringTemplates = sqliteTable(
 	]
 );
 
-// ── ai_chat_sessions ────────────────────────────────────────────────
-export const aiChatSessions = sqliteTable(
-	'ai_chat_sessions',
-	{
-		id: integer('id').primaryKey({ autoIncrement: true }),
-		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
-		title: text('title').notNull().default('New Chat'),
-		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
-		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
-	},
-	(table) => [index('idx_ai_sessions_created').on(table.created_at)]
-);
-
-// ── ai_chat_messages ────────────────────────────────────────────────
-export const aiChatMessages = sqliteTable(
-	'ai_chat_messages',
-	{
-		id: integer('id').primaryKey({ autoIncrement: true }),
-		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
-		session_id: integer('session_id')
-			.notNull()
-			.references(() => aiChatSessions.id, { onDelete: 'cascade' }),
-		role: text('role').notNull(),
-		content: text('content').notNull().default(''),
-		tool_calls: text('tool_calls'),
-		tool_results: text('tool_results'),
-		is_streaming: integer('is_streaming', { mode: 'boolean' }).notNull().default(false),
-		created_at: text('created_at').$defaultFn(() => new Date().toISOString())
-	},
-	(table) => [index('idx_ai_messages_session').on(table.session_id, table.created_at)]
-);

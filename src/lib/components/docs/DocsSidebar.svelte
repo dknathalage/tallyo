@@ -1,29 +1,29 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
+	import { base } from '$app/paths';
 
-	const docsHome = resolve('/(docs)/docs');
+	const docsHome = `${base}/docs`;
 
 	const sections = [
 		{
 			title: 'Introduction',
 			items: [
 				{ href: docsHome, label: 'Overview' },
-				{ href: resolve('/(docs)/docs/getting-started'), label: 'Getting Started' },
-				{ href: resolve('/(docs)/docs/features'), label: 'Features' },
-				{ href: resolve('/(docs)/docs/architecture'), label: 'Architecture' }
+				{ href: `${base}/docs/getting-started`, label: 'Getting Started' },
+				{ href: `${base}/docs/features`, label: 'Features' },
+				{ href: `${base}/docs/architecture`, label: 'Architecture' }
 			]
 		},
 		{
 			title: 'Guides',
 			items: [
-				{ href: resolve('/(docs)/docs/guides/invoices'), label: 'Invoices' },
-				{ href: resolve('/(docs)/docs/guides/estimates'), label: 'Estimates' },
-				{ href: resolve('/(docs)/docs/guides/clients'), label: 'Clients' },
-				{ href: resolve('/(docs)/docs/guides/catalog'), label: 'Catalog' },
-				{ href: resolve('/(docs)/docs/guides/import-export'), label: 'Import & Export' },
-				{ href: resolve('/(docs)/docs/guides/pdf-generation'), label: 'PDF Generation' },
-				{ href: resolve('/(docs)/docs/guides/settings'), label: 'Settings' }
+				{ href: `${base}/docs/guides/invoices`, label: 'Invoices' },
+				{ href: `${base}/docs/guides/estimates`, label: 'Estimates' },
+				{ href: `${base}/docs/guides/clients`, label: 'Clients' },
+				{ href: `${base}/docs/guides/catalog`, label: 'Catalog' },
+				{ href: `${base}/docs/guides/import-export`, label: 'Import & Export' },
+				{ href: `${base}/docs/guides/pdf-generation`, label: 'PDF Generation' },
+				{ href: `${base}/docs/guides/settings`, label: 'Settings' }
 			]
 		}
 	];

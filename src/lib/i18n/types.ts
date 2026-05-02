@@ -12,7 +12,6 @@ export interface Messages extends MessagesExtras {
 		recurring: string;
 		reports: string;
 		settings: string;
-		aiAssistant: string;
 		appName: string;
 		close: string;
 		closeDatabase: string;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { base } from '$app/paths';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	const RELEASES = 'https://github.com/dknathalage/tallyo/releases/latest';
@@ -43,7 +43,7 @@
 						</svg>
 					{/if}
 				</button>
-				<a href={resolve('/docs')} class="rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white">Docs</a>
+				<a href={`${base}/docs`} class="rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white">Docs</a>
 				<a href={RELEASES} class="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-700">Download</a>
 			</div>
 		</div>
@@ -56,7 +56,7 @@
 		<p class="mx-auto mt-4 max-w-2xl text-lg text-gray-600 dark:text-gray-400">Your data stays on your device. No servers, no subscriptions.</p>
 		<div class="mt-8 flex items-center justify-center gap-4">
 			<a href={RELEASES} class="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700">Download for your platform</a>
-			<a href={resolve('/docs/getting-started')} class="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Get Started</a>
+			<a href={`${base}/docs/getting-started`} class="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Get Started</a>
 		</div>
 	</div>
 

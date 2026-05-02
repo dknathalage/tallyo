@@ -11,7 +11,6 @@ import { SqliteDashboardRepository } from './SqliteDashboardRepository.js';
 import { SqliteAuditRepository } from './SqliteAuditRepository.js';
 import { SqliteColumnMappingsRepository } from './SqliteColumnMappingsRepository.js';
 import { SqliteRecurringTemplateRepository } from './SqliteRecurringTemplateRepository.js';
-import { SqliteAiChatRepository } from './SqliteAiChatRepository.js';
 import type {
 	InvoiceRepository,
 	EstimateRepository,
@@ -35,8 +34,7 @@ export const repositories = {
 	dashboard: new SqliteDashboardRepository(),
 	audit: auditRepo,
 	columnMappings: new SqliteColumnMappingsRepository(),
-	recurringTemplates: new SqliteRecurringTemplateRepository(),
-	aiChat: new SqliteAiChatRepository()
+	recurringTemplates: new SqliteRecurringTemplateRepository()
 };
 
 export type Repositories = typeof repositories;

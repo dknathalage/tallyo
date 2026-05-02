@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { base } from '$app/paths';
 
 	const features = [
 		{ title: 'Fully Offline', details: 'Works entirely in your browser with no backend server. Data is stored locally using IndexedDB and SQL.js.' },
@@ -33,13 +33,13 @@
 		</p>
 		<div class="mt-8 flex items-center justify-center gap-4">
 			<a
-				href={resolve('/(docs)/docs/getting-started')}
+				href={`${base}/docs/getting-started`}
 				class="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors"
 			>
 				Get Started
 			</a>
 			<a
-				href={resolve('/console')}
+				href={`${base}/console`}
 				class="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
 			>
 				Open App

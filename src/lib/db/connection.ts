@@ -33,7 +33,7 @@ export type Database = ReturnType<typeof getDb>;
 export function ensureMigrations(): void {
 	if (_migrated) return;
 	const db = getDb();
-	const folder = process.env.TALLYO_MIGRATIONS_DIR ?? './drizzle';
+	const folder = process.env['TALLYO_MIGRATIONS_DIR'] ?? './drizzle';
 	migrate(db, { migrationsFolder: folder });
 	_migrated = true;
 }

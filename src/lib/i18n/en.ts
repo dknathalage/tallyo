@@ -13,7 +13,6 @@ const en: Messages = {
 		recurring: 'Recurring',
 		reports: 'Reports',
 		settings: 'Settings',
-		aiAssistant: 'AI Assistant',
 		appName: 'Tallyo',
 		close: 'Close',
 		closeDatabase: 'Close Database',

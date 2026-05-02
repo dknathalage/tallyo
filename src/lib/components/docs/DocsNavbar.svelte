@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
+	import { base } from '$app/paths';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let mobileMenuOpen = $state(false);
 
-	const navLinks = [
-		{ href: resolve('/(docs)/docs'), label: 'Home' },
-		{ href: resolve('/(docs)/docs/getting-started'), label: 'Getting Started' },
-		{ href: resolve('/(docs)/docs/guides/invoices'), label: 'Guides' }
-	];
+	const docsHome = `${base}/docs`;
+	const consoleHref = `${base}/console`;
 
-	const docsHome = resolve('/(docs)/docs');
-	const consoleHref = resolve('/console');
+	const navLinks = [
+		{ href: docsHome, label: 'Home' },
+		{ href: `${base}/docs/getting-started`, label: 'Getting Started' },
+		{ href: `${base}/docs/guides/invoices`, label: 'Guides' }
+	];
 
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
