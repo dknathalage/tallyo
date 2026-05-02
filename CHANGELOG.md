@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.0.0](https://github.com/dknathalage/tallyo/compare/v2.1.1...v3.0.0) (2026-05-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Electron desktop app + GitHub Pages docs
+* Electron desktop app + GitHub Pages docs
+* `npm install -g tallyo` and the `tallyo` CLI are gone. Use the platform installer from the GitHub Release.
+
+### Features
+
+* drop CLI distribution, ship desktop only ([9830c77](https://github.com/dknathalage/tallyo/commit/9830c771c6061c0747dd315bf3e46bcb408479c8))
+* Electron desktop app + GitHub Pages docs ([fefa404](https://github.com/dknathalage/tallyo/commit/fefa4040ea5b8255dad439861def829d4019d656))
+* Electron desktop app + GitHub Pages docs ([fefa404](https://github.com/dknathalage/tallyo/commit/fefa4040ea5b8255dad439861def829d4019d656))
+* ship Tallyo as Electron desktop app ([59fa205](https://github.com/dknathalage/tallyo/commit/59fa2059dbd11d34d6c08ad19252b48ed1da2e2f))
+* split docs into static GitHub Pages site ([ee112c9](https://github.com/dknathalage/tallyo/commit/ee112c94ce37583d49b7a762c9ce157fa9eec612))
+
 ## [2.1.1](https://github.com/dknathalage/tallyo/compare/v2.1.0...v2.1.1) (2026-05-02)
 
 
