@@ -16,6 +16,7 @@
 	import type { ParsedImport, CsvClientRow } from '$lib/csv/types.js';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -70,14 +71,14 @@
 	}
 
 	async function handleBulkDelete() {
-		await fetch('/api/clients', {
+		const res = await apiFetch('/api/clients', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'bulk-delete', ids: [...selectedIds] })
 		});
 		selectedIds.clear();
 		showDeleteConfirm = false;
-		await invalidateAll();
+		if (res.ok) await invalidateAll();
 	}
 
 	async function handleImport(file: File) {

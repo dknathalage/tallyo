@@ -7,6 +7,7 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -85,8 +86,8 @@
 		deletingTier = null;
 		showDeleteConfirm = false;
 		try {
-			await fetch(`/api/rate-tiers/${tierId}`, { method: 'DELETE' });
-			await invalidateAll();
+			const res = await apiFetch(`/api/rate-tiers/${tierId}`, { method: 'DELETE' });
+			if (res.ok) await invalidateAll();
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'An unexpected error occurred';
 			showDeleteConfirm = false;

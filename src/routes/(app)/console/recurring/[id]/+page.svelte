@@ -9,6 +9,7 @@
 	import Button from '$lib/components/shared/Button.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -126,8 +127,8 @@
 
 	async function handleDelete() {
 		if (!templateId) return;
-		await fetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
-		void goto(resolve('/(app)/console/recurring'));
+		const res = await apiFetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
+		if (res.ok) void goto(resolve('/(app)/console/recurring'));
 	}
 
 	async function handleCreateInvoice() {

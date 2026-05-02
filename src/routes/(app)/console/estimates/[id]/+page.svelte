@@ -12,6 +12,7 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { addToast } from '$lib/stores/toast.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -32,8 +33,8 @@
 
 	async function handleDelete() {
 		if (!estimate) return;
-		await fetch(`/api/estimates/${estimate.id}`, { method: 'DELETE' });
-		void goto(resolve('/(app)/console/estimates'));
+		const res = await apiFetch(`/api/estimates/${estimate.id}`, { method: 'DELETE' });
+		if (res.ok) void goto(resolve('/(app)/console/estimates'));
 	}
 
 	async function handleDuplicate() {

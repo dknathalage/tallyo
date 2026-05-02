@@ -9,6 +9,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { base, resolve } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -57,8 +58,8 @@
 		const templateId = templateToDelete.id;
 		templateToDelete = null;
 		showDeleteConfirm = false;
-		await fetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
-		await invalidateAll();
+		const res = await apiFetch(`/api/recurring/${templateId}`, { method: 'DELETE' });
+		if (res.ok) await invalidateAll();
 	}
 
 	function confirmDelete(template: RecurringTemplate) {

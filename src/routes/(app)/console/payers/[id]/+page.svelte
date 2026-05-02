@@ -9,6 +9,7 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -40,8 +41,8 @@
 	}
 
 	async function handleDelete() {
-		await fetch(`/api/payers/${payer.id}`, { method: 'DELETE' });
-		void goto(resolve('/(app)/console/payers'));
+		const res = await apiFetch(`/api/payers/${payer.id}`, { method: 'DELETE' });
+		if (res.ok) void goto(resolve('/(app)/console/payers'));
 	}
 
 	function formatTimestamp(ts: string): string {

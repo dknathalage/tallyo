@@ -11,6 +11,7 @@
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -44,8 +45,8 @@
 	}
 
 	async function handleDelete() {
-		await fetch(`/api/clients/${client.id}`, { method: 'DELETE' });
-		void goto(resolve('/(app)/console/clients'));
+		const res = await apiFetch(`/api/clients/${client.id}`, { method: 'DELETE' });
+		if (res.ok) void goto(resolve('/(app)/console/clients'));
 	}
 
 	function formatTimestamp(ts: string): string {
