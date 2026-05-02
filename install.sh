@@ -108,20 +108,44 @@ asset_url="$(grep -oE '"browser_download_url":[[:space:]]*"[^"]+"' "$meta" | sed
 ok "$asset_name"
 
 step "Downloading"
-run_quiet curl -fsSL -o "$tmpdir/$asset_name" "$asset_url"
+printf '        '
+if ! curl -fL --progress-bar -o "$tmpdir/$asset_name" "$asset_url"; then
+  fail "download failed"
+fi
 ok "downloaded $(du -h "$tmpdir/$asset_name" | awk '{print $1}')"
 
 step "Installing"
 case "$asset_name" in
   *.dmg)
     need hdiutil
-    mnt="$(hdiutil attach -nobrowse -quiet "$tmpdir/$asset_name" | tail -1 | awk '{print $3}')"
-    [ -n "$mnt" ] || fail "failed to mount dmg"
+    mount_log="$tmpdir/mount.log"
+    if ! hdiutil attach -nobrowse -noautoopen -readonly "$tmpdir/$asset_name" >"$mount_log" 2>&1; then
+      printf '\n%s--- mount output ---%s\n' "$DIM" "$RESET" >&2
+      cat "$mount_log" >&2
+      fail "failed to mount dmg"
+    fi
+    mnt="$(grep -o '/Volumes/[^	]*' "$mount_log" | tail -1)"
+    [ -n "$mnt" ] || { cat "$mount_log" >&2; fail "could not parse mount point"; }
+    app_src="$(find "$mnt" -maxdepth 1 -name '*.app' -print -quit)"
+    [ -n "$app_src" ] || { hdiutil detach -quiet "$mnt" || true; fail "no .app found in dmg"; }
     mkdir -p "$APP_DIR"
-    rm -rf "$APP_DIR/Tallyo.app"
-    run_quiet cp -R "$mnt/Tallyo.app" "$APP_DIR/"
+    rm -rf "$APP_DIR/$(basename "$app_src")"
+    run_quiet cp -R "$app_src" "$APP_DIR/"
     hdiutil detach -quiet "$mnt" || true
-    ok "installed to $APP_DIR/Tallyo.app"
+    xattr -dr com.apple.quarantine "$APP_DIR/$(basename "$app_src")" 2>/dev/null || true
+    ok "installed to $APP_DIR/$(basename "$app_src")"
+    printf '\n  Run: %sopen -a Tallyo%s\n\n' "$BOLD$CYAN" "$RESET"
+    ;;
+  *.zip)
+    need unzip
+    run_quiet unzip -q -o "$tmpdir/$asset_name" -d "$tmpdir/extract"
+    app_src="$(find "$tmpdir/extract" -maxdepth 2 -name '*.app' -print -quit)"
+    [ -n "$app_src" ] || fail "no .app found in zip"
+    mkdir -p "$APP_DIR"
+    rm -rf "$APP_DIR/$(basename "$app_src")"
+    run_quiet cp -R "$app_src" "$APP_DIR/"
+    xattr -dr com.apple.quarantine "$APP_DIR/$(basename "$app_src")" 2>/dev/null || true
+    ok "installed to $APP_DIR/$(basename "$app_src")"
     printf '\n  Run: %sopen -a Tallyo%s\n\n' "$BOLD$CYAN" "$RESET"
     ;;
   *.AppImage)
