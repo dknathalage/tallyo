@@ -8,8 +8,12 @@ files:
   - drizzle/**
   - package.json
   - "!**/*.{md,map,ts}"
+# Unpack everything the SvelteKit server bundle reaches at runtime.
+# adapter-node externalizes node_modules, so the unpacked build/ chunks
+# do `import 'drizzle-orm'` and Node's ESM resolver cannot cross the
+# asar boundary from app.asar.unpacked back into app.asar.
 asarUnpack:
-  - node_modules/better-sqlite3/**
+  - node_modules/**
   - drizzle/**
   - build/**
 mac:
