@@ -13,6 +13,7 @@
 	import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -44,8 +45,8 @@
 
 	async function handleDelete() {
 		if (!invoice) return;
-		await fetch(`/api/invoices/${invoice.id}`, { method: 'DELETE' });
-		void goto(resolve('/(app)/console/invoices'));
+		const res = await apiFetch(`/api/invoices/${invoice.id}`, { method: 'DELETE' });
+		if (res.ok) void goto(resolve('/(app)/console/invoices'));
 	}
 
 	async function handleDuplicate() {
@@ -139,7 +140,8 @@
 	async function handleDeletePayment(paymentId: number) {
 		if (!invoice) return;
 		const invoiceId = invoice.id;
-		await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
+		const delRes = await apiFetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
+		if (!delRes.ok) return;
 		const paymentsRes = await fetch(`/api/payments?invoiceId=${invoiceId}`);
 		payments = await paymentsRes.json();
 	}

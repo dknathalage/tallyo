@@ -8,6 +8,7 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import { invalidateAll } from '$app/navigation';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -50,12 +51,12 @@
 		const ids = [...selectedIds];
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		await fetch('/api/payers', {
+		const res = await apiFetch('/api/payers', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'bulk-delete', ids })
 		});
-		await invalidateAll();
+		if (res.ok) await invalidateAll();
 	}
 </script>
 

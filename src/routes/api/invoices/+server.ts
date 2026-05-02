@@ -3,10 +3,14 @@ import type { RequestHandler } from './$types';
 import { repositories } from '$lib/repositories/index.js';
 import { dbError, fkOrNull } from '$lib/server/db-error.js';
 import { validate } from '$lib/validation/validate.js';
-import { CreateInvoiceSchema, SearchParamsSchema } from '$lib/validation/schemas.js';
+import { CreateInvoiceSchema, BulkDeleteSchema, SearchParamsSchema } from '$lib/validation/schemas.js';
 import type { CreateInvoiceInput, LineItemInput } from '$lib/repositories/interfaces/types.js';
 
-type InvoicePostBody = { lineItems?: LineItemInput[] } & Record<string, unknown>;
+type InvoicePostBody = {
+	action?: string;
+	status?: string;
+	lineItems?: LineItemInput[];
+} & Record<string, unknown>;
 
 export const GET: RequestHandler = async ({ url }) => {
 	const search = url.searchParams.get('search') ?? undefined;
@@ -21,7 +25,29 @@ export const GET: RequestHandler = async ({ url }) => {
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = (await request.json()) as InvoicePostBody;
-	const { lineItems, ...invoiceData } = body;
+	const { action, lineItems, ...rest } = body;
+
+	if (action === 'bulk-delete') {
+		const { ids } = validate(BulkDeleteSchema, rest);
+		try {
+			await repositories.invoices.bulkDeleteInvoices(ids);
+		} catch (err) {
+			throw dbError(err);
+		}
+		return json({ success: true });
+	}
+	if (action === 'bulk-status') {
+		const { ids } = validate(BulkDeleteSchema, rest);
+		const status = typeof rest.status === 'string' ? rest.status : '';
+		try {
+			await repositories.invoices.bulkUpdateInvoiceStatus(ids, status);
+		} catch (err) {
+			throw dbError(err);
+		}
+		return json({ success: true });
+	}
+
+	const invoiceData = rest;
 	const validated = validate(CreateInvoiceSchema, invoiceData);
 	(validated as { client_id: number | null }).client_id = fkOrNull(validated.client_id);
 	(validated as { payer_id: number | null }).payer_id = fkOrNull(validated.payer_id);

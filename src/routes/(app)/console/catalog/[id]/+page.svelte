@@ -9,6 +9,7 @@
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
+	import { apiFetch } from '$lib/utils/api.js';
 
 	const { data }: { data: PageData } = $props();
 
@@ -40,8 +41,8 @@
 	}
 
 	async function handleDelete() {
-		await fetch(`/api/catalog/${item.id}`, { method: 'DELETE' });
-		void goto(resolve('/(app)/console/catalog'));
+		const res = await apiFetch(`/api/catalog/${item.id}`, { method: 'DELETE' });
+		if (res.ok) void goto(resolve('/(app)/console/catalog'));
 	}
 
 	function formatMetadata(meta: string): string {

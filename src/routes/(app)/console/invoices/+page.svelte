@@ -17,6 +17,7 @@
 	import type { ParsedInvoiceImport } from '$lib/csv/types.js';
 	import { goto } from '$app/navigation';
 	import { invalidateAll } from '$app/navigation';
+	import { apiFetch } from '$lib/utils/api.js';
 	import { resolve } from '$app/paths';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 
@@ -67,23 +68,23 @@
 		const ids = [...selectedIds];
 		selectedIds = new Set();
 		showDeleteConfirm = false;
-		await fetch('/api/invoices', {
+		const res = await apiFetch('/api/invoices', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'bulk-delete', ids })
 		});
-		await invalidateAll();
+		if (res.ok) await invalidateAll();
 	}
 
 	async function handleBulkStatus(status: string) {
 		const ids = [...selectedIds];
 		selectedIds = new Set();
-		await fetch('/api/invoices', {
+		const res = await apiFetch('/api/invoices', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ action: 'bulk-status', ids, status })
 		});
-		await invalidateAll();
+		if (res.ok) await invalidateAll();
 	}
 
 	async function handleImport(file: File) {
