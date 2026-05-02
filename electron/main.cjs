@@ -36,6 +36,7 @@ async function boot() {
     width: 1280,
     height: 800,
     title: 'Tallyo',
+    icon: join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
