@@ -176,8 +176,8 @@ describe('parseEstimatesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) })
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		await parseEstimatesCsv(makeFile());
-		expect(mockFetch).toHaveBeenCalledWith('/api/estimates');
-		expect(mockFetch).toHaveBeenCalledWith('/api/clients');
+		expect(mockFetch).toHaveBeenCalledWith('/api/estimates?limit=10000');
+		expect(mockFetch).toHaveBeenCalledWith('/api/clients?limit=10000');
 	});
 
 	it('sets isNew to true for all new groups', async () => {

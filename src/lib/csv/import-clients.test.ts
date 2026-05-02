@@ -96,7 +96,7 @@ describe('parseClientsCsv', () => {
 		mockParseCsvFile.mockResolvedValue({ data: [], errors: [] });
 		mockFetch.mockResolvedValue({ json: vi.fn().mockResolvedValue([]) });
 		await parseClientsCsv(makeFile());
-		expect(mockFetch).toHaveBeenCalledWith('/api/clients');
+		expect(mockFetch).toHaveBeenCalledWith('/api/clients?limit=10000');
 	});
 });
 

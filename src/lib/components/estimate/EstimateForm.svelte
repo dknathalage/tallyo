@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 
 	import { today, formatCurrency } from '$lib/utils/format.js';
-	import type { Client, Estimate, EstimateLineItem, KeyValuePair, TaxRate, RateTier } from '$lib/types/index.js';
+	import type { Client, Estimate, EstimateLineItem, KeyValuePair, TaxRate, RateTier, BusinessProfile } from '$lib/types/index.js';
 	import { parseSnapshot } from '$lib/utils/snapshot.js';
 	import type { PartySnapshot } from '$lib/utils/snapshot.js';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -15,11 +15,19 @@
 		initialData,
 		initialLineItems,
 		nextEstimateNumber,
+		clients,
+		taxRates: taxRatesProp,
+		rateTiers,
+		businessProfile,
 		onsubmit
 	}: {
 		initialData?: Estimate;
 		initialLineItems?: EstimateLineItem[];
 		nextEstimateNumber?: string;
+		clients: Client[];
+		taxRates: TaxRate[];
+		rateTiers: RateTier[];
+		businessProfile: BusinessProfile | null;
 		onsubmit: (
 			data: {
 				estimate_number: string;
@@ -42,12 +50,11 @@
 		) => void;
 	} = $props();
 
-	let clients: Client[] = $state([]);
-	let estimateNumber = $state(untrack(() => initialData?.estimate_number ?? ''));
+	let estimateNumber = $state(untrack(() => initialData?.estimate_number ?? nextEstimateNumber ?? ''));
 	let clientId: number | '' = $state(untrack(() => initialData?.client_id ?? ''));
 	let date = $state(untrack(() => initialData?.date ?? today()));
 	let validUntil = $state(untrack(() => initialData?.valid_until ?? today()));
-	let taxRates = $state<TaxRate[]>([]);
+	let taxRates = $state<TaxRate[]>(untrack(() => [...taxRatesProp]));
 	let selectedTaxRateId = $state<number | null>(untrack(() => initialData?.tax_rate_id ?? null));
 	const taxRate = $derived.by(() => {
 		if (selectedTaxRateId !== null) {
@@ -61,7 +68,7 @@
 	let newTaxRateValue = $state(0);
 	let notes = $state(untrack(() => initialData?.notes ?? ''));
 	let status = $state(untrack(() => initialData?.status ?? 'draft'));
-	let currencyCode = $state(untrack(() => initialData?.currency_code ?? ''));
+	let currencyCode = $state(untrack(() => initialData?.currency_code ?? businessProfile?.default_currency ?? 'USD'));
 
 	let lineItems = $state<{ description: string; quantity: number; rate: number; amount: number; unit?: string | undefined; notes?: string | undefined }[]>(
 		[{ description: '', quantity: 1, rate: 0, amount: 0, unit: undefined, notes: '' }]
@@ -88,13 +95,7 @@
 		}
 	});
 
-	let tiers = $state<RateTier[]>([]);
 	let selectedClient = $state<Client | null>(null);
-
-	onMount(async () => {
-		const res = await fetch('/api/rate-tiers');
-		tiers = await res.json();
-	});
 
 	$effect(() => {
 		const id = clientId;
@@ -106,7 +107,7 @@
 	});
 
 	const activeTierId = $derived(selectedClient?.pricing_tier_id ?? null);
-	const activeTierName = $derived(tiers.find(t => t.id === activeTierId)?.name ?? null);
+	const activeTierName = $derived(rateTiers.find(t => t.id === activeTierId)?.name ?? null);
 
 	const subtotal = $derived(
 		Math.round(lineItems.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
@@ -133,7 +134,23 @@
 	}
 
 	// Business snapshot (read-only, always from current profile)
-	let businessSnapshot: PartySnapshot = $state({ name: '', email: '', phone: '', address: '', metadata: {} });
+	function buildBusinessSnapshot(profile: BusinessProfile | null): PartySnapshot {
+		if (!profile) return { name: '', email: '', phone: '', address: '', metadata: {} };
+		let metadata: Record<string, string> = {};
+		try {
+			metadata = JSON.parse(profile.metadata ?? '{}');
+		} catch {
+			metadata = {};
+		}
+		return {
+			name: profile.name ?? '',
+			email: profile.email ?? '',
+			phone: profile.phone ?? '',
+			address: profile.address ?? '',
+			metadata
+		};
+	}
+	const businessSnapshot: PartySnapshot = $derived(buildBusinessSnapshot(businessProfile));
 
 	// Client metadata (editable on estimate)
 	let clientMetadataPairs: KeyValuePair[] = $state([]);
@@ -151,17 +168,6 @@
 		if (defaultRate) selectedTaxRateId = defaultRate.id;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- profile shape comes from JSON API
-	function buildBusinessSnapshot(profile: any): PartySnapshot {
-		return {
-			name: profile.name ?? '',
-			email: profile.email ?? '',
-			phone: profile.phone ?? '',
-			address: profile.address ?? '',
-			metadata: (() => { try { return JSON.parse(profile.metadata ?? '{}'); } catch { return {}; } })()
-		};
-	}
-
 	function loadEditSnapshots(data: Estimate) {
 		const cs = parseSnapshot(data.client_snapshot);
 		clientMetadataPairs = Object.entries(cs.metadata).map(([key, value]) => ({ key, value }));
@@ -173,26 +179,8 @@
 		payerMetadataPairs = Object.entries(ps.metadata).map(([key, value]) => ({ key, value }));
 	}
 
-	// Initialize clients, estimate number, business snapshot, and edit-mode snapshots
-	onMount(async () => {
-		const [clientsRes, settingsRes] = await Promise.all([
-			fetch('/api/clients'),
-			fetch('/api/settings')
-		]);
-		clients = await clientsRes.json();
-		const settings = await settingsRes.json();
-		taxRates = settings.taxRates ?? [];
+	untrack(() => {
 		applyDefaultTaxRate();
-		if (!initialData) {
-			estimateNumber = nextEstimateNumber ?? '';
-			const profile = settings.profile;
-			if (profile && !currencyCode) {
-				currencyCode = profile.default_currency ?? 'USD';
-			}
-		}
-		if (!currencyCode) currencyCode = 'USD';
-
-		if (settings.profile) businessSnapshot = buildBusinessSnapshot(settings.profile);
 		if (initialData) loadEditSnapshots(initialData);
 	});
 
@@ -235,10 +223,9 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ name, rate })
 		});
-		const { id: newId } = await res.json();
-		const settingsRes = await fetch('/api/settings');
-		const settings = await settingsRes.json();
-		taxRates = settings.taxRates ?? [];
+		const { id: newId, uuid = '' } = await res.json();
+		const now = new Date().toISOString();
+		taxRates = [...taxRates, { id: newId, uuid, name, rate, is_default: 0, created_at: now, updated_at: now }];
 		selectedTaxRateId = newId;
 		showNewTaxRate = false;
 	}

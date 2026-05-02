@@ -65,11 +65,13 @@ async function fetchExistingInvoiceContext(): Promise<{
 	clientNameMap: Map<string, number>;
 }> {
 	const [invoicesRes, clientsRes] = await Promise.all([
-		fetch('/api/invoices'),
-		fetch('/api/clients')
+		fetch('/api/invoices?limit=10000'),
+		fetch('/api/clients?limit=10000')
 	]);
-	const existingInvoices = (await invoicesRes.json()) as { uuid: string }[];
-	const existingClients = (await clientsRes.json()) as { id: number; name: string }[];
+	const invoicesBody = await invoicesRes.json();
+	const clientsBody = await clientsRes.json();
+	const existingInvoices = (invoicesBody.data ?? invoicesBody) as { uuid: string }[];
+	const existingClients = (clientsBody.data ?? clientsBody) as { id: number; name: string }[];
 	const existingUuids = new Set(existingInvoices.map((r) => r.uuid).filter(Boolean));
 	const clientNameMap = new Map<string, number>();
 	for (const c of existingClients) {
@@ -167,8 +169,9 @@ export async function commitInvoiceImport(
 	}
 
 	// Rebuild client name→id map after creating new clients
-	const allClientsRes = await fetch('/api/clients');
-	const allClients = await allClientsRes.json() as { id: number; name: string }[];
+	const allClientsRes = await fetch('/api/clients?limit=10000');
+	const allClientsBody = await allClientsRes.json();
+	const allClients = (allClientsBody.data ?? allClientsBody) as { id: number; name: string }[];
 	const clientMap = new Map<string, number>();
 	for (const c of allClients) {
 		clientMap.set(c.name.toLowerCase(), c.id);

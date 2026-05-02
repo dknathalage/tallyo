@@ -174,8 +174,8 @@ describe('parseInvoicesCsv', () => {
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) })
 			.mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([]) });
 		await parseInvoicesCsv(makeFile());
-		expect(mockFetch).toHaveBeenCalledWith('/api/invoices');
-		expect(mockFetch).toHaveBeenCalledWith('/api/clients');
+		expect(mockFetch).toHaveBeenCalledWith('/api/invoices?limit=10000');
+		expect(mockFetch).toHaveBeenCalledWith('/api/clients?limit=10000');
 	});
 });
 
