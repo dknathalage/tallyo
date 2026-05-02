@@ -3,13 +3,15 @@
   "version": "2.1.0",
   "description": "Self-hosted invoice manager. Run `tallyo` to launch.",
   "type": "module",
+  "main": "electron/main.cjs",
   "bin": {
     "tallyo": "bin/tallyo.js"
   },
   "files": [
     "bin",
     "build",
-    "drizzle"
+    "drizzle",
+    "electron"
   ],
   "scripts": {
     "dev": "vite dev",
@@ -20,7 +22,11 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "verify": "npm run check && npm run lint && npm test"
+    "verify": "npm run check && npm run lint && npm test",
+    "electron:rebuild": "electron-builder install-app-deps",
+    "electron:dev": "npm run build && electron .",
+    "electron:pack": "npm run build && electron-builder --dir",
+    "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
@@ -48,6 +54,8 @@
     "@types/papaparse": "^5.5.2",
     "@vitest/coverage-v8": "^4.1.0",
     "drizzle-kit": "^0.31.0",
+    "electron": "^41.5.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^10.2.1",
     "eslint-plugin-svelte": "^3.17.1",
     "globals": "^17.5.0",
