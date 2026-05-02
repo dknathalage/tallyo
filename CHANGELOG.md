@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.2](https://github.com/dknathalage/tallyo/compare/v3.3.1...v3.3.2) (2026-05-02)
+
+
+### Bug Fixes
+
+* surface delete errors and dispatch invoice bulk actions ([fcaca72](https://github.com/dknathalage/tallyo/commit/fcaca72e0d48f1acfffa936959ed06a27cfc6c52))
+
 ## [3.3.1](https://github.com/dknathalage/tallyo/compare/v3.3.0...v3.3.1) (2026-05-02)
 
 
