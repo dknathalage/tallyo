@@ -7,7 +7,9 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite dev",
+    "dev:docs": "TALLYO_TARGET=docs vite dev",
     "build": "vite build",
+    "build:docs": "TALLYO_TARGET=docs vite build",
     "start": "npm run electron:dev",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -39,6 +41,7 @@
     "@eslint/js": "^10.0.1",
     "@sveltejs/adapter-auto": "^7.0.0",
     "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.50.2",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/better-sqlite3": "^7.6.12",
