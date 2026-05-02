@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/dknathalage/tallyo/compare/v3.3.0...v3.3.1) (2026-05-02)
+
+
+### Bug Fixes
+
+* unwrap paginated API responses in invoice/estimate forms and CSV ops ([1a86cea](https://github.com/dknathalage/tallyo/commit/1a86cea9cdb68c561b9aafb3cf17263bad5da1a9))
+
 ## [3.3.0](https://github.com/dknathalage/tallyo/compare/v3.2.0...v3.3.0) (2026-05-02)
 
 
