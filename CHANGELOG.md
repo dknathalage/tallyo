@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/dknathalage/tallyo/compare/v3.1.0...v3.2.0) (2026-05-02)
+
+
+### Features
+
+* remove AI assistant feature ([bde4111](https://github.com/dknathalage/tallyo/commit/bde4111f55d5030a2ebf1b42097e32be118db4c6))
+
 ## [3.1.0](https://github.com/dknathalage/tallyo/compare/v3.0.0...v3.1.0) (2026-05-02)
 
 
