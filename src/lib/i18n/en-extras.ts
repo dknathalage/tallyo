@@ -90,7 +90,7 @@ export const enExtras: Extras = {
 		namePlaceholder: 'Template name'
 	},
 	fileGate: {
-		appName: 'Invoice Manager',
+		appName: 'Tallyo',
 		appDescription:
 			'A local-first invoice management tool. Your data stays on your device, stored in a SQLite database file you control.',
 		reconnectTo: 'Reconnect to {name}',

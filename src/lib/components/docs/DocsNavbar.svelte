@@ -28,9 +28,9 @@
 			<div class="flex items-center gap-8">
 				<a href={docsHome} class="flex items-center gap-2">
 					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
-						IM
+						T
 					</div>
-					<span class="text-lg font-semibold text-gray-900 dark:text-white">Invoice Manager</span>
+					<span class="text-lg font-semibold text-gray-900 dark:text-white">Tallyo</span>
 				</a>
 
 				<!-- Desktop nav -->

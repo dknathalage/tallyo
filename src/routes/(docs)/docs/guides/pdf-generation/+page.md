@@ -1,6 +1,6 @@
 # PDF Generation
 
-Invoice Manager generates professional PDF invoices directly in your browser using jsPDF.
+Tallyo generates professional PDF invoices directly in your browser using jsPDF.
 
 ## Generating a PDF
 

@@ -14,7 +14,7 @@ const en: Messages = {
 		reports: 'Reports',
 		settings: 'Settings',
 		aiAssistant: 'AI Assistant',
-		appName: 'Invoice Manager',
+		appName: 'Tallyo',
 		close: 'Close',
 		closeDatabase: 'Close Database',
 		docs: 'Docs'

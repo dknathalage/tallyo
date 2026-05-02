@@ -14,16 +14,16 @@
 </script>
 
 <svelte:head>
-	<title>Invoice Manager — Documentation</title>
+	<title>Tallyo — Documentation</title>
 </svelte:head>
 
 <div class="not-prose">
 	<div class="py-16 text-center">
 		<div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-600 text-3xl font-bold text-white">
-			IM
+			T
 		</div>
 		<h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
-			Invoice Manager
+			Tallyo
 		</h1>
 		<p class="mt-2 text-xl font-medium text-primary-600 dark:text-primary-400">
 			Local-First Invoice Management

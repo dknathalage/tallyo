@@ -31,7 +31,7 @@
 </script>
 
 <svelte:head>
-	<title>Invoice Manager — Local-First Invoice Management</title>
+	<title>Tallyo — Local-First Invoice Management</title>
 </svelte:head>
 
 <div class="min-h-screen bg-white dark:bg-gray-950">
@@ -39,9 +39,9 @@
 		<div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 			<div class="flex items-center gap-2">
 				<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
-					IM
+					T
 				</div>
-				<span class="text-lg font-semibold text-gray-900 dark:text-white">Invoice Manager</span>
+				<span class="text-lg font-semibold text-gray-900 dark:text-white">Tallyo</span>
 			</div>
 			<div class="flex items-center gap-4">
 				<button
@@ -77,10 +77,10 @@
 
 	<div class="py-16 text-center">
 		<div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-600 text-3xl font-bold text-white">
-			IM
+			T
 		</div>
 		<h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
-			Invoice Manager
+			Tallyo
 		</h1>
 		<p class="mt-2 text-xl font-medium text-primary-600 dark:text-primary-400">
 			Local-First Invoice Management

@@ -1,6 +1,6 @@
 # Import & Export
 
-Invoice Manager supports bulk data operations via CSV and Excel files.
+Tallyo supports bulk data operations via CSV and Excel files.
 
 ## Exporting Data
 
