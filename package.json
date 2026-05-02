@@ -1,6 +1,6 @@
 {
   "name": "tallyo",
-  "version": "2.1.1",
+  "version": "3.0.0",
   "description": "Self-hosted invoice manager desktop app.",
   "private": true,
   "type": "module",
