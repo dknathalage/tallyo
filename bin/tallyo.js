@@ -54,10 +54,12 @@ const dataDir = values['data-dir'] ?? process.env.DATA_DIR ?? join(homedir(), '.
 mkdirSync(dataDir, { recursive: true });
 
 const dbPath = join(dataDir, 'tallyo.db');
+const migrationsDir = join(pkgRoot, 'drizzle');
+process.env.TALLYO_MIGRATIONS_DIR = migrationsDir;
 const runMigrations = () => {
   const sqlite = new Database(dbPath);
   const db = drizzle(sqlite);
-  migrate(db, { migrationsFolder: join(pkgRoot, 'drizzle') });
+  migrate(db, { migrationsFolder: migrationsDir });
   sqlite.close();
 };
 
