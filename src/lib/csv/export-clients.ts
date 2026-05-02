@@ -2,8 +2,9 @@ import Papa from 'papaparse';
 import { downloadCsv } from './download.js';
 
 export async function exportClients(): Promise<void> {
-	const res = await fetch('/api/clients');
-	const clients = await res.json() as Record<string, unknown>[];
+	const res = await fetch('/api/clients?limit=10000');
+	const body = await res.json();
+	const clients = (body.data ?? body) as Record<string, unknown>[];
 	const rows = clients.map((c) => ({
 		uuid: c['uuid'],
 		name: c['name'],

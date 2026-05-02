@@ -33,10 +33,11 @@
 
 	onMount(async () => {
 		const [catalogRes, tiersRes] = await Promise.all([
-			fetch('/api/catalog'),
+			fetch('/api/catalog?limit=10000'),
 			fetch('/api/rate-tiers')
 		]);
-		const catalogItems = await catalogRes.json() as CatalogItem[];
+		const catalogBody = await catalogRes.json();
+		const catalogItems = (catalogBody.data ?? catalogBody) as CatalogItem[];
 		categories = [...new Set(catalogItems.map((i: CatalogItem) => i.category).filter(Boolean))];
 		tiers = await tiersRes.json() as { id: number; name: string }[];
 

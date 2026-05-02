@@ -19,7 +19,7 @@
 
 	function handleInput() {
 		if (value.trim().length > 0) {
-			void fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json() as Promise<CatalogItem[]>).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
+			void fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json()).then(body => { suggestions = (body.data ?? body) as CatalogItem[]; showDropdown = suggestions.length > 0; });
 			showDropdown = suggestions.length > 0;
 			highlightedIndex = -1;
 			if (suggestions.length > 0) {
@@ -74,7 +74,7 @@
 			clearTimeout(blurTimeout);
 		}
 		if (value.trim().length > 0) {
-			void fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json() as Promise<CatalogItem[]>).then(d => { suggestions = d; showDropdown = suggestions.length > 0; });
+			void fetch('/api/catalog?search=' + encodeURIComponent(value)).then(r => r.json()).then(body => { suggestions = (body.data ?? body) as CatalogItem[]; showDropdown = suggestions.length > 0; });
 			showDropdown = suggestions.length > 0;
 		}
 	}

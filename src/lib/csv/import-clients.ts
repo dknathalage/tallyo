@@ -10,8 +10,9 @@ export async function parseClientsCsv(file: File): Promise<ParsedImport<CsvClien
 	let skippedDuplicates = 0;
 
 	// Get existing UUIDs for deduplication via API
-	const existingRes = await fetch('/api/clients');
-	const existingClients = await existingRes.json() as { uuid: string }[];
+	const existingRes = await fetch('/api/clients?limit=10000');
+	const existingBody = await existingRes.json();
+	const existingClients = (existingBody.data ?? existingBody) as { uuid: string }[];
 	const existingUuids = new Set(existingClients.map((r) => r.uuid).filter(Boolean));
 
 	for (let i = 0; i < data.length; i++) {

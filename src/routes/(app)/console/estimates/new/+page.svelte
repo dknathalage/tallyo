@@ -53,6 +53,13 @@
 	</div>
 
 	<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-		<EstimateForm onsubmit={handleSubmit} nextEstimateNumber={data.nextEstimateNumber} />
+		<EstimateForm
+			onsubmit={handleSubmit}
+			nextEstimateNumber={data.nextEstimateNumber}
+			clients={data.clients}
+			taxRates={data.taxRates}
+			rateTiers={data.rateTiers}
+			businessProfile={data.businessProfile}
+		/>
 	</div>
 </div>

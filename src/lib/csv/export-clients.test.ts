@@ -25,7 +25,7 @@ describe('exportClients', () => {
 	it('fetches from /api/clients', async () => {
 		mockFetch.mockResolvedValue({ json: vi.fn().mockResolvedValue([]) });
 		await exportClients();
-		expect(mockFetch).toHaveBeenCalledWith('/api/clients');
+		expect(mockFetch).toHaveBeenCalledWith('/api/clients?limit=10000');
 	});
 
 	it('maps clients to only uuid, name, email, phone, address', async () => {

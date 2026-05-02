@@ -53,6 +53,14 @@
 	</div>
 
 	<div class="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-		<InvoiceForm initialData={data.invoice} initialLineItems={data.lineItems} onsubmit={handleSubmit} />
+		<InvoiceForm
+			initialData={data.invoice}
+			initialLineItems={data.lineItems}
+			onsubmit={handleSubmit}
+			clients={data.clients}
+			taxRates={data.taxRates}
+			rateTiers={data.rateTiers}
+			businessProfile={data.businessProfile}
+		/>
 	</div>
 </div>

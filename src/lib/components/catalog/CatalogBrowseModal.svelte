@@ -21,7 +21,7 @@
 
 	$effect(() => {
 		if (open) {
-			void fetch('/api/catalog').then(r => r.json() as Promise<CatalogItem[]>).then(d => { allItems = d; });
+			void fetch('/api/catalog?limit=10000').then(r => r.json()).then(body => { allItems = (body.data ?? body) as CatalogItem[]; });
 			// Get categories from loaded items
 		}
 	});
