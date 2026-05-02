@@ -1,6 +1,6 @@
 # Tallyo
 
-Self-hosted, open-source invoice management app distributed as a global npm CLI. SQLite via better-sqlite3 + Drizzle ORM.
+Self-hosted, open-source invoice management desktop app (Electron + SvelteKit). SQLite via better-sqlite3 + Drizzle ORM.
 
 ## Tech Stack
 
@@ -10,40 +10,45 @@ Self-hosted, open-source invoice management app distributed as a global npm CLI.
 - **PDF:** jsPDF + autotable
 - **Import/Export:** PapaParse (CSV), XLSX (Excel)
 - **Testing:** Vitest
-- **Distribution:** Global npm CLI (`tallyo`) via `bin/tallyo.js`
+- **Desktop shell:** Electron (packaged via electron-builder)
+- **Distribution:** Prebuilt installers (.dmg / .exe / .AppImage) on GitHub Releases; `install.sh` downloads + installs the right one for the host
 
 ## Project Layout
 
-- `bin/tallyo.js` — CLI entry: resolves data dir, picks port, runs migrations, boots SvelteKit Node server, opens browser
+- `electron/main.cjs` — Electron main process: resolves data dir, picks port, runs migrations, boots SvelteKit Node server in-process, opens BrowserWindow
+- `electron/preload.cjs` — preload (currently empty; renderer is a normal web page)
+- `electron-builder.yml` — packaging config (mac/win/linux targets, asarUnpack)
 - `src/lib/` — Shared library: components, database, utilities
 - `src/lib/db/` — Database connection, schema, migrations, query modules
 - `src/lib/repositories/` — Data access layer (interfaces + SQLite implementations)
 - `src/lib/utils/` — Helpers (currency, formatting, PDF)
 - `src/routes/` — SvelteKit pages and server load functions
-- `drizzle/` — Generated Drizzle migrations (shipped in published tarball)
-- `build/` — SvelteKit Node adapter output (built before publish)
+- `drizzle/` — Generated Drizzle migrations (asarUnpacked at runtime)
+- `build/` — SvelteKit Node adapter output (consumed by Electron main)
+- `.github/workflows/electron-release.yml` — mac/win/linux build matrix on `v*` tags
 
 ## Run
 
-End users:
+End users — download installer for your platform from the latest GitHub Release, or:
 
 ```bash
-npm install -g tallyo
-tallyo
+curl -fsSL https://raw.githubusercontent.com/dknathalage/tallyo/main/install.sh | bash
 ```
 
 Local dev:
 
 ```bash
-npm run dev          # Vite dev server at http://localhost:5173
-npm run build        # Production build into build/
-npm link             # Use `tallyo` globally from working tree
+npm run dev             # Vite dev server (browser-only, no Electron) at http://localhost:5173
+npm run electron:dev    # Build SvelteKit + launch Electron window
+npm run electron:pack   # Produce unpackaged .app/.exe/AppImage in dist-electron/
+npm run electron:build  # Produce signed installers in dist-electron/
+npm run electron:rebuild # Rebuild native deps (better-sqlite3) for Electron ABI
 ```
 
 ## Commands
 
 - `npm run dev` — Start dev server (http://localhost:5173)
-- `npm run build` — Production build
+- `npm run build` — Production SvelteKit build
 - `npm test` — Run Vitest tests
 - `npm run test:coverage` — Run tests with coverage report
 - `npm run check` — TypeScript check
@@ -62,7 +67,7 @@ npm link             # Use `tallyo` globally from working tree
 
 - SQLite (better-sqlite3) + Drizzle ORM
 - Migrations managed by Drizzle Kit (`npx drizzle-kit generate` / `npx drizzle-kit migrate`)
-- Database file stored in `DATA_DIR` (default: `~/.tallyo/tallyo.db`); `bin/tallyo.js` runs migrations on startup
+- Database file stored in `DATA_DIR` (default: Electron `userData` dir, e.g. `~/Library/Application Support/Tallyo/tallyo.db` on macOS); `electron/main.cjs` runs migrations on startup
 
 ## Coding Rules (NASA Power of 10, adapted)
 

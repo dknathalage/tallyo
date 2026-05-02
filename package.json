@@ -1,26 +1,26 @@
 {
   "name": "tallyo",
   "version": "2.1.1",
-  "description": "Self-hosted invoice manager. Run `tallyo` to launch.",
+  "description": "Self-hosted invoice manager desktop app.",
+  "private": true,
   "type": "module",
-  "bin": {
-    "tallyo": "bin/tallyo.js"
-  },
-  "files": [
-    "bin",
-    "build",
-    "drizzle"
-  ],
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite dev",
+    "dev:docs": "TALLYO_TARGET=docs vite dev",
     "build": "vite build",
-    "start": "node bin/tallyo.js",
+    "build:docs": "TALLYO_TARGET=docs vite build",
+    "start": "npm run electron:dev",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "verify": "npm run check && npm run lint && npm test"
+    "verify": "npm run check && npm run lint && npm test",
+    "electron:rebuild": "electron-builder install-app-deps",
+    "electron:dev": "npm run build && electron .",
+    "electron:pack": "npm run build && electron-builder --dir",
+    "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
@@ -32,7 +32,6 @@
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "mdsvex": "^0.12.6",
-    "open": "^10.1.0",
     "papaparse": "^5.5.3",
     "tailwindcss": "^4.2.1",
     "xlsx": "^0.18.5",
@@ -42,12 +41,15 @@
     "@eslint/js": "^10.0.1",
     "@sveltejs/adapter-auto": "^7.0.0",
     "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.50.2",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/better-sqlite3": "^7.6.12",
     "@types/papaparse": "^5.5.2",
     "@vitest/coverage-v8": "^4.1.0",
     "drizzle-kit": "^0.31.0",
+    "electron": "^41.5.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^10.2.1",
     "eslint-plugin-svelte": "^3.17.1",
     "globals": "^17.5.0",

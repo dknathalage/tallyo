@@ -31,4 +31,6 @@ coverage/
 
 .build-sha
 build
+build-docs
 bin/.tallyo-build.json
+dist-electron/

@@ -1,0 +1,21 @@
+appId: com.tallyo.app
+productName: Tallyo
+directories:
+  output: dist-electron
+files:
+  - electron/**
+  - build/**
+  - drizzle/**
+  - package.json
+  - "!**/*.{md,map,ts}"
+asarUnpack:
+  - node_modules/better-sqlite3/**
+  - drizzle/**
+  - build/**
+mac:
+  target: dmg
+  category: public.app-category.finance
+win:
+  target: nsis
+linux:
+  target: AppImage
