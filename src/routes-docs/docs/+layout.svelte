@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { base } from '$app/paths';
 	import DocsNavbar from '$lib/components/docs/DocsNavbar.svelte';
 	import DocsSidebar from '$lib/components/docs/DocsSidebar.svelte';
 	import type { Snippet } from 'svelte';
@@ -31,10 +31,10 @@
 					<span class="text-sm font-medium text-gray-900 dark:text-white">Tallyo</span>
 				</div>
 				<nav class="flex gap-6" aria-label="Footer navigation">
-					<a href={resolve('/(docs)/docs/getting-started')} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Getting Started</a>
-					<a href={resolve('/(docs)/docs/features')} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Features</a>
-					<a href={resolve('/(docs)/docs/guides/invoices')} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Guides</a>
-					<a href={resolve('/console')} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Open App</a>
+					<a href={`${base}/docs/getting-started`} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Getting Started</a>
+					<a href={`${base}/docs/features`} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Features</a>
+					<a href={`${base}/docs/guides/invoices`} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Guides</a>
+					<a href={`${base}/console`} class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">Open App</a>
 				</nav>
 			</div>
 			<p class="mt-4 text-center text-xs text-gray-400 dark:text-gray-500 sm:text-left">

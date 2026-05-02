@@ -273,22 +273,3 @@ export interface RecurringTemplate {
 	updated_at: string;
 }
 
-export interface AiChatSession {
-	id: number;
-	uuid: string;
-	title: string;
-	created_at: string;
-	updated_at: string;
-}
-
-export interface AiChatMessage {
-	id: number;
-	uuid: string;
-	session_id: number;
-	role: 'user' | 'assistant';
-	content: string;
-	tool_calls: string | null;
-	tool_results: string | null;
-	is_streaming: number;
-	created_at: string;
-}

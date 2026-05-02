@@ -23,7 +23,6 @@
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.1",
     "better-sqlite3": "^12.8.0",
