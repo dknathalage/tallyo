@@ -269,26 +269,29 @@ async function insertInvoiceWithLines(
 	templateLineItems: TemplateLineItem[]
 ): Promise<number> {
 	const db = getDb();
-	return db.transaction(async (tx) => {
-		const [inserted] = await tx
+	return db.transaction((tx) => {
+		const inserted = tx
 			.insert(invoices)
 			.values(values)
-			.returning({ id: invoices.id });
+			.returning({ id: invoices.id })
+			.all()[0];
 		if (!inserted) throw new Error('Failed to create invoice from template');
 		const newInvoiceId = inserted.id;
 		for (let i = 0; i < templateLineItems.length; i++) {
 			const li = templateLineItems[i];
 			if (!li) continue;
-			await tx.insert(lineItems).values({
-				uuid: crypto.randomUUID(),
-				invoice_id: newInvoiceId,
-				description: li.description,
-				quantity: li.quantity,
-				rate: li.rate,
-				amount: lineItemAmount(li),
-				notes: li.notes ?? '',
-				sort_order: li.sort_order ?? i
-			});
+			tx.insert(lineItems)
+				.values({
+					uuid: crypto.randomUUID(),
+					invoice_id: newInvoiceId,
+					description: li.description,
+					quantity: li.quantity,
+					rate: li.rate,
+					amount: lineItemAmount(li),
+					notes: li.notes ?? '',
+					sort_order: li.sort_order ?? i
+				})
+				.run();
 		}
 		return newInvoiceId;
 	});

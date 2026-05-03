@@ -9,7 +9,10 @@ function createMockDb() {
 	}
 	chain.then = (resolve: any) => resolve([]);
 	chain[Symbol.iterator] = function* () {};
-	chain.transaction = vi.fn(async (fn: any) => fn(chain));
+	chain.all = vi.fn(() => [{ id: 1 }]);
+	chain.run = vi.fn(() => undefined);
+	chain.get = vi.fn(() => ({ id: 1 }));
+	chain.transaction = vi.fn((fn: any) => fn(chain));
 	return chain;
 }
 
@@ -49,6 +52,10 @@ beforeEach(() => {
 		'returning', 'orderBy', 'leftJoin', 'limit', 'groupBy', 'offset', 'innerJoin']) {
 		mockDb[m].mockReturnValue(mockDb);
 	}
+	mockDb.all.mockReturnValue([{ id: 1 }]);
+	mockDb.run.mockReturnValue(undefined);
+	mockDb.get.mockReturnValue({ id: 1 });
+	mockDb.transaction.mockImplementation((fn: any) => fn(mockDb));
 });
 
 describe('getInvoices', () => {
@@ -84,7 +91,8 @@ describe('getInvoiceLineItems', () => {
 
 describe('createInvoice', () => {
 	it('is an async function', () => {
-		mockDb.returning.mockResolvedValue([{ id: 7 }]);
+		mockDb.returning.mockReturnValue(mockDb);
+		mockDb.all.mockReturnValue([{ id: 7 }]);
 		expect(createInvoice({
 			invoice_number: 'INV-0001',
 			client_id: 1,
@@ -98,7 +106,8 @@ describe('createInvoice', () => {
 	});
 
 	it('returns an id', async () => {
-		mockDb.returning.mockResolvedValue([{ id: 7 }]);
+		mockDb.returning.mockReturnValue(mockDb);
+		mockDb.all.mockReturnValue([{ id: 7 }]);
 		const id = await createInvoice({
 			invoice_number: 'INV-0001',
 			client_id: 1,

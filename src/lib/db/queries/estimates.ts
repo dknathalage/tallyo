@@ -144,8 +144,8 @@ export async function createEstimate(
 	items: LineItemInput[]
 ): Promise<number> {
 	const db = getDb();
-	return await db.transaction(async (tx) => {
-		const [inserted] = await tx
+	return db.transaction((tx) => {
+		const inserted = tx
 			.insert(estimates)
 			.values({
 				uuid: data.uuid ?? crypto.randomUUID(),
@@ -165,22 +165,25 @@ export async function createEstimate(
 				client_snapshot: data.client_snapshot ?? '{}',
 				payer_snapshot: data.payer_snapshot ?? '{}'
 			})
-			.returning({ id: estimates.id });
+			.returning({ id: estimates.id })
+			.all()[0];
 
 		if (!inserted) throw new Error('Failed to insert estimate');
 		const estimateId = inserted.id;
 
 		for (const item of items) {
-			await tx.insert(estimateLineItems).values({
-				uuid: crypto.randomUUID(),
-				estimate_id: estimateId,
-				description: item.description,
-				quantity: item.quantity,
-				rate: item.rate,
-				amount: item.amount,
-				notes: item.notes ?? '',
-				sort_order: item.sort_order
-			});
+			tx.insert(estimateLineItems)
+				.values({
+					uuid: crypto.randomUUID(),
+					estimate_id: estimateId,
+					description: item.description,
+					quantity: item.quantity,
+					rate: item.rate,
+					amount: item.amount,
+					notes: item.notes ?? '',
+					sort_order: item.sort_order
+				})
+				.run();
 		}
 
 		return estimateId;
@@ -367,8 +370,8 @@ export async function duplicateEstimate(
 	const originalItems = await getEstimateLineItems(id);
 
 	const db = getDb();
-	return await db.transaction(async (tx) => {
-		const [inserted] = await tx
+	return db.transaction((tx) => {
+		const inserted = tx
 			.insert(estimates)
 			.values({
 				uuid: crypto.randomUUID(),
@@ -387,22 +390,25 @@ export async function duplicateEstimate(
 				client_snapshot: original.client_snapshot,
 				payer_snapshot: original.payer_snapshot
 			})
-			.returning({ id: estimates.id });
+			.returning({ id: estimates.id })
+			.all()[0];
 
 		if (!inserted) throw new Error('Failed to duplicate estimate');
 		const newId = inserted.id;
 
 		for (const item of originalItems) {
-			await tx.insert(estimateLineItems).values({
-				uuid: crypto.randomUUID(),
-				estimate_id: newId,
-				description: item.description,
-				quantity: item.quantity,
-				rate: item.rate,
-				amount: item.amount,
-				notes: item.notes,
-				sort_order: item.sort_order
-			});
+			tx.insert(estimateLineItems)
+				.values({
+					uuid: crypto.randomUUID(),
+					estimate_id: newId,
+					description: item.description,
+					quantity: item.quantity,
+					rate: item.rate,
+					amount: item.amount,
+					notes: item.notes,
+					sort_order: item.sort_order
+				})
+				.run();
 		}
 
 		return { newId, newNumber, originalNumber: original.estimate_number };

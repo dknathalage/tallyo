@@ -15,6 +15,20 @@
       "when": 1777721191423,
       "tag": "0001_drop_ai_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777794619343,
+      "tag": "0002_dizzy_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1777803687200,
+      "tag": "0003_silly_deadpool",
+      "breakpoints": true
     }
   ]
 }

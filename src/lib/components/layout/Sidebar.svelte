@@ -5,6 +5,7 @@
 	import { theme } from '$lib/stores/theme.svelte';
 	import { i18n } from '$lib/stores/i18n.svelte.js';
 	import Logo from '$lib/components/shared/Logo.svelte';
+	import ActivityBar from './ActivityBar.svelte';
 
 	// __PKG_VERSION__ is a Vite-defined global (see vite.config.ts), typed in src/app.d.ts
 	// eslint-disable-next-line no-undef -- Vite define replaces this at build time
@@ -133,6 +134,8 @@
 			{/each}
 		</ul>
 	</nav>
+
+	<ActivityBar />
 
 	<!-- Bottom: Theme toggle, DB info, close DB -->
 	<div class="shrink-0 border-t border-gray-200 px-3 py-4 dark:border-gray-700">

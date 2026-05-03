@@ -276,6 +276,54 @@ export const payments = sqliteTable(
 	(table) => [index('idx_payments_invoice_id').on(table.invoice_id)]
 );
 
+// ── ai chat ──────────────────────────────────────────────────────────
+export const aiChatSessions = sqliteTable('ai_chat_sessions', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
+	title: text('title').notNull().default('New chat'),
+	loaded_skills_json: text('loaded_skills_json').notNull().default('[]'),
+	created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
+export const aiChatMessages = sqliteTable(
+	'ai_chat_messages',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		session_id: integer('session_id')
+			.notNull()
+			.references(() => aiChatSessions.id, { onDelete: 'cascade' }),
+		role: text('role').notNull(),
+		content: text('content').notNull().default(''),
+		tool_calls: text('tool_calls').notNull().default('[]'),
+		tool_call_id: text('tool_call_id').default(''),
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [index('idx_ai_chat_messages_session').on(table.session_id)]
+);
+
+export const aiChatToolCalls = sqliteTable(
+	'ai_chat_tool_calls',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		uuid: text('uuid').notNull().unique().$defaultFn(() => crypto.randomUUID()),
+		session_id: integer('session_id')
+			.notNull()
+			.references(() => aiChatSessions.id, { onDelete: 'cascade' }),
+		message_id: integer('message_id').references(() => aiChatMessages.id, { onDelete: 'cascade' }),
+		tool_name: text('tool_name').notNull(),
+		args_json: text('args_json').notNull().default('{}'),
+		status: text('status').notNull().default('pending'),
+		result_json: text('result_json').notNull().default('null'),
+		error_message: text('error_message').default(''),
+		parent_tool_call_uuid: text('parent_tool_call_uuid'),
+		agent_id: text('agent_id'),
+		created_at: text('created_at').$defaultFn(() => new Date().toISOString()),
+		updated_at: text('updated_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [index('idx_ai_chat_tool_calls_session').on(table.session_id)]
+);
+
 // ── recurring_templates ──────────────────────────────────────────────
 export const recurringTemplates = sqliteTable(
 	'recurring_templates',
