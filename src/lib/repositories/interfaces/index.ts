@@ -22,6 +22,12 @@ export type {
 	UpdateRecurringTemplateInput
 } from './RecurringTemplateRepository.js';
 export type {
+	AiChatRepository,
+	AiChatSession,
+	AiChatMessage,
+	AiChatToolCall
+} from './AiChatRepository.js';
+export type {
 	LineItemInput,
 	CreateInvoiceInput,
 	UpdateInvoiceInput,

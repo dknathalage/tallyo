@@ -166,8 +166,8 @@ export async function createInvoice(
 	items: LineItemInput[]
 ): Promise<number> {
 	const db = getDb();
-	return await db.transaction(async (tx) => {
-		const [inserted] = await tx
+	return db.transaction((tx) => {
+		const inserted = tx
 			.insert(invoices)
 			.values({
 				uuid: data.uuid ?? crypto.randomUUID(),
@@ -188,22 +188,25 @@ export async function createInvoice(
 				client_snapshot: data.client_snapshot ?? '{}',
 				payer_snapshot: data.payer_snapshot ?? '{}'
 			})
-			.returning({ id: invoices.id });
+			.returning({ id: invoices.id })
+			.all()[0];
 
 		if (!inserted) throw new Error('Failed to insert invoice');
 		const invoiceId = inserted.id;
 
 		for (const item of items) {
-			await tx.insert(lineItems).values({
-				uuid: crypto.randomUUID(),
-				invoice_id: invoiceId,
-				description: item.description,
-				quantity: item.quantity,
-				rate: item.rate,
-				amount: item.amount,
-				notes: item.notes ?? '',
-				sort_order: item.sort_order
-			});
+			tx.insert(lineItems)
+				.values({
+					uuid: crypto.randomUUID(),
+					invoice_id: invoiceId,
+					description: item.description,
+					quantity: item.quantity,
+					rate: item.rate,
+					amount: item.amount,
+					notes: item.notes ?? '',
+					sort_order: item.sort_order
+				})
+				.run();
 		}
 
 		return invoiceId;
@@ -389,8 +392,8 @@ export async function duplicateInvoice(id: number): Promise<number> {
 	const originalItems = await getInvoiceLineItems(id);
 
 	const db = getDb();
-	return await db.transaction(async (tx) => {
-		const [inserted] = await tx
+	return db.transaction((tx) => {
+		const inserted = tx
 			.insert(invoices)
 			.values({
 				uuid: crypto.randomUUID(),
@@ -410,22 +413,25 @@ export async function duplicateInvoice(id: number): Promise<number> {
 				client_snapshot: original.client_snapshot,
 				payer_snapshot: original.payer_snapshot
 			})
-			.returning({ id: invoices.id });
+			.returning({ id: invoices.id })
+			.all()[0];
 
 		if (!inserted) throw new Error('Failed to duplicate invoice');
 		const newId = inserted.id;
 
 		for (const item of originalItems) {
-			await tx.insert(lineItems).values({
-				uuid: crypto.randomUUID(),
-				invoice_id: newId,
-				description: item.description,
-				quantity: item.quantity,
-				rate: item.rate,
-				amount: item.amount,
-				notes: item.notes,
-				sort_order: item.sort_order
-			});
+			tx.insert(lineItems)
+				.values({
+					uuid: crypto.randomUUID(),
+					invoice_id: newId,
+					description: item.description,
+					quantity: item.quantity,
+					rate: item.rate,
+					amount: item.amount,
+					notes: item.notes,
+					sort_order: item.sort_order
+				})
+				.run();
 		}
 
 		return newId;
