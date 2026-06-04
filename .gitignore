@@ -35,12 +35,10 @@ build-docs
 bin/.tallyo-build.json
 dist-electron/
 
-# Go / Wails
+# Go / web
 /build/bin
-frontend/dist/*
-!frontend/dist/.gitkeep
-frontend/node_modules/
 *.db
-
-# Wails frontend build cache
-frontend/package.json.md5
+!web/build
+web/build/*
+!web/build/.gitkeep
+web/node_modules/
