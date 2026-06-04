@@ -28,6 +28,10 @@ type Deps struct {
 
 	// Auth, when non-nil, serves login/logout/me under /api.
 	Auth *AuthHandler
+
+	// Invites, when non-nil, serves invite creation (owner-only) plus public
+	// invite validation and acceptance under /api.
+	Invites *InviteHandler
 }
 
 // Server wraps the configured chi router.
@@ -67,9 +71,24 @@ func NewServer(deps Deps) *Server {
 		if deps.Auth != nil {
 			api.Post("/auth/login", deps.Auth.Login)
 			api.Post("/auth/logout", deps.Auth.Logout)
+		}
+		// Public invite routes: the invitee is not logged in, so Validate and
+		// Accept must sit outside the RequireAuth group.
+		if deps.Invites != nil {
+			api.Get("/invites/{token}", deps.Invites.Validate)
+			api.Post("/invites/{token}/accept", deps.Invites.Accept)
+		}
+		// Authenticated /api group. Only registered when there is at least one
+		// protected route, since RequireAuth requires non-nil Session and Users.
+		if deps.Auth != nil || deps.Invites != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
-				pr.Get("/auth/me", deps.Auth.Me)
+				if deps.Auth != nil {
+					pr.Get("/auth/me", deps.Auth.Me)
+				}
+				if deps.Invites != nil {
+					pr.Post("/invites", deps.Invites.Create)
+				}
 			})
 		}
 	})
