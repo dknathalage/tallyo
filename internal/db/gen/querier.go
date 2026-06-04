@@ -9,7 +9,17 @@ import (
 )
 
 type Querier interface {
+	CountUsers(ctx context.Context) (int64, error)
+	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteUser(ctx context.Context, id int64) error
 	GetBusinessProfile(ctx context.Context) (BusinessProfile, error)
+	GetInviteByToken(ctx context.Context, token string) (Invite, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
+	GetUserByID(ctx context.Context, id int64) (User, error)
+	ListUsers(ctx context.Context) ([]User, error)
+	MarkInviteUsed(ctx context.Context, arg MarkInviteUsedParams) error
+	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
 }
 
