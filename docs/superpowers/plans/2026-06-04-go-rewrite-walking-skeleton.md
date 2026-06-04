@@ -1060,4 +1060,16 @@ git commit -m "chore: walking skeleton acceptance — full architecture verified
 - The full chain is proven: Svelte → Wails binding → service → repository → audit + sqlc → modernc SQLite (goose-migrated).
 
 This de-risks the entire rewrite. The next plan ports clients/payers/catalog onto this exact pattern.
+
+---
+
+## Carry-forward to domain-port plans (from final skeleton review)
+
+Settle these BEFORE the pattern is replicated 12×, in priority order:
+
+1. **Context propagation.** Bound service methods currently use `context.Background()`. Wails passes a real `ctx` via `OnStartup` (parked in `App.ctx`). Decide the convention (thread the startup ctx, or accept fire-and-forget) in the FIRST domain-port plan before it becomes the norm across 14 services.
+2. **Extract an audit-tx wrapper** (e.g. `repository.WithAudit(ctx, db, entry, func(tx) error {...})`) so the `BeginTx → work → audit.Log → Commit` invariant is enforced structurally, not by per-repository discipline. Highest-leverage refactor for the porting phase — do it before the second domain.
+3. **`SetMaxOpenConns(1)` serializes all DB access** (correct for modernc+WAL). Flag explicitly in the recurring/dashboard plans, since the recurring run-on-launch sweep / ticker will contend with UI queries on the one connection.
+4. **Audit fidelity:** skeleton hardcodes `EntityID=1` and a minimal `{"name":...}` changes payload. Domain ports need real entity ids + a full change-set, matching the old `src/lib/db/audit.ts` shape.
+5. **`Get` returns `(nil, nil)` for not-found** and `nz()` wraps every string as `Valid:true` (empty → `""` not NULL). Acceptable given `DEFAULT ''` columns, but revisit for domains with semantically-nullable columns; consider a typed sentinel for not-found as repos multiply.
 ```
