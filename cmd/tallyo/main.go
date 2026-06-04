@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	httpapi "github.com/dknathalage/tallyo/internal/http"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
+	tallyoweb "github.com/dknathalage/tallyo/web"
 )
 
 func main() {
@@ -65,11 +67,13 @@ func run() error {
 		return fmt.Errorf("setup handler: %w", err)
 	}
 
+	assets, err := fs.Sub(tallyoweb.Build, "build")
+	if err != nil {
+		return fmt.Errorf("sub web build: %w", err)
+	}
+
 	deps := httpapi.Deps{
-		// T18 will replace this with the embedded web.Build sub-FS. For now the
-		// SPA build dir is served directly; it exists (has .gitkeep) so the
-		// server boots and the /api routes work.
-		Assets:          os.DirFS("web/build"),
+		Assets:          assets,
 		Users:           users,
 		Session:         sm,
 		Setup:           setup,
