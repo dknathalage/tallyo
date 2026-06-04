@@ -957,4 +957,16 @@ Do NOT modify the text.
 - `LICENSE` is the verbatim AGPL-3.0.
 
 Domains (clients, invoices, estimates, payments, tax-rates, rate-tiers, recurring, dashboard, reports) are ported onto this exact pattern (handler → service+broadcast → repository → audit → sqlc) in subsequent plans, applying the carry-forward items (audit-tx wrapper, real entity_id/changes).
+
+---
+
+## Carry-forward to domain-port plans (from final skeleton-v2 review)
+
+Address #1 and #2 BEFORE shipping to real users; all five before/while porting domains:
+
+1. **Embedded SPA not reproducible from a clean clone.** `web/build` is gitignored (only `.gitkeep` tracked), so `//go:embed all:build` on a fresh checkout embeds no `200.html` → `SPAHandler` serves "spa shell missing". The release/CI pipeline MUST run `npm run build` before `go build`; add a startup self-check that fails/logs if `200.html` is absent from the embedded FS.
+2. **Invite `Accept` is a non-transactional 3-step sequence** (Validate → users.Create → MarkUsed). The `UNIQUE(email)` constraint backstops correctness (one user on a race) but the race loser gets a generic 500 not 409. Fold accept into a single audited transaction (create user + mark invite used atomically) and map duplicate-email → 409. Same as the audit-tx-wrapper carry-forward.
+3. **`Connection: keep-alive` in events.go** is hop-by-hop, invalid under HTTP/2. Drop it for reverse-proxy/TLS deploys; consider `X-Accel-Buffering: no` for nginx.
+4. **`SetupHandler.ownerExists` flag is process-local** — correct for a single binary (DB Count re-guard keeps it safe even if stale), but document the single-instance assumption; it breaks under multi-replica.
+5. **Standardize the audit `Entry` shape (full before/after diff) before the first real domain** — business_profile hardcodes `ID:1` and a minimal `changes`; don't replicate that thin across clients/invoices/payments.
 ```
