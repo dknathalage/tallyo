@@ -55,6 +55,9 @@ delivery model: multi-user, browser-accessed, SaaS-style UX, real-time data sync
 - **`internal/http`** — chi router, JSON REST, middleware, embedded static serving.
 - **`internal/service`** — repurposed: orchestrates mutation → repository → audit
   → **SSE broadcast** (commit-then-publish). The realtime publish seam lives here.
+  **Breaking change to reused code:** existing service methods use
+  `context.Background()`; they must change to take `ctx context.Context` so HTTP
+  handlers pass `r.Context()` (cancellation + SSE lifecycle). Not a no-op reuse.
 - **`internal/auth`** — password hashing, sessions, users, invites.
 - **`internal/realtime`** — in-process SSE hub + `Event` type.
 - **`web/`** — new SvelteKit static app, embedded into the binary.
@@ -70,10 +73,14 @@ SSE /api/events ─push─► all clients ─► sync layer refetches invoice �
 
 ### Concurrency
 
-SQLite moves from the skeleton's `SetMaxOpenConns(1)` to a small pool: WAL allows
-concurrent readers with a single serialized writer (relying on `busy_timeout`).
-Sized small (e.g. a handful of connections) — appropriate for a single-org
-self-hosted server. Exact pool size validated during implementation.
+**This requires MODIFYING the reused `internal/db/sqlite.go`** — it currently
+hardcodes `SetMaxOpenConns(1)`. A web server has real concurrency the desktop app
+never did. Change to a small pool: WAL allows concurrent readers with a single
+serialized writer. Config: a handful of read connections + `busy_timeout` (already
+set) so writers wait rather than erroring `SQLITE_BUSY`; serialize writes (modernc
+has historically needed care — consider `_txlock=immediate` for write txns). Add
+test coverage for concurrent read/write against modernc. Exact pool size validated
+during implementation. NOTE: this is a code change, not reuse-as-is.
 
 ## Auth, Users, Invites
 
@@ -83,14 +90,21 @@ self-hosted server. Exact pool size validated during implementation.
   created_at, updated_at, last_login_at (nullable).
 - `invites` — id, token (random, UNIQUE), email, role, created_by (user id),
   expires_at, used_at (nullable until consumed).
-- session table — owned/managed by the scs DB store.
+- `sessions` — **a goose migration must create this table**; scs's
+  `sqlite3store` does NOT create it. Use scs's documented schema
+  (`token TEXT PRIMARY KEY, data BLOB NOT NULL, expiry REAL NOT NULL`) + an index
+  on `expiry`.
 
 ### Password & sessions
 
 - `golang.org/x/crypto/bcrypt` (default cost) for hashing; plaintext never stored.
-- `alexedwards/scs/v2` sessions with a DB-backed store (survives restart).
+- `alexedwards/scs/v2` sessions with `sqlite3store.New(db *sql.DB)` — accepts the
+  caller's `*sql.DB`, so it works with the modernc `"sqlite"` driver. `New()`
+  starts a 5-minute cleanup goroutine; call `StopCleanup()` on shutdown.
   Cookie: httpOnly, SameSite=Lax, `Secure` when served over TLS. Server-side
   sessions → easy logout/revocation.
+- **No password reset path** (no SMTP). Recovery = owner deletes + re-invites the
+  user, or an out-of-band manual reset. Explicitly deferred.
 
 ### Roles (minimal)
 
@@ -99,16 +113,22 @@ invoice-domain access, no user management.
 
 ### Flows
 
-- **First-run setup:** while `users` is empty, all routes funnel to a setup
-  screen that creates the first `owner`. Other routes redirect to setup until an
-  owner exists.
+- **First-run setup:** while `users` is empty, a setup guard allows only the
+  setup route + static assets; protected routes return a "setup required" signal
+  the SPA routes to the setup screen. Enforcement uses a **cached "owner exists"
+  flag** (avoids `COUNT(*) users` per request), flipped after setup succeeds.
+  `POST /api/setup` creates the first `owner` **inside a transaction** and is
+  **rejected with 409** once any user exists (guards the race / double-submit).
 - **Invite (no SMTP):** owner creates an invite → server returns a link with a
   token (`/accept-invite?token=…`) the owner copies and shares manually.
   Invitee opens it, sets a password → account created, token marked `used_at`.
   Tokens expire (default 7 days).
 - **Login/logout:** email+password → session cookie; logout clears the session.
 - **Auth guard:** all `/api/*` except login, setup, and invite-accept require a
-  valid session; unauthorized → 401. SPA redirects to login on 401.
+  valid session; unauthorized → 401. SPA redirects to login on 401. The guard
+  stores the user id in the session and **re-checks the user still exists** each
+  request, so deleting a user immediately invalidates their active session(s)
+  (deleted user can't keep acting until expiry).
 
 ### Endpoints
 
@@ -130,6 +150,12 @@ invoice-domain access, no user management.
   text/event-stream`; registers the client; streams events until disconnect;
   heartbeat comment ~every 25s to keep proxies open; honors request-context
   cancellation for cleanup.
+- **SSE auth = same-origin session cookie.** `EventSource` cannot set
+  `Authorization` headers, but it sends cookies automatically for same-origin
+  requests. `/api/events` is same-origin with the embedded SPA, so the session
+  cookie rides along and the normal auth-guard applies — do NOT attempt a bearer
+  token on EventSource. In dev, the Vite proxy for `/api` must preserve
+  same-origin/credentials so the cookie reaches `/api/events`.
 - **Publish point:** in the service layer, **after** the transaction commits
   successfully. Never publish on rollback.
 
@@ -159,7 +185,8 @@ buffers + heartbeat + reconnect-resync prevent leaks and stuck clients.
     reports, audit — ported in later plans).
   - `/api/events` — SSE.
   - `/*` — serve embedded SvelteKit static build; unknown non-API paths fall back
-    to `index.html` for SPA client routing.
+    to **`200.html`** (SvelteKit's documented SPA fallback — NOT `index.html`,
+    which collides with the prerendered root route) for SPA client routing.
 - **Middleware:** recovery (panic→500, process survives) → request logging →
   session load (scs) → auth guard on protected groups.
 - **CSRF:** SameSite=Lax cookie + same-origin `/api`. Add a CSRF token only if
@@ -172,11 +199,14 @@ buffers + heartbeat + reconnect-resync prevent leaks and stuck clients.
 
 ## Frontend
 
-- **`web/`** — SvelteKit with `@sveltejs/adapter-static` (SPA fallback to
-  `index.html`), Svelte 5 runes, Tailwind CSS 4.
+- **`web/`** — SvelteKit with `@sveltejs/adapter-static` (`fallback: '200.html'`,
+  SPA mode), Svelte 5 runes, Tailwind CSS 4.
 - **Build + embed:** build to `web/build`; Go embeds via
-  `//go:embed all:web/build` and serves through the static handler. Production =
-  one binary.
+  `//go:embed all:web/build` (the `all:` prefix is required to include SvelteKit's
+  `_app/` underscore-prefixed dirs) and serves through the static handler.
+  Production = one binary. **Build-order trap:** `go:embed` fails to compile if
+  `web/build` is missing/empty — commit a placeholder (e.g. `web/build/.gitkeep`)
+  and ensure the frontend build runs **before** the Go build in CI.
 - **Dev mode:** run the Vite dev server with `/api` proxied to the Go process for
   hot reload (two processes in dev, one in prod).
 - **API client:** thin typed `fetch` wrapper in `web/src/lib/api`; on 401,
@@ -239,7 +269,9 @@ Proves the NEW architecture end to end:
 
 1. `cmd/tallyo serve` boots → chi router → serves an embedded SvelteKit static
    build.
-2. Auth: first-run setup, login, session cookie, auth-guarded `/api`.
+2. Auth: goose migration for `users` + `invites` + scs `sessions` table;
+   first-run setup (guarded, 409 once owner exists), login, scs session cookie,
+   auth-guarded `/api` (with user-exists re-check).
 3. One protected vertical slice: Business Profile settings over `/api`
    (GET/PUT) reusing the existing repository.
 4. SSE hub + `/api/events` + client sync: a change in one browser tab reflects
