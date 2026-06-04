@@ -4,20 +4,30 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/alexedwards/scs/v2"
+	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
 
 // Deps holds the dependencies required to build the HTTP server. It is
-// intentionally minimal for now; later tasks add services, the session
-// manager, and the realtime hub. Assets is the embedded SPA build sub-FS and
-// is required.
+// intentionally minimal for now; later tasks add more services and the realtime
+// hub. Assets is the embedded SPA build sub-FS and is required.
 type Deps struct {
 	// Assets is the file system serving the built SPA (index/200.html, _app/...).
 	Assets fs.FS
 
 	// Setup, when non-nil, serves the first-run setup routes under /api.
-	// Constructed by the caller (cmd/tallyo) so NewServer stays error-free.
 	Setup *SetupHandler
+
+	// Session, when non-nil, wraps the router so sessions load and save per
+	// request. Required for the authenticated routes below to function.
+	Session *scs.SessionManager
+
+	// Users backs the auth-guard's user-exists recheck. Required when Auth is set.
+	Users *auth.UsersRepo
+
+	// Auth, when non-nil, serves login/logout/me under /api.
+	Auth *AuthHandler
 }
 
 // Server wraps the configured chi router.
@@ -25,8 +35,8 @@ type Server struct {
 	Router chi.Router
 }
 
-// NewServer builds the HTTP server: a /healthz probe, a place for future /api
-// routes, and the SPA static handler mounted last as the catch-all. Panics if
+// NewServer builds the HTTP server: a /healthz probe, /api routes (setup, auth),
+// and the SPA static handler mounted last as the catch-all. Panics if
 // deps.Assets is nil since the server cannot serve the UI without it.
 func NewServer(deps Deps) *Server {
 	if deps.Assets == nil {
@@ -34,6 +44,13 @@ func NewServer(deps Deps) *Server {
 	}
 
 	r := chi.NewRouter()
+	r.Use(Recover)
+	r.Use(RequestLogger)
+	// LoadAndSave must wrap any route that reads or writes the session. It is
+	// harmless on session-free routes (/healthz, SPA).
+	if deps.Session != nil {
+		r.Use(deps.Session.LoadAndSave)
+	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if _, err := w.Write([]byte("ok")); err != nil {
@@ -46,6 +63,14 @@ func NewServer(deps Deps) *Server {
 		if deps.Setup != nil {
 			api.Get("/setup/status", deps.Setup.Status)
 			api.Post("/setup", deps.Setup.CreateOwner)
+		}
+		if deps.Auth != nil {
+			api.Post("/auth/login", deps.Auth.Login)
+			api.Post("/auth/logout", deps.Auth.Logout)
+			api.Group(func(pr chi.Router) {
+				pr.Use(RequireAuth(deps.Session, deps.Users))
+				pr.Get("/auth/me", deps.Auth.Me)
+			})
 		}
 	})
 
