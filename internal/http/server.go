@@ -14,6 +14,10 @@ import (
 type Deps struct {
 	// Assets is the file system serving the built SPA (index/200.html, _app/...).
 	Assets fs.FS
+
+	// Setup, when non-nil, serves the first-run setup routes under /api.
+	// Constructed by the caller (cmd/tallyo) so NewServer stays error-free.
+	Setup *SetupHandler
 }
 
 // Server wraps the configured chi router.
@@ -37,8 +41,13 @@ func NewServer(deps Deps) *Server {
 		}
 	})
 
-	// TODO(later tasks): mount the /api subrouter here, before the SPA
-	// catch-all, e.g. r.Mount("/api", apiRouter(deps)).
+	// /api subrouter, mounted before the SPA catch-all so it takes precedence.
+	r.Route("/api", func(api chi.Router) {
+		if deps.Setup != nil {
+			api.Get("/setup/status", deps.Setup.Status)
+			api.Post("/setup", deps.Setup.CreateOwner)
+		}
+	})
 
 	// SPA static handler must be registered last as the catch-all so that
 	// /healthz and /api take precedence.
