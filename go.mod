@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/alexedwards/scs/sqlite3store v0.0.0-20251002162104-209de6e426de
 	github.com/alexedwards/scs/v2 v2.9.0
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.27.1
 	golang.org/x/crypto v0.52.0
