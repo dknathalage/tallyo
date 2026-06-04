@@ -32,6 +32,9 @@ type Deps struct {
 	// Invites, when non-nil, serves invite creation (owner-only) plus public
 	// invite validation and acceptance under /api.
 	Invites *InviteHandler
+
+	// Events, when non-nil, serves the auth-gated SSE stream at GET /api/events.
+	Events *EventsHandler
 }
 
 // Server wraps the configured chi router.
@@ -80,7 +83,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -88,6 +91,9 @@ func NewServer(deps Deps) *Server {
 				}
 				if deps.Invites != nil {
 					pr.Post("/invites", deps.Invites.Create)
+				}
+				if deps.Events != nil {
+					pr.Get("/events", deps.Events.Stream)
 				}
 			})
 		}
