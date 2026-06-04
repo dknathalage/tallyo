@@ -30,20 +30,19 @@ func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
-	conn, err := sql.Open("sqlite", path)
+	dsn := "file:" + path +
+		"?_pragma=journal_mode(WAL)" +
+		"&_pragma=foreign_keys(1)" +
+		"&_pragma=busy_timeout(5000)"
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	conn.SetMaxOpenConns(1)
-	for _, pragma := range []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA busy_timeout = 5000",
-	} {
-		if _, err := conn.Exec(pragma); err != nil {
-			conn.Close()
-			return nil, fmt.Errorf("apply %q: %w", pragma, err)
-		}
-	}
+	// WAL permits concurrent readers with a single serialized writer; a small
+	// pool suits a single-org self-hosted server. busy_timeout (per-connection,
+	// via DSN above) makes writers wait rather than erroring SQLITE_BUSY.
+	conn.SetMaxOpenConns(8)
+	conn.SetMaxIdleConns(8)
+	conn.SetConnMaxLifetime(0)
 	return conn, nil
 }
