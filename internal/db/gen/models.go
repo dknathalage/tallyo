@@ -33,3 +33,30 @@ type BusinessProfile struct {
 	CreatedAt       sql.NullString `json:"created_at"`
 	UpdatedAt       sql.NullString `json:"updated_at"`
 }
+
+type Invite struct {
+	ID        int64          `json:"id"`
+	Token     string         `json:"token"`
+	Email     string         `json:"email"`
+	Role      string         `json:"role"`
+	CreatedBy int64          `json:"created_by"`
+	ExpiresAt string         `json:"expires_at"`
+	UsedAt    sql.NullString `json:"used_at"`
+}
+
+type Session struct {
+	Token  string  `json:"token"`
+	Data   []byte  `json:"data"`
+	Expiry float64 `json:"expiry"`
+}
+
+type User struct {
+	ID           int64          `json:"id"`
+	Uuid         string         `json:"uuid"`
+	Email        string         `json:"email"`
+	PasswordHash string         `json:"password_hash"`
+	Role         string         `json:"role"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
+	LastLoginAt  sql.NullString `json:"last_login_at"`
+}
