@@ -476,7 +476,7 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 }
 ```
 
-NOTE: the exact field names/types (`Uuid`, `nullStr`, nullable wrappers) depend on sqlc's generated output. After Step 3, OPEN `internal/db/gen/models.go` and adjust this test's struct literal to match the real generated types (e.g. `sql.NullString` vs `string`). This is expected — the generated shape is the source of truth.
+NOTE: `nullStr(...)` is a PLACEHOLDER, not a real helper — the exact field names/types depend on sqlc's generated output. After Step 3, OPEN `internal/db/gen/models.go` and replace each `nullStr(...)` with the real null-wrapper from the generated types (e.g. `sql.NullString{String: "USD", Valid: true}`), and rename fields to match (`Uuid`, etc.). The generated shape is the source of truth.
 
 - [ ] **Step 5: Run the smoke test**
 
