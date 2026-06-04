@@ -48,6 +48,13 @@ func (s *statusWriter) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap exposes the wrapped writer so http.ResponseController can reach
+// optional interfaces (e.g. http.Flusher) on writers further down the chain.
+// Without this, streaming endpoints (SSE) cannot flush through this wrapper.
+func (s *statusWriter) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
 // RequireAuth requires a valid session whose userID maps to an existing user.
 // The user is re-checked against the store on every request so deleting a user
 // invalidates their session immediately. Nil dependencies are programmer errors.

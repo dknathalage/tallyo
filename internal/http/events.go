@@ -27,16 +27,19 @@ func NewEventsHandler(hub *realtime.Hub) *EventsHandler {
 // heartbeats, and returns (cleaning up its subscription) when the client
 // disconnects or the hub drops the subscriber on overflow.
 func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		WriteError(w, http.StatusInternalServerError, "streaming unsupported")
-		return
-	}
+	// http.ResponseController unwraps middleware writer wrappers (each provides
+	// Unwrap) to reach the underlying http.Flusher; a plain w.(http.Flusher)
+	// assertion fails once the writer is wrapped by logging/session middleware.
+	rc := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if err := rc.Flush(); err != nil {
+		// Flushing is unsupported by the underlying writer: streaming cannot
+		// work. The 200 header is already sent, so just end the response.
+		return
+	}
 
 	ch, unsub := h.hub.Subscribe()
 	defer unsub()
@@ -53,7 +56,9 @@ func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if _, err := w.Write([]byte(": heartbeat\n\n")); err != nil {
 				return
 			}
-			flusher.Flush()
+			if err := rc.Flush(); err != nil {
+				return
+			}
 		case e, ok := <-ch:
 			if !ok {
 				return // hub closed our channel (overflow) → client reconnects
@@ -61,7 +66,9 @@ func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if !writeFrame(w, e) {
 				return // client gone or unmarshalable event already skipped
 			}
-			flusher.Flush()
+			if err := rc.Flush(); err != nil {
+				return
+			}
 		}
 	}
 }

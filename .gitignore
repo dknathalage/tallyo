@@ -42,3 +42,7 @@ dist-electron/
 web/build/*
 !web/build/.gitkeep
 web/node_modules/
+
+# Go build binaries
+/tallyo
+/cmd/tallyo/tallyo
