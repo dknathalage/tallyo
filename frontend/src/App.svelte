@@ -1,79 +1,43 @@
 <script lang="ts">
-  import logo from './assets/images/logo-universal.png'
-  import {Greet} from '../wailsjs/go/main/App.js'
+  import { onMount } from 'svelte';
+  import { Get, Save } from '../wailsjs/go/service/BusinessProfileService';
+  import { repository } from '../wailsjs/go/models';
 
-  let resultText: string = "Please enter your name below 👇"
-  let name: string
+  let name: string = '';
+  let email: string = '';
+  let status: string = '';
 
-  function greet(): void {
-    Greet(name).then(result => resultText = result)
+  onMount(async () => {
+    const p = await Get();
+    if (p) {
+      name = p.name ?? '';
+      email = p.email ?? '';
+    }
+  });
+
+  async function save(): Promise<void> {
+    try {
+      const input = repository.BusinessProfileInput.createFrom({
+        name,
+        email,
+        phone: '',
+        address: '',
+        logo: '',
+        metadata: '',
+        defaultCurrency: ''
+      });
+      await Save(input);
+      status = 'Saved';
+    } catch (e) {
+      status = 'Error: ' + e;
+    }
   }
 </script>
 
-<main>
-  <img alt="Wails logo" id="logo" src="{logo}">
-  <div class="result" id="result">{resultText}</div>
-  <div class="input-box" id="input">
-    <input autocomplete="off" bind:value={name} class="input" id="name" type="text"/>
-    <button class="btn" on:click={greet}>Greet</button>
-  </div>
+<main style="padding:2rem;font-family:sans-serif;">
+  <h1>Tallyo — Settings</h1>
+  <label>Name <input bind:value={name} /></label><br/>
+  <label>Email <input bind:value={email} /></label><br/>
+  <button on:click={save}>Save</button>
+  <p>{status}</p>
 </main>
-
-<style>
-
-  #logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
-  }
-
-  .result {
-    height: 20px;
-    line-height: 20px;
-    margin: 1.5rem auto;
-  }
-
-  .input-box .btn {
-    width: 60px;
-    height: 30px;
-    line-height: 30px;
-    border-radius: 3px;
-    border: none;
-    margin: 0 0 0 20px;
-    padding: 0 8px;
-    cursor: pointer;
-  }
-
-  .input-box .btn:hover {
-    background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-    color: #333333;
-  }
-
-  .input-box .input {
-    border: none;
-    border-radius: 3px;
-    outline: none;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 10px;
-    background-color: rgba(240, 240, 240, 1);
-    -webkit-font-smoothing: antialiased;
-  }
-
-  .input-box .input:hover {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
-  }
-
-  .input-box .input:focus {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
-  }
-
-</style>
