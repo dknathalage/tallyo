@@ -1,6 +1,6 @@
 # Tallyo
 
-Self-hosted, open-source invoice management desktop app (Electron + SvelteKit). SQLite via better-sqlite3 + Drizzle ORM.
+Self-hosted, source-available (AGPL-3.0) invoice management web app — Go backend (chi + SQLite/modernc + sqlc) serving an embedded SvelteKit SPA.
 
 ## Tech Stack
 
