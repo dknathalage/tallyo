@@ -1,7 +1,7 @@
 # Tallyo Go Rewrite — Design
 
 **Date:** 2026-06-04
-**Status:** Approved (design phase)
+**Status:** Approved; walking skeleton implemented (see plan `2026-06-04-go-rewrite-walking-skeleton.md`). Open item: the Wails svelte-ts scaffold ships **Svelte 3**, not Svelte 5 as this spec assumed — decide whether to upgrade the frontend to Svelte 5 in the first frontend port plan.
 
 ## Motivation
 
