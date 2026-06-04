@@ -212,29 +212,56 @@ func TestConcurrentReadWrite(t *testing.T) {
 Run: `go test ./internal/db/ -run TestConcurrentReadWrite -v`
 Expected: PASS (serialized). This test is the regression guard for the pool change.
 
-- [ ] **Step 3: Change the pool config in `internal/db/sqlite.go`**
+- [ ] **Step 3: Rewrite `Open` to apply PRAGMAs via the DSN (per-connection), then size the pool**
 
-Replace `conn.SetMaxOpenConns(1)` with:
+CRITICAL: `foreign_keys` and `busy_timeout` are **per-connection** pragmas — they reset on every new connection. The current `conn.Exec("PRAGMA …")` only configures ONE connection; with a pool of 8 the other 7 would run with `foreign_keys=OFF` and no busy timeout (breaking the `invites.created_by REFERENCES users(id)` FK and reintroducing `SQLITE_BUSY`). modernc applies DSN `_pragma` params on **every** connection — use that.
+
+Replace the body of `Open` (the `sql.Open` + `SetMaxOpenConns(1)` + pragma loop, lines 33–47) with:
 ```go
-	// WAL permits concurrent readers with a single serialized writer.
-	// A small pool suits a single-org self-hosted server; busy_timeout
-	// (set below) makes writers wait rather than erroring SQLITE_BUSY.
+	dsn := "file:" + path +
+		"?_pragma=journal_mode(WAL)" +
+		"&_pragma=foreign_keys(1)" +
+		"&_pragma=busy_timeout(5000)"
+	conn, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	// WAL permits concurrent readers with a single serialized writer; a small
+	// pool suits a single-org self-hosted server. busy_timeout (per-connection,
+	// via DSN above) makes writers wait rather than erroring SQLITE_BUSY.
 	conn.SetMaxOpenConns(8)
 	conn.SetMaxIdleConns(8)
 	conn.SetConnMaxLifetime(0)
+	return conn, nil
 ```
-Keep the existing `busy_timeout = 5000` pragma. (modernc applies pragmas per connection via the pool; WAL is a database-level mode set once.)
+(The `os.MkdirAll` guard above it stays. The pragma `Exec` loop is removed entirely.)
 
-- [ ] **Step 4: Run the full db test suite**
+- [ ] **Step 4: Update `TestOpenAppliesPragmas` to assert pragmas hold across the pool**
+
+The existing test queries `PRAGMA foreign_keys` / `PRAGMA journal_mode` once. With DSN pragmas it still passes, but to guard the pool, add a check that opens many connections concurrently and asserts `foreign_keys=1` on each. Add to `TestOpenAppliesPragmas` (or a new `TestPragmasAcrossPool`):
+```go
+	// every pooled connection must have foreign_keys ON
+	for i := 0; i < 8; i++ {
+		var fk int
+		if err := conn.QueryRow("PRAGMA foreign_keys").Scan(&fk); err != nil {
+			t.Fatalf("fk query: %v", err)
+		}
+		if fk != 1 {
+			t.Fatalf("pooled conn foreign_keys = %d, want 1", fk)
+		}
+	}
+```
+
+- [ ] **Step 5: Run the full db test suite**
 
 Run: `go test ./internal/db/ -race -v`
-Expected: all PASS under `-race`, including `TestConcurrentReadWrite`.
+Expected: all PASS under `-race`, including `TestConcurrentReadWrite`, `TestOpenAppliesPragmas`, and the existing migration/gen tests.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add internal/db/sqlite.go internal/db/sqlite_test.go
-git commit -m "feat(db): connection pool for concurrent web-server access (WAL readers)"
+git commit -m "feat(db): DSN pragmas + connection pool for concurrent web-server access"
 ```
 
 ---
@@ -770,7 +797,7 @@ func (s *BusinessProfileService) Save(ctx context.Context, in repository.Busines
 **Files:**
 - Modify: `cmd/tallyo/main.go`
 
-- [ ] **Step 1: Replace the stub** to construct everything and serve the chi server: open DB + migrate; build `realtime.NewHub()`; `auth.NewSessionManager(db, secure=false-by-default-flag)`; repos (`auth.NewUsers`, `auth.NewInvites`); `service.NewBusinessProfileService(db, hub)`; assemble `http.Deps`; `srv := &http.Server{Handler: httpserver.Router}`; run with the existing SIGINT/SIGTERM graceful shutdown (`srv.Shutdown(ctx)` then `conn.Close()`). Add a `--secure-cookie` flag (default false for local HTTP).
+- [ ] **Step 1: Replace the stub** to construct everything and serve the chi server: open DB + migrate; build `realtime.NewHub()`; `auth.NewSessionManager(db, secure=false-by-default-flag)`; repos (`auth.NewUsers`, `auth.NewInvites`); `service.NewBusinessProfileService(db, hub)`; assemble `http.Deps`; `srv := &http.Server{Handler: httpserver.Router}`; run with the existing SIGINT/SIGTERM graceful shutdown (`srv.Shutdown(ctx)` then `conn.Close()`). Add a `--secure-cookie` flag (default false for local HTTP) and a `--data-dir` flag (overrides `appdb.DataDir()` when set; `DATA_DIR` env still honored).
 
 - [ ] **Step 2: Build + vet + a boot smoke test**
 
