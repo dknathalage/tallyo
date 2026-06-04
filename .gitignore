@@ -37,6 +37,7 @@ dist-electron/
 
 # Go / Wails
 /build/bin
-frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
 frontend/node_modules/
 *.db
