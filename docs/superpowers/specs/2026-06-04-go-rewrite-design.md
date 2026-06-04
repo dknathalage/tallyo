@@ -151,22 +151,21 @@ the frontend/backend contract is generated, not hand-maintained.
   for SQLite columns, (c) param style matches. This is the first thing the
   implementation plan validates with a spike before broad query porting.
 
-## Existing-user Data Migration (DECISION NEEDED)
+## Existing-user Data Migration — Clean Break (DECIDED)
 
-Current users have a populated `tallyo.db` migrated by **drizzle-kit** (tracked
-in a `__drizzle_migrations` table). goose tracks state in `goose_db_version`.
-Pointing goose at an existing drizzle-migrated DB needs a **baseline migration**:
-goose migration `0001` must reproduce the *current* drizzle end-state schema and
-be marked as already-applied on existing DBs (so goose does not try to recreate
-existing tables), while running fully on fresh installs.
+**Decision: clean break.** No data migration from the old drizzle-managed
+`tallyo.db`. The Go app starts from a fresh schema built entirely by goose.
 
-The dropped AI tables (`aiChatSessions`, `aiChatMessages`, `aiChatToolCalls`) are
-simply **not recreated** on fresh installs; on existing DBs they are left in
-place (or dropped by a later migration) — no data carried over.
-
-**Open question for the user:** preserve existing users' data (baseline-migration
-approach, more care) vs. clean break (new app, users start fresh)? Default
-assumption in this spec: **preserve** existing data via baseline migration.
+- goose migration `0001` creates the full current schema (minus the dropped AI
+  tables) from scratch; no baseline/already-applied handling, no
+  `__drizzle_migrations` interop.
+- Fresh installs get an empty DB.
+- Existing users start empty. The old `tallyo.db` is **not** read or upgraded.
+  (Optional, plan-time: keep using the *same* file path but a different DB
+  filename, e.g. `tallyo.db` stays untouched and the Go app writes a new file —
+  decide in the plan to avoid clobbering old data. No automated import.)
+- Dropped AI tables (`aiChatSessions`, `aiChatMessages`, `aiChatToolCalls`) are
+  simply never created.
 
 ## Recurring Invoices Scheduling
 
@@ -255,7 +254,7 @@ as-is. The implementation plan scopes this per-page.
 Feature-port, not big-bang switchover. Suggested order (refined in the
 implementation plan):
 
-1. Wails skeleton + DB connection (modernc) + goose baseline migration + **sqlc↔modernc spike**.
+1. Wails skeleton + DB connection (modernc) + goose `0001` full schema (clean break) + **sqlc↔modernc spike**.
 2. Business profile / settings (needed by PDF + invoices) + audit wrapper.
 3. Core domain: clients, payers, catalog.
 4. Tax rates + rate tiers (+ `catalog_item_rates` join).
