@@ -35,6 +35,10 @@ type Deps struct {
 
 	// Events, when non-nil, serves the auth-gated SSE stream at GET /api/events.
 	Events *EventsHandler
+
+	// BusinessProfile, when non-nil, serves the auth-gated GET/PUT singleton
+	// business profile at /api/business-profile.
+	BusinessProfile *BusinessProfileHandler
 }
 
 // Server wraps the configured chi router.
@@ -83,7 +87,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -94,6 +98,10 @@ func NewServer(deps Deps) *Server {
 				}
 				if deps.Events != nil {
 					pr.Get("/events", deps.Events.Stream)
+				}
+				if deps.BusinessProfile != nil {
+					pr.Get("/business-profile", deps.BusinessProfile.Get)
+					pr.Put("/business-profile", deps.BusinessProfile.Put)
 				}
 			})
 		}
