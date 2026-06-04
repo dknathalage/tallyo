@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/dknathalage/tallyo/compare/v3.3.2...v3.4.0) (2026-05-03)
+
+
+### Features
+
+* add AI chat assistant with skills, sub-agents, and audit log ([e892007](https://github.com/dknathalage/tallyo/commit/e892007a0fc25505d34ce59d4bcd86dc71a4e563))
+
 ## [3.3.2](https://github.com/dknathalage/tallyo/compare/v3.3.1...v3.3.2) (2026-05-02)
 
 
