@@ -78,6 +78,43 @@ type Invite struct {
 	UsedAt    sql.NullString `json:"used_at"`
 }
 
+type Invoice struct {
+	ID               int64           `json:"id"`
+	Uuid             string          `json:"uuid"`
+	InvoiceNumber    string          `json:"invoice_number"`
+	ClientID         int64           `json:"client_id"`
+	Date             string          `json:"date"`
+	DueDate          string          `json:"due_date"`
+	PaymentTerms     sql.NullString  `json:"payment_terms"`
+	Subtotal         sql.NullFloat64 `json:"subtotal"`
+	TaxRate          sql.NullFloat64 `json:"tax_rate"`
+	TaxRateID        sql.NullInt64   `json:"tax_rate_id"`
+	TaxAmount        sql.NullFloat64 `json:"tax_amount"`
+	Total            sql.NullFloat64 `json:"total"`
+	Notes            sql.NullString  `json:"notes"`
+	Status           sql.NullString  `json:"status"`
+	CurrencyCode     sql.NullString  `json:"currency_code"`
+	BusinessSnapshot sql.NullString  `json:"business_snapshot"`
+	ClientSnapshot   sql.NullString  `json:"client_snapshot"`
+	PayerSnapshot    sql.NullString  `json:"payer_snapshot"`
+	CreatedAt        string          `json:"created_at"`
+	UpdatedAt        string          `json:"updated_at"`
+}
+
+type LineItem struct {
+	ID            int64          `json:"id"`
+	Uuid          string         `json:"uuid"`
+	InvoiceID     int64          `json:"invoice_id"`
+	Description   string         `json:"description"`
+	Quantity      float64        `json:"quantity"`
+	Rate          float64        `json:"rate"`
+	Amount        float64        `json:"amount"`
+	Notes         sql.NullString `json:"notes"`
+	SortOrder     sql.NullInt64  `json:"sort_order"`
+	CatalogItemID sql.NullInt64  `json:"catalog_item_id"`
+	RateTierID    sql.NullInt64  `json:"rate_tier_id"`
+}
+
 type Payer struct {
 	ID        int64          `json:"id"`
 	Uuid      string         `json:"uuid"`
