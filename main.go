@@ -22,6 +22,10 @@ import (
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
 
+// version is the build version, injected via -ldflags="-X main.version=..." at
+// release time (see .goreleaser.yaml). Defaults to "dev" for local builds.
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -60,7 +64,13 @@ func run() error {
 	port := flag.Int("port", 8080, "HTTP listen port")
 	dataDir := flag.String("data-dir", "", "data directory for the SQLite database (default: OS app data dir)")
 	secureCookie := flag.Bool("secure-cookie", false, "mark the session cookie Secure (HTTPS only)")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return nil
+	}
 
 	dir := *dataDir
 	if dir == "" {
