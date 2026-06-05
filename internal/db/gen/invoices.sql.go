@@ -11,12 +11,12 @@ import (
 )
 
 const clientInvoiceStats = `-- name: ClientInvoiceStats :one
-SELECT COUNT(*) AS invoice_count, COALESCE(SUM(total), 0) AS total_invoiced FROM invoices WHERE client_id = ?
+SELECT COUNT(*) AS invoice_count, CAST(COALESCE(SUM(total), 0) AS REAL) AS total_invoiced FROM invoices WHERE client_id = ?
 `
 
 type ClientInvoiceStatsRow struct {
-	InvoiceCount  int64       `json:"invoice_count"`
-	TotalInvoiced interface{} `json:"total_invoiced"`
+	InvoiceCount  int64   `json:"invoice_count"`
+	TotalInvoiced float64 `json:"total_invoiced"`
 }
 
 func (q *Queries) ClientInvoiceStats(ctx context.Context, clientID int64) (ClientInvoiceStatsRow, error) {
