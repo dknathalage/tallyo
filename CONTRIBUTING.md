@@ -18,7 +18,7 @@ Thank you for your interest in contributing! Here's how to get started.
 cd web && npm install && npm run build && cd ..
 
 # Run the server:
-go run ./cmd/tallyo --port 8080
+go run . --port 8080
 ```
 
 For frontend hot reload: `cd web && npm run dev` (Vite proxies `/api` -> :8080).

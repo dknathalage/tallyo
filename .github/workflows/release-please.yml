@@ -1,0 +1,35 @@
+name: release-please
+
+# Automatic release path. On every push to main, release-please maintains a
+# "release PR" that rolls up Conventional Commits into CHANGELOG.md + a version
+# bump. Merging that PR cuts the v* tag and a GitHub Release, then the goreleaser
+# job builds and appends the binaries. (The tag is created with GITHUB_TOKEN,
+# which does NOT trigger tag-push workflows, so we invoke release.yml directly.)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  goreleaser:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml

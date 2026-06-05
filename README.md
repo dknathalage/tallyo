@@ -45,7 +45,7 @@ cd tallyo
 cd web && npm install && npm run build && cd ..
 
 # Run the server:
-go run ./cmd/tallyo --port 8080
+go run . --port 8080
 
 # Frontend dev with hot reload (Vite proxies /api -> :8080):
 cd web && npm run dev
@@ -54,7 +54,7 @@ cd web && npm run dev
 Build the single binary:
 
 ```bash
-CGO_ENABLED=0 go build -o tallyo ./cmd/tallyo
+CGO_ENABLED=0 go build -o tallyo .
 ```
 
 ## License

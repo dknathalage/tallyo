@@ -2,22 +2,22 @@
 
 Self-hosted, source-available (AGPL-3.0) invoice management web app — Go backend (chi + SQLite/modernc + sqlc) serving an embedded SvelteKit SPA.
 
-> **Architecture note.** This was rewritten from an Electron + SvelteKit desktop app to a **single-binary Go web service** serving an embedded SvelteKit SPA. The Go implementation lives at the repo root (`cmd/`, `internal/`, `web/`); the legacy Electron/SvelteKit tree (`src/`, `electron/`, `drizzle/`, root `package.json`) is **superseded** and slated for removal. Design/plan docs: `docs/superpowers/{specs,plans}/`.
+> **Architecture note.** This was rewritten from an Electron + SvelteKit desktop app to a **single-binary Go web service** serving an embedded SvelteKit SPA. The Go implementation lives at the repo root (`main.go`, `internal/`, `web/`); the legacy Electron/SvelteKit tree (`src/`, `electron/`, `drizzle/`, root `package.json`) is **superseded** and slated for removal. Design/plan docs: `docs/superpowers/{specs,plans}/`.
 
 ## Tech Stack
 
-- **Backend:** Go 1.26 — `cmd/tallyo serve` (single binary). chi v5 router, REST JSON API.
+- **Backend:** Go 1.26 — root `main.go` `serve` command (single binary). chi v5 router, REST JSON API.
 - **Database:** SQLite via **modernc.org/sqlite** (pure-Go, no cgo) + **sqlc** (typed queries) + **goose** (embedded migrations, run on startup). `_txlock=immediate` DSN.
 - **Auth:** email/password (bcrypt), server-side cookie sessions via `alexedwards/scs/v2` (SQLite-backed). Single-org, multi-user; first-run setup + manual invite links.
 - **Realtime:** Server-Sent Events (`/api/events`) — an in-process hub broadcasts entity-change events; the SPA refetches into Svelte runes.
 - **Frontend:** SvelteKit + `@sveltejs/adapter-static` (SPA, `200.html` fallback), Svelte 5 runes, Tailwind CSS 4, built and embedded via `//go:embed`.
 - **PDF:** `johnfercher/maroto/v2` (pure-Go). **Import/Export:** stdlib `encoding/csv` + `xuri/excelize/v2` (pure-Go).
 - **Testing:** Go stdlib `testing`; `svelte-check` + Vitest for the frontend.
-- **License:** AGPL-3.0 (verbatim, copyleft) — `LICENSE`. The binary is **cgo-free** (`CGO_ENABLED=0 go build ./cmd/tallyo`).
+- **License:** AGPL-3.0 (verbatim, copyleft) — `LICENSE`. The binary is **cgo-free** (`CGO_ENABLED=0 go build .`).
 
 ## Project Layout
 
-- `cmd/tallyo/main.go` — `serve` command: resolve data dir → open DB → migrate → build services → chi server (embedded SPA + `/api`) → graceful shutdown; runs the overdue + recurring sweeps (launch + hourly ticker).
+- `main.go` (repo root) — `serve` command: resolve data dir → open DB → migrate → build services → chi server (embedded SPA + `/api`) → graceful shutdown; runs the overdue + recurring sweeps (launch + hourly ticker).
 - `internal/db/` — modernc connection (`sqlite.go`), `migrate.go` (goose), `migrations/*.sql`, `queries/*.sql` (sqlc source), `gen/` (sqlc output — do not edit).
 - `internal/repository/` — data access per domain over sqlc gen; mutations routed through `audit.WithTx`.
 - `internal/audit/` — `WithTx` audited-mutation wrapper + `Log`/`Changes`.
@@ -33,7 +33,7 @@ Self-hosted, source-available (AGPL-3.0) invoice management web app — Go backe
 # Build the SPA first (the Go build embeds web/build):
 cd web && npm install && npm run build && cd ..
 # Run the server (single binary):
-go run ./cmd/tallyo --port 8080            # or: go build -o tallyo ./cmd/tallyo && ./tallyo
+go run . --port 8080            # or: go build -o tallyo . && ./tallyo
 # Frontend dev with hot reload (Vite proxies /api → :8080):
 cd web && npm run dev
 ```
@@ -43,7 +43,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `os.UserConfigDir()/Tal
 
 - `go test ./...` — Go tests (add `-race` for the full gate).
 - `go vet ./...` ; `gofmt -l .` — must be clean.
-- `CGO_ENABLED=0 go build ./cmd/tallyo` — verify the cgo-free single binary.
+- `CGO_ENABLED=0 go build .` — verify the cgo-free single binary.
 - `"$(go env GOPATH)/bin/sqlc" generate` — regenerate `internal/db/gen` from `queries/*.sql`.
 - `cd web && npm run check` — svelte-check (0 errors / 0 warnings) ; `npm run build` — emit `web/build`.
 
