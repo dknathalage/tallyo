@@ -114,7 +114,7 @@ func TestMigrateCreatesEstimateTables(t *testing.T) {
 	}
 }
 
-func TestMigrateCreatesColumnMappings(t *testing.T) {
+func TestMigrateDropsColumnMappings(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "cm.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -123,9 +123,12 @@ func TestMigrateCreatesColumnMappings(t *testing.T) {
 	if err := Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	var n string
-	if err := conn.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='column_mappings'").Scan(&n); err != nil {
-		t.Fatalf("column_mappings table missing: %v", err)
+	var count int
+	if err := conn.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='column_mappings'").Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("column_mappings table should be absent, got count=%d", count)
 	}
 }
 
