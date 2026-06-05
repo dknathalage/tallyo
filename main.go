@@ -22,8 +22,8 @@ import (
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
 
-// version is the build version, injected via -ldflags="-X main.version=..." at
-// release time (see .goreleaser.yaml). Defaults to "dev" for local builds.
+// version is the build version. Source builds report "dev"; to stamp a release
+// build, pass -ldflags="-X main.version=$(git describe --tags)".
 var version = "dev"
 
 func main() {
