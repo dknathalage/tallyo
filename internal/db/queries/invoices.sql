@@ -28,4 +28,4 @@ DELETE FROM invoices WHERE id = ?;
 SELECT id, invoice_number FROM invoices WHERE status = 'sent' AND due_date < date('now');
 
 -- name: ClientInvoiceStats :one
-SELECT COUNT(*) AS invoice_count, COALESCE(SUM(total), 0) AS total_invoiced FROM invoices WHERE client_id = ?;
+SELECT COUNT(*) AS invoice_count, CAST(COALESCE(SUM(total), 0) AS REAL) AS total_invoiced FROM invoices WHERE client_id = ?;
