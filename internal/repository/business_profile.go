@@ -5,7 +5,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -77,39 +76,21 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, in BusinessProfileInput)
 		return errors.New("save business profile: name is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("save business profile: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	id, err := existingUuid(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("save business profile: read uuid: %w", err)
-	}
-
-	if err := gen.New(tx).UpsertBusinessProfile(ctx, buildParams(id, in)); err != nil {
-		return fmt.Errorf("save business profile: upsert: %w", err)
-	}
-
-	changes, err := json.Marshal(map[string]string{"name": in.Name})
-	if err != nil {
-		return fmt.Errorf("save business profile: marshal changes: %w", err)
-	}
-	auditErr := audit.Log(ctx, tx, audit.Entry{
+	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "business_profile",
 		EntityID:   1,
 		Action:     "update",
-		Changes:    string(changes),
+		Changes:    audit.Changes(map[string]any{"name": in.Name}),
+	}, func(tx *sql.Tx) error {
+		id, err := existingUuid(ctx, tx)
+		if err != nil {
+			return fmt.Errorf("read uuid: %w", err)
+		}
+		if err := gen.New(tx).UpsertBusinessProfile(ctx, buildParams(id, in)); err != nil {
+			return fmt.Errorf("upsert: %w", err)
+		}
+		return nil
 	})
-	if auditErr != nil {
-		return fmt.Errorf("save business profile: audit: %w", auditErr)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("save business profile: commit: %w", err)
-	}
-	return nil
 }
 
 // existingUuid returns the current profile uuid, or a freshly generated one
