@@ -186,6 +186,21 @@ type RateTier struct {
 	UpdatedAt   string         `json:"updated_at"`
 }
 
+type RecurringTemplate struct {
+	ID        int64         `json:"id"`
+	Uuid      string        `json:"uuid"`
+	ClientID  sql.NullInt64 `json:"client_id"`
+	Name      string        `json:"name"`
+	Frequency string        `json:"frequency"`
+	NextDue   string        `json:"next_due"`
+	LineItems string        `json:"line_items"`
+	TaxRate   float64       `json:"tax_rate"`
+	Notes     string        `json:"notes"`
+	IsActive  int64         `json:"is_active"`
+	CreatedAt string        `json:"created_at"`
+	UpdatedAt string        `json:"updated_at"`
+}
+
 type Session struct {
 	Token  string  `json:"token"`
 	Data   []byte  `json:"data"`

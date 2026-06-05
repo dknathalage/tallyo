@@ -24,6 +24,7 @@ type Querier interface {
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreateRateTier(ctx context.Context, arg CreateRateTierParams) (RateTier, error)
+	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
 	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteCatalogItem(ctx context.Context, id int64) error
@@ -36,6 +37,7 @@ type Querier interface {
 	DeletePayer(ctx context.Context, id int64) error
 	DeletePayment(ctx context.Context, id int64) error
 	DeleteRateTier(ctx context.Context, id int64) error
+	DeleteRecurringTemplate(ctx context.Context, id int64) error
 	DeleteTaxRate(ctx context.Context, id int64) error
 	DeleteUser(ctx context.Context, id int64) error
 	GetBusinessProfile(ctx context.Context) (BusinessProfile, error)
@@ -50,15 +52,18 @@ type Querier interface {
 	GetPayer(ctx context.Context, id int64) (Payer, error)
 	GetPayment(ctx context.Context, id int64) (Payment, error)
 	GetRateTier(ctx context.Context, id int64) (RateTier, error)
+	GetRecurringTemplate(ctx context.Context, id int64) (GetRecurringTemplateRow, error)
 	GetTaxRate(ctx context.Context, id int64) (TaxRate, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	InvoiceTotalPaid(ctx context.Context, invoiceID int64) (float64, error)
+	ListActiveRecurringTemplates(ctx context.Context) ([]ListActiveRecurringTemplatesRow, error)
 	ListCatalogItems(ctx context.Context) ([]CatalogItem, error)
 	ListCategories(ctx context.Context) ([]sql.NullString, error)
 	ListClientEstimates(ctx context.Context, clientID sql.NullInt64) ([]ListClientEstimatesRow, error)
 	ListClientInvoices(ctx context.Context, clientID int64) ([]ListClientInvoicesRow, error)
 	ListClients(ctx context.Context) ([]ListClientsRow, error)
+	ListDueTemplates(ctx context.Context, nextDue string) ([]ListDueTemplatesRow, error)
 	ListEstimateLineItems(ctx context.Context, estimateID int64) ([]EstimateLineItem, error)
 	ListEstimates(ctx context.Context) ([]ListEstimatesRow, error)
 	ListEstimatesByStatus(ctx context.Context, status sql.NullString) ([]ListEstimatesByStatusRow, error)
@@ -69,6 +74,7 @@ type Querier interface {
 	ListPayers(ctx context.Context) ([]Payer, error)
 	ListRateTiers(ctx context.Context) ([]RateTier, error)
 	ListRatesForItem(ctx context.Context, catalogItemID int64) ([]CatalogItemRate, error)
+	ListRecurringTemplates(ctx context.Context) ([]ListRecurringTemplatesRow, error)
 	ListTaxRates(ctx context.Context) ([]TaxRate, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	MarkInviteUsed(ctx context.Context, arg MarkInviteUsedParams) error
@@ -77,6 +83,7 @@ type Querier interface {
 	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
 	SelectOverdueInvoices(ctx context.Context) ([]SelectOverdueInvoicesRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
+	SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UpdateCatalogItem(ctx context.Context, arg UpdateCatalogItemParams) (CatalogItem, error)
 	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
@@ -86,6 +93,7 @@ type Querier interface {
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
 	UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error)
 	UpdateRateTier(ctx context.Context, arg UpdateRateTierParams) (RateTier, error)
+	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
 	UpsertCatalogItemRate(ctx context.Context, arg UpsertCatalogItemRateParams) error
