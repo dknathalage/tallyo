@@ -17,6 +17,7 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
@@ -100,6 +101,11 @@ func run() error {
 	recurringSvc := service.NewRecurringService(conn, hub)
 	columnMappingSvc := service.NewColumnMappingService(conn, hub)
 
+	// The import handler operates directly on repositories: the catalog repo for
+	// diff/commit and the column-mappings repo to resolve a mapping id.
+	catalogRepo := repository.NewCatalog(conn)
+	columnMappingsRepo := repository.NewColumnMappings(conn)
+
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
 		return fmt.Errorf("setup handler: %w", err)
@@ -134,6 +140,7 @@ func run() error {
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 		ColumnMappings:  httpapi.NewColumnMappingHandler(columnMappingSvc),
 		Export:          httpapi.NewExportHandler(catalogSvc, invoiceSvc, estimateSvc),
+		Import:          httpapi.NewImportHandler(catalogRepo, columnMappingsRepo),
 	}
 
 	server := httpapi.NewServer(deps)
