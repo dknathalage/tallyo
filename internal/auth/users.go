@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -54,42 +53,32 @@ func (r *UsersRepo) Create(ctx context.Context, email, hash, role string) (*User
 		return nil, errors.New("create user: password hash is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create user: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := gen.New(tx).CreateUser(ctx, gen.CreateUserParams{
-		Uuid:         uuid.NewString(),
-		Email:        email,
-		PasswordHash: hash,
-		Role:         role,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+	var created gen.User
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		now := time.Now().UTC().Format(time.RFC3339)
+		u, e := gen.New(tx).CreateUser(ctx, gen.CreateUserParams{
+			Uuid:         uuid.NewString(),
+			Email:        email,
+			PasswordHash: hash,
+			Role:         role,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		})
+		if e != nil {
+			return fmt.Errorf("insert: %w", e)
+		}
+		created = u
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "user",
+			EntityID:   u.ID,
+			Action:     "create",
+			Changes:    audit.Changes(map[string]any{"email": email, "role": role}),
+		})
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create user: insert: %w", err)
+		return nil, fmt.Errorf("create user: %w", err)
 	}
-
-	changes, err := json.Marshal(map[string]string{"email": email, "role": role})
-	if err != nil {
-		return nil, fmt.Errorf("create user: marshal changes: %w", err)
-	}
-	if err := audit.Log(ctx, tx, audit.Entry{
-		EntityType: "user",
-		EntityID:   row.ID,
-		Action:     "create",
-		Changes:    string(changes),
-	}); err != nil {
-		return nil, fmt.Errorf("create user: audit: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("create user: commit: %w", err)
-	}
-	return toUser(row), nil
+	return toUser(created), nil
 }
 
 // GetByEmail returns the user, or (nil, nil) when none matches.
@@ -145,27 +134,16 @@ func (r *UsersRepo) List(ctx context.Context) ([]*User, error) {
 
 // Delete removes a user and writes one audit row, atomically.
 func (r *UsersRepo) Delete(ctx context.Context, id int64) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("delete user: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if err := gen.New(tx).DeleteUser(ctx, id); err != nil {
-		return fmt.Errorf("delete user: delete: %w", err)
-	}
-	if err := audit.Log(ctx, tx, audit.Entry{
+	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "user",
 		EntityID:   id,
 		Action:     "delete",
-	}); err != nil {
-		return fmt.Errorf("delete user: audit: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("delete user: commit: %w", err)
-	}
-	return nil
+	}, func(tx *sql.Tx) error {
+		if err := gen.New(tx).DeleteUser(ctx, id); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+		return nil
+	})
 }
 
 // TouchLastLogin records the current time as the user's last login. Not audited.

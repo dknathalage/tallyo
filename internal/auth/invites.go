@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -63,40 +62,30 @@ func (r *InvitesRepo) Create(ctx context.Context, email, role string, createdBy 
 	}
 	expires := time.Now().UTC().Add(ttl).Format(time.RFC3339)
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create invite: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	row, err := gen.New(tx).CreateInvite(ctx, gen.CreateInviteParams{
-		Token:     token,
-		Email:     email,
-		Role:      role,
-		CreatedBy: createdBy,
-		ExpiresAt: expires,
+	var created gen.Invite
+	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		row, e := gen.New(tx).CreateInvite(ctx, gen.CreateInviteParams{
+			Token:     token,
+			Email:     email,
+			Role:      role,
+			CreatedBy: createdBy,
+			ExpiresAt: expires,
+		})
+		if e != nil {
+			return fmt.Errorf("insert: %w", e)
+		}
+		created = row
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "invite",
+			EntityID:   row.ID,
+			Action:     "create",
+			Changes:    audit.Changes(map[string]any{"email": email}),
+		})
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create invite: insert: %w", err)
+		return nil, fmt.Errorf("create invite: %w", err)
 	}
-
-	changes, err := json.Marshal(map[string]string{"email": email})
-	if err != nil {
-		return nil, fmt.Errorf("create invite: marshal changes: %w", err)
-	}
-	if err := audit.Log(ctx, tx, audit.Entry{
-		EntityType: "invite",
-		EntityID:   row.ID,
-		Action:     "create",
-		Changes:    string(changes),
-	}); err != nil {
-		return nil, fmt.Errorf("create invite: audit: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("create invite: commit: %w", err)
-	}
-	return toInvite(row), nil
+	return toInvite(created), nil
 }
 
 // GetByToken returns the invite, or (nil, nil) when none matches.
@@ -140,37 +129,21 @@ func (r *InvitesRepo) MarkUsed(ctx context.Context, token string) error {
 		return ErrInviteInvalid
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("mark invite used: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	if err := gen.New(tx).MarkInviteUsed(ctx, gen.MarkInviteUsedParams{
-		UsedAt: nz(now),
-		Token:  token,
-	}); err != nil {
-		return fmt.Errorf("mark invite used: update: %w", err)
-	}
-
-	changes, err := json.Marshal(map[string]string{"token": token})
-	if err != nil {
-		return fmt.Errorf("mark invite used: marshal changes: %w", err)
-	}
-	if err := audit.Log(ctx, tx, audit.Entry{
+	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invite",
 		EntityID:   inv.ID,
 		Action:     "used",
-		Changes:    string(changes),
-	}); err != nil {
-		return fmt.Errorf("mark invite used: audit: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("mark invite used: commit: %w", err)
-	}
-	return nil
+		Changes:    audit.Changes(map[string]any{"token": token}),
+	}, func(tx *sql.Tx) error {
+		now := time.Now().UTC().Format(time.RFC3339)
+		if err := gen.New(tx).MarkInviteUsed(ctx, gen.MarkInviteUsedParams{
+			UsedAt: nz(now),
+			Token:  token,
+		}); err != nil {
+			return fmt.Errorf("update: %w", err)
+		}
+		return nil
+	})
 }
 
 // toInvite maps a generated row to the domain Invite.
