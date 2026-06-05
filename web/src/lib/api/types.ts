@@ -249,6 +249,61 @@ export interface EstimateInput {
 	lineItems: EstimateLineItemInput[];
 }
 
+export interface ColumnMapping {
+	id: number;
+	uuid: string;
+	name: string;
+	entityType: string;
+	mapping: string;
+	tierMapping: string;
+	metadataMapping: string;
+	fileType: string;
+	sheetName: string;
+	headerRow: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ColumnMappingInput {
+	name: string;
+	entityType: string;
+	mapping: string;
+	tierMapping: string;
+	metadataMapping: string;
+	fileType: string;
+	sheetName: string;
+	headerRow: number;
+}
+
+export interface MappedRow {
+	name: string;
+	sku: string;
+	unit: string;
+	category: string;
+	rate: number;
+	metadata?: Record<string, string>;
+	tierRates?: Record<string, number>;
+}
+
+export interface DiffResult {
+	new: MappedRow[];
+	updated: { existing: unknown; incoming: MappedRow }[];
+	unchangedCount: number;
+	summary: {
+		total: number;
+		new: number;
+		updated: number;
+		unchanged: number;
+		errors: number;
+	};
+}
+
+export interface CommitResult {
+	inserted: number;
+	updated: number;
+	batchId: string;
+}
+
 export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
 
 export interface RecurringLine {

@@ -118,8 +118,36 @@
 
 <div class="space-y-8">
 	<section>
-		<h1 class="mb-1 text-xl font-semibold">Catalog</h1>
-		<p class="mb-6 text-sm text-gray-500">Manage catalog items used as invoice line items.</p>
+		<div class="mb-6 flex items-start justify-between">
+			<div>
+				<h1 class="mb-1 text-xl font-semibold">Catalog</h1>
+				<p class="text-sm text-gray-500">Manage catalog items used as invoice line items.</p>
+			</div>
+			<div class="flex items-center gap-2">
+				<a
+					href="/import"
+					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+				>
+					Import
+				</a>
+				<a
+					href="/api/export/catalog?format=csv"
+					target="_blank"
+					rel="noopener"
+					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+				>
+					Export CSV
+				</a>
+				<a
+					href="/api/export/catalog?format=xlsx"
+					target="_blank"
+					rel="noopener"
+					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+				>
+					Export Excel
+				</a>
+			</div>
+		</div>
 
 		<form class="grid max-w-3xl grid-cols-2 gap-3" onsubmit={createItem}>
 			<label class="col-span-1">
