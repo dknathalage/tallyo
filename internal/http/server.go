@@ -59,6 +59,10 @@ type Deps struct {
 	// Catalog, when non-nil, serves the auth-gated catalog CRUD, categories,
 	// bulk-delete, and per-item tier-rate sub-routes under /api/catalog.
 	Catalog *CatalogHandler
+
+	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
+	// duplicate, bulk routes, plus the per-client stats route under /api.
+	Invoices *InvoiceHandler
 }
 
 // Server wraps the configured chi router.
@@ -107,7 +111,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -163,6 +167,18 @@ func NewServer(deps Deps) *Server {
 					pr.Delete("/catalog/{id}", deps.Catalog.Delete)
 					pr.Get("/catalog/{id}/rates", deps.Catalog.GetRates)
 					pr.Put("/catalog/{id}/rates/{tierId}", deps.Catalog.SetRate)
+				}
+				if deps.Invoices != nil {
+					pr.Get("/invoices", deps.Invoices.List)
+					pr.Post("/invoices", deps.Invoices.Create)
+					pr.Post("/invoices/bulk-delete", deps.Invoices.BulkDelete)
+					pr.Post("/invoices/bulk-status", deps.Invoices.BulkStatus)
+					pr.Get("/invoices/{id}", deps.Invoices.Get)
+					pr.Put("/invoices/{id}", deps.Invoices.Update)
+					pr.Delete("/invoices/{id}", deps.Invoices.Delete)
+					pr.Post("/invoices/{id}/status", deps.Invoices.Status)
+					pr.Post("/invoices/{id}/duplicate", deps.Invoices.Duplicate)
+					pr.Get("/clients/{id}/stats", deps.Invoices.ClientStats)
 				}
 			})
 		}
