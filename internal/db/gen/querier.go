@@ -11,11 +11,14 @@ import (
 
 type Querier interface {
 	ClearDefaultTaxRates(ctx context.Context) error
+	ClientInvoiceStats(ctx context.Context, clientID int64) (ClientInvoiceStatsRow, error)
 	CountRateTiers(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CreateCatalogItem(ctx context.Context, arg CreateCatalogItemParams) (CatalogItem, error)
 	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
+	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
+	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreateRateTier(ctx context.Context, arg CreateRateTierParams) (RateTier, error)
 	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
@@ -23,6 +26,8 @@ type Querier interface {
 	DeleteCatalogItem(ctx context.Context, id int64) error
 	DeleteCatalogItemRate(ctx context.Context, arg DeleteCatalogItemRateParams) error
 	DeleteClient(ctx context.Context, id int64) error
+	DeleteInvoice(ctx context.Context, id int64) error
+	DeleteLineItemsForInvoice(ctx context.Context, invoiceID int64) error
 	DeletePayer(ctx context.Context, id int64) error
 	DeleteRateTier(ctx context.Context, id int64) error
 	DeleteTaxRate(ctx context.Context, id int64) error
@@ -34,6 +39,7 @@ type Querier interface {
 	GetDefaultTaxRate(ctx context.Context) (TaxRate, error)
 	GetDefaultTier(ctx context.Context) (RateTier, error)
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
+	GetInvoice(ctx context.Context, id int64) (GetInvoiceRow, error)
 	GetPayer(ctx context.Context, id int64) (Payer, error)
 	GetRateTier(ctx context.Context, id int64) (RateTier, error)
 	GetTaxRate(ctx context.Context, id int64) (TaxRate, error)
@@ -41,7 +47,11 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	ListCatalogItems(ctx context.Context) ([]CatalogItem, error)
 	ListCategories(ctx context.Context) ([]sql.NullString, error)
+	ListClientInvoices(ctx context.Context, clientID int64) ([]ListClientInvoicesRow, error)
 	ListClients(ctx context.Context) ([]ListClientsRow, error)
+	ListInvoices(ctx context.Context) ([]ListInvoicesRow, error)
+	ListInvoicesByStatus(ctx context.Context, status sql.NullString) ([]ListInvoicesByStatusRow, error)
+	ListLineItems(ctx context.Context, invoiceID int64) ([]LineItem, error)
 	ListPayers(ctx context.Context) ([]Payer, error)
 	ListRateTiers(ctx context.Context) ([]RateTier, error)
 	ListRatesForItem(ctx context.Context, catalogItemID int64) ([]CatalogItemRate, error)
@@ -51,9 +61,12 @@ type Querier interface {
 	SearchCatalogItems(ctx context.Context, arg SearchCatalogItemsParams) ([]CatalogItem, error)
 	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
+	SelectOverdueInvoices(ctx context.Context) ([]SelectOverdueInvoicesRow, error)
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UpdateCatalogItem(ctx context.Context, arg UpdateCatalogItemParams) (CatalogItem, error)
 	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
+	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
+	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
 	UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error)
 	UpdateRateTier(ctx context.Context, arg UpdateRateTierParams) (RateTier, error)
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
