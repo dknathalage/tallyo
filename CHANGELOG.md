@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/dknathalage/tallyo/compare/v3.5.0...v3.6.0) (2026-06-05)
+
+
+### Features
+
+* add --version flag with ldflags-injected build version ([75c0370](https://github.com/dknathalage/tallyo/commit/75c037063a62e75a137b4f082f41f45fa2644170))
+
 ## [3.5.0](https://github.com/dknathalage/tallyo/compare/v3.4.0...v3.5.0) (2026-06-05)
 
 
