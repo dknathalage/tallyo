@@ -30,9 +30,10 @@ func main() {
 // overdueSweepInterval is how often the background sweeper flips due invoices.
 const overdueSweepInterval = 1 * time.Hour
 
-// runOverdueSweeper flips overdue invoices on each tick until done is closed.
-// It owns its ticker and stops cleanly, so it never leaks a goroutine.
-func runOverdueSweeper(svc *service.InvoiceService, done <-chan struct{}) {
+// runSweeper flips overdue invoices and generates due recurring invoices on each
+// tick until done is closed. It owns its single ticker and stops cleanly, so it
+// never leaks a goroutine.
+func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -40,10 +41,15 @@ func runOverdueSweeper(svc *service.InvoiceService, done <-chan struct{}) {
 		case <-done:
 			return
 		case <-ticker.C:
-			if rows, err := svc.MarkOverdue(context.Background()); err != nil {
+			if rows, err := inv.MarkOverdue(context.Background()); err != nil {
 				log.Printf("overdue sweep: %v", err)
 			} else if len(rows) > 0 {
 				log.Printf("overdue sweep: %d invoice(s) flipped", len(rows))
+			}
+			if gens, err := rec.GenerateDue(context.Background()); err != nil {
+				log.Printf("recurring sweep: %v", err)
+			} else if len(gens) > 0 {
+				log.Printf("recurring sweep: %d invoice(s) generated", len(gens))
 			}
 		}
 	}
@@ -91,6 +97,7 @@ func run() error {
 	invoiceSvc := service.NewInvoiceService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
+	recurringSvc := service.NewRecurringService(conn, hub)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -123,6 +130,7 @@ func run() error {
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
+		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 	}
 
 	server := httpapi.NewServer(deps)
@@ -136,8 +144,13 @@ func run() error {
 	} else {
 		log.Printf("startup overdue sweep: %d invoice(s) flipped", len(rows))
 	}
+	if gens, err := recurringSvc.GenerateDue(context.Background()); err != nil {
+		log.Printf("startup recurring sweep: %v", err)
+	} else {
+		log.Printf("startup recurring sweep: %d invoice(s) generated", len(gens))
+	}
 	overdueDone := make(chan struct{})
-	go runOverdueSweeper(invoiceSvc, overdueDone)
+	go runSweeper(invoiceSvc, recurringSvc, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)

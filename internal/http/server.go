@@ -71,6 +71,10 @@ type Deps struct {
 	// Payments, when non-nil, serves the auth-gated per-invoice payment list
 	// and create routes plus payment deletion under /api.
 	Payments *PaymentHandler
+
+	// Recurring, when non-nil, serves the auth-gated recurring-template CRUD
+	// plus the generate route under /api/recurring.
+	Recurring *RecurringHandler
 }
 
 // Server wraps the configured chi router.
@@ -119,7 +123,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -204,6 +208,14 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/invoices/{id}/payments", deps.Payments.ListForInvoice)
 					pr.Post("/invoices/{id}/payments", deps.Payments.Create)
 					pr.Delete("/payments/{id}", deps.Payments.Delete)
+				}
+				if deps.Recurring != nil {
+					pr.Get("/recurring", deps.Recurring.List)
+					pr.Post("/recurring", deps.Recurring.Create)
+					pr.Get("/recurring/{id}", deps.Recurring.Get)
+					pr.Put("/recurring/{id}", deps.Recurring.Update)
+					pr.Delete("/recurring/{id}", deps.Recurring.Delete)
+					pr.Post("/recurring/{id}/generate", deps.Recurring.Generate)
 				}
 			})
 		}
