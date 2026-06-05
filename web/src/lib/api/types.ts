@@ -57,3 +57,67 @@ export interface PayerInput {
 	address: string;
 	metadata: string;
 }
+
+export interface TaxRate {
+	id: number;
+	uuid: string;
+	name: string;
+	rate: number;
+	isDefault: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface TaxRateInput {
+	name: string;
+	rate: number;
+	isDefault: boolean;
+}
+
+export interface Client {
+	id: number;
+	uuid: string;
+	name: string;
+	email: string;
+	phone: string;
+	address: string;
+	pricingTierId: number | null;
+	pricingTierName: string;
+	metadata: string;
+	payerId: number | null;
+	payerName: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ClientInput {
+	name: string;
+	email: string;
+	phone: string;
+	address: string;
+	pricingTierId: number | null;
+	metadata: string;
+	payerId: number | null;
+}
+
+export interface CatalogItem {
+	id: number;
+	uuid: string;
+	name: string;
+	rate: number;
+	unit: string;
+	category: string;
+	sku: string;
+	metadata: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CatalogItemInput {
+	name: string;
+	rate: number;
+	unit: string;
+	category: string;
+	sku: string;
+	metadata: string;
+}

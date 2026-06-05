@@ -70,7 +70,10 @@
 				<a href="/" class="text-lg font-semibold">Tallyo</a>
 				<div class="flex items-center gap-4 text-sm">
 					<a href="/rate-tiers" class="text-gray-600 hover:text-gray-900">Rate Tiers</a>
+						<a href="/tax-rates" class="text-gray-600 hover:text-gray-900">Tax Rates</a>
 						<a href="/payers" class="text-gray-600 hover:text-gray-900">Payers</a>
+						<a href="/clients" class="text-gray-600 hover:text-gray-900">Clients</a>
+						<a href="/catalog" class="text-gray-600 hover:text-gray-900">Catalog</a>
 						<a href="/settings" class="text-gray-600 hover:text-gray-900">Settings</a>
 					<button
 						type="button"
