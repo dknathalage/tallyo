@@ -44,6 +44,28 @@ type Invite struct {
 	UsedAt    sql.NullString `json:"used_at"`
 }
 
+type Payer struct {
+	ID        int64          `json:"id"`
+	Uuid      string         `json:"uuid"`
+	Name      string         `json:"name"`
+	Email     sql.NullString `json:"email"`
+	Phone     sql.NullString `json:"phone"`
+	Address   sql.NullString `json:"address"`
+	Metadata  sql.NullString `json:"metadata"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+}
+
+type RateTier struct {
+	ID          int64          `json:"id"`
+	Uuid        string         `json:"uuid"`
+	Name        string         `json:"name"`
+	Description sql.NullString `json:"description"`
+	SortOrder   sql.NullInt64  `json:"sort_order"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+}
+
 type Session struct {
 	Token  string  `json:"token"`
 	Data   []byte  `json:"data"`
