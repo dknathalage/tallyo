@@ -31,8 +31,13 @@
 - `web/src/lib/api/types.ts` — remove `ColumnMapping`/`ColumnMappingInput`; add import DTOs.
 
 **Deleted**
-- `internal/http/column_mappings.go`, `internal/service/column_mapping.go`, `internal/repository/column_mapping.go`, `internal/repository/column_mapping_test.go`, `internal/db/queries/column_mappings.sql`.
+- `internal/http/column_mappings.go`, `internal/http/column_mappings_test.go`, `internal/service/column_mapping.go`, `internal/repository/column_mapping.go`, `internal/repository/column_mapping_test.go`, `internal/db/queries/column_mappings.sql`.
 - `web/src/routes/column-mappings/` (whole dir), `web/src/lib/stores/columnMappings.svelte.ts`, `web/src/routes/import/` (old wizard, replaced).
+
+**Existing tests that MUST be updated (they reference the old API / dropped table — found by review):**
+- `internal/importer/importer_test.go` — old `Commit` arity + `map[int64]` tier keys (Task 2).
+- `internal/http/import_test.go` — built entirely on the `mappingId` API (Task 3, full rewrite).
+- `internal/db/migrate_test.go` — `TestMigrateCreatesColumnMappings` asserts the table exists; must be removed/inverted (Task 4).
 
 ---
 
@@ -340,27 +345,40 @@ git commit -m "feat(importer): auto-detect catalog column mapping from headers +
 
 - [ ] **Step 1: Update the importer tests first (red)**
 
-In `internal/importer/importer_test.go`:
+In `internal/importer/importer_test.go` — this package is `importer` (same package, no `importer.` qualifier on calls). **Every one of these existing sites must change or the test package won't compile** (grep `ColumnMapping`, `ApplyMapping(`, `Commit(`, `TierRates` to find them all):
 
-1. Replace any `ApplyMapping(rows, &repository.ColumnMapping{...})` call with the transient `Mapping`:
+- `TestApplyMapping`, `TestApplyMappingMissingName`, `TestApplyMappingTiersAndMetadata` (~lines 70-139) construct `m := &repository.ColumnMapping{Mapping: ..., TierMapping: ..., MetadataMapping: ...}` and call `ApplyMapping(rows, m)`. The tier test asserts `mapped[0].TierRates[1]` (int64 key) and `mapped[0].Metadata["color"]`.
+- `TestCommit`, `TestCommitSkipUpdatesWhenDisabled` (~lines 215, 245) call `Commit(t.Context(), cat, diff, true/false)` (old 3-arg) and build `TierRates: map[int64]float64{1: ...}` (~line 209).
+
+Apply these changes:
+
+1. Replace every `&repository.ColumnMapping{...}` + `ApplyMapping(rows, m)` with the transient `Mapping` (note tier mapping is header→**name**, and metadata mapping is **gone** — drop the metadata assertions, since the new wizard has no metadata mapping):
 
 ```go
-m := importer.Mapping{
+m := Mapping{
 	Fields:   map[string]string{"Name": "name", "SKU": "sku", "Price": "rate"},
-	TierCols: map[string]string{"Remote": "Remote"},
+	TierCols: map[string]string{"Gold Price": "Gold"},
 }
-mapped, errs, err := importer.ApplyMapping(rows, m)
+mapped, errs, err := ApplyMapping(rows, m)
 ```
 
-2. In the tiers test, assert `MappedRow.TierRates` is keyed by **name**:
+2. Change the tier assertion to a **name** key (and delete the `Metadata["color"]` assertion):
 
 ```go
-if got := mapped[0].TierRates["Remote"]; got != 94.58 {
-	t.Errorf("tier rate by name: got %v", got)
+if mapped[0].TierRates["Gold"] != 20 {
+	t.Fatalf("tier rate by name: %v", mapped[0].TierRates)
 }
 ```
 
-3. Update `newCatalog` helper to also return a `*repository.RateTiersRepo` (the commit now needs it). Add:
+3. Change both existing `Commit(...)` calls to the new 4-arg form and the `TierRates` literals to `map[string]float64`:
+
+```go
+res, err := Commit(t.Context(), cat, tiers, diff, true)   // and false in the other test
+// ...
+TierRates: map[string]float64{"Gold": 20},
+```
+
+4. Update the test DB helper to also return a `*repository.RateTiersRepo` (the commit now needs it). Replace `newCatalog`'s callers with `newCatalogAndTiers`, or add this alongside it:
 
 ```go
 func newCatalogAndTiers(t *testing.T) (*repository.CatalogRepo, *repository.RateTiersRepo) {
@@ -377,7 +395,9 @@ func newCatalogAndTiers(t *testing.T) (*repository.CatalogRepo, *repository.Rate
 }
 ```
 
-4. Add a commit-creates-tier test:
+   Then update `TestCommit` and `TestCommitSkipUpdatesWhenDisabled` to obtain both repos: `cat, tiers := newCatalogAndTiers(t)` and pass `tiers` into `Commit`.
+
+5. Add a commit-creates-tier test:
 
 ```go
 func TestCommitCreatesTierByName(t *testing.T) {
@@ -614,21 +634,25 @@ git commit -m "feat(importer): transient mapping with name-keyed tiers, create-i
 
 **Files:**
 - Modify: `internal/http/import.go`
-- Test: `internal/http/import_test.go` (create if absent)
+- Rewrite: `internal/http/import_test.go` (already exists, ~200 lines, built on the OLD `mappingId` API — it calls `repository.NewColumnMappings`, `repository.ColumnMappingInput`, the old 2-arg `NewImportHandler(catalogRepo, mappings)`, posts a `mappingId` field, and hits `/import/catalog/preview`. All of that is gone — the file must be rewritten, not appended to.)
 
-- [ ] **Step 1: Write the handler test (red)**
+- [ ] **Step 1: Rewrite the handler test (red)**
 
-`internal/http/import_test.go` — add a test that posts a CSV to `/parse` and asserts a suggestion comes back. Use the existing http test harness pattern (see `internal/http/catalog_test.go` for how a test server + auth are built). Minimal shape:
+Delete the entire body of `internal/http/import_test.go` (every test references the removed mappings API, including `TestImportPreviewBadMapping` which tests a now-nonexistent failure mode) and replace with tests against the new API. Use the existing http test harness pattern (see `internal/http/catalog_test.go` for how the test server + auth/session are built; reuse the same `newTestServer`-style helper and register `Import: httpapi.NewImportHandler(catalogRepo, rateTiersRepo)`). Cover:
 
 ```go
-func TestImportParseSuggests(t *testing.T) {
-	// build multipart body: file=name,sku,price\nWidget,W1,10.00
-	// POST /api/catalog/import/parse
-	// assert 200 and body.suggestion.fields["price"] == "rate"
-}
+// TestImportParseSuggests: POST multipart {file: "name,sku,price\nWidget,W1,10.00"}
+//   to /api/catalog/import/parse → 200, body.suggestion.fields["price"] == "rate".
+// TestImportPreviewMissingName: POST /preview with mapping omitting a name field
+//   (and a file lacking one) → diff with all-rows-errored, OR 400 — assert the
+//   behaviour your ApplyMapping produces (name-less rows are RowErrors, so /preview
+//   returns 200 with summary.errors > 0; assert that).
+// TestImportCommitCreatesItemAndTier: POST /preview then /commit with mapping
+//   {fields:{name,sku,price→rate}, tierCols:{Remote:"Remote"}} → 200, then GET
+//   /api/catalog shows the item and /api/rate-tiers shows "Remote".
 ```
 
-(Mirror the auth/session setup used by other `internal/http` tests; if those tests use a shared `newTestServer` helper, reuse it and register `Import`.)
+Build the multipart body with `mime/multipart`; set `mapping` as a JSON string field and `file` as a form file. Mirror the auth/session setup other `internal/http` tests use.
 
 - [ ] **Step 2: Rewrite `import.go`**
 
@@ -818,18 +842,23 @@ DROP TABLE column_mappings;
 -- (paste the exact CREATE TABLE column_mappings (...) from 00009 here)
 ```
 
-- [ ] **Step 2: Delete the column-mapping Go files**
+- [ ] **Step 2: Delete the column-mapping Go files (incl. the http test)**
 
 ```bash
-git rm internal/http/column_mappings.go internal/service/column_mapping.go \
+git rm internal/http/column_mappings.go internal/http/column_mappings_test.go \
+  internal/service/column_mapping.go \
   internal/repository/column_mapping.go internal/repository/column_mapping_test.go \
   internal/db/queries/column_mappings.sql
 ```
 
+- [ ] **Step 2b: Fix `migrate_test.go`**
+
+`internal/db/migrate_test.go` has `TestMigrateCreatesColumnMappings` (~lines 117-130) asserting the table **exists** after migration. With `00010` it no longer does. Either delete that test, or invert it to assert the table is **absent** after migration (query `sqlite_master` for `column_mappings` and expect zero rows).
+
 - [ ] **Step 3: Regenerate sqlc**
 
 Run: `"$(go env GOPATH)/bin/sqlc" generate`
-Expected: `internal/db/gen` no longer references column_mappings. (The `00010` migration is goose-run at startup, not sqlc input; sqlc reads `queries/` + schema. Confirm no leftover column-mapping methods in `gen/`.)
+Expected: `internal/db/gen` (`models.go`, `querier.go`, the `column_mappings.sql.go` file) no longer references column_mappings. Mechanism: `sqlc.yaml` sets `schema: internal/db/migrations`, so sqlc reads the **migrations** dir — the `00010` drop is seen as schema, and removing `queries/column_mappings.sql` removes the generated methods. Confirm `git status` shows the gen file deleted/trimmed.
 
 - [ ] **Step 4: Rewire `server.go`**
 
@@ -851,7 +880,8 @@ In `internal/http/server.go`:
 In `main.go`:
 - Delete `columnMappingSvc := service.NewColumnMappingService(conn, hub)` (line 112) and `columnMappingsRepo := repository.NewColumnMappings(conn)` (line 117).
 - Delete `ColumnMappings: httpapi.NewColumnMappingHandler(columnMappingSvc),` (line 151).
-- Change line 153 to: `Import: httpapi.NewImportHandler(catalogRepo, rateTiersRepo),` — confirm the rate-tiers repo variable name (grep `NewRateTiers(` in `main.go`); if it's named differently, use that.
+- **Add** a rate-tiers repo — `main.go` currently constructs only the rate-tier *service*, not a repo, so this variable does **not** exist yet. Add near the other repo constructions: `rateTiersRepo := repository.NewRateTiers(conn)`.
+- Change line 153 to: `Import: httpapi.NewImportHandler(catalogRepo, rateTiersRepo),`.
 
 - [ ] **Step 6: Gate the backend**
 
@@ -903,12 +933,12 @@ export interface ImportDiffSummary {
 
 Remove the `/column-mappings` link (line 81). Remove or repurpose the `/import` link (line 80) — delete it; import is reached from the catalog page.
 
-- [ ] **Step 3: Add the Import button on catalog**
+- [ ] **Step 3: Repoint the existing Import link on catalog**
 
-In `web/src/routes/catalog/+page.svelte`, near the existing header actions, add:
+`web/src/routes/catalog/+page.svelte` **already has** an Import link (~line 128) pointing at the old `/import` route. Repoint it (do not add a duplicate):
 
 ```svelte
-<a href="/catalog/import" class="rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">Import</a>
+<a href="/catalog/import" ...>Import</a>   <!-- was href="/import" -->
 ```
 
 - [ ] **Step 4: Build the wizard**
