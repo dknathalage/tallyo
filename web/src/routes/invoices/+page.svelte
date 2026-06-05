@@ -345,13 +345,23 @@
 				<h1 class="mb-1 text-xl font-semibold">Invoices</h1>
 				<p class="text-sm text-gray-500">Create and manage invoices with line items.</p>
 			</div>
-			<button
-				type="button"
-				onclick={openCreate}
-				class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
-			>
-				New invoice
-			</button>
+			<div class="flex items-center gap-2">
+				<a
+					href="/api/export/invoices"
+					target="_blank"
+					rel="noopener"
+					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+				>
+					Export CSV
+				</a>
+				<button
+					type="button"
+					onclick={openCreate}
+					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+				>
+					New invoice
+				</button>
+			</div>
 		</div>
 
 		{#if showForm}

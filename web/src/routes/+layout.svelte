@@ -77,6 +77,8 @@
 						<a href="/payers" class="text-gray-600 hover:text-gray-900">Payers</a>
 						<a href="/clients" class="text-gray-600 hover:text-gray-900">Clients</a>
 						<a href="/catalog" class="text-gray-600 hover:text-gray-900">Catalog</a>
+						<a href="/import" class="text-gray-600 hover:text-gray-900">Import</a>
+						<a href="/column-mappings" class="text-gray-600 hover:text-gray-900">Mappings</a>
 						<a href="/settings" class="text-gray-600 hover:text-gray-900">Settings</a>
 					<button
 						type="button"
