@@ -137,7 +137,7 @@ func Changes(m map[string]any) string {
 	return string(b)
 }
 ```
-Add imports (`encoding/json` already likely present; add if needed). NOTE: `WithTx` takes `*sql.DB` (it owns the tx). For callers that already hold a tx, they keep using `Log(ctx, tx, e)` directly.
+Add the `encoding/json` import — it is NOT currently in `audit.go` (confirmed by review; the file imports only `context`, `database/sql`, `fmt`, `time`, `github.com/google/uuid`). `Changes` needs it. NOTE: `WithTx` takes `*sql.DB` (it owns the tx). For callers that already hold a tx, they keep using `Log(ctx, tx, e)` directly.
 
 - [ ] **Step 4: Run → PASS** (`-race`), `go vet ./internal/audit/`, `gofmt -l internal/audit/`.
 
@@ -308,7 +308,7 @@ func TestConcurrentCreateNoCollision(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- WithRetry(ctx, 5, func() error {
+			errs <- WithRetry(ctx, 10, func() error {
 				tx, err := conn.BeginTx(ctx, nil)
 				if err != nil { return err }
 				defer tx.Rollback()
@@ -381,8 +381,11 @@ func Next(ctx context.Context, tx *sql.Tx, cfg Config) (string, error) {
 	return fmt.Sprintf("%s%0*d", cfg.Prefix, cfg.Pad, max+1), nil
 }
 
-// WithRetry runs fn up to attempts times, retrying only on a UNIQUE-constraint
-// error (the numbering race). Other errors return immediately.
+// WithRetry runs fn up to attempts times, retrying on the transient errors that
+// occur when concurrent creators race for the next number under WAL: UNIQUE
+// collisions AND SQLite busy/locked/snapshot conflicts (the write-write commit
+// conflict, SQLITE_BUSY_SNAPSHOT=517, which busy_timeout does NOT cover for a
+// deferred-tx upgrade). Non-retryable errors return immediately.
 func WithRetry(ctx context.Context, attempts int, fn func() error) error {
 	if attempts < 1 {
 		attempts = 1
@@ -393,19 +396,28 @@ func WithRetry(ctx context.Context, attempts int, fn func() error) error {
 		if err == nil {
 			return nil
 		}
-		if !isUniqueViolation(err) {
+		if !isRetryable(err) {
 			return err
 		}
 	}
 	return fmt.Errorf("numbering: exhausted %d attempts: %w", attempts, err)
 }
 
-func isUniqueViolation(err error) bool {
+func isRetryable(err error) bool {
 	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "unique") || strings.Contains(s, "constraint")
+	return strings.Contains(s, "unique") || strings.Contains(s, "constraint") ||
+		strings.Contains(s, "locked") || strings.Contains(s, "busy")
 }
 ```
 The bounded `for i := 0; i < attempts` loop satisfies NASA rule 2.
+
+**CRITICAL (verified empirically by plan review):** under WAL + a connection pool,
+12 concurrent creators collide via `SQLITE_BUSY` / `database is locked (517)`
+(BUSY_SNAPSHOT), NOT via UNIQUE — so the retry predicate MUST include
+`locked`/`busy`, and the test must use `WithRetry(ctx, 10, ...)` (5 attempts is too
+few under 12-way contention). With a unique-only predicate the 12-worker test
+fails reliably. Optional hardening: open the tx with `BEGIN IMMEDIATE` to grab the
+write lock up front; broadening the predicate is the required minimum.
 
 - [ ] **Step 4: Run** `go test ./internal/numbering/ -race` → PASS (incl the 12-worker no-collision test). `go vet`, `gofmt`.
 
@@ -460,6 +472,10 @@ may need adding to client.ts — if so add it mirroring the others):
 ```ts
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
 
+// NOTE: apiGet/apiPost/apiPut/apiDelete return Promise<T | null> (null on
+// 401/204). This helper UNWRAPS: list() falls back to [], get/create/update throw
+// on a null result (a 401 already redirected to /login, so reaching here with
+// null is an error). This keeps the non-null Crud contract for callers.
 export interface Crud<T, TInput> {
 	list(): Promise<T[]>;
 	get(id: number): Promise<T>;
@@ -468,17 +484,25 @@ export interface Crud<T, TInput> {
 	remove(id: number): Promise<void>;
 }
 
+function must<T>(v: T | null, what: string): T {
+	if (v === null) throw new Error(`${what}: no data`);
+	return v;
+}
+
 export function createCrud<T, TInput>(resource: string): Crud<T, TInput> {
 	const base = `/api/${resource}`;
 	return {
-		list: () => apiGet<T[]>(base),
-		get: (id) => apiGet<T>(`${base}/${id}`),
-		create: (input) => apiPost<T>(base, input),
-		update: (id, input) => apiPut<T>(`${base}/${id}`, input),
-		remove: (id) => apiDelete<void>(`${base}/${id}`),
+		list: async () => (await apiGet<T[]>(base)) ?? [],
+		get: async (id) => must(await apiGet<T>(`${base}/${id}`), `${resource} get`),
+		create: async (input) => must(await apiPost<T>(base, input), `${resource} create`),
+		update: async (id, input) => must(await apiPut<T>(`${base}/${id}`, input), `${resource} update`),
+		remove: async (id) => { await apiDelete<void>(`${base}/${id}`); },
 	};
 }
 ```
+Verify the exact return type of `apiGet` etc. in `client.ts` first; if they are
+non-null `Promise<T>`, drop the `must`/`?? []` unwrapping. The plan review found
+they return `Promise<T | null>`, hence the unwrap.
 
 - [ ] **Step 2: Add `apiDelete` to `client.ts`** if missing (mirror apiPut:
 `credentials:'include'`, method DELETE, 401→login, parse error). Keep it small.
