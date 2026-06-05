@@ -1,6 +1,6 @@
 # Tallyo
 
-Self-hosted invoice manager. Local-first, SQLite-backed.
+Self-hosted invoice manager. Single Go binary serving an embedded web UI, SQLite-backed, cgo-free.
 
 ## Install
 
@@ -8,44 +8,55 @@ Self-hosted invoice manager. Local-first, SQLite-backed.
 curl -fsSL https://raw.githubusercontent.com/dknathalage/tallyo/refs/heads/main/install.sh | bash
 ```
 
-Requires `git`, `node`, `npm`. Installs source to `~/.tallyo-src` and a `tallyo` symlink in `~/.local/bin`. Re-run to update.
+Downloads the prebuilt `tallyo` binary for your platform from the latest GitHub release and installs it to `~/.local/bin`. Re-run to update.
+
+Requires `curl` and `tar`. Set `TALLYO_BIN` to override the install dir.
 
 ## Run
 
 ```bash
-tallyo
+tallyo --port 8080
 ```
 
-Picks the first free port starting at 3000, runs migrations, opens your browser.
+Runs migrations on startup, then serves the UI at `http://localhost:8080`.
 
 ## Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--port <n>` | first free from 3000 | Force a specific port |
-| `--data-dir <path>` | `~/.tallyo` | Where the SQLite db and config live |
-| `--no-open` | off | Don't auto-open the browser |
+| `--port <n>` | `8080` | HTTP listen port |
+| `--data-dir <path>` | OS app data dir | Where the SQLite db lives |
+| `--secure-cookie` | off | Mark the session cookie `Secure` (HTTPS only) |
 | `-h, --help` | | Show help |
-| `-v, --version` | | Show version |
 
-`DATA_DIR` env var is also respected.
+`DATA_DIR` env var is also respected. The default data dir is `os.UserConfigDir()/Tallyo` (e.g. `~/Library/Application Support/Tallyo` on macOS).
 
 ## Data
 
-Everything (database, config) lives in `~/.tallyo` by default. Back this directory up to back up your invoices.
+The SQLite database (`tallyo-go.db`) lives in the data dir. Back up that directory to back up your invoices.
 
 ## Develop
 
 ```bash
 git clone https://github.com/dknathalage/tallyo.git
 cd tallyo
-npm install
-npm run dev          # Vite dev server at http://localhost:5173
-npm run build        # Production build
-npm test             # Vitest
-npm link             # Use `tallyo` globally from working tree
+
+# Build the SPA first (the Go build embeds web/build):
+cd web && npm install && npm run build && cd ..
+
+# Run the server:
+go run ./cmd/tallyo --port 8080
+
+# Frontend dev with hot reload (Vite proxies /api -> :8080):
+cd web && npm run dev
+```
+
+Build the single binary:
+
+```bash
+CGO_ENABLED=0 go build -o tallyo ./cmd/tallyo
 ```
 
 ## License
 
-See LICENSE.
+AGPL-3.0 — see LICENSE.

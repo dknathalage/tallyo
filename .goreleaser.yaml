@@ -1,0 +1,80 @@
+# GoReleaser config for Tallyo — single-binary Go web service that embeds a
+# SvelteKit SPA via //go:embed web/build. The SPA MUST be built before Go
+# compiles, so a before-hook builds it from web/. The binary is cgo-free
+# (modernc.org/sqlite, pure-Go). main.go has no version/commit/date vars, so
+# no ldflags are injected.
+version: 2
+
+project_name: tallyo
+
+before:
+  hooks:
+    # Build the SPA into web/build before any Go compilation. Hooks run from
+    # the repo root, so cd into web/. package-lock.json is present, so npm ci.
+    - sh -c "cd web && npm ci"
+    - sh -c "cd web && npm run build"
+    - go mod download
+
+builds:
+  - id: tallyo
+    main: ./cmd/tallyo
+    binary: tallyo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: tallyo
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README*
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Refactors
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Others
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto
