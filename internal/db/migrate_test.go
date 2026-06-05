@@ -114,6 +114,21 @@ func TestMigrateCreatesEstimateTables(t *testing.T) {
 	}
 }
 
+func TestMigrateCreatesColumnMappings(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "cm.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+	if err := Migrate(conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	var n string
+	if err := conn.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='column_mappings'").Scan(&n); err != nil {
+		t.Fatalf("column_mappings table missing: %v", err)
+	}
+}
+
 func TestMigrateIsIdempotent(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "m.db"))
 	if err != nil {

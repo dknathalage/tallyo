@@ -16,6 +16,7 @@ type Querier interface {
 	CountUsers(ctx context.Context) (int64, error)
 	CreateCatalogItem(ctx context.Context, arg CreateCatalogItemParams) (CatalogItem, error)
 	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)
+	CreateColumnMapping(ctx context.Context, arg CreateColumnMappingParams) (ColumnMapping, error)
 	CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error)
 	CreateEstimateLineItem(ctx context.Context, arg CreateEstimateLineItemParams) (EstimateLineItem, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
@@ -30,6 +31,7 @@ type Querier interface {
 	DeleteCatalogItem(ctx context.Context, id int64) error
 	DeleteCatalogItemRate(ctx context.Context, arg DeleteCatalogItemRateParams) error
 	DeleteClient(ctx context.Context, id int64) error
+	DeleteColumnMapping(ctx context.Context, id int64) error
 	DeleteEstimate(ctx context.Context, id int64) error
 	DeleteEstimateLineItemsForEstimate(ctx context.Context, estimateID int64) error
 	DeleteInvoice(ctx context.Context, id int64) error
@@ -44,6 +46,7 @@ type Querier interface {
 	GetCatalogItem(ctx context.Context, id int64) (CatalogItem, error)
 	GetCatalogItemRate(ctx context.Context, arg GetCatalogItemRateParams) (CatalogItemRate, error)
 	GetClient(ctx context.Context, id int64) (GetClientRow, error)
+	GetColumnMapping(ctx context.Context, id int64) (ColumnMapping, error)
 	GetDefaultTaxRate(ctx context.Context) (TaxRate, error)
 	GetDefaultTier(ctx context.Context) (RateTier, error)
 	GetEstimate(ctx context.Context, id int64) (GetEstimateRow, error)
@@ -63,6 +66,8 @@ type Querier interface {
 	ListClientEstimates(ctx context.Context, clientID sql.NullInt64) ([]ListClientEstimatesRow, error)
 	ListClientInvoices(ctx context.Context, clientID int64) ([]ListClientInvoicesRow, error)
 	ListClients(ctx context.Context) ([]ListClientsRow, error)
+	ListColumnMappings(ctx context.Context) ([]ColumnMapping, error)
+	ListColumnMappingsByEntity(ctx context.Context, entityType string) ([]ColumnMapping, error)
 	ListDueTemplates(ctx context.Context, nextDue string) ([]ListDueTemplatesRow, error)
 	ListEstimateLineItems(ctx context.Context, estimateID int64) ([]EstimateLineItem, error)
 	ListEstimates(ctx context.Context) ([]ListEstimatesRow, error)
@@ -87,6 +92,7 @@ type Querier interface {
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UpdateCatalogItem(ctx context.Context, arg UpdateCatalogItemParams) (CatalogItem, error)
 	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
+	UpdateColumnMapping(ctx context.Context, arg UpdateColumnMappingParams) (ColumnMapping, error)
 	UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error)
 	UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error
 	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
