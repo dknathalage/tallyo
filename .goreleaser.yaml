@@ -17,7 +17,7 @@ before:
 
 builds:
   - id: tallyo
-    main: ./cmd/tallyo
+    main: .
     binary: tallyo
     env:
       - CGO_ENABLED=0
@@ -78,3 +78,7 @@ changelog:
 release:
   draft: false
   prerelease: auto
+  # release-please cuts the tag and creates the GitHub Release first; GoReleaser
+  # appends its binaries/checksums to that existing release instead of recreating
+  # it (which would clobber release-please's changelog body).
+  mode: append

@@ -1,9 +1,12 @@
 name: release
 
 on:
+  # Manual path: a human pushes a v* tag.
   push:
     tags:
       - "v*"
+  # Automatic path: release-please.yml calls this after cutting a release.
+  workflow_call:
 
 permissions:
   contents: write
