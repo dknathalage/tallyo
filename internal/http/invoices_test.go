@@ -59,6 +59,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 			pr.Delete("/invoices/{id}", invH.Delete)
 			pr.Post("/invoices/{id}/status", invH.Status)
 			pr.Post("/invoices/{id}/duplicate", invH.Duplicate)
+			pr.Get("/invoices/{id}/pdf", invH.Pdf)
 			pr.Get("/clients/{id}/stats", invH.ClientStats)
 		})
 	})
@@ -310,5 +311,38 @@ func TestInvoiceListUnauthenticated401(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)
+	}
+}
+
+func TestInvoicePdf(t *testing.T) {
+	srv := newInvoiceServer(t)
+	c := loggedInClient(t, srv.URL)
+	clientID := createClient(t, c, srv.URL, "Acme")
+	id := createInvoice(t, c, srv.URL, clientID)
+
+	resp := get(t, c, srv.URL+"/api/invoices/"+itoa(id)+"/pdf")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pdf: want 200 got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/pdf" {
+		t.Fatalf("Content-Type: want application/pdf got %q", ct)
+	}
+	b := make([]byte, 4)
+	if _, err := resp.Body.Read(b); err != nil {
+		t.Fatalf("read header: %v", err)
+	}
+	if string(b) != "%PDF" {
+		t.Fatalf("pdf header: want %%PDF got %q", string(b))
+	}
+}
+
+func TestInvoicePdfMissing404(t *testing.T) {
+	srv := newInvoiceServer(t)
+	c := loggedInClient(t, srv.URL)
+	resp := get(t, c, srv.URL+"/api/invoices/99999/pdf")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing pdf: want 404 got %d", resp.StatusCode)
 	}
 }

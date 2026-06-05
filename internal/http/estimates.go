@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 )
@@ -244,4 +245,33 @@ func (h *EstimateHandler) Convert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, res)
+}
+
+// Pdf renders an estimate to PDF and returns it as a file download.
+func (h *EstimateHandler) Pdf(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(r)
+	if !ok {
+		WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	est, err := h.svc.Get(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if est == nil {
+		WriteError(w, http.StatusNotFound, "not found")
+		return
+	}
+	b, err := pdf.RenderEstimate(est)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "pdf render failed")
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+est.EstimateNumber+`.pdf"`)
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(b); err != nil {
+		// client gone; nothing to do
+	}
 }
