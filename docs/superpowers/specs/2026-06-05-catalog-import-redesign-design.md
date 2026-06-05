@@ -10,9 +10,10 @@ Catalog import today is a two-page, manual affair:
 - `/column-mappings` — a persisted, separately-managed entity (`column_mappings`
   table + repo + service + handler + Svelte store + route). You must **create
   and save a named mapping first**.
-- `/import` — an upload wizard that references a saved mapping **by id**
-  (`mappingId` form field). The backend (`internal/http/import.go`) resolves the
-  id, then parses → maps → diffs → commits.
+- `/import` — an upload wizard that references a saved mapping **by id**. The
+  backend routes `POST /api/import/catalog/{preview,commit}`
+  (`internal/http/import.go`) read a `mappingId` multipart field, resolve the
+  saved mapping, then parse → map → diff → commit.
 
 This forces the user to hand-build and persist a column mapping before they can
 import anything. The goal is the opposite: **upload a file and have the columns
@@ -126,7 +127,7 @@ Move import under the catalog route group and pass the mapping **inline** (JSON)
 not by id. `ImportHandler` drops its `*ColumnMappingsRepo` dependency.
 
 - `POST /api/catalog/import/parse` — multipart `file` (+ optional `fileType`,
-  `sheetName`, `headerRow`). Parses, samples up to N rows, runs `DetectMapping`,
+  `sheetName`, `headerRow`). Parses, samples up to 50 rows, runs `DetectMapping`,
   returns `{ headers, sample, suggestion }`. Writes nothing.
 - `POST /api/catalog/import/preview` — multipart `file` + `mapping` (JSON string)
   → `DiffResult`. Writes nothing.
