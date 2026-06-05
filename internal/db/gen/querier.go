@@ -9,17 +9,30 @@ import (
 )
 
 type Querier interface {
+	CountRateTiers(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
+	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
+	CreateRateTier(ctx context.Context, arg CreateRateTierParams) (RateTier, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeletePayer(ctx context.Context, id int64) error
+	DeleteRateTier(ctx context.Context, id int64) error
 	DeleteUser(ctx context.Context, id int64) error
 	GetBusinessProfile(ctx context.Context) (BusinessProfile, error)
+	GetDefaultTier(ctx context.Context) (RateTier, error)
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
+	GetPayer(ctx context.Context, id int64) (Payer, error)
+	GetRateTier(ctx context.Context, id int64) (RateTier, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	ListPayers(ctx context.Context) ([]Payer, error)
+	ListRateTiers(ctx context.Context) ([]RateTier, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	MarkInviteUsed(ctx context.Context, arg MarkInviteUsedParams) error
+	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
+	UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error)
+	UpdateRateTier(ctx context.Context, arg UpdateRateTierParams) (RateTier, error)
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
 }
 
