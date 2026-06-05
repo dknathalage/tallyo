@@ -112,9 +112,11 @@ func run() error {
 	columnMappingSvc := service.NewColumnMappingService(conn, hub)
 
 	// The import handler operates directly on repositories: the catalog repo for
-	// diff/commit and the column-mappings repo to resolve a mapping id.
+	// diff/commit, the column-mappings repo to resolve a mapping id, and the
+	// rate-tiers repo to resolve tier names when committing.
 	catalogRepo := repository.NewCatalog(conn)
 	columnMappingsRepo := repository.NewColumnMappings(conn)
+	rateTiersRepo := repository.NewRateTiers(conn)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -150,7 +152,7 @@ func run() error {
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 		ColumnMappings:  httpapi.NewColumnMappingHandler(columnMappingSvc),
 		Export:          httpapi.NewExportHandler(catalogSvc, invoiceSvc, estimateSvc),
-		Import:          httpapi.NewImportHandler(catalogRepo, columnMappingsRepo),
+		Import:          httpapi.NewImportHandler(catalogRepo, columnMappingsRepo, rateTiersRepo),
 	}
 
 	server := httpapi.NewServer(deps)
