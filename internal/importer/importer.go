@@ -185,6 +185,7 @@ func ApplyMapping(rows []map[string]string, m Mapping) ([]MappedRow, []RowError,
 
 // buildMappedRow applies the field + tier maps to a single raw row.
 func buildMappedRow(raw map[string]string, fields, tierCols map[string]string) MappedRow {
+	// Metadata is reserved; no column mapping populates it yet.
 	out := MappedRow{Metadata: map[string]string{}, TierRates: map[string]float64{}}
 	for header, field := range fields { // bounded by len(fields)
 		val := strings.TrimSpace(raw[header])

@@ -110,7 +110,7 @@ func TestApplyMappingMissingName(t *testing.T) {
 	}
 }
 
-func TestApplyMappingTiersAndMetadata(t *testing.T) {
+func TestApplyMappingTierCols(t *testing.T) {
 	rows := []map[string]string{
 		{"name": "Widget", "sku": "W1", "rate": "10", "Gold Price": "20"},
 	}
@@ -272,6 +272,11 @@ func TestCommitCreatesTierByName(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("tier 'Remote' should have been created")
+	}
+	items, _ := cat.List(t.Context())
+	rates, err := cat.GetRates(t.Context(), items[0].ID)
+	if err != nil || len(rates) != 1 || rates[0].Rate != 15 {
+		t.Errorf("expected tier rate 15, got %+v (err %v)", rates, err)
 	}
 }
 
