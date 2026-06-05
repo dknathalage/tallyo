@@ -39,6 +39,14 @@ type Deps struct {
 	// BusinessProfile, when non-nil, serves the auth-gated GET/PUT singleton
 	// business profile at /api/business-profile.
 	BusinessProfile *BusinessProfileHandler
+
+	// RateTiers, when non-nil, serves the auth-gated rate-tier CRUD routes
+	// under /api/rate-tiers.
+	RateTiers *RateTierHandler
+
+	// Payers, when non-nil, serves the auth-gated payer CRUD plus bulk-delete
+	// routes under /api/payers.
+	Payers *PayerHandler
 }
 
 // Server wraps the configured chi router.
@@ -87,7 +95,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -102,6 +110,21 @@ func NewServer(deps Deps) *Server {
 				if deps.BusinessProfile != nil {
 					pr.Get("/business-profile", deps.BusinessProfile.Get)
 					pr.Put("/business-profile", deps.BusinessProfile.Put)
+				}
+				if deps.RateTiers != nil {
+					pr.Get("/rate-tiers", deps.RateTiers.List)
+					pr.Post("/rate-tiers", deps.RateTiers.Create)
+					pr.Get("/rate-tiers/{id}", deps.RateTiers.Get)
+					pr.Put("/rate-tiers/{id}", deps.RateTiers.Update)
+					pr.Delete("/rate-tiers/{id}", deps.RateTiers.Delete)
+				}
+				if deps.Payers != nil {
+					pr.Get("/payers", deps.Payers.List)
+					pr.Post("/payers", deps.Payers.Create)
+					pr.Post("/payers/bulk-delete", deps.Payers.BulkDelete)
+					pr.Get("/payers/{id}", deps.Payers.Get)
+					pr.Put("/payers/{id}", deps.Payers.Update)
+					pr.Delete("/payers/{id}", deps.Payers.Delete)
 				}
 			})
 		}
