@@ -69,7 +69,9 @@
 			<nav class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
 				<a href="/" class="text-lg font-semibold">Tallyo</a>
 				<div class="flex items-center gap-4 text-sm">
-					<a href="/settings" class="text-gray-600 hover:text-gray-900">Settings</a>
+					<a href="/rate-tiers" class="text-gray-600 hover:text-gray-900">Rate Tiers</a>
+						<a href="/payers" class="text-gray-600 hover:text-gray-900">Payers</a>
+						<a href="/settings" class="text-gray-600 hover:text-gray-900">Settings</a>
 					<button
 						type="button"
 						onclick={logout}
