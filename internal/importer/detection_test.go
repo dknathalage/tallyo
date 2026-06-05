@@ -76,6 +76,18 @@ func TestDetectMappingCodeColumnIsNotTier(t *testing.T) {
 	}
 }
 
+func TestDetectMappingIntegerColumnRejectedByValue(t *testing.T) {
+	headers := []string{"name", "price", "qty on hand"}
+	sample := sampleRows(headers,
+		[]string{"A", "5.00", "1001"},
+		[]string{"B", "6.00", "1002"},
+	)
+	s := DetectMapping(headers, sample)
+	if len(s.PriceCols) != 0 {
+		t.Errorf("integer column rejected by value should not be a tier: got %+v", s.PriceCols)
+	}
+}
+
 func TestDetectMappingMissingName(t *testing.T) {
 	headers := []string{"sku", "price"}
 	s := DetectMapping(headers, sampleRows(headers, []string{"X1", "9.99"}))

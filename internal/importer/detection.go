@@ -21,27 +21,39 @@ type PriceColumn struct {
 	SuggestName string `json:"suggestName"`
 }
 
+// tokenizeAll pre-tokenizes a list of needle phrases once at package init, so
+// matchField/priceLikeByName never re-tokenize on every (header, needle) pair.
+func tokenizeAll(ss ...string) [][]string {
+	out := make([][]string, len(ss))
+	for i, s := range ss { // bounded by len(ss)
+		out[i] = tokens(s)
+	}
+	return out
+}
+
 // fieldSynonyms lists, per target field, the token-sequences that identify a
 // header. Order matters: fields are claimed top-down, each at most once, and a
 // header is consumed by the first field that claims it. Needles are matched as
-// contiguous token sub-sequences (so "id" never matches "video").
+// contiguous token sub-sequences (so "id" never matches "video") and are
+// pre-tokenized once at package scope.
 var fieldSynonyms = []struct {
 	field   string
-	needles []string
+	needles [][]string
 }{
-	{"sku", []string{"support item number", "item number", "item code", "sku", "code", "ref"}},
-	{"name", []string{"support item name", "item name", "name", "description", "product", "service"}},
-	{"category", []string{"support category", "category", "group", "class", "type"}},
-	{"unit", []string{"unit of measure", "unit", "uom"}},
-	{"rate", []string{"unit price", "base price", "price limit", "price", "rate", "cost", "amount"}},
+	{"sku", tokenizeAll("support item number", "item number", "item code", "sku", "code", "ref")},
+	{"name", tokenizeAll("support item name", "item name", "name", "description", "product", "service")},
+	{"category", tokenizeAll("support category", "category", "group", "class", "type")},
+	{"unit", tokenizeAll("unit of measure", "unit", "uom")},
+	{"rate", tokenizeAll("unit price", "base price", "price limit", "price", "rate", "cost", "amount")},
 }
 
-// priceHeaderNeedles flag a header as price-like by name alone.
-var priceHeaderNeedles = []string{"price", "rate", "cost", "amount", "cap", "limit", "fee"}
+// priceHeaderNeedles flag a header as price-like by name alone (pre-tokenized).
+var priceHeaderNeedles = tokenizeAll("price", "rate", "cost", "amount", "cap", "limit", "fee")
 
 var currencyRe = regexp.MustCompile(`^\$?\s*\d{1,3}(,\d{3})*(\.\d{1,2})?$|^\$?\s*\d+\.\d{1,2}$`)
 
-// tokens normalizes a header to lower-case alphanumeric words.
+// tokens normalizes a header to lower-case alphanumeric words. Non-ASCII
+// characters are treated as word separators.
 func tokens(h string) []string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(h) {
@@ -82,7 +94,7 @@ func matchField(header string, claimed map[string]bool) string {
 			continue
 		}
 		for _, n := range fs.needles { // bounded by len(needles)
-			if containsSeq(hay, tokens(n)) {
+			if containsSeq(hay, n) {
 				return fs.field
 			}
 		}
@@ -94,7 +106,7 @@ func matchField(header string, claimed map[string]bool) string {
 func priceLikeByName(header string) bool {
 	hay := tokens(header)
 	for _, n := range priceHeaderNeedles { // bounded by len(priceHeaderNeedles)
-		if containsSeq(hay, tokens(n)) {
+		if containsSeq(hay, n) {
 			return true
 		}
 	}
