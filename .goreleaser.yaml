@@ -1,8 +1,8 @@
 # GoReleaser config for Tallyo — single-binary Go web service that embeds a
 # SvelteKit SPA via //go:embed web/build. The SPA MUST be built before Go
 # compiles, so a before-hook builds it from web/. The binary is cgo-free
-# (modernc.org/sqlite, pure-Go). main.go has no version/commit/date vars, so
-# no ldflags are injected.
+# (modernc.org/sqlite, pure-Go). The release version is injected into
+# main.version via -ldflags.
 version: 2
 
 project_name: tallyo
@@ -21,6 +21,8 @@ builds:
     binary: tallyo
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
     goos:
       - linux
       - darwin
