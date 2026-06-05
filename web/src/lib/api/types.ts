@@ -182,3 +182,48 @@ export interface InvoiceInput {
 	currencyCode: string;
 	lineItems: LineItemInput[];
 }
+
+export type EstimateStatus = 'draft' | 'accepted' | 'declined' | 'converted' | string;
+
+// EstimateLineItem has the same shape as LineItem.
+export type EstimateLineItem = LineItem;
+
+// EstimateLineItemInput is identical to LineItemInput.
+export type EstimateLineItemInput = LineItemInput;
+
+export interface Estimate {
+	id: number;
+	uuid: string;
+	estimateNumber: string;
+	clientId: number;
+	clientName: string;
+	date: string;
+	validUntil: string;
+	subtotal: number;
+	taxRate: number;
+	taxRateId: number | null;
+	taxAmount: number;
+	total: number;
+	notes: string;
+	status: EstimateStatus;
+	currencyCode: string;
+	convertedInvoiceId: number | null;
+	businessSnapshot: string;
+	clientSnapshot: string;
+	payerSnapshot: string;
+	createdAt: string;
+	updatedAt: string;
+	lineItems: EstimateLineItem[];
+}
+
+export interface EstimateInput {
+	clientId: number;
+	date: string;
+	validUntil: string;
+	taxRate: number;
+	taxRateId: number | null;
+	notes: string;
+	status: EstimateStatus;
+	currencyCode: string;
+	lineItems: EstimateLineItemInput[];
+}
