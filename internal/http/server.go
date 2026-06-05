@@ -47,6 +47,18 @@ type Deps struct {
 	// Payers, when non-nil, serves the auth-gated payer CRUD plus bulk-delete
 	// routes under /api/payers.
 	Payers *PayerHandler
+
+	// TaxRates, when non-nil, serves the auth-gated tax-rate CRUD routes under
+	// /api/tax-rates.
+	TaxRates *TaxRateHandler
+
+	// Clients, when non-nil, serves the auth-gated client CRUD plus bulk-delete
+	// routes under /api/clients.
+	Clients *ClientHandler
+
+	// Catalog, when non-nil, serves the auth-gated catalog CRUD, categories,
+	// bulk-delete, and per-item tier-rate sub-routes under /api/catalog.
+	Catalog *CatalogHandler
 }
 
 // Server wraps the configured chi router.
@@ -95,7 +107,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -125,6 +137,32 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/payers/{id}", deps.Payers.Get)
 					pr.Put("/payers/{id}", deps.Payers.Update)
 					pr.Delete("/payers/{id}", deps.Payers.Delete)
+				}
+				if deps.TaxRates != nil {
+					pr.Get("/tax-rates", deps.TaxRates.List)
+					pr.Post("/tax-rates", deps.TaxRates.Create)
+					pr.Get("/tax-rates/{id}", deps.TaxRates.Get)
+					pr.Put("/tax-rates/{id}", deps.TaxRates.Update)
+					pr.Delete("/tax-rates/{id}", deps.TaxRates.Delete)
+				}
+				if deps.Clients != nil {
+					pr.Get("/clients", deps.Clients.List)
+					pr.Post("/clients", deps.Clients.Create)
+					pr.Post("/clients/bulk-delete", deps.Clients.BulkDelete)
+					pr.Get("/clients/{id}", deps.Clients.Get)
+					pr.Put("/clients/{id}", deps.Clients.Update)
+					pr.Delete("/clients/{id}", deps.Clients.Delete)
+				}
+				if deps.Catalog != nil {
+					pr.Get("/catalog", deps.Catalog.List)
+					pr.Post("/catalog", deps.Catalog.Create)
+					pr.Get("/catalog/categories", deps.Catalog.Categories)
+					pr.Post("/catalog/bulk-delete", deps.Catalog.BulkDelete)
+					pr.Get("/catalog/{id}", deps.Catalog.Get)
+					pr.Put("/catalog/{id}", deps.Catalog.Update)
+					pr.Delete("/catalog/{id}", deps.Catalog.Delete)
+					pr.Get("/catalog/{id}/rates", deps.Catalog.GetRates)
+					pr.Put("/catalog/{id}/rates/{tierId}", deps.Catalog.SetRate)
 				}
 			})
 		}
