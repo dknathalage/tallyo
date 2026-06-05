@@ -66,24 +66,24 @@
 <div class="min-h-screen bg-gray-50 text-gray-900">
 	{#if showNav}
 		<header class="border-b border-gray-200 bg-white">
-			<nav class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-				<a href="/" class="text-lg font-semibold">Tallyo</a>
-				<div class="flex items-center gap-4 text-sm">
-					<a href="/invoices" class="text-gray-600 hover:text-gray-900">Invoices</a>
-					<a href="/estimates" class="text-gray-600 hover:text-gray-900">Estimates</a>
-					<a href="/recurring" class="text-gray-600 hover:text-gray-900">Recurring</a>
-					<a href="/rate-tiers" class="text-gray-600 hover:text-gray-900">Rate Tiers</a>
-						<a href="/tax-rates" class="text-gray-600 hover:text-gray-900">Tax Rates</a>
-						<a href="/payers" class="text-gray-600 hover:text-gray-900">Payers</a>
-						<a href="/clients" class="text-gray-600 hover:text-gray-900">Clients</a>
-						<a href="/catalog" class="text-gray-600 hover:text-gray-900">Catalog</a>
-						<a href="/import" class="text-gray-600 hover:text-gray-900">Import</a>
-						<a href="/column-mappings" class="text-gray-600 hover:text-gray-900">Mappings</a>
-						<a href="/settings" class="text-gray-600 hover:text-gray-900">Settings</a>
+			<nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+				<a href="/" class="shrink-0 text-lg font-semibold">Tallyo</a>
+				<div class="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+					<a href="/invoices" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Invoices</a>
+					<a href="/estimates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Estimates</a>
+					<a href="/recurring" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Recurring</a>
+					<a href="/rate-tiers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Rate Tiers</a>
+					<a href="/tax-rates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Tax Rates</a>
+					<a href="/payers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Payers</a>
+					<a href="/clients" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Clients</a>
+					<a href="/catalog" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Catalog</a>
+					<a href="/import" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Import</a>
+					<a href="/column-mappings" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Mappings</a>
+					<a href="/settings" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Settings</a>
 					<button
 						type="button"
 						onclick={logout}
-						class="text-gray-600 hover:text-gray-900"
+						class="ml-auto whitespace-nowrap text-gray-600 hover:text-gray-900"
 					>
 						Logout
 					</button>
