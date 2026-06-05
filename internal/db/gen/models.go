@@ -164,6 +164,18 @@ type Payer struct {
 	UpdatedAt string         `json:"updated_at"`
 }
 
+type Payment struct {
+	ID          int64          `json:"id"`
+	Uuid        string         `json:"uuid"`
+	InvoiceID   int64          `json:"invoice_id"`
+	Amount      float64        `json:"amount"`
+	PaymentDate string         `json:"payment_date"`
+	Method      sql.NullString `json:"method"`
+	Notes       sql.NullString `json:"notes"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+}
+
 type RateTier struct {
 	ID          int64          `json:"id"`
 	Uuid        string         `json:"uuid"`

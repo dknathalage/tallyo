@@ -127,3 +127,18 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		t.Fatalf("second Migrate: %v", err)
 	}
 }
+
+func TestMigrateCreatesPaymentsTable(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "pay.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+	if err := Migrate(conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	var n string
+	if err := conn.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='payments'").Scan(&n); err != nil {
+		t.Fatalf("payments table missing: %v", err)
+	}
+}

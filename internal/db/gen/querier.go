@@ -22,6 +22,7 @@ type Querier interface {
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
+	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreateRateTier(ctx context.Context, arg CreateRateTierParams) (RateTier, error)
 	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -33,6 +34,7 @@ type Querier interface {
 	DeleteInvoice(ctx context.Context, id int64) error
 	DeleteLineItemsForInvoice(ctx context.Context, invoiceID int64) error
 	DeletePayer(ctx context.Context, id int64) error
+	DeletePayment(ctx context.Context, id int64) error
 	DeleteRateTier(ctx context.Context, id int64) error
 	DeleteTaxRate(ctx context.Context, id int64) error
 	DeleteUser(ctx context.Context, id int64) error
@@ -46,10 +48,12 @@ type Querier interface {
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
 	GetInvoice(ctx context.Context, id int64) (GetInvoiceRow, error)
 	GetPayer(ctx context.Context, id int64) (Payer, error)
+	GetPayment(ctx context.Context, id int64) (Payment, error)
 	GetRateTier(ctx context.Context, id int64) (RateTier, error)
 	GetTaxRate(ctx context.Context, id int64) (TaxRate, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	InvoiceTotalPaid(ctx context.Context, invoiceID int64) (float64, error)
 	ListCatalogItems(ctx context.Context) ([]CatalogItem, error)
 	ListCategories(ctx context.Context) ([]sql.NullString, error)
 	ListClientEstimates(ctx context.Context, clientID sql.NullInt64) ([]ListClientEstimatesRow, error)
@@ -58,6 +62,7 @@ type Querier interface {
 	ListEstimateLineItems(ctx context.Context, estimateID int64) ([]EstimateLineItem, error)
 	ListEstimates(ctx context.Context) ([]ListEstimatesRow, error)
 	ListEstimatesByStatus(ctx context.Context, status sql.NullString) ([]ListEstimatesByStatusRow, error)
+	ListInvoicePayments(ctx context.Context, invoiceID int64) ([]Payment, error)
 	ListInvoices(ctx context.Context) ([]ListInvoicesRow, error)
 	ListInvoicesByStatus(ctx context.Context, status sql.NullString) ([]ListInvoicesByStatusRow, error)
 	ListLineItems(ctx context.Context, invoiceID int64) ([]LineItem, error)
