@@ -11,18 +11,28 @@ import (
 )
 
 const clientInvoiceStats = `-- name: ClientInvoiceStats :one
-SELECT COUNT(*) AS invoice_count, CAST(COALESCE(SUM(total), 0) AS REAL) AS total_invoiced FROM invoices WHERE client_id = ?
+SELECT
+  COUNT(*) AS invoice_count,
+  CAST(COALESCE(SUM(i.total), 0) AS REAL) AS total_invoiced,
+  CAST(COALESCE((
+    SELECT SUM(p.amount) FROM payments p
+    JOIN invoices iv ON p.invoice_id = iv.id
+    WHERE iv.client_id = ?1
+  ), 0) AS REAL) AS total_paid
+FROM invoices i
+WHERE i.client_id = ?1
 `
 
 type ClientInvoiceStatsRow struct {
 	InvoiceCount  int64   `json:"invoice_count"`
 	TotalInvoiced float64 `json:"total_invoiced"`
+	TotalPaid     float64 `json:"total_paid"`
 }
 
 func (q *Queries) ClientInvoiceStats(ctx context.Context, clientID int64) (ClientInvoiceStatsRow, error) {
 	row := q.db.QueryRowContext(ctx, clientInvoiceStats, clientID)
 	var i ClientInvoiceStatsRow
-	err := row.Scan(&i.InvoiceCount, &i.TotalInvoiced)
+	err := row.Scan(&i.InvoiceCount, &i.TotalInvoiced, &i.TotalPaid)
 	return i, err
 }
 
