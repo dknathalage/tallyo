@@ -864,6 +864,7 @@ Expected: `internal/db/gen` (`models.go`, `querier.go`, the `column_mappings.sql
 
 In `internal/http/server.go`:
 - Delete the `ColumnMappings *ColumnMappingHandler` field (~line 79-81) and remove `deps.ColumnMappings != nil` from the guard (~line 138).
+- Update the `Import` field doc comment (~lines 87-88) — it says routes live under `/api/import/catalog`; they now live under `/api/catalog/import`.
 - Delete the `if deps.ColumnMappings != nil { ... }` route block (~lines 234-240).
 - Replace the import route block (~lines 247-248) with the catalog-nested routes:
 
