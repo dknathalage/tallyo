@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.7.0](https://github.com/dknathalage/tallyo/compare/v3.6.0...v3.7.0) (2026-06-05)
+
+
+### Features
+
+* **importer:** auto-detect catalog column mapping from headers + values ([546a4b7](https://github.com/dknathalage/tallyo/commit/546a4b799a240a70c736177ee71e7499e7afd691))
+* **importer:** transient mapping with name-keyed tiers, create-if-missing commit ([f58a77d](https://github.com/dknathalage/tallyo/commit/f58a77d0add5fbdab9dcf830e5a3dcbff3d23d25))
+* **web:** inline catalog import wizard; remove column-mappings UI ([723251a](https://github.com/dknathalage/tallyo/commit/723251abd1c01b45d75bd567bc449757ab78d3c2))
+
+
+### Bug Fixes
+
+* **web:** send fileType so XLSX imports parse correctly; a11y + cleanup ([614e79d](https://github.com/dknathalage/tallyo/commit/614e79daeead14c8fb75022da6cbeada9e3ec44e))
+
 ## [3.6.0](https://github.com/dknathalage/tallyo/compare/v3.5.0...v3.6.0) (2026-06-05)
 
 
