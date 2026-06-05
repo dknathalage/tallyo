@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { rateTiers } from '$lib/stores/rateTiers.svelte';
-	import type { ImportParseResult, DiffResult, CommitResult } from '$lib/api/types';
+	import type { ImportParseResult, DiffResult } from '$lib/api/types';
 
 	// Sentinel select values for the tier dropdowns.
 	const NEW_TIER = '__new__';
@@ -24,7 +24,6 @@
 	let newTierNameByHeader = $state<Record<string, string>>({});
 
 	let diff = $state<DiffResult | null>(null);
-	let commitResult = $state<CommitResult | null>(null);
 	let updateExisting = $state(false);
 
 	let parseBusy = $state(false);
@@ -42,9 +41,18 @@
 		return files[0];
 	}
 
+	/** Derive the importer file type from the filename extension. */
+	function fileTypeOf(file: File): 'xlsx' | 'csv' {
+		return file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv';
+	}
+
 	/** POST a multipart form; raw fetch since the JSON client can't do FormData. */
 	async function postForm<T>(path: string, fd: FormData): Promise<T> {
 		const resp = await fetch(path, { method: 'POST', body: fd, credentials: 'include' });
+		if (resp.status === 401) {
+			await goto('/login');
+			throw new Error('Session expired. Please sign in again.');
+		}
 		const text = await resp.text();
 		const data: unknown = text.length > 0 ? JSON.parse(text) : null;
 		if (!resp.ok) {
@@ -65,6 +73,7 @@
 		try {
 			const fd = new FormData();
 			fd.append('file', file);
+			fd.append('fileType', fileTypeOf(file));
 			const res = await postForm<ImportParseResult>('/api/catalog/import/parse', fd);
 			parsed = res;
 			seedReview(res);
@@ -106,7 +115,7 @@
 	);
 
 	/** Build the transient mapping JSON for preview/commit. */
-	function buildMapping(): string {
+	function buildMapping(fileType: 'xlsx' | 'csv'): string {
 		const fields: Record<string, string> = {};
 		for (const [header, field] of Object.entries(fieldByHeader)) {
 			if (field !== 'ignore') fields[header] = field;
@@ -122,7 +131,7 @@
 			const tier = rateTiers.items.find((t) => String(t.id) === choice);
 			if (tier !== undefined) tierCols[header] = tier.name;
 		}
-		return JSON.stringify({ fields, tierCols, fileType: '', sheetName: '', headerRow: 1 });
+		return JSON.stringify({ fields, tierCols, fileType, sheetName: '', headerRow: 1 });
 	}
 
 	async function preview(): Promise<void> {
@@ -140,7 +149,7 @@
 		try {
 			const fd = new FormData();
 			fd.append('file', file);
-			fd.append('mapping', buildMapping());
+			fd.append('mapping', buildMapping(fileTypeOf(file)));
 			diff = await postForm<DiffResult>('/api/catalog/import/preview', fd);
 			step = 'diff';
 		} catch (err) {
@@ -161,9 +170,9 @@
 		try {
 			const fd = new FormData();
 			fd.append('file', file);
-			fd.append('mapping', buildMapping());
+			fd.append('mapping', buildMapping(fileTypeOf(file)));
 			fd.append('updateExisting', String(updateExisting));
-			commitResult = await postForm<CommitResult>('/api/catalog/import/commit', fd);
+			await postForm<unknown>('/api/catalog/import/commit', fd);
 			await goto('/catalog');
 		} catch (err) {
 			pageError = err instanceof Error ? err.message : 'Failed to commit import.';
@@ -253,6 +262,7 @@
 								<td class="px-3 py-2">
 									<select
 										bind:value={fieldByHeader[header]}
+										aria-label={`Map column ${header}`}
 										class="rounded border border-gray-300 px-2 py-1 text-sm"
 									>
 										{#each FIELD_OPTIONS as opt (opt)}
@@ -288,6 +298,7 @@
 										<td class="px-3 py-2">
 											<select
 												bind:value={tierChoiceByHeader[pc.header]}
+												aria-label={`Tier for ${pc.header}`}
 												class="rounded border border-gray-300 px-2 py-1 text-sm"
 											>
 												{#each rateTiers.items as t (t.id)}
@@ -302,6 +313,7 @@
 												<input
 													type="text"
 													bind:value={newTierNameByHeader[pc.header]}
+													aria-label={`New tier name for ${pc.header}`}
 													class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
 												/>
 											{:else}
