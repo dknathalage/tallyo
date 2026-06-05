@@ -33,7 +33,6 @@ func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	if err := rc.Flush(); err != nil {
 		// Flushing is unsupported by the underlying writer: streaming cannot

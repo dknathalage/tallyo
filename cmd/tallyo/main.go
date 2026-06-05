@@ -72,6 +72,10 @@ func run() error {
 		return fmt.Errorf("sub web build: %w", err)
 	}
 
+	if _, err := fs.Stat(assets, "200.html"); err != nil {
+		return fmt.Errorf("embedded SPA missing 200.html — run `npm run build` in web/ before `go build`: %w", err)
+	}
+
 	deps := httpapi.Deps{
 		Assets:          assets,
 		Users:           users,
