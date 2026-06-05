@@ -248,3 +248,40 @@ export interface EstimateInput {
 	currencyCode: string;
 	lineItems: EstimateLineItemInput[];
 }
+
+export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
+
+export interface RecurringLine {
+	description: string;
+	quantity: number;
+	rate: number;
+	notes: string;
+	sortOrder: number;
+}
+
+export interface RecurringTemplate {
+	id: number;
+	uuid: string;
+	clientId: number | null;
+	clientName: string;
+	name: string;
+	frequency: RecurringFrequency;
+	nextDue: string;
+	lineItems: RecurringLine[];
+	taxRate: number;
+	notes: string;
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface RecurringInput {
+	clientId: number;
+	name: string;
+	frequency: RecurringFrequency;
+	nextDue: string;
+	lineItems: RecurringLine[];
+	taxRate: number;
+	notes: string;
+	isActive: boolean;
+}
