@@ -79,6 +79,10 @@ type Deps struct {
 	// ColumnMappings, when non-nil, serves the auth-gated column-mapping CRUD
 	// routes under /api/column-mappings.
 	ColumnMappings *ColumnMappingHandler
+
+	// Export, when non-nil, serves the auth-gated CSV/Excel export routes under
+	// /api/export.
+	Export *ExportHandler
 }
 
 // Server wraps the configured chi router.
@@ -127,7 +131,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.ColumnMappings != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.ColumnMappings != nil || deps.Export != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -229,6 +233,11 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/column-mappings/{id}", deps.ColumnMappings.Get)
 					pr.Put("/column-mappings/{id}", deps.ColumnMappings.Update)
 					pr.Delete("/column-mappings/{id}", deps.ColumnMappings.Delete)
+				}
+				if deps.Export != nil {
+					pr.Get("/export/catalog", deps.Export.Catalog)
+					pr.Get("/export/invoices", deps.Export.Invoices)
+					pr.Get("/export/estimates", deps.Export.Estimates)
 				}
 			})
 		}

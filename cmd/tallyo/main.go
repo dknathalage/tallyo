@@ -133,6 +133,7 @@ func run() error {
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 		ColumnMappings:  httpapi.NewColumnMappingHandler(columnMappingSvc),
+		Export:          httpapi.NewExportHandler(catalogSvc, invoiceSvc, estimateSvc),
 	}
 
 	server := httpapi.NewServer(deps)
