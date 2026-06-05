@@ -1,0 +1,185 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+
+	"github.com/dknathalage/tallyo/internal/auth"
+	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/go-chi/chi/v5"
+)
+
+// newPaymentServer wires the payment routes behind RequireAuth, plus client and
+// invoice creation so payments can reference a real invoice.
+func newPaymentServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	conn, err := appdb.Open(filepath.Join(t.TempDir(), "payment.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := appdb.Migrate(conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	users := auth.NewUsers(conn)
+	hash, err := auth.HashPassword("password1")
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
+		t.Fatalf("Create owner: %v", err)
+	}
+
+	hub := realtime.NewHub()
+	sm := auth.NewSessionManager(conn, false)
+	authH := NewAuthHandler(sm, users)
+	cH := NewClientHandler(service.NewClientService(conn, hub))
+	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
+	payH := NewPaymentHandler(service.NewPaymentService(conn, hub))
+
+	router := chi.NewRouter()
+	router.Route("/api", func(api chi.Router) {
+		api.Post("/auth/login", authH.Login)
+		api.Group(func(pr chi.Router) {
+			pr.Use(RequireAuth(sm, users))
+			pr.Post("/clients", cH.Create)
+			pr.Post("/invoices", invH.Create)
+			pr.Get("/invoices/{id}", invH.Get)
+			pr.Get("/invoices/{id}/payments", payH.ListForInvoice)
+			pr.Post("/invoices/{id}/payments", payH.Create)
+			pr.Delete("/payments/{id}", payH.Delete)
+		})
+	})
+
+	srv := httptest.NewServer(sm.LoadAndSave(router))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// createPaymentInvoice posts a single-line invoice (rate 25, qty 1, no tax → 25)
+// and returns its id.
+func createPaymentInvoice(t *testing.T, c *http.Client, base string, clientID int64) int64 {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"clientId": clientID, "date": "2026-06-01", "dueDate": "2026-07-01",
+		"lineItems": []map[string]any{
+			{"description": "Work", "quantity": 1, "rate": 25, "sortOrder": 0},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp := postJSON(t, c, base+"/api/invoices", string(body))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create invoice: want 201 got %d", resp.StatusCode)
+	}
+	var out struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode invoice: %v", err)
+	}
+	return out.ID
+}
+
+func TestPaymentRecordAndList(t *testing.T) {
+	srv := newPaymentServer(t)
+	c := loggedInClient(t, srv.URL)
+	clientID := createClient(t, c, srv.URL, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, clientID)
+
+	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("record: want 201 got %d", resp.StatusCode)
+	}
+	var p struct {
+		ID        int64   `json:"id"`
+		InvoiceID int64   `json:"invoiceId"`
+		Amount    float64 `json:"amount"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		t.Fatalf("decode payment: %v", err)
+	}
+	if p.ID <= 0 || p.InvoiceID != invID || p.Amount != 10 {
+		t.Fatalf("payment = %+v", p)
+	}
+
+	lr := get(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments")
+	defer func() { _ = lr.Body.Close() }()
+	if lr.StatusCode != http.StatusOK {
+		t.Fatalf("list: want 200 got %d", lr.StatusCode)
+	}
+	var list []struct {
+		ID     int64   `json:"id"`
+		Amount float64 `json:"amount"`
+	}
+	if err := json.NewDecoder(lr.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(list) != 1 || list[0].Amount != 10 {
+		t.Fatalf("list = %+v", list)
+	}
+}
+
+func TestPaymentDeleteFlow(t *testing.T) {
+	srv := newPaymentServer(t)
+	c := loggedInClient(t, srv.URL)
+	clientID := createClient(t, c, srv.URL, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, clientID)
+
+	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
+	var p struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		t.Fatalf("decode payment: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	dr := delete_(t, c, srv.URL+"/api/payments/"+itoa(p.ID))
+	_ = dr.Body.Close()
+	if dr.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete: want 204 got %d", dr.StatusCode)
+	}
+}
+
+func TestPaymentDeleteMissing404(t *testing.T) {
+	srv := newPaymentServer(t)
+	c := loggedInClient(t, srv.URL)
+	dr := delete_(t, c, srv.URL+"/api/payments/99999")
+	defer func() { _ = dr.Body.Close() }()
+	if dr.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete missing: want 404 got %d", dr.StatusCode)
+	}
+}
+
+func TestPaymentZeroAmount400(t *testing.T) {
+	srv := newPaymentServer(t)
+	c := loggedInClient(t, srv.URL)
+	clientID := createClient(t, c, srv.URL, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, clientID)
+
+	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments", `{"amount":0,"paymentDate":"2026-06-05"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("zero amount: want 400 got %d", resp.StatusCode)
+	}
+}
+
+func TestPaymentRecordUnauthenticated401(t *testing.T) {
+	srv := newPaymentServer(t)
+	c := jarClient(t)
+	resp := postJSON(t, c, srv.URL+"/api/invoices/1/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anon record: want 401 got %d", resp.StatusCode)
+	}
+}
