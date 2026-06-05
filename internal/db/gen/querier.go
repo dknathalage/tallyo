@@ -6,34 +6,59 @@ package gen
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
+	ClearDefaultTaxRates(ctx context.Context) error
 	CountRateTiers(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
+	CreateCatalogItem(ctx context.Context, arg CreateCatalogItemParams) (CatalogItem, error)
+	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreateRateTier(ctx context.Context, arg CreateRateTierParams) (RateTier, error)
+	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteCatalogItem(ctx context.Context, id int64) error
+	DeleteCatalogItemRate(ctx context.Context, arg DeleteCatalogItemRateParams) error
+	DeleteClient(ctx context.Context, id int64) error
 	DeletePayer(ctx context.Context, id int64) error
 	DeleteRateTier(ctx context.Context, id int64) error
+	DeleteTaxRate(ctx context.Context, id int64) error
 	DeleteUser(ctx context.Context, id int64) error
 	GetBusinessProfile(ctx context.Context) (BusinessProfile, error)
+	GetCatalogItem(ctx context.Context, id int64) (CatalogItem, error)
+	GetCatalogItemRate(ctx context.Context, arg GetCatalogItemRateParams) (CatalogItemRate, error)
+	GetClient(ctx context.Context, id int64) (GetClientRow, error)
+	GetDefaultTaxRate(ctx context.Context) (TaxRate, error)
 	GetDefaultTier(ctx context.Context) (RateTier, error)
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
 	GetPayer(ctx context.Context, id int64) (Payer, error)
 	GetRateTier(ctx context.Context, id int64) (RateTier, error)
+	GetTaxRate(ctx context.Context, id int64) (TaxRate, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	ListCatalogItems(ctx context.Context) ([]CatalogItem, error)
+	ListCategories(ctx context.Context) ([]sql.NullString, error)
+	ListClients(ctx context.Context) ([]ListClientsRow, error)
 	ListPayers(ctx context.Context) ([]Payer, error)
 	ListRateTiers(ctx context.Context) ([]RateTier, error)
+	ListRatesForItem(ctx context.Context, catalogItemID int64) ([]CatalogItemRate, error)
+	ListTaxRates(ctx context.Context) ([]TaxRate, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	MarkInviteUsed(ctx context.Context, arg MarkInviteUsedParams) error
+	SearchCatalogItems(ctx context.Context, arg SearchCatalogItemsParams) ([]CatalogItem, error)
+	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
+	UpdateCatalogItem(ctx context.Context, arg UpdateCatalogItemParams) (CatalogItem, error)
+	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
 	UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error)
 	UpdateRateTier(ctx context.Context, arg UpdateRateTierParams) (RateTier, error)
+	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
+	UpsertCatalogItemRate(ctx context.Context, arg UpsertCatalogItemRateParams) error
 }
 
 var _ Querier = (*Queries)(nil)

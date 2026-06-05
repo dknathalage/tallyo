@@ -34,6 +34,40 @@ type BusinessProfile struct {
 	UpdatedAt       sql.NullString `json:"updated_at"`
 }
 
+type CatalogItem struct {
+	ID        int64          `json:"id"`
+	Uuid      string         `json:"uuid"`
+	Name      string         `json:"name"`
+	Rate      float64        `json:"rate"`
+	Unit      sql.NullString `json:"unit"`
+	Category  sql.NullString `json:"category"`
+	Sku       sql.NullString `json:"sku"`
+	Metadata  sql.NullString `json:"metadata"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+}
+
+type CatalogItemRate struct {
+	ID            int64   `json:"id"`
+	CatalogItemID int64   `json:"catalog_item_id"`
+	RateTierID    int64   `json:"rate_tier_id"`
+	Rate          float64 `json:"rate"`
+}
+
+type Client struct {
+	ID            int64          `json:"id"`
+	Uuid          string         `json:"uuid"`
+	Name          string         `json:"name"`
+	Email         sql.NullString `json:"email"`
+	Phone         sql.NullString `json:"phone"`
+	Address       sql.NullString `json:"address"`
+	PricingTierID sql.NullInt64  `json:"pricing_tier_id"`
+	Metadata      sql.NullString `json:"metadata"`
+	PayerID       sql.NullInt64  `json:"payer_id"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
+}
+
 type Invite struct {
 	ID        int64          `json:"id"`
 	Token     string         `json:"token"`
@@ -70,6 +104,16 @@ type Session struct {
 	Token  string  `json:"token"`
 	Data   []byte  `json:"data"`
 	Expiry float64 `json:"expiry"`
+}
+
+type TaxRate struct {
+	ID        int64   `json:"id"`
+	Uuid      string  `json:"uuid"`
+	Name      string  `json:"name"`
+	Rate      float64 `json:"rate"`
+	IsDefault int64   `json:"is_default"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 }
 
 type User struct {
