@@ -1,4 +1,4 @@
-# Contributing to Invoices
+# Contributing to Tallyo
 
 Thank you for your interest in contributing! Here's how to get started.
 
@@ -7,27 +7,35 @@ Thank you for your interest in contributing! Here's how to get started.
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/my-feature`
 3. Make changes + add tests
-4. Ensure tests pass: `npm test`
-5. Commit using [Conventional Commits](COMMIT_CONVENTION.md)
+4. Ensure the gate passes (see below)
+5. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
 6. Push and open a Pull Request
 
 ## Development Setup
 
 ```bash
-npm install
-npm run dev
+# Build the SPA (the Go build embeds web/build):
+cd web && npm install && npm run build && cd ..
+
+# Run the server:
+go run ./cmd/tallyo --port 8080
 ```
+
+For frontend hot reload: `cd web && npm run dev` (Vite proxies `/api` -> :8080).
 
 ## Code Standards
 
-- TypeScript strict mode
-- Svelte 5 runes (`$state`, `$derived`, `$effect`)
-- Import from `$lib/repositories` — never `$lib/db/queries` directly in routes
-- All new features need tests
+- Go 1.26, cgo-free (`CGO_ENABLED=0`).
+- Handlers call services, services call repositories, repositories call sqlc gen — never skip layers.
+- Every DB mutation is audited (`audit.WithTx`) and broadcasts an SSE event after commit.
+- sqlc source SQL lives in `internal/db/queries/`; never hand-edit `internal/db/gen/`.
+- Frontend: Svelte 5 runes (`$state`, `$derived`, `$effect`), Tailwind 4.
+- Follow the coding rules in `CLAUDE.md` (NASA Power of 10, adapted).
 
 ## Pull Request Checklist
 
-- [ ] `npm run check` passes (0 errors)
-- [ ] `npm test` passes
+- [ ] `go test ./...` passes (add `-race` for the full gate)
+- [ ] `go vet ./...` and `gofmt -l .` are clean
+- [ ] `cd web && npm run check` passes (0 errors / 0 warnings)
 - [ ] Code follows existing patterns
 - [ ] PR description explains what and why

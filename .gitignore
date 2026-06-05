@@ -1,48 +1,26 @@
-node_modules
+# Go build binaries
+/tallyo
+/cmd/tallyo/tallyo
 
-# Output
-.output
-.vercel
-.netlify
-.wrangler
-.svelte-kit
-/src/docs/.vitepress/dist
-/src/docs/.vitepress/cache
+# SQLite databases
+*.db
 
-# Turbo
-.turbo
+# Env
+.env
+.env.*
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Env
-.env
-.env.*
-!.env.example
-!.env.test
-
-# Vite
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
-
 # Coverage reports
 coverage/
 
-.build-sha
-build
-build-docs
-bin/.tallyo-build.json
-dist-electron/
+# SvelteKit (web/ SPA)
+web/node_modules/
+web/.svelte-kit
 
-# Go / web
-/build/bin
-*.db
+# Embedded SPA build output — keep the dir (.gitkeep) but ignore generated assets
 !web/build
 web/build/*
 !web/build/.gitkeep
-web/node_modules/
-
-# Go build binaries
-/tallyo
-/cmd/tallyo/tallyo
