@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -49,4 +50,43 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 		return fmt.Errorf("audit insert: %w", err)
 	}
 	return nil
+}
+
+// WithTx runs fn inside a transaction, writes the audit Entry in the SAME tx,
+// and commits. Any error (begin, fn, audit, commit) rolls back, so the mutation
+// and its audit row are atomic. This is the canonical audited-mutation helper.
+//
+// If Entry.Action == "", WithTx does NOT auto-log — use this when the entity id
+// is generated inside fn and you log manually within fn instead.
+func WithTx(ctx context.Context, db *sql.DB, e Entry, fn func(*sql.Tx) error) error {
+	if db == nil {
+		return fmt.Errorf("audit WithTx: nil db")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("audit WithTx: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(tx); err != nil {
+		return err // caller's error, unwrapped so errors.Is works
+	}
+	if e.Action != "" {
+		if err := Log(ctx, tx, e); err != nil {
+			return fmt.Errorf("audit WithTx: log: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("audit WithTx: commit: %w", err)
+	}
+	return nil
+}
+
+// Changes marshals a map to a JSON string for Entry.Changes. Returns "{}" on
+// marshal failure (audit must never break a mutation).
+func Changes(m map[string]any) string {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
