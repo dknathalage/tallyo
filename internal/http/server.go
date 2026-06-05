@@ -190,6 +190,7 @@ func NewServer(deps Deps) *Server {
 					pr.Delete("/invoices/{id}", deps.Invoices.Delete)
 					pr.Post("/invoices/{id}/status", deps.Invoices.Status)
 					pr.Post("/invoices/{id}/duplicate", deps.Invoices.Duplicate)
+					pr.Get("/invoices/{id}/pdf", deps.Invoices.Pdf)
 					pr.Get("/clients/{id}/stats", deps.Invoices.ClientStats)
 				}
 				if deps.Estimates != nil {
@@ -202,6 +203,7 @@ func NewServer(deps Deps) *Server {
 					pr.Delete("/estimates/{id}", deps.Estimates.Delete)
 					pr.Post("/estimates/{id}/status", deps.Estimates.Status)
 					pr.Post("/estimates/{id}/duplicate", deps.Estimates.Duplicate)
+					pr.Get("/estimates/{id}/pdf", deps.Estimates.Pdf)
 					pr.Post("/estimates/{id}/convert", deps.Estimates.Convert)
 				}
 				if deps.Payments != nil {

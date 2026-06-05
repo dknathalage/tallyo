@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 )
@@ -235,4 +236,33 @@ func (h *InvoiceHandler) ClientStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, stats)
+}
+
+// Pdf renders an invoice to PDF and returns it as a file download.
+func (h *InvoiceHandler) Pdf(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(r)
+	if !ok {
+		WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	inv, err := h.svc.Get(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if inv == nil {
+		WriteError(w, http.StatusNotFound, "not found")
+		return
+	}
+	b, err := pdf.RenderInvoice(inv)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "pdf render failed")
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+inv.InvoiceNumber+`.pdf"`)
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(b); err != nil {
+		// client gone; nothing to do
+	}
 }
