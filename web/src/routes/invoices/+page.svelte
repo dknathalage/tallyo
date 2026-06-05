@@ -3,8 +3,8 @@
 	import { invoices } from '$lib/stores/invoices.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
-	import { apiPost } from '$lib/api/client';
-	import type { Invoice, InvoiceStatus, LineItemInput } from '$lib/api/types';
+	import { apiGet, apiPost, apiDelete } from '$lib/api/client';
+	import type { Invoice, InvoiceStatus, LineItemInput, Payment } from '$lib/api/types';
 
 	// A draft line-item row used by the editor.
 	interface LineRow {
@@ -236,6 +236,104 @@
 			rowError = err instanceof Error ? err.message : 'Failed to delete invoice.';
 		} finally {
 			busy = false;
+		}
+	}
+
+	// Payments panel: one invoice expanded at a time.
+	let paymentsInvoiceId = $state<number | null>(null);
+	let paymentsList = $state<Payment[]>([]);
+	let paymentsLoading = $state(false);
+	let paymentsError = $state<string | null>(null);
+	let payAmount = $state('');
+	let payDate = $state('');
+	let payMethod = $state('');
+	let payNotes = $state('');
+	let paySaving = $state(false);
+
+	// Paid total derived from the loaded payments for the open invoice.
+	const paymentsPaid = $derived.by<number>(() => {
+		let sum = 0;
+		for (let i = 0; i < paymentsList.length; i++) {
+			sum += Number(paymentsList[i].amount) || 0;
+		}
+		return sum;
+	});
+
+	// Badge label for an invoice, given a paid amount and total.
+	function paymentBadge(total: number, paid: number): { label: string; cls: string } {
+		const t = Number.isFinite(total) ? total : 0;
+		const p = Number.isFinite(paid) ? paid : 0;
+		if (p >= t && t > 0) return { label: 'Paid', cls: 'bg-green-100 text-green-800' };
+		if (p > 0) return { label: 'Partial', cls: 'bg-amber-100 text-amber-800' };
+		return { label: 'Unpaid', cls: 'bg-gray-100 text-gray-700' };
+	}
+
+	async function loadPayments(id: number): Promise<void> {
+		paymentsLoading = true;
+		paymentsError = null;
+		try {
+			const list = await apiGet<Payment[]>('/api/invoices/' + id + '/payments');
+			paymentsList = list ?? [];
+		} catch (err) {
+			paymentsError = err instanceof Error ? err.message : 'Failed to load payments.';
+			paymentsList = [];
+		} finally {
+			paymentsLoading = false;
+		}
+	}
+
+	async function togglePayments(id: number): Promise<void> {
+		if (paymentsInvoiceId === id) {
+			paymentsInvoiceId = null;
+			paymentsList = [];
+			return;
+		}
+		paymentsInvoiceId = id;
+		paymentsList = [];
+		payAmount = '';
+		payDate = new Date().toISOString().slice(0, 10);
+		payMethod = '';
+		payNotes = '';
+		paymentsError = null;
+		await loadPayments(id);
+	}
+
+	async function recordPayment(e: SubmitEvent, id: number): Promise<void> {
+		e.preventDefault();
+		paymentsError = null;
+		const amount = Number(payAmount);
+		if (!Number.isFinite(amount) || amount <= 0) {
+			paymentsError = 'Amount must be greater than 0.';
+			return;
+		}
+		paySaving = true;
+		try {
+			await apiPost('/api/invoices/' + id + '/payments', {
+				amount,
+				paymentDate: payDate,
+				method: payMethod,
+				notes: payNotes
+			});
+			payAmount = '';
+			payMethod = '';
+			payNotes = '';
+			await loadPayments(id);
+			await invoices.load();
+		} catch (err) {
+			paymentsError = err instanceof Error ? err.message : 'Failed to record payment.';
+		} finally {
+			paySaving = false;
+		}
+	}
+
+	async function deletePayment(pid: number, id: number): Promise<void> {
+		paymentsError = null;
+		try {
+			await apiDelete('/api/payments/' + pid);
+			await loadPayments(id);
+			await invoices.load();
+		} catch (err) {
+			paymentsError = err instanceof Error ? err.message : 'Failed to delete payment.';
 		}
 	}
 </script>
@@ -479,6 +577,7 @@
 						<th class="px-3 py-2 font-medium">Date</th>
 						<th class="px-3 py-2 font-medium text-right">Total</th>
 						<th class="px-3 py-2 font-medium">Status</th>
+						<th class="px-3 py-2 font-medium">Payment</th>
 						<th class="px-3 py-2 font-medium text-right">Actions</th>
 					</tr>
 				</thead>
@@ -498,6 +597,19 @@
 									{inv.status}
 								</span>
 							</td>
+							<td class="px-3 py-2">
+								<span
+									class="inline-block rounded px-2 py-0.5 text-xs font-medium {paymentBadge(
+										inv.total,
+										paymentsInvoiceId === inv.id ? paymentsPaid : inv.totalPaid
+									).cls}"
+								>
+									{paymentBadge(
+										inv.total,
+										paymentsInvoiceId === inv.id ? paymentsPaid : inv.totalPaid
+									).label}
+								</span>
+							</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">
 								<select
 									value={inv.status}
@@ -510,6 +622,13 @@
 										<option value={s}>{s}</option>
 									{/each}
 								</select>
+								<button
+									type="button"
+									onclick={() => togglePayments(inv.id)}
+									class="mr-2 text-gray-900 hover:underline"
+								>
+									{paymentsInvoiceId === inv.id ? 'Hide payments' : 'Payments'}
+								</button>
 								<button
 									type="button"
 									onclick={() => startEdit(inv.id)}
@@ -536,9 +655,121 @@
 								</button>
 							</td>
 						</tr>
+						{#if paymentsInvoiceId === inv.id}
+							<tr class="border-b border-gray-100 bg-gray-50">
+								<td colspan="7" class="px-3 py-4">
+									<div class="space-y-4">
+										<div class="flex flex-wrap items-center gap-4 text-sm">
+											<span class="font-semibold">Payments — {inv.invoiceNumber}</span>
+											<span class="text-gray-500">Total: {money(inv.total)}</span>
+											<span class="text-gray-500">Paid: {money(paymentsPaid)}</span>
+											<span class="font-medium">Balance: {money(inv.total - paymentsPaid)}</span>
+										</div>
+
+										{#if paymentsError}
+											<p class="text-sm text-red-600">{paymentsError}</p>
+										{/if}
+
+										<form
+											class="flex flex-wrap items-end gap-2"
+											onsubmit={(e) => recordPayment(e, inv.id)}
+										>
+											<label class="text-sm">
+												<span class="mb-1 block font-medium">Amount</span>
+												<input
+													type="number"
+													step="any"
+													min="0"
+													required
+													bind:value={payAmount}
+													class="w-28 rounded border border-gray-300 px-2 py-1 text-sm"
+												/>
+											</label>
+											<label class="text-sm">
+												<span class="mb-1 block font-medium">Date</span>
+												<input
+													type="date"
+													bind:value={payDate}
+													class="rounded border border-gray-300 px-2 py-1 text-sm"
+												/>
+											</label>
+											<label class="text-sm">
+												<span class="mb-1 block font-medium">Method</span>
+												<input
+													type="text"
+													bind:value={payMethod}
+													class="w-32 rounded border border-gray-300 px-2 py-1 text-sm"
+												/>
+											</label>
+											<label class="text-sm">
+												<span class="mb-1 block font-medium">Notes</span>
+												<input
+													type="text"
+													bind:value={payNotes}
+													class="w-40 rounded border border-gray-300 px-2 py-1 text-sm"
+												/>
+											</label>
+											<button
+												type="submit"
+												disabled={paySaving}
+												class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+											>
+												{paySaving ? 'Saving…' : 'Record payment'}
+											</button>
+										</form>
+
+										{#if paymentsLoading}
+											<p class="text-sm text-gray-500">Loading payments…</p>
+										{:else}
+											<div class="overflow-hidden rounded border border-gray-200 bg-white">
+												<table class="w-full text-sm">
+													<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
+														<tr>
+															<th class="px-3 py-2 font-medium">Date</th>
+															<th class="px-3 py-2 font-medium text-right">Amount</th>
+															<th class="px-3 py-2 font-medium">Method</th>
+															<th class="px-3 py-2 font-medium">Notes</th>
+															<th class="w-12 px-3 py-2"></th>
+														</tr>
+													</thead>
+													<tbody>
+														{#each paymentsList as p (p.id)}
+															<tr class="border-b border-gray-100 last:border-0">
+																<td class="px-3 py-2 text-gray-600">
+																	{p.paymentDate ? p.paymentDate.slice(0, 10) : '—'}
+																</td>
+																<td class="px-3 py-2 text-right">{money(p.amount)}</td>
+																<td class="px-3 py-2 text-gray-600">{p.method || '—'}</td>
+																<td class="px-3 py-2 text-gray-600">{p.notes || '—'}</td>
+																<td class="px-3 py-2 text-right">
+																	<button
+																		type="button"
+																		onclick={() => deletePayment(p.id, inv.id)}
+																		class="text-red-600 hover:underline"
+																		aria-label="Delete payment"
+																	>
+																		✕
+																	</button>
+																</td>
+															</tr>
+														{:else}
+															<tr>
+																<td colspan="5" class="px-3 py-4 text-center text-gray-500">
+																	No payments recorded.
+																</td>
+															</tr>
+														{/each}
+													</tbody>
+												</table>
+											</div>
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{:else}
 						<tr>
-							<td colspan="6" class="px-3 py-6 text-center text-gray-500">
+							<td colspan="7" class="px-3 py-6 text-center text-gray-500">
 								No invoices found.
 							</td>
 						</tr>

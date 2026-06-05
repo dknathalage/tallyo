@@ -159,6 +159,8 @@ export interface Invoice {
 	taxRateId: number | null;
 	taxAmount: number;
 	total: number;
+	totalPaid: number;
+	balance: number;
 	notes: string;
 	status: InvoiceStatus;
 	currencyCode: string;
@@ -168,6 +170,25 @@ export interface Invoice {
 	createdAt: string;
 	updatedAt: string;
 	lineItems: LineItem[];
+}
+
+export interface Payment {
+	id: number;
+	uuid: string;
+	invoiceId: number;
+	amount: number;
+	paymentDate: string;
+	method: string;
+	notes: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface PaymentInput {
+	amount: number;
+	paymentDate: string;
+	method: string;
+	notes: string;
 }
 
 export interface InvoiceInput {
