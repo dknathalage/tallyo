@@ -63,6 +63,10 @@ type Deps struct {
 	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
 	// duplicate, bulk routes, plus the per-client stats route under /api.
 	Invoices *InvoiceHandler
+
+	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
+	// duplicate, bulk, and convert-to-invoice routes under /api/estimates.
+	Estimates *EstimateHandler
 }
 
 // Server wraps the configured chi router.
@@ -111,7 +115,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -179,6 +183,18 @@ func NewServer(deps Deps) *Server {
 					pr.Post("/invoices/{id}/status", deps.Invoices.Status)
 					pr.Post("/invoices/{id}/duplicate", deps.Invoices.Duplicate)
 					pr.Get("/clients/{id}/stats", deps.Invoices.ClientStats)
+				}
+				if deps.Estimates != nil {
+					pr.Get("/estimates", deps.Estimates.List)
+					pr.Post("/estimates", deps.Estimates.Create)
+					pr.Post("/estimates/bulk-delete", deps.Estimates.BulkDelete)
+					pr.Post("/estimates/bulk-status", deps.Estimates.BulkStatus)
+					pr.Get("/estimates/{id}", deps.Estimates.Get)
+					pr.Put("/estimates/{id}", deps.Estimates.Update)
+					pr.Delete("/estimates/{id}", deps.Estimates.Delete)
+					pr.Post("/estimates/{id}/status", deps.Estimates.Status)
+					pr.Post("/estimates/{id}/duplicate", deps.Estimates.Duplicate)
+					pr.Post("/estimates/{id}/convert", deps.Estimates.Convert)
 				}
 			})
 		}
