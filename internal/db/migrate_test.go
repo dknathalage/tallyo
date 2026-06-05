@@ -142,3 +142,18 @@ func TestMigrateCreatesPaymentsTable(t *testing.T) {
 		t.Fatalf("payments table missing: %v", err)
 	}
 }
+
+func TestMigrateCreatesRecurringTable(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "rec.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+	if err := Migrate(conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	var n string
+	if err := conn.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='recurring_templates'").Scan(&n); err != nil {
+		t.Fatalf("recurring_templates missing: %v", err)
+	}
+}
