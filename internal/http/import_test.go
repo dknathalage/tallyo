@@ -56,9 +56,10 @@ func newImportServer(t *testing.T) (*httptest.Server, int64) {
 		t.Fatalf("seed mapping: %v", err)
 	}
 
+	tiers := repository.NewRateTiers(conn)
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)
-	impH := NewImportHandler(catalogRepo, mappings)
+	impH := NewImportHandler(catalogRepo, mappings, tiers)
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
