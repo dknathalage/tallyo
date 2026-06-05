@@ -33,6 +33,56 @@ func mustInviteDB(t *testing.T) (*sql.DB, int64) {
 	return conn, owner.ID
 }
 
+func TestAcceptInviteAtomic(t *testing.T) {
+	conn, owner := mustInviteDB(t)
+	defer conn.Close()
+	ctx := context.Background()
+	invRepo := NewInvites(conn)
+	usersRepo := NewUsers(conn)
+	inv, err := invRepo.Create(ctx, "new@x.com", "member", owner, time.Hour)
+	if err != nil {
+		t.Fatalf("Create invite: %v", err)
+	}
+
+	hash, _ := HashPassword("password1")
+	u, err := invRepo.Accept(ctx, inv.Token, hash)
+	if err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if u == nil || u.Email != "new@x.com" || u.Role != "member" {
+		t.Fatalf("bad user %+v", u)
+	}
+
+	// invite now used → second accept fails
+	if _, err := invRepo.Accept(ctx, inv.Token, hash); !errors.Is(err, ErrInviteInvalid) {
+		t.Fatalf("second accept: want ErrInviteInvalid, got %v", err)
+	}
+	// user actually created
+	got, _ := usersRepo.GetByEmail(ctx, "new@x.com")
+	if got == nil {
+		t.Fatal("user not created")
+	}
+}
+
+func TestAcceptInviteDuplicateEmail(t *testing.T) {
+	conn, owner := mustInviteDB(t)
+	defer conn.Close()
+	ctx := context.Background()
+	invRepo := NewInvites(conn)
+	usersRepo := NewUsers(conn)
+	// pre-existing user with the invited email
+	if _, err := usersRepo.Create(ctx, "dup@x.com", "h", "member"); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	inv, _ := invRepo.Create(ctx, "dup@x.com", "member", owner, time.Hour)
+
+	hash, _ := HashPassword("password1")
+	_, err := invRepo.Accept(ctx, inv.Token, hash)
+	if !errors.Is(err, ErrEmailTaken) {
+		t.Fatalf("want ErrEmailTaken, got %v", err)
+	}
+}
+
 func TestInviteCreateAndGet(t *testing.T) {
 	conn, owner := mustInviteDB(t)
 	defer conn.Close()

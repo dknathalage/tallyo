@@ -82,9 +82,9 @@ func (h *InviteHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]string{"email": inv.Email, "role": inv.Role})
 }
 
-// Accept consumes an invite by creating the member user and marking the invite
-// used. Validate runs first so an already-used token is rejected with 409
-// before MarkUsed (which is not idempotent) can run a second time.
+// Accept consumes an invite atomically: it re-validates the invite, creates the
+// member user, and marks the invite used in a single transaction. An already-used
+// or invalid token is rejected with 409, as is an email already registered.
 func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	var in struct {
@@ -98,25 +98,20 @@ func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "password too short")
 		return
 	}
-	inv, err := h.invites.Validate(r.Context(), token)
-	if errors.Is(err, auth.ErrInviteInvalid) {
-		WriteError(w, http.StatusConflict, "invite invalid or already used")
-		return
-	}
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
 	hash, err := auth.HashPassword(in.Password)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if _, err := h.users.Create(r.Context(), inv.Email, hash, inv.Role); err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if err := h.invites.MarkUsed(r.Context(), token); err != nil {
+	if _, err := h.invites.Accept(r.Context(), token, hash); err != nil {
+		if errors.Is(err, auth.ErrInviteInvalid) {
+			WriteError(w, http.StatusConflict, "invite invalid or already used")
+			return
+		}
+		if errors.Is(err, auth.ErrEmailTaken) {
+			WriteError(w, http.StatusConflict, "email already registered")
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

@@ -7,15 +7,21 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/google/uuid"
 )
 
 // ErrInviteInvalid is returned by Validate when an invite is unknown, expired,
 // or already used. Callers should treat all three identically.
 var ErrInviteInvalid = errors.New("invite invalid or expired")
+
+// ErrEmailTaken is returned by Accept when a user with the invite's email
+// already exists.
+var ErrEmailTaken = errors.New("email already registered")
 
 // Invite is the domain view of a row in the invites table.
 type Invite struct {
@@ -144,6 +150,83 @@ func (r *InvitesRepo) MarkUsed(ctx context.Context, token string) error {
 		}
 		return nil
 	})
+}
+
+// Accept consumes an invite atomically: in ONE transaction it re-validates the
+// invite, creates the user, marks the invite used, and writes an audit row.
+// Returns ErrInviteInvalid if the token is unknown/expired/used, or ErrEmailTaken
+// if a user with the invite's email already exists.
+func (r *InvitesRepo) Accept(ctx context.Context, token, passwordHash string) (*User, error) {
+	if token == "" || passwordHash == "" {
+		return nil, errors.New("accept invite: token and hash required")
+	}
+	var created gen.User
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		inv, e := validateInviteTx(ctx, q, token)
+		if e != nil {
+			return e
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		u, e := q.CreateUser(ctx, gen.CreateUserParams{
+			Uuid:         uuid.NewString(),
+			Email:        inv.Email,
+			PasswordHash: passwordHash,
+			Role:         inv.Role,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		})
+		if e != nil {
+			if isUniqueViolation(e) {
+				return ErrEmailTaken
+			}
+			return fmt.Errorf("create user: %w", e)
+		}
+		created = u
+		if e := q.MarkInviteUsed(ctx, gen.MarkInviteUsedParams{UsedAt: nz(now), Token: token}); e != nil {
+			return fmt.Errorf("mark used: %w", e)
+		}
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "invite",
+			EntityID:   inv.ID,
+			Action:     "accepted",
+			Changes:    audit.Changes(map[string]any{"email": inv.Email, "userId": u.ID}),
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toUser(created), nil
+}
+
+// validateInviteTx re-checks an invite inside an open transaction, returning the
+// domain Invite or ErrInviteInvalid when unknown, used, or expired.
+func validateInviteTx(ctx context.Context, q *gen.Queries, token string) (*Invite, error) {
+	row, err := q.GetInviteByToken(ctx, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrInviteInvalid
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get invite: %w", err)
+	}
+	inv := toInvite(row)
+	if inv.Used {
+		return nil, ErrInviteInvalid
+	}
+	expires, err := time.Parse(time.RFC3339, inv.ExpiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse expires: %w", err)
+	}
+	if time.Now().After(expires) {
+		return nil, ErrInviteInvalid
+	}
+	return inv, nil
+}
+
+// isUniqueViolation reports whether err is a SQLite unique-constraint failure.
+func isUniqueViolation(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "unique") || strings.Contains(s, "constraint")
 }
 
 // toInvite maps a generated row to the domain Invite.
