@@ -30,10 +30,18 @@ func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
+	// _txlock=immediate makes every explicit BeginTx issue BEGIN IMMEDIATE, so
+	// the write lock is grabbed at transaction start. This eliminates the
+	// read->write upgrade race (SQLITE_BUSY_SNAPSHOT, which busy_timeout cannot
+	// wait out) hit by the numbering create path: its MAX-read and INSERT now run
+	// under a single held write lock. Autocommit reads are unaffected, so WAL
+	// read concurrency is preserved; only explicit (mutating) transactions
+	// serialize, which is correct for this single-org app.
 	dsn := "file:" + path +
 		"?_pragma=journal_mode(WAL)" +
 		"&_pragma=foreign_keys(1)" +
-		"&_pragma=busy_timeout(5000)"
+		"&_pragma=busy_timeout(5000)" +
+		"&_txlock=immediate"
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
