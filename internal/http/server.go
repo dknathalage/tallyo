@@ -67,6 +67,10 @@ type Deps struct {
 	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
 	// duplicate, bulk, and convert-to-invoice routes under /api/estimates.
 	Estimates *EstimateHandler
+
+	// Payments, when non-nil, serves the auth-gated per-invoice payment list
+	// and create routes plus payment deletion under /api.
+	Payments *PaymentHandler
 }
 
 // Server wraps the configured chi router.
@@ -115,7 +119,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -195,6 +199,11 @@ func NewServer(deps Deps) *Server {
 					pr.Post("/estimates/{id}/status", deps.Estimates.Status)
 					pr.Post("/estimates/{id}/duplicate", deps.Estimates.Duplicate)
 					pr.Post("/estimates/{id}/convert", deps.Estimates.Convert)
+				}
+				if deps.Payments != nil {
+					pr.Get("/invoices/{id}/payments", deps.Payments.ListForInvoice)
+					pr.Post("/invoices/{id}/payments", deps.Payments.Create)
+					pr.Delete("/payments/{id}", deps.Payments.Delete)
 				}
 			})
 		}

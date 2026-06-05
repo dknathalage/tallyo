@@ -90,6 +90,7 @@ func run() error {
 	catalogSvc := service.NewCatalogService(conn, hub)
 	invoiceSvc := service.NewInvoiceService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
+	paymentSvc := service.NewPaymentService(conn, hub)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -121,6 +122,7 @@ func run() error {
 		Catalog:         httpapi.NewCatalogHandler(catalogSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
+		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 	}
 
 	server := httpapi.NewServer(deps)
