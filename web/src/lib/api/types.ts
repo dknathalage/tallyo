@@ -121,3 +121,64 @@ export interface CatalogItemInput {
 	sku: string;
 	metadata: string;
 }
+
+export interface LineItem {
+	id: number;
+	uuid: string;
+	description: string;
+	quantity: number;
+	rate: number;
+	amount: number;
+	notes: string;
+	sortOrder: number;
+	catalogItemId: number | null;
+	rateTierId: number | null;
+}
+
+export interface LineItemInput {
+	description: string;
+	quantity: number;
+	rate: number;
+	notes: string;
+	sortOrder: number;
+}
+
+export type InvoiceStatus = 'draft' | 'sent' | 'overdue' | 'paid' | string;
+
+export interface Invoice {
+	id: number;
+	uuid: string;
+	invoiceNumber: string;
+	clientId: number;
+	clientName: string;
+	date: string;
+	dueDate: string;
+	paymentTerms: string;
+	subtotal: number;
+	taxRate: number;
+	taxRateId: number | null;
+	taxAmount: number;
+	total: number;
+	notes: string;
+	status: InvoiceStatus;
+	currencyCode: string;
+	businessSnapshot: string;
+	clientSnapshot: string;
+	payerSnapshot: string;
+	createdAt: string;
+	updatedAt: string;
+	lineItems: LineItem[];
+}
+
+export interface InvoiceInput {
+	clientId: number;
+	date: string;
+	dueDate: string;
+	paymentTerms: string;
+	taxRate: number;
+	taxRateId: number | null;
+	notes: string;
+	status: InvoiceStatus;
+	currencyCode: string;
+	lineItems: LineItemInput[];
+}
