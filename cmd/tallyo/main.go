@@ -27,6 +27,28 @@ func main() {
 	}
 }
 
+// overdueSweepInterval is how often the background sweeper flips due invoices.
+const overdueSweepInterval = 1 * time.Hour
+
+// runOverdueSweeper flips overdue invoices on each tick until done is closed.
+// It owns its ticker and stops cleanly, so it never leaks a goroutine.
+func runOverdueSweeper(svc *service.InvoiceService, done <-chan struct{}) {
+	ticker := time.NewTicker(overdueSweepInterval)
+	defer ticker.Stop()
+	for { // bounded by the done signal
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			if rows, err := svc.MarkOverdue(context.Background()); err != nil {
+				log.Printf("overdue sweep: %v", err)
+			} else if len(rows) > 0 {
+				log.Printf("overdue sweep: %d invoice(s) flipped", len(rows))
+			}
+		}
+	}
+}
+
 func run() error {
 	port := flag.Int("port", 8080, "HTTP listen port")
 	dataDir := flag.String("data-dir", "", "data directory for the SQLite database (default: OS app data dir)")
@@ -66,6 +88,7 @@ func run() error {
 	taxRateSvc := service.NewTaxRateService(conn, hub)
 	clientSvc := service.NewClientService(conn, hub)
 	catalogSvc := service.NewCatalogService(conn, hub)
+	invoiceSvc := service.NewInvoiceService(conn, hub)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -95,10 +118,23 @@ func run() error {
 		TaxRates:        httpapi.NewTaxRateHandler(taxRateSvc),
 		Clients:         httpapi.NewClientHandler(clientSvc),
 		Catalog:         httpapi.NewCatalogHandler(catalogSvc),
+		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 	}
 
 	server := httpapi.NewServer(deps)
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: server.Router}
+
+	// Run one overdue sweep at startup, then keep a background sweeper running on
+	// an hourly tick. The done channel stops the goroutine on shutdown so it does
+	// not leak.
+	if rows, err := invoiceSvc.MarkOverdue(context.Background()); err != nil {
+		log.Printf("startup overdue sweep: %v", err)
+	} else {
+		log.Printf("startup overdue sweep: %d invoice(s) flipped", len(rows))
+	}
+	overdueDone := make(chan struct{})
+	go runOverdueSweeper(invoiceSvc, overdueDone)
+	defer close(overdueDone)
 
 	errCh := make(chan error, 1)
 	go func() {

@@ -1,0 +1,126 @@
+package service
+
+import (
+	"context"
+	"database/sql"
+
+	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
+)
+
+// InvoiceService orchestrates invoice reads/writes and publishes change events
+// after a successful commit.
+type InvoiceService struct {
+	repo *repository.InvoicesRepo
+	hub  *realtime.Hub
+}
+
+func NewInvoiceService(db *sql.DB, hub *realtime.Hub) *InvoiceService {
+	if hub == nil {
+		panic("NewInvoiceService: nil hub")
+	}
+	return &InvoiceService{repo: repository.NewInvoices(db), hub: hub}
+}
+
+func (s *InvoiceService) List(ctx context.Context) ([]*repository.Invoice, error) {
+	return s.repo.List(ctx)
+}
+
+func (s *InvoiceService) ListByStatus(ctx context.Context, status string) ([]*repository.Invoice, error) {
+	return s.repo.ListByStatus(ctx, status)
+}
+
+func (s *InvoiceService) ListClientInvoices(ctx context.Context, clientID int64) ([]*repository.Invoice, error) {
+	return s.repo.ListClientInvoices(ctx, clientID)
+}
+
+func (s *InvoiceService) Get(ctx context.Context, id int64) (*repository.Invoice, error) {
+	return s.repo.Get(ctx, id)
+}
+
+func (s *InvoiceService) ClientStats(ctx context.Context, clientID int64) (*repository.ClientStats, error) {
+	return s.repo.ClientStats(ctx, clientID)
+}
+
+// Create inserts an invoice + line items, then broadcasts on success.
+func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
+	inv, err := s.repo.Create(ctx, in, items)
+	if err != nil {
+		return nil, err
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: inv.ID, Action: "create"})
+	return inv, nil
+}
+
+// Update rewrites an invoice. A nil result means the row was not found, in which
+// case no event is published.
+func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
+	inv, err := s.repo.Update(ctx, id, in, items)
+	if err != nil {
+		return nil, err
+	}
+	if inv == nil {
+		return nil, nil
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "update"})
+	return inv, nil
+}
+
+// UpdateStatus sets the invoice status, then broadcasts on success.
+func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status string) error {
+	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "status"})
+	return nil
+}
+
+// Delete removes an invoice, then broadcasts on success.
+func (s *InvoiceService) Delete(ctx context.Context, id int64) error {
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "delete"})
+	return nil
+}
+
+// Duplicate copies an invoice, then broadcasts a create for the new id.
+func (s *InvoiceService) Duplicate(ctx context.Context, id int64) (*repository.Invoice, error) {
+	inv, err := s.repo.Duplicate(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: inv.ID, Action: "create"})
+	return inv, nil
+}
+
+// BulkDelete removes several invoices, then broadcasts a single bulk event.
+func (s *InvoiceService) BulkDelete(ctx context.Context, ids []int64) error {
+	if err := s.repo.BulkDelete(ctx, ids); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "bulk_delete"})
+	return nil
+}
+
+// BulkUpdateStatus sets several invoices' status, then broadcasts a bulk event.
+func (s *InvoiceService) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+	if err := s.repo.BulkUpdateStatus(ctx, ids, status); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "bulk_status"})
+	return nil
+}
+
+// MarkOverdue flips overdue invoices and, when any flipped, broadcasts a sweep
+// event so subscribers resync.
+func (s *InvoiceService) MarkOverdue(ctx context.Context) ([]repository.OverdueInvoice, error) {
+	rows, err := s.repo.MarkOverdue(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) > 0 {
+		s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "overdue_sweep"})
+	}
+	return rows, nil
+}
