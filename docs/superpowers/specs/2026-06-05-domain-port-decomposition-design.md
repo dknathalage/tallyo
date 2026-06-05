@@ -63,8 +63,15 @@ from the skeleton-v2 review):
    `200.html` (clean-clone/CI guard). Document `npm run build` before `go build`.
 5. **Drop the SSE `Connection: keep-alive` header** (hop-by-hop, invalid HTTP/2).
 6. **`internal/numbering`** — invoice/estimate sequence generation, ported from
-   `src/lib/db/number-generators.ts` + `src/lib/utils/{invoice,estimate}-number.ts`
-   (transactional uniqueness). Needed by Batches 3–4.
+   `src/lib/db/number-generators.ts` + `src/lib/utils/{invoice,estimate}-number.ts`.
+   **CRITICAL atomicity contract:** the old `SELECT MAX(...) then INSERT` is
+   non-atomic and only safe under single-threaded WASM; the Go server is
+   concurrent. The number must be generated **inside the same transaction** as the
+   invoice/estimate insert, with **retry-on-unique-conflict** (the
+   `invoice_number`/`estimate_number` UNIQUE constraint is the backstop). The
+   numbering API must therefore accept a `*sql.Tx` (or run within the document's
+   create tx), NOT a standalone call. This is the #1 thing that compounds across
+   Batches 3, 4, 6 — get it right in Batch 0.
 7. **`internal/money`** — currency/formatting helpers ported from
    `src/lib/utils/currency.ts` if domains need them.
 8. **Shared frontend infra** — a generic CRUD API helper (list/get/create/update/
@@ -77,21 +84,42 @@ from the skeleton-v2 review):
 | Batch | Domains | Depends on |
 |-------|---------|-----------|
 | 0 | Foundation refactors + numbering + money + shared FE infra | skeleton |
-| 1 | clients, payers | 0 |
-| 2 | tax-rates, rate-tiers, catalog (+catalog_item_rates) | 0 |
-| 3 | invoices (+line_items, numbering, status, snapshots) | 1, 2 |
-| 4 | estimates (+estimate_line_items, numbering) | 1, 2 |
+| 1 | rate_tiers, payers | 0 |
+| 2 | tax_rates, clients, catalog (+catalog_item_rates) | 0, 1 |
+| 3 | invoices (+line_items, numbering, status, snapshots, overdue sweep, client-stats rider) | 1, 2 |
+| 4 | estimates (+estimate_line_items, numbering, convert-to-invoice) | 1, 2, 3 |
 | 5 | payments (linked to invoices, paid/AR rollup) | 3 |
-| 6 | recurring-templates (+scheduling: run-on-launch sweep + ticker) | 3, 4 |
+| 6 | recurring-templates (+idempotent sweep + ticker) | 3, 4 |
 | 7 | PDF generation (maroto) for invoices + estimates | 3, 4 |
-| 8 | import/export (CSV/Excel export; CSV catalog import + column_mappings) | 2, 3, 4 |
+| 8 | import/export (export invoices+estimates+catalog; import catalog CSV+Excel + column_mappings) | 2, 3, 4 |
 
-Dependencies confirmed from the schema: `invoices→clients, tax_rates`;
-`line_items→invoices(cascade), catalog_items, rate_tiers`;
-`estimates→clients, tax_rates`; `estimate_line_items→estimates(cascade)`;
-`payments→invoices(cascade)`; `catalog_item_rates→catalog_items, rate_tiers`.
+**Why this order (FKs confirmed from the schema + old query modules):**
+- `clients → rate_tiers (pricing_tier_id, SET NULL), payers` — so **rate_tiers and
+  payers must precede clients** (clients moved to Batch 2, after Batch 1 builds
+  rate_tiers + payers). `clients.ts` also left-joins rate_tiers for
+  `pricing_tier_name`.
+- `invoices → clients, tax_rates`; `line_items → invoices(cascade), catalog_items,
+  rate_tiers`; `estimates → clients, tax_rates`;
+  `estimate_line_items → estimates(cascade)`; `payments → invoices(cascade)`;
+  `catalog_item_rates → catalog_items, rate_tiers`.
+- **Back-dependencies the topological order can't satisfy (handled as forward-ref
+  riders, recorded so the order stays honest):**
+  - **Client stats** (`getClientStats`: total_invoiced/total_paid/outstanding/
+    invoice_count) aggregate over the invoices table. Ship clients in Batch 2
+    WITHOUT stats; add the stats endpoint as a **rider on Batch 3** once invoices
+    exist.
+  - **Estimate→invoice conversion** (`convertEstimateToInvoice`) writes into
+    invoices+line_items and sets `estimates.converted_invoice_id` → Batch 4
+    depends on Batch 3. Port conversion + duplicate as estimate behaviors.
+
 Invoices/estimates also store `business_snapshot`/`client_snapshot`/
 `payer_snapshot` JSON (denormalized point-in-time copies) — port that behavior.
+
+**Automated lifecycle sweeps (concurrent server, no always-on Node):**
+- **markOverdueInvoices** (`sent → overdue` when `due_date < now`) — a boot +
+  in-session ticker job. Fold into **Batch 3** (invoice status), co-located with
+  the Batch-6 scheduling infra pattern.
+- **recurring generation** — see Batch 6 below.
 
 ## Tables to migrate (from drizzle-schema.ts, clean-break)
 
@@ -109,6 +137,14 @@ The Go server only runs while up (no always-on Node server). Recurring generatio
 run-on-launch sweep (generate due invoices at boot) + a bounded in-session
 `time.Ticker`. Per the architecture spec.
 
+**Idempotency (critical):** `createInvoiceFromTemplate` rebuilds business+client
+snapshots, parses the template's `line_items` JSON, computes subtotal/tax/total,
+inserts invoice+lines, AND advances `next_due` — all in ONE transaction.
+`next_due` must be advanced in the same txn as the invoice insert, and the sweep
+must select only `next_due <= today` (matching the old `getDueTemplates`), so a
+crash mid-sweep or a re-run never double-generates. `next_due` past today is the
+dedup key.
+
 ## Snapshots & numbering (Batches 3–4)
 
 - Numbering: invoice/estimate numbers are generated server-side with transactional
@@ -117,6 +153,17 @@ run-on-launch sweep (generate due invoices at boot) + a bounded in-session
 - Snapshots: on invoice/estimate create, capture `business_snapshot` (from
   business_profile), `client_snapshot`, `payer_snapshot` as JSON, so historical
   documents are immutable against later edits — matches the old behavior.
+
+## Import/Export (Batch 8)
+
+- **Export** (`src/routes/api/export/{invoices,estimates,catalog}`): invoices,
+  estimates, AND catalog. CSV via `encoding/csv`; Excel via excelize where the old
+  app produces xlsx.
+- **Import** (catalog only): CSV **and** Excel (excelize), driven by
+  `column_mappings` which carry `tier_mapping` + `metadata_mapping`. Port the
+  old **diff → commit** flow (`src/lib/import/{diff-catalog,commit-catalog}.ts`,
+  `src/lib/csv/*`, `src/routes/api/import/catalog`): parse → map columns → diff
+  against existing catalog → present changes → commit selected.
 
 ## Out of scope
 
