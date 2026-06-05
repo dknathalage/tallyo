@@ -63,6 +63,9 @@ func run() error {
 	bpSvc := service.NewBusinessProfileService(conn, hub)
 	rateTierSvc := service.NewRateTierService(conn, hub)
 	payerSvc := service.NewPayerService(conn, hub)
+	taxRateSvc := service.NewTaxRateService(conn, hub)
+	clientSvc := service.NewClientService(conn, hub)
+	catalogSvc := service.NewCatalogService(conn, hub)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -89,6 +92,9 @@ func run() error {
 		BusinessProfile: httpapi.NewBusinessProfileHandler(bpSvc),
 		RateTiers:       httpapi.NewRateTierHandler(rateTierSvc),
 		Payers:          httpapi.NewPayerHandler(payerSvc),
+		TaxRates:        httpapi.NewTaxRateHandler(taxRateSvc),
+		Clients:         httpapi.NewClientHandler(clientSvc),
+		Catalog:         httpapi.NewCatalogHandler(catalogSvc),
 	}
 
 	server := httpapi.NewServer(deps)
