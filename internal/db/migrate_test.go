@@ -97,6 +97,23 @@ func TestMigrateCreatesInvoiceTables(t *testing.T) {
 	}
 }
 
+func TestMigrateCreatesEstimateTables(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "est.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+	if err := Migrate(conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	for _, tbl := range []string{"estimates", "estimate_line_items"} {
+		var n string
+		if err := conn.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", tbl).Scan(&n); err != nil {
+			t.Fatalf("table %s missing: %v", tbl, err)
+		}
+	}
+}
+
 func TestMigrateIsIdempotent(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "m.db"))
 	if err != nil {
