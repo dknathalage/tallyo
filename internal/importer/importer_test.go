@@ -72,10 +72,8 @@ func TestApplyMapping(t *testing.T) {
 		{"name": "Widget", "sku": "W1", "rate": "10"},
 		{"name": "Gadget", "sku": "W2", "rate": "5"},
 	}
-	m := &repository.ColumnMapping{
-		Mapping:         `{"name":"name","sku":"sku","rate":"rate"}`,
-		TierMapping:     "{}",
-		MetadataMapping: "[]",
+	m := Mapping{
+		Fields: map[string]string{"name": "name", "sku": "sku", "rate": "rate"},
 	}
 	mapped, errs, err := ApplyMapping(rows, m)
 	if err != nil {
@@ -97,10 +95,8 @@ func TestApplyMappingMissingName(t *testing.T) {
 		{"name": "", "sku": "W1", "rate": "10"},
 		{"name": "Gadget", "sku": "W2", "rate": "5"},
 	}
-	m := &repository.ColumnMapping{
-		Mapping:         `{"name":"name","sku":"sku","rate":"rate"}`,
-		TierMapping:     "{}",
-		MetadataMapping: "[]",
+	m := Mapping{
+		Fields: map[string]string{"name": "name", "sku": "sku", "rate": "rate"},
 	}
 	mapped, errs, err := ApplyMapping(rows, m)
 	if err != nil {
@@ -114,14 +110,13 @@ func TestApplyMappingMissingName(t *testing.T) {
 	}
 }
 
-func TestApplyMappingTiersAndMetadata(t *testing.T) {
+func TestApplyMappingTierCols(t *testing.T) {
 	rows := []map[string]string{
-		{"name": "Widget", "sku": "W1", "rate": "10", "Gold Price": "20", "Color": "red"},
+		{"name": "Widget", "sku": "W1", "rate": "10", "Gold Price": "20"},
 	}
-	m := &repository.ColumnMapping{
-		Mapping:         `{"name":"name","sku":"sku","rate":"rate"}`,
-		TierMapping:     `{"Gold Price":"1"}`,
-		MetadataMapping: `[{"header":"Color","key":"color"}]`,
+	m := Mapping{
+		Fields:   map[string]string{"name": "name", "sku": "sku", "rate": "rate"},
+		TierCols: map[string]string{"Gold Price": "Gold"},
 	}
 	mapped, errs, err := ApplyMapping(rows, m)
 	if err != nil {
@@ -130,15 +125,12 @@ func TestApplyMappingTiersAndMetadata(t *testing.T) {
 	if len(errs) != 0 || len(mapped) != 1 {
 		t.Fatalf("unexpected: errs=%v mapped=%v", errs, mapped)
 	}
-	if mapped[0].TierRates[1] != 20 {
-		t.Fatalf("tier rate: %v", mapped[0].TierRates)
-	}
-	if mapped[0].Metadata["color"] != "red" {
-		t.Fatalf("metadata: %v", mapped[0].Metadata)
+	if mapped[0].TierRates["Gold"] != 20 {
+		t.Fatalf("tier rate by name: %v", mapped[0].TierRates)
 	}
 }
 
-func newCatalog(t *testing.T) *repository.CatalogRepo {
+func newCatalogAndTiers(t *testing.T) (*repository.CatalogRepo, *repository.RateTiersRepo) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "importer.db"))
 	if err != nil {
@@ -148,11 +140,11 @@ func newCatalog(t *testing.T) *repository.CatalogRepo {
 		t.Fatalf("Migrate: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	return repository.NewCatalog(conn)
+	return repository.NewCatalog(conn), repository.NewRateTiers(conn)
 }
 
 func TestDiff(t *testing.T) {
-	cat := newCatalog(t)
+	cat, _ := newCatalogAndTiers(t)
 	if _, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -179,7 +171,7 @@ func TestDiff(t *testing.T) {
 }
 
 func TestDiffUnchanged(t *testing.T) {
-	cat := newCatalog(t)
+	cat, _ := newCatalogAndTiers(t)
 	if _, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -199,20 +191,20 @@ func TestDiffUnchanged(t *testing.T) {
 }
 
 func TestCommit(t *testing.T) {
-	cat := newCatalog(t)
+	cat, tiers := newCatalogAndTiers(t)
 	existing, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	diff := DiffResult{
 		New: []MappedRow{
-			{Name: "New", Sku: "W3", Rate: 1, Metadata: map[string]string{"color": "blue"}, TierRates: map[int64]float64{}},
+			{Name: "New", Sku: "W3", Rate: 1, Metadata: map[string]string{"color": "blue"}, TierRates: map[string]float64{}},
 		},
 		Updated: []UpdatedItem{
 			{Existing: existing, Incoming: MappedRow{Name: "Widget", Sku: "W1", Rate: 99}},
 		},
 	}
-	res, err := Commit(t.Context(), cat, diff, true)
+	res, err := Commit(t.Context(), cat, tiers, diff, true)
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -232,7 +224,7 @@ func TestCommit(t *testing.T) {
 }
 
 func TestCommitSkipUpdatesWhenDisabled(t *testing.T) {
-	cat := newCatalog(t)
+	cat, tiers := newCatalogAndTiers(t)
 	existing, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
@@ -242,7 +234,7 @@ func TestCommitSkipUpdatesWhenDisabled(t *testing.T) {
 			{Existing: existing, Incoming: MappedRow{Name: "Widget", Sku: "W1", Rate: 99}},
 		},
 	}
-	res, err := Commit(t.Context(), cat, diff, false)
+	res, err := Commit(t.Context(), cat, tiers, diff, false)
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -255,6 +247,36 @@ func TestCommitSkipUpdatesWhenDisabled(t *testing.T) {
 	}
 	if item.Rate != 10 {
 		t.Fatalf("rate should be unchanged, got %v", item.Rate)
+	}
+}
+
+func TestCommitCreatesTierByName(t *testing.T) {
+	cat, tiers := newCatalogAndTiers(t)
+	diff := DiffResult{New: []MappedRow{{
+		Name: "Item", Sku: "S1", Rate: 10,
+		TierRates: map[string]float64{"Remote": 15},
+	}}}
+	res, err := Commit(t.Context(), cat, tiers, diff, false)
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if res.Inserted != 1 {
+		t.Fatalf("inserted: %d", res.Inserted)
+	}
+	all, _ := tiers.List(t.Context())
+	found := false
+	for _, tr := range all {
+		if tr.Name == "Remote" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("tier 'Remote' should have been created")
+	}
+	items, _ := cat.List(t.Context())
+	rates, err := cat.GetRates(t.Context(), items[0].ID)
+	if err != nil || len(rates) != 1 || rates[0].Rate != 15 {
+		t.Errorf("expected tier rate 15, got %+v (err %v)", rates, err)
 	}
 }
 

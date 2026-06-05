@@ -125,7 +125,7 @@
 			</div>
 			<div class="flex items-center gap-2">
 				<a
-					href="/import"
+					href="/catalog/import"
 					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
 				>
 					Import

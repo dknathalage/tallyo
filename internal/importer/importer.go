@@ -21,13 +21,13 @@ import (
 
 // MappedRow is one catalog row after the column mapping has been applied.
 type MappedRow struct {
-	Name      string            `json:"name"`
-	Sku       string            `json:"sku"`
-	Unit      string            `json:"unit"`
-	Category  string            `json:"category"`
-	Rate      float64           `json:"rate"`
-	Metadata  map[string]string `json:"metadata"`
-	TierRates map[int64]float64 `json:"tierRates"`
+	Name      string             `json:"name"`
+	Sku       string             `json:"sku"`
+	Unit      string             `json:"unit"`
+	Category  string             `json:"category"`
+	Rate      float64            `json:"rate"`
+	Metadata  map[string]string  `json:"metadata"`
+	TierRates map[string]float64 `json:"tierRates"`
 }
 
 // RowError records a row that could not be mapped (1-based index into the input
@@ -68,11 +68,16 @@ type CommitResult struct {
 	BatchID  string `json:"batchId"`
 }
 
-// metadataMapEntry is one {header,key} pair in a column mapping's
-// MetadataMapping JSON array.
-type metadataMapEntry struct {
-	Header string `json:"header"`
-	Key    string `json:"key"`
+// Mapping is the transient, per-import column mapping built from the request —
+// there is no persisted mapping. Fields maps header -> name|sku|unit|category|
+// rate. TierCols maps a header -> the tier NAME its values feed (only columns
+// the user kept). FileType/SheetName/HeaderRow steer parsing.
+type Mapping struct {
+	Fields    map[string]string `json:"fields"`
+	TierCols  map[string]string `json:"tierCols"`
+	FileType  string            `json:"fileType"`
+	SheetName string            `json:"sheetName"`
+	HeaderRow int               `json:"headerRow"`
 }
 
 // ParseRows reads a CSV or XLSX file into headers plus a slice of
@@ -158,30 +163,17 @@ func rowsFromRecords(records [][]string, headerRow int) ([]string, []map[string]
 	return headers, out, nil
 }
 
-// ApplyMapping applies a column mapping to raw rows, producing mapped rows and a
-// list of per-row errors. A row missing a name is skipped and reported as an
-// error. Bad rate values coerce to 0 rather than failing the row.
-func ApplyMapping(rows []map[string]string, m *repository.ColumnMapping) ([]MappedRow, []RowError, error) {
-	if m == nil {
-		return nil, nil, fmt.Errorf("importer.ApplyMapping: nil mapping")
+// ApplyMapping applies a transient mapping to raw rows, producing mapped rows
+// and per-row errors. A row missing a name is skipped and reported. Bad rate
+// values coerce to 0 rather than failing the row.
+func ApplyMapping(rows []map[string]string, m Mapping) ([]MappedRow, []RowError, error) {
+	if m.Fields == nil {
+		return nil, nil, fmt.Errorf("importer.ApplyMapping: nil fields")
 	}
-	fieldMap, err := parseFieldMap(m.Mapping)
-	if err != nil {
-		return nil, nil, err
-	}
-	tierMap, err := parseTierMap(m.TierMapping)
-	if err != nil {
-		return nil, nil, err
-	}
-	metaMap, err := parseMetadataMap(m.MetadataMapping)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	mapped := make([]MappedRow, 0, len(rows))
 	var errs []RowError
 	for i := range rows { // bounded by len(rows)
-		row := buildMappedRow(rows[i], fieldMap, tierMap, metaMap)
+		row := buildMappedRow(rows[i], m.Fields, m.TierCols)
 		if row.Name == "" {
 			errs = append(errs, RowError{Row: i + 1, Message: "name is required"})
 			continue
@@ -191,10 +183,11 @@ func ApplyMapping(rows []map[string]string, m *repository.ColumnMapping) ([]Mapp
 	return mapped, errs, nil
 }
 
-// buildMappedRow applies the parsed maps to a single raw row.
-func buildMappedRow(raw map[string]string, fieldMap map[string]string, tierMap map[string]int64, metaMap []metadataMapEntry) MappedRow {
-	out := MappedRow{Metadata: map[string]string{}, TierRates: map[int64]float64{}}
-	for header, field := range fieldMap {
+// buildMappedRow applies the field + tier maps to a single raw row.
+func buildMappedRow(raw map[string]string, fields, tierCols map[string]string) MappedRow {
+	// Metadata is reserved; no column mapping populates it yet.
+	out := MappedRow{Metadata: map[string]string{}, TierRates: map[string]float64{}}
+	for header, field := range fields { // bounded by len(fields)
 		val := strings.TrimSpace(raw[header])
 		switch field {
 		case "name":
@@ -209,14 +202,9 @@ func buildMappedRow(raw map[string]string, fieldMap map[string]string, tierMap m
 			out.Rate = parseFloat(val)
 		}
 	}
-	for header, tierID := range tierMap {
+	for header, tierName := range tierCols { // bounded by len(tierCols)
 		if val := strings.TrimSpace(raw[header]); val != "" {
-			out.TierRates[tierID] = parseFloat(val)
-		}
-	}
-	for _, e := range metaMap {
-		if val := strings.TrimSpace(raw[e.Header]); val != "" {
-			out.Metadata[e.Key] = val
+			out.TierRates[tierName] = parseFloat(val)
 		}
 	}
 	return out
@@ -276,11 +264,13 @@ func differs(existing *repository.CatalogItem, row MappedRow) bool {
 }
 
 // Commit inserts new items and (when updateExisting) updates changed items,
-// applying per-tier rates for both. A fresh batch id is returned for tracing.
-func Commit(ctx context.Context, catalog *repository.CatalogRepo, diff DiffResult, updateExisting bool) (CommitResult, error) {
-	if catalog == nil {
-		return CommitResult{}, fmt.Errorf("importer.Commit: nil catalog")
+// resolving each tier name to an existing rate tier or creating it. A fresh
+// batch id is returned for tracing.
+func Commit(ctx context.Context, catalog *repository.CatalogRepo, tiers *repository.RateTiersRepo, diff DiffResult, updateExisting bool) (CommitResult, error) {
+	if catalog == nil || tiers == nil {
+		return CommitResult{}, fmt.Errorf("importer.Commit: nil dependency")
 	}
+	resolver := newTierResolver(tiers)
 	batchID := uuid.NewString()
 	inserted := 0
 	for _, row := range diff.New { // bounded by len(diff.New)
@@ -295,7 +285,7 @@ func Commit(ctx context.Context, catalog *repository.CatalogRepo, diff DiffResul
 		if err != nil {
 			return CommitResult{}, fmt.Errorf("importer.Commit: create %q: %w", row.Name, err)
 		}
-		if err := applyTierRates(ctx, catalog, item.ID, row.TierRates); err != nil {
+		if err := applyTierRates(ctx, catalog, resolver, item.ID, row.TierRates); err != nil {
 			return CommitResult{}, err
 		}
 		inserted++
@@ -318,7 +308,7 @@ func Commit(ctx context.Context, catalog *repository.CatalogRepo, diff DiffResul
 			if item == nil {
 				continue
 			}
-			if err := applyTierRates(ctx, catalog, item.ID, u.Incoming.TierRates); err != nil {
+			if err := applyTierRates(ctx, catalog, resolver, item.ID, u.Incoming.TierRates); err != nil {
 				return CommitResult{}, err
 			}
 			updated++
@@ -327,11 +317,53 @@ func Commit(ctx context.Context, catalog *repository.CatalogRepo, diff DiffResul
 	return CommitResult{Inserted: inserted, Updated: updated, BatchID: batchID}, nil
 }
 
-// applyTierRates writes each per-tier override for an item.
-func applyTierRates(ctx context.Context, catalog *repository.CatalogRepo, itemID int64, rates map[int64]float64) error {
-	for tierID, rate := range rates { // bounded by len(rates)
+// tierResolver caches tier name -> id, creating tiers on first use.
+type tierResolver struct {
+	tiers  *repository.RateTiersRepo
+	byName map[string]int64
+}
+
+// newTierResolver seeds the cache lazily; ids are looked up on demand.
+func newTierResolver(tiers *repository.RateTiersRepo) *tierResolver {
+	return &tierResolver{tiers: tiers, byName: map[string]int64{}}
+}
+
+// resolve returns the id for a tier name, loading existing tiers once and
+// creating the tier (audited) if absent. Lookup is case-insensitive.
+func (tr *tierResolver) resolve(ctx context.Context, name string) (int64, error) {
+	key := strings.ToLower(strings.TrimSpace(name))
+	if key == "" {
+		return 0, fmt.Errorf("importer: empty tier name")
+	}
+	if len(tr.byName) == 0 {
+		existing, err := tr.tiers.List(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("importer: list tiers: %w", err)
+		}
+		for _, t := range existing { // bounded by len(existing)
+			tr.byName[strings.ToLower(strings.TrimSpace(t.Name))] = t.ID
+		}
+	}
+	if id, ok := tr.byName[key]; ok {
+		return id, nil
+	}
+	created, err := tr.tiers.Create(ctx, repository.RateTierInput{Name: strings.TrimSpace(name)})
+	if err != nil {
+		return 0, fmt.Errorf("importer: create tier %q: %w", name, err)
+	}
+	tr.byName[key] = created.ID
+	return created.ID, nil
+}
+
+// applyTierRates resolves each tier name to an id and writes its override.
+func applyTierRates(ctx context.Context, catalog *repository.CatalogRepo, resolver *tierResolver, itemID int64, rates map[string]float64) error {
+	for name, rate := range rates { // bounded by len(rates)
+		tierID, err := resolver.resolve(ctx, name)
+		if err != nil {
+			return err
+		}
 		if err := catalog.SetRate(ctx, itemID, tierID, rate); err != nil {
-			return fmt.Errorf("importer: set rate item=%d tier=%d: %w", itemID, tierID, err)
+			return fmt.Errorf("importer: set rate item=%d tier=%q: %w", itemID, name, err)
 		}
 	}
 	return nil
@@ -348,50 +380,6 @@ func metadataJSON(m map[string]string) string {
 		return "{}"
 	}
 	return string(b)
-}
-
-// parseFieldMap parses the header→field JSON object. An empty string is "{}".
-func parseFieldMap(s string) (map[string]string, error) {
-	if strings.TrimSpace(s) == "" {
-		return map[string]string{}, nil
-	}
-	var out map[string]string
-	if err := json.Unmarshal([]byte(s), &out); err != nil {
-		return nil, fmt.Errorf("importer: parse mapping: %w", err)
-	}
-	return out, nil
-}
-
-// parseTierMap parses the header→tierId(string) JSON object into int64 ids.
-func parseTierMap(s string) (map[string]int64, error) {
-	if strings.TrimSpace(s) == "" {
-		return map[string]int64{}, nil
-	}
-	var raw map[string]string
-	if err := json.Unmarshal([]byte(s), &raw); err != nil {
-		return nil, fmt.Errorf("importer: parse tier mapping: %w", err)
-	}
-	out := make(map[string]int64, len(raw))
-	for header, idStr := range raw {
-		id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("importer: tier id %q: %w", idStr, err)
-		}
-		out[header] = id
-	}
-	return out, nil
-}
-
-// parseMetadataMap parses the JSON array of {header,key} entries.
-func parseMetadataMap(s string) ([]metadataMapEntry, error) {
-	if strings.TrimSpace(s) == "" {
-		return nil, nil
-	}
-	var out []metadataMapEntry
-	if err := json.Unmarshal([]byte(s), &out); err != nil {
-		return nil, fmt.Errorf("importer: parse metadata mapping: %w", err)
-	}
-	return out, nil
 }
 
 // parseFloat strips currency/grouping noise and parses a float, returning 0 for

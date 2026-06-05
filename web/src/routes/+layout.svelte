@@ -77,8 +77,6 @@
 					<a href="/payers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Payers</a>
 					<a href="/clients" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Clients</a>
 					<a href="/catalog" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Catalog</a>
-					<a href="/import" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Import</a>
-					<a href="/column-mappings" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Mappings</a>
 					<a href="/settings" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Settings</a>
 					<button
 						type="button"
