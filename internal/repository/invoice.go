@@ -40,6 +40,8 @@ type Invoice struct {
 	PayerSnapshot    string      `json:"payerSnapshot"`
 	CreatedAt        string      `json:"createdAt"`
 	UpdatedAt        string      `json:"updatedAt"`
+	TotalPaid        float64     `json:"totalPaid"`
+	Balance          float64     `json:"balance"`
 	LineItems        []*LineItem `json:"lineItems"`
 }
 
@@ -96,6 +98,7 @@ type OverdueInvoice struct {
 type ClientStats struct {
 	InvoiceCount  int64   `json:"invoiceCount"`
 	TotalInvoiced float64 `json:"totalInvoiced"`
+	TotalPaid     float64 `json:"totalPaid"`
 }
 
 // InvoicesRepo reads and writes the invoices + line_items tables. Creates and
@@ -289,6 +292,12 @@ func (r *InvoicesRepo) Get(ctx context.Context, id int64) (*Invoice, error) {
 		return nil, fmt.Errorf("list line items: %w", err)
 	}
 	inv.LineItems = mapLineItems(rows)
+	tp, err := q.InvoiceTotalPaid(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("invoice total paid: %w", err)
+	}
+	inv.TotalPaid = tp
+	inv.Balance = round2(inv.Total - tp)
 	return inv, nil
 }
 
@@ -578,7 +587,7 @@ func (r *InvoicesRepo) ClientStats(ctx context.Context, clientID int64) (*Client
 	if err != nil {
 		return nil, fmt.Errorf("client stats: %w", err)
 	}
-	return &ClientStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced}, nil
+	return &ClientStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced, TotalPaid: row.TotalPaid}, nil
 }
 
 // snapshot builds the default snapshot JSON for an entity. metadata is parsed
