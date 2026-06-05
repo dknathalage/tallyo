@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/dknathalage/tallyo/internal/importer"
 	"github.com/dknathalage/tallyo/internal/repository"
@@ -75,7 +76,9 @@ func (h *ImportHandler) Parse(w http.ResponseWriter, r *http.Request) {
 	sheet := r.FormValue("sheetName")
 	headerRow := 1
 	if v := r.FormValue("headerRow"); v != "" {
-		fmt.Sscanf(v, "%d", &headerRow)
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			headerRow = n
+		}
 	}
 	headers, rows, err := importer.ParseRows(data, fileType, sheet, headerRow)
 	if err != nil {
