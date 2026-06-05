@@ -45,7 +45,7 @@ payers:     id INTEGER PK AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, name TEXT NO
 - [ ] **Step 1: Write the migration** `00003_rate_tiers_payers.sql` (goose Up creating both tables per the schema above with `created_at`/`updated_at` as `TEXT NOT NULL`; goose Down drops payers then rate_tiers). Match the column types/constraints exactly.
 
 - [ ] **Step 2: Write sqlc queries.**
-  `rate_tiers.sql`: `ListRateTiers` (`:many` ORDER BY sort_order, id), `GetRateTier` (`:one` by id), `GetDefaultTier` (`:one` ORDER BY sort_order, id LIMIT 1), `CreateRateTier` (`:one` RETURNING *), `UpdateRateTier` (`:one` RETURNING * — set name/description/sort_order/updated_at WHERE id), `DeleteRateTier` (`:exec`).
+  `rate_tiers.sql`: `ListRateTiers` (`:many` **ORDER BY sort_order, name** — matches old `getRateTiers`), `GetRateTier` (`:one` by id), `GetDefaultTier` (`:one` ORDER BY sort_order, id LIMIT 1), `CountRateTiers` (`:one` — for the last-tier delete guard), `CreateRateTier` (`:one` RETURNING *), `UpdateRateTier` (`:one` RETURNING * — set name/description/sort_order/updated_at WHERE id), `DeleteRateTier` (`:exec`).
   `payers.sql`: `ListPayers` (`:many` ORDER BY name), `SearchPayers` (`:many` WHERE name LIKE ? OR email LIKE ? ORDER BY name), `GetPayer` (`:one`), `CreatePayer` (`:one` RETURNING *), `UpdatePayer` (`:one` RETURNING *), `DeletePayer` (`:exec`).
 
 - [ ] **Step 3: Generate + build.** `"$(go env GOPATH)/bin/sqlc" generate && go build ./internal/db/gen/`. INSPECT `internal/db/gen/models.go` and report the exact `RateTier` and `Payer` struct fields + types (nullable → sql.NullString) and the `Create*Params`/`Update*Params` shapes — downstream tasks need them.
@@ -62,7 +62,7 @@ payers:     id INTEGER PK AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, name TEXT NO
 
 Follow `internal/auth/users.go` exactly (it's the cleanest CRUD-with-WithAudit example).
 
-- [ ] **Step 1: Failing test** `rate_tier_test.go` — temp migrated DB; `NewRateTiers(conn)`; cover: Create (returns row, audited), List (ordered), Get (nil on missing), Update (changes name/desc/sort), Delete, GetDefault (lowest sort_order), Create rejects empty name, audit rows for create+update+delete = 3. Assert via `errors.Is(sql.ErrNoRows)` → nil patterns.
+- [ ] **Step 1: Failing test** `rate_tier_test.go` — temp migrated DB; `NewRateTiers(conn)`; cover: Create (returns row, audited), List (ordered by sort_order,name), Get (nil on missing), Update (changes name/desc/sort), Delete, GetDefault (lowest sort_order), Create rejects empty name, audit rows for create+update+delete = 3. **Last-tier guard:** with exactly one tier, `Delete` returns `ErrLastTier` (a sentinel); with ≥2 tiers, delete succeeds. Assert via `errors.Is(sql.ErrNoRows)` → nil patterns.
 
 - [ ] **Step 2: Run → FAIL.**
 
@@ -70,7 +70,8 @@ Follow `internal/auth/users.go` exactly (it's the cleanest CRUD-with-WithAudit e
   - Domain `RateTier{ID int64; UUID, Name, Description string; SortOrder int64; CreatedAt, UpdatedAt string}` (json tags camelCase: `sortOrder`, `createdAt`, `updatedAt`).
   - `RateTierInput{Name, Description string; SortOrder int64}` (json camelCase).
   - `RateTiersRepo{db *sql.DB}`, `NewRateTiers(db)` panic-if-nil.
-  - `List`, `Get`(nil on missing), `GetDefault`(nil on empty), `Create`(validate name; uuid; RFC3339 ts; `audit.WithTx` Action:"" + manual Log with real id, entity "rate_tier"/"create"), `Update`(audit "update", EntityID known), `Delete`(audit "delete").
+  - `var ErrLastTier = errors.New("cannot delete the last rate tier")` (ports the old `deleteRateTier` guard).
+  - `List`, `Get`(nil on missing), `GetDefault`(nil on empty), `Create`(validate name; uuid; RFC3339 ts; `audit.WithTx` Action:"" + manual Log with real id, entity "rate_tier"/"create"), `Update`(audit "update", EntityID known), `Delete`(INSIDE the WithTx fn: `CountRateTiers`; if count <= 1 return `ErrLastTier`; else `DeleteRateTier`; audit "delete"). The count + delete must be in the SAME tx so the guard is race-safe.
   - `toRateTier(gen.RateTier) *RateTier`, reuse `nz`.
 
 - [ ] **Step 4: Run** `go test ./internal/repository/ -race`, vet, gofmt. **Commit** `feat(repository): rate tier repository`.
@@ -90,6 +91,7 @@ Follow `internal/auth/users.go` exactly (it's the cleanest CRUD-with-WithAudit e
   - `PayerInput{Name, Email, Phone, Address, Metadata string}`.
   - `PayersRepo{db}`, `NewPayers` panic-if-nil.
   - `List(ctx, search string)` — if search != "" use SearchPayers with `%search%` for both name+email else ListPayers. `Get`, `Create`(validate name; metadata default "{}"; audit "payer"/"create" real id), `Update`, `Delete`.
+  - `BulkDelete(ctx, ids []int64) error` — ports old `bulkDeletePayers`: delete each id in ONE `audit.WithTx` (loop bounded by len(ids); audit a single "payer"/"bulk_delete" row with the ids in Changes). No-op on empty ids.
   - `toPayer`, `nz`.
 
 - [ ] **Step 4: Run** tests, vet, gofmt. **Commit** `feat(repository): payer repository`.
@@ -108,7 +110,8 @@ Follow `internal/service/business_profile.go`: hold repo + `*realtime.Hub`, pani
 
 - [ ] **Step 3: Implement** each service:
   - `RateTierService{repo, hub}`, `NewRateTierService(db, hub)`. Methods: `List`, `Get`, `GetDefault`, `Create`(broadcast "rate_tier"/created-id/"create"), `Update`(broadcast "update"), `Delete`(broadcast "delete"). Each broadcast happens only after the repo call returns nil; the event ID is the affected row id (Create returns the new RateTier so use its ID; Update/Delete use the id arg).
-  - `PayerService` analogous (entity "payer").
+  - `RateTierService.Delete` propagates `repository.ErrLastTier` (broadcast only on success — no event when the guard rejects).
+  - `PayerService` analogous (entity "payer"), plus `BulkDelete(ctx, ids)` → repo BulkDelete then broadcast one "payer"/"bulk_delete" event (id 0) on success.
 
 - [ ] **Step 4: Run** tests, vet, gofmt. **Commit** `feat(service): rate tier + payer services with SSE broadcast`.
 
@@ -125,15 +128,15 @@ Follow `internal/http/business_profile.go` + `invites.go` (chi.URLParam for `{id
   - `POST /api/rate-tiers {name}` → 201 + created.
   - `GET /api/rate-tiers/{id}` → 200; missing id → 404.
   - `PUT /api/rate-tiers/{id} {name,...}` → 200; empty name → 400.
-  - `DELETE /api/rate-tiers/{id}` → 204 (or 200).
+  - `DELETE /api/rate-tiers/{id}` → 204. **Deleting the last remaining tier → 409** (ErrLastTier).
   - unauth → 401.
-  Same set for `/api/payers` (POST also accepts email/phone/address; GET list supports `?search=`).
+  Same set for `/api/payers` (POST also accepts email/phone/address; GET list supports `?search=`), PLUS `POST /api/payers/bulk-delete {ids:[...]}` → 204 (ports bulkDeletePayers).
 
 - [ ] **Step 2: Run → FAIL.**
 
 - [ ] **Step 3: Implement** handlers:
-  - `RateTierHandler{svc}`, `NewRateTierHandler(svc)` panic-if-nil. Methods `List`(WriteJSON the slice; ensure non-nil empty slice → `[]`), `Get`(parse id via `strconv.ParseInt(chi.URLParam(r,"id"),10,64)`, 400 on bad id, 404 on nil), `Create`(DecodeJSON RateTierInput, 400 empty name, 201), `Update`(id + input, 400 empty name, 404 missing, 200), `Delete`(204).
-  - `PayerHandler{svc}` analogous; `List` reads `r.URL.Query().Get("search")`.
+  - `RateTierHandler{svc}`, `NewRateTierHandler(svc)` panic-if-nil. Methods `List`(WriteJSON the slice; ensure non-nil empty slice → `[]`), `Get`(parse id via `strconv.ParseInt(chi.URLParam(r,"id"),10,64)`, 400 on bad id, 404 on nil), `Create`(DecodeJSON RateTierInput, 400 empty name, 201), `Update`(id + input, 400 empty name, 404 missing, 200), `Delete`(204; map `errors.Is(err, repository.ErrLastTier)` → 409 "cannot delete the last rate tier").
+  - `PayerHandler{svc}` analogous; `List` reads `r.URL.Query().Get("search")`. Add `BulkDelete`(DecodeJSON `{ids []int64}`, call svc, 204).
   - Parse-id helper: extract a small `parseID(r) (int64, error)` shared in a handlers util if convenient (or inline).
 - [ ] **Step 4: Wire `server.go`** — add `RateTiers *RateTierHandler` and `Payers *PayerHandler` to `Deps`; in the RequireAuth group register the REST routes (`api.Route("/rate-tiers", ...)` with Get/Post/Get{id}/Put{id}/Delete{id}; same for `/payers`). Add the two to the group-formation guard. Nil-safe.
 
