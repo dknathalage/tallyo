@@ -68,6 +68,21 @@ type Client struct {
 	UpdatedAt     string         `json:"updated_at"`
 }
 
+type ColumnMapping struct {
+	ID              int64          `json:"id"`
+	Uuid            string         `json:"uuid"`
+	Name            string         `json:"name"`
+	EntityType      string         `json:"entity_type"`
+	Mapping         string         `json:"mapping"`
+	TierMapping     sql.NullString `json:"tier_mapping"`
+	MetadataMapping sql.NullString `json:"metadata_mapping"`
+	FileType        sql.NullString `json:"file_type"`
+	SheetName       sql.NullString `json:"sheet_name"`
+	HeaderRow       sql.NullInt64  `json:"header_row"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
+}
+
 type Estimate struct {
 	ID                 int64           `json:"id"`
 	Uuid               string          `json:"uuid"`

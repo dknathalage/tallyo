@@ -98,6 +98,7 @@ func run() error {
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
+	columnMappingSvc := service.NewColumnMappingService(conn, hub)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -131,6 +132,7 @@ func run() error {
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
+		ColumnMappings:  httpapi.NewColumnMappingHandler(columnMappingSvc),
 	}
 
 	server := httpapi.NewServer(deps)

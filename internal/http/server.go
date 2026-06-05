@@ -75,6 +75,10 @@ type Deps struct {
 	// Recurring, when non-nil, serves the auth-gated recurring-template CRUD
 	// plus the generate route under /api/recurring.
 	Recurring *RecurringHandler
+
+	// ColumnMappings, when non-nil, serves the auth-gated column-mapping CRUD
+	// routes under /api/column-mappings.
+	ColumnMappings *ColumnMappingHandler
 }
 
 // Server wraps the configured chi router.
@@ -123,7 +127,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.ColumnMappings != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -218,6 +222,13 @@ func NewServer(deps Deps) *Server {
 					pr.Put("/recurring/{id}", deps.Recurring.Update)
 					pr.Delete("/recurring/{id}", deps.Recurring.Delete)
 					pr.Post("/recurring/{id}/generate", deps.Recurring.Generate)
+				}
+				if deps.ColumnMappings != nil {
+					pr.Get("/column-mappings", deps.ColumnMappings.List)
+					pr.Post("/column-mappings", deps.ColumnMappings.Create)
+					pr.Get("/column-mappings/{id}", deps.ColumnMappings.Get)
+					pr.Put("/column-mappings/{id}", deps.ColumnMappings.Update)
+					pr.Delete("/column-mappings/{id}", deps.ColumnMappings.Delete)
 				}
 			})
 		}
