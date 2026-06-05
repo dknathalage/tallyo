@@ -61,6 +61,8 @@ func run() error {
 	users := auth.NewUsers(conn)
 	invites := auth.NewInvites(conn)
 	bpSvc := service.NewBusinessProfileService(conn, hub)
+	rateTierSvc := service.NewRateTierService(conn, hub)
+	payerSvc := service.NewPayerService(conn, hub)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -85,6 +87,8 @@ func run() error {
 		Invites:         httpapi.NewInviteHandler(invites, users),
 		Events:          httpapi.NewEventsHandler(hub),
 		BusinessProfile: httpapi.NewBusinessProfileHandler(bpSvc),
+		RateTiers:       httpapi.NewRateTierHandler(rateTierSvc),
+		Payers:          httpapi.NewPayerHandler(payerSvc),
 	}
 
 	server := httpapi.NewServer(deps)
