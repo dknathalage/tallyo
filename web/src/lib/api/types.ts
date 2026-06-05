@@ -249,30 +249,16 @@ export interface EstimateInput {
 	lineItems: EstimateLineItemInput[];
 }
 
-export interface ColumnMapping {
-	id: number;
-	uuid: string;
-	name: string;
-	entityType: string;
-	mapping: string;
-	tierMapping: string;
-	metadataMapping: string;
-	fileType: string;
-	sheetName: string;
-	headerRow: number;
-	createdAt: string;
-	updatedAt: string;
+export interface ImportSuggestion {
+	fields: Record<string, string>;
+	baseHeader: string;
+	priceCols: { header: string; suggestName: string }[];
 }
 
-export interface ColumnMappingInput {
-	name: string;
-	entityType: string;
-	mapping: string;
-	tierMapping: string;
-	metadataMapping: string;
-	fileType: string;
-	sheetName: string;
-	headerRow: number;
+export interface ImportParseResult {
+	headers: string[];
+	sample: Record<string, string>[];
+	suggestion: ImportSuggestion;
 }
 
 export interface MappedRow {
