@@ -125,6 +125,8 @@ On line-item create/update, for a **support-item** line, in order:
 
 For a **custom-item** line: skip steps 1–5; still validate quantity/price ≥ 0 and recompute totals.
 
+> **Money type (2026-06-16 decision):** money stays `REAL` (float), per user decision. Mitigation: line totals, subtotal, tax, and total MUST be rounded defensively to the cent at every computation boundary to limit cumulative float drift in NDIS reconciliation. Revisit if reconciliation errors surface.
+
 Per NASA rule 5: ≥2 assertions per non-trivial function; validate at the service boundary. Validation errors return structured, field-level messages to the UI.
 
 ## 7. Strip Plan (remove generic features)
