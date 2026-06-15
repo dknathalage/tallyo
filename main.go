@@ -17,7 +17,6 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
@@ -100,7 +99,6 @@ func run() error {
 	users := auth.NewUsers(conn)
 	invites := auth.NewInvites(conn)
 	bpSvc := service.NewBusinessProfileService(conn, hub)
-	rateTierSvc := service.NewRateTierService(conn, hub)
 	payerSvc := service.NewPayerService(conn, hub)
 	taxRateSvc := service.NewTaxRateService(conn, hub)
 	clientSvc := service.NewClientService(conn, hub)
@@ -109,11 +107,6 @@ func run() error {
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
-
-	// The import handler operates directly on repositories: the catalog repo for
-	// diff/commit and the rate-tiers repo to create referenced tiers on commit.
-	catalogRepo := repository.NewCatalog(conn)
-	rateTiersRepo := repository.NewRateTiers(conn)
 
 	setup, err := httpapi.NewSetupHandler(users)
 	if err != nil {
@@ -138,7 +131,6 @@ func run() error {
 		Invites:         httpapi.NewInviteHandler(invites, users),
 		Events:          httpapi.NewEventsHandler(hub),
 		BusinessProfile: httpapi.NewBusinessProfileHandler(bpSvc),
-		RateTiers:       httpapi.NewRateTierHandler(rateTierSvc),
 		Payers:          httpapi.NewPayerHandler(payerSvc),
 		TaxRates:        httpapi.NewTaxRateHandler(taxRateSvc),
 		Clients:         httpapi.NewClientHandler(clientSvc),
@@ -148,7 +140,6 @@ func run() error {
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 		Export:          httpapi.NewExportHandler(catalogSvc, invoiceSvc, estimateSvc),
-		Import:          httpapi.NewImportHandler(catalogRepo, rateTiersRepo),
 	}
 
 	server := httpapi.NewServer(deps)

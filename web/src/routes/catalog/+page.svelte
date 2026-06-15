@@ -125,12 +125,6 @@
 			</div>
 			<div class="flex items-center gap-2">
 				<a
-					href="/catalog/import"
-					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-				>
-					Import
-				</a>
-				<a
 					href="/api/export/catalog?format=csv"
 					target="_blank"
 					rel="noopener"

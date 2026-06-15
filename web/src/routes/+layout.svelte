@@ -72,7 +72,6 @@
 					<a href="/invoices" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Invoices</a>
 					<a href="/estimates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Estimates</a>
 					<a href="/recurring" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Recurring</a>
-					<a href="/rate-tiers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Rate Tiers</a>
 					<a href="/tax-rates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Tax Rates</a>
 					<a href="/payers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Payers</a>
 					<a href="/clients" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Clients</a>

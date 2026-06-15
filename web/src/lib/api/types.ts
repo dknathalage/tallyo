@@ -22,22 +22,6 @@ export interface InviteCreated {
 	acceptUrl: string;
 }
 
-export interface RateTier {
-	id: number;
-	uuid: string;
-	name: string;
-	description: string;
-	sortOrder: number;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface RateTierInput {
-	name: string;
-	description: string;
-	sortOrder: number;
-}
-
 export interface Payer {
 	id: number;
 	uuid: string;
