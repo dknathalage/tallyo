@@ -42,6 +42,8 @@ Unchanged layering: handlers → services → repositories → sqlc gen. Every D
 - Remove the existing single-org first-run setup flow.
 - Add public **`/signup`**: a single transaction creates `tenant` + owner `user` + `business_profile` (including geographic **zone**), then logs the user in.
 - **Invites** become tenant-scoped: an owner/admin invites users into *their* tenant. Reuse existing invite plumbing + `tenant_id`.
+- **Tenant roles:** `owner | admin | member`. `owner` (created at signup) + `admin` may invite/manage users and edit business settings; `member` may manage participants/invoices/estimates/payments but not users or settings. `is_platform_admin` is orthogonal (platform operator, not a tenant role).
+- **Tenant status enforcement:** `tenants.status = 'suspended'` blocks login for that tenant's users and is skipped by the per-tenant sweeps (§8). `'active'` is normal.
 
 ## 4. Data Model (fresh goose baseline)
 
@@ -95,9 +97,11 @@ support_items       id, uuid, catalog_version_id FK, code, name, unit,
                     claim_type, gst_free INT, metadata
                     UNIQUE(catalog_version_id, code)
 support_item_prices id, support_item_id FK, zone ('national'|'remote'|'very_remote'),
-                    price_cap REAL
+                    price_cap REAL NULL,  -- NULL = quotable item (no fixed cap)
                     UNIQUE(support_item_id, zone)
 ```
+
+Some NDIS items are **quotable** ("Price Limit: Quote") with no fixed cap — `price_cap` is NULL for these; the validation engine skips the over-cap assertion (§6 step 4) when the cap is NULL.
 
 Catalog versions are immutable history. The version whose `[effective_from, effective_to|∞]` contains a given service date is authoritative for that date.
 
@@ -114,8 +118,8 @@ On line-item create/update, for a **support-item** line, in order:
 
 1. Resolve `catalog_version` where `effective_from ≤ service_date ≤ effective_to|∞`. (Error if none.)
 2. Find `support_item` by `code` within that version; snapshot `code`/`description`; pin `catalog_version_id`.
-3. Look up `price_cap` for the **tenant's configured zone** (from `business_profile.zone`).
-4. **Assert `unit_price ≤ price_cap`** — block over-cap (the #1 rejection cause).
+3. Look up `price_cap` for the **tenant's configured zone** (from `business_profile.zone`). A single tenant-wide zone is **intentional** for this scope; per-line/per-participant zone is deferred (the per-zone price rows in §5 already support it later).
+4. **Assert `unit_price ≤ price_cap`** — block over-cap (the #1 rejection cause). **Skip this assertion when `price_cap` is NULL** (quotable item).
 5. **Assert `service_date ∈ [participant.plan_start, participant.plan_end]`** — block out-of-plan.
 6. Default `gst_free` from the support item.
 
