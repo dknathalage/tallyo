@@ -11,36 +11,42 @@ import (
 )
 
 const countUsers = `-- name: CountUsers :one
-SELECT COUNT(*) FROM users
+SELECT COUNT(*) FROM users WHERE tenant_id = ?
 `
 
-func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countUsers)
+func (q *Queries) CountUsers(ctx context.Context, tenantID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUsers, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (uuid, email, password_hash, role, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, email, password_hash, role, created_at, updated_at, last_login_at
+INSERT INTO users (uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at
 `
 
 type CreateUserParams struct {
-	Uuid         string `json:"uuid"`
-	Email        string `json:"email"`
-	PasswordHash string `json:"password_hash"`
-	Role         string `json:"role"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	Uuid            string `json:"uuid"`
+	TenantID        int64  `json:"tenant_id"`
+	Email           string `json:"email"`
+	PasswordHash    string `json:"password_hash"`
+	Name            string `json:"name"`
+	IsPlatformAdmin int64  `json:"is_platform_admin"`
+	Role            string `json:"role"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRowContext(ctx, createUser,
 		arg.Uuid,
+		arg.TenantID,
 		arg.Email,
 		arg.PasswordHash,
+		arg.Name,
+		arg.IsPlatformAdmin,
 		arg.Role,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -49,8 +55,11 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.Name,
+		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -60,26 +69,62 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const deleteUser = `-- name: DeleteUser :exec
-DELETE FROM users WHERE id = ?
+DELETE FROM users WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deleteUser, id)
+type DeleteUserParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUser, arg.TenantID, arg.ID)
 	return err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, uuid, email, password_hash, role, created_at, updated_at, last_login_at FROM users WHERE email = ?
+SELECT id, uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? AND email = ?
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByEmail, email)
+type GetUserByEmailParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Email    string `json:"email"`
+}
+
+func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmail, arg.TenantID, arg.Email)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.Name,
+		&i.IsPlatformAdmin,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
+SELECT id, uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE email = ?
+`
+
+func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmailGlobal, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -89,17 +134,25 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, uuid, email, password_hash, role, created_at, updated_at, last_login_at FROM users WHERE id = ?
+SELECT id, uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByID, id)
+type GetUserByIDParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByID, arg.TenantID, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.Name,
+		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -109,11 +162,11 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, uuid, email, password_hash, role, created_at, updated_at, last_login_at FROM users ORDER BY id
+SELECT id, uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? ORDER BY id
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := q.db.QueryContext(ctx, listUsers)
+func (q *Queries) ListUsers(ctx context.Context, tenantID int64) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +177,11 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uuid,
+			&i.TenantID,
 			&i.Email,
 			&i.PasswordHash,
+			&i.Name,
+			&i.IsPlatformAdmin,
 			&i.Role,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -155,5 +211,26 @@ type TouchLastLoginParams struct {
 
 func (q *Queries) TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error {
 	_, err := q.db.ExecContext(ctx, touchLastLogin, arg.LastLoginAt, arg.ID)
+	return err
+}
+
+const updateUserRole = `-- name: UpdateUserRole :exec
+UPDATE users SET role = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
+`
+
+type UpdateUserRoleParams struct {
+	Role      string `json:"role"`
+	UpdatedAt string `json:"updated_at"`
+	TenantID  int64  `json:"tenant_id"`
+	ID        int64  `json:"id"`
+}
+
+func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserRole,
+		arg.Role,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.ID,
+	)
 	return err
 }

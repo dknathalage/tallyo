@@ -11,42 +11,65 @@ import (
 )
 
 const createInvite = `-- name: CreateInvite :one
-INSERT INTO invites (token, email, role, created_by, expires_at)
-VALUES (?, ?, ?, ?, ?)
-RETURNING id, token, email, role, created_by, expires_at, used_at
+INSERT INTO invites (uuid, tenant_id, token, email, role, created_by, expires_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at
 `
 
 type CreateInviteParams struct {
+	Uuid      string `json:"uuid"`
+	TenantID  int64  `json:"tenant_id"`
 	Token     string `json:"token"`
 	Email     string `json:"email"`
 	Role      string `json:"role"`
 	CreatedBy int64  `json:"created_by"`
 	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
 }
 
 func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error) {
 	row := q.db.QueryRowContext(ctx, createInvite,
+		arg.Uuid,
+		arg.TenantID,
 		arg.Token,
 		arg.Email,
 		arg.Role,
 		arg.CreatedBy,
 		arg.ExpiresAt,
+		arg.CreatedAt,
 	)
 	var i Invite
 	err := row.Scan(
 		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
 		&i.Token,
 		&i.Email,
 		&i.Role,
 		&i.CreatedBy,
 		&i.ExpiresAt,
-		&i.UsedAt,
+		&i.AcceptedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const deleteInvite = `-- name: DeleteInvite :exec
+DELETE FROM invites WHERE tenant_id = ? AND id = ?
+`
+
+type DeleteInviteParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) error {
+	_, err := q.db.ExecContext(ctx, deleteInvite, arg.TenantID, arg.ID)
+	return err
+}
+
 const getInviteByToken = `-- name: GetInviteByToken :one
-SELECT id, token, email, role, created_by, expires_at, used_at FROM invites WHERE token = ?
+SELECT id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE token = ?
 `
 
 func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, error) {
@@ -54,26 +77,67 @@ func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, e
 	var i Invite
 	err := row.Scan(
 		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
 		&i.Token,
 		&i.Email,
 		&i.Role,
 		&i.CreatedBy,
 		&i.ExpiresAt,
-		&i.UsedAt,
+		&i.AcceptedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
-const markInviteUsed = `-- name: MarkInviteUsed :exec
-UPDATE invites SET used_at = ? WHERE token = ?
+const listInvites = `-- name: ListInvites :many
+SELECT id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE tenant_id = ? ORDER BY created_at DESC
 `
 
-type MarkInviteUsedParams struct {
-	UsedAt sql.NullString `json:"used_at"`
-	Token  string         `json:"token"`
+func (q *Queries) ListInvites(ctx context.Context, tenantID int64) ([]Invite, error) {
+	rows, err := q.db.QueryContext(ctx, listInvites, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Invite
+	for rows.Next() {
+		var i Invite
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.TenantID,
+			&i.Token,
+			&i.Email,
+			&i.Role,
+			&i.CreatedBy,
+			&i.ExpiresAt,
+			&i.AcceptedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) MarkInviteUsed(ctx context.Context, arg MarkInviteUsedParams) error {
-	_, err := q.db.ExecContext(ctx, markInviteUsed, arg.UsedAt, arg.Token)
+const markInviteAccepted = `-- name: MarkInviteAccepted :exec
+UPDATE invites SET accepted_at = ? WHERE token = ?
+`
+
+type MarkInviteAcceptedParams struct {
+	AcceptedAt sql.NullString `json:"accepted_at"`
+	Token      string         `json:"token"`
+}
+
+func (q *Queries) MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error {
+	_, err := q.db.ExecContext(ctx, markInviteAccepted, arg.AcceptedAt, arg.Token)
 	return err
 }

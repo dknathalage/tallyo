@@ -1,40 +1,72 @@
 -- name: ListInvoices :many
-SELECT i.*, c.name AS client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id ORDER BY i.created_at DESC;
+SELECT i.*, p.name AS participant_name
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+WHERE i.tenant_id = ?
+ORDER BY i.created_at DESC;
 
 -- name: ListInvoicesByStatus :many
-SELECT i.*, c.name AS client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id WHERE i.status = ? ORDER BY i.created_at DESC;
+SELECT i.*, p.name AS participant_name
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+WHERE i.tenant_id = ? AND i.status = ?
+ORDER BY i.created_at DESC;
 
--- name: ListClientInvoices :many
-SELECT i.*, c.name AS client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id WHERE i.client_id = ? ORDER BY i.created_at DESC;
+-- name: ListParticipantInvoices :many
+SELECT i.*, p.name AS participant_name
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+WHERE i.tenant_id = ? AND i.participant_id = ?
+ORDER BY i.created_at DESC;
 
 -- name: GetInvoice :one
-SELECT i.*, c.name AS client_name FROM invoices i LEFT JOIN clients c ON i.client_id = c.id WHERE i.id = ?;
+SELECT i.*, p.name AS participant_name
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+WHERE i.tenant_id = ? AND i.id = ?;
 
 -- name: CreateInvoice :one
-INSERT INTO invoices (uuid, invoice_number, client_id, date, due_date, payment_terms, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
+INSERT INTO invoices (
+    uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date,
+    subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot,
+    created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
 
 -- name: UpdateInvoice :one
-UPDATE invoices SET client_id = ?, date = ?, due_date = ?, payment_terms = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
-WHERE id = ? RETURNING *;
+UPDATE invoices SET
+    number = ?, participant_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, due_date = ?,
+    subtotal = ?, tax = ?, total = ?, notes = ?,
+    business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
+WHERE tenant_id = ? AND id = ?
+RETURNING *;
 
 -- name: UpdateInvoiceStatus :exec
-UPDATE invoices SET status = ?, updated_at = ? WHERE id = ?;
+UPDATE invoices SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?;
 
 -- name: DeleteInvoice :exec
-DELETE FROM invoices WHERE id = ?;
+DELETE FROM invoices WHERE tenant_id = ? AND id = ?;
+
+-- name: MaxInvoiceNumberLike :one
+-- Highest numeric sequence (parsed from the suffix after prefix_len chars),
+-- pad-width independent. prefix_len is the length of the non-numeric prefix
+-- (e.g. 4 for 'INV-'); the numeric part begins at prefix_len + 1.
+SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST(sqlc.arg(prefix_len) AS INTEGER) + 1) AS INTEGER)), 0) AS INTEGER) AS max_seq
+FROM invoices
+WHERE tenant_id = sqlc.arg(tenant_id) AND number LIKE sqlc.arg(pattern);
 
 -- name: SelectOverdueInvoices :many
-SELECT id, invoice_number FROM invoices WHERE status = 'sent' AND due_date < date('now');
+SELECT id, tenant_id, number FROM invoices
+WHERE status = 'sent' AND due_date < date('now');
 
--- name: ClientInvoiceStats :one
+-- name: ParticipantInvoiceStats :one
 SELECT
   COUNT(*) AS invoice_count,
   CAST(COALESCE(SUM(i.total), 0) AS REAL) AS total_invoiced,
   CAST(COALESCE((
     SELECT SUM(p.amount) FROM payments p
     JOIN invoices iv ON p.invoice_id = iv.id
-    WHERE iv.client_id = sqlc.arg(client_id)
+    WHERE iv.tenant_id = sqlc.arg(tenant_id) AND iv.participant_id = sqlc.arg(participant_id)
   ), 0) AS REAL) AS total_paid
 FROM invoices i
-WHERE i.client_id = sqlc.arg(client_id);
+WHERE i.tenant_id = sqlc.arg(tenant_id) AND i.participant_id = sqlc.arg(participant_id);

@@ -11,46 +11,50 @@ import (
 )
 
 const createEstimate = `-- name: CreateEstimate :one
-INSERT INTO estimates (uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+INSERT INTO estimates (
+    uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until,
+    subtotal, tax, total, notes, converted_invoice_id,
+    business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type CreateEstimateParams struct {
-	Uuid             string          `json:"uuid"`
-	EstimateNumber   string          `json:"estimate_number"`
-	ClientID         sql.NullInt64   `json:"client_id"`
-	Date             string          `json:"date"`
-	ValidUntil       string          `json:"valid_until"`
-	Subtotal         sql.NullFloat64 `json:"subtotal"`
-	TaxRate          sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID        sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount        sql.NullFloat64 `json:"tax_amount"`
-	Total            sql.NullFloat64 `json:"total"`
-	Notes            sql.NullString  `json:"notes"`
-	Status           sql.NullString  `json:"status"`
-	CurrencyCode     sql.NullString  `json:"currency_code"`
-	BusinessSnapshot sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot   sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot    sql.NullString  `json:"payer_snapshot"`
-	CreatedAt        string          `json:"created_at"`
-	UpdatedAt        string          `json:"updated_at"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	Number             string         `json:"number"`
+	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
+	Status             string         `json:"status"`
+	IssueDate          string         `json:"issue_date"`
+	ValidUntil         string         `json:"valid_until"`
+	Subtotal           float64        `json:"subtotal"`
+	Tax                float64        `json:"tax"`
+	Total              float64        `json:"total"`
+	Notes              sql.NullString `json:"notes"`
+	ConvertedInvoiceID sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot   sql.NullString `json:"business_snapshot"`
+	ClientSnapshot     sql.NullString `json:"client_snapshot"`
+	PayerSnapshot      sql.NullString `json:"payer_snapshot"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
 }
 
 func (q *Queries) CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error) {
 	row := q.db.QueryRowContext(ctx, createEstimate,
 		arg.Uuid,
-		arg.EstimateNumber,
-		arg.ClientID,
-		arg.Date,
+		arg.TenantID,
+		arg.Number,
+		arg.ParticipantID,
+		arg.PlanManagerID,
+		arg.Status,
+		arg.IssueDate,
 		arg.ValidUntil,
 		arg.Subtotal,
-		arg.TaxRate,
-		arg.TaxRateID,
-		arg.TaxAmount,
+		arg.Tax,
 		arg.Total,
 		arg.Notes,
-		arg.Status,
-		arg.CurrencyCode,
+		arg.ConvertedInvoiceID,
 		arg.BusinessSnapshot,
 		arg.ClientSnapshot,
 		arg.PayerSnapshot,
@@ -61,18 +65,17 @@ func (q *Queries) CreateEstimate(ctx context.Context, arg CreateEstimateParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
-		&i.EstimateNumber,
-		&i.ClientID,
-		&i.Date,
+		&i.TenantID,
+		&i.Number,
+		&i.ParticipantID,
+		&i.PlanManagerID,
+		&i.Status,
+		&i.IssueDate,
 		&i.ValidUntil,
 		&i.Subtotal,
-		&i.TaxRate,
-		&i.TaxRateID,
-		&i.TaxAmount,
+		&i.Tax,
 		&i.Total,
 		&i.Notes,
-		&i.Status,
-		&i.CurrencyCode,
 		&i.ConvertedInvoiceID,
 		&i.BusinessSnapshot,
 		&i.ClientSnapshot,
@@ -84,174 +87,115 @@ func (q *Queries) CreateEstimate(ctx context.Context, arg CreateEstimateParams) 
 }
 
 const deleteEstimate = `-- name: DeleteEstimate :exec
-DELETE FROM estimates WHERE id = ?
+DELETE FROM estimates WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) DeleteEstimate(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deleteEstimate, id)
+type DeleteEstimateParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) DeleteEstimate(ctx context.Context, arg DeleteEstimateParams) error {
+	_, err := q.db.ExecContext(ctx, deleteEstimate, arg.TenantID, arg.ID)
 	return err
 }
 
 const getEstimate = `-- name: GetEstimate :one
-SELECT e.id, e.uuid, e.estimate_number, e.client_id, e.date, e.valid_until, e.subtotal, e.tax_rate, e.tax_rate_id, e.tax_amount, e.total, e.notes, e.status, e.currency_code, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, c.name AS client_name FROM estimates e LEFT JOIN clients c ON e.client_id = c.id WHERE e.id = ?
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name
+FROM estimates e
+LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = ? AND e.id = ?
 `
 
-type GetEstimateRow struct {
-	ID                 int64           `json:"id"`
-	Uuid               string          `json:"uuid"`
-	EstimateNumber     string          `json:"estimate_number"`
-	ClientID           sql.NullInt64   `json:"client_id"`
-	Date               string          `json:"date"`
-	ValidUntil         string          `json:"valid_until"`
-	Subtotal           sql.NullFloat64 `json:"subtotal"`
-	TaxRate            sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID          sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount          sql.NullFloat64 `json:"tax_amount"`
-	Total              sql.NullFloat64 `json:"total"`
-	Notes              sql.NullString  `json:"notes"`
-	Status             sql.NullString  `json:"status"`
-	CurrencyCode       sql.NullString  `json:"currency_code"`
-	ConvertedInvoiceID sql.NullInt64   `json:"converted_invoice_id"`
-	BusinessSnapshot   sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot     sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot      sql.NullString  `json:"payer_snapshot"`
-	CreatedAt          string          `json:"created_at"`
-	UpdatedAt          string          `json:"updated_at"`
-	ClientName         sql.NullString  `json:"client_name"`
+type GetEstimateParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
 }
 
-func (q *Queries) GetEstimate(ctx context.Context, id int64) (GetEstimateRow, error) {
-	row := q.db.QueryRowContext(ctx, getEstimate, id)
+type GetEstimateRow struct {
+	ID                 int64          `json:"id"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	Number             string         `json:"number"`
+	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
+	Status             string         `json:"status"`
+	IssueDate          string         `json:"issue_date"`
+	ValidUntil         string         `json:"valid_until"`
+	Subtotal           float64        `json:"subtotal"`
+	Tax                float64        `json:"tax"`
+	Total              float64        `json:"total"`
+	Notes              sql.NullString `json:"notes"`
+	ConvertedInvoiceID sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot   sql.NullString `json:"business_snapshot"`
+	ClientSnapshot     sql.NullString `json:"client_snapshot"`
+	PayerSnapshot      sql.NullString `json:"payer_snapshot"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	ParticipantName    sql.NullString `json:"participant_name"`
+}
+
+func (q *Queries) GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEstimateRow, error) {
+	row := q.db.QueryRowContext(ctx, getEstimate, arg.TenantID, arg.ID)
 	var i GetEstimateRow
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
-		&i.EstimateNumber,
-		&i.ClientID,
-		&i.Date,
+		&i.TenantID,
+		&i.Number,
+		&i.ParticipantID,
+		&i.PlanManagerID,
+		&i.Status,
+		&i.IssueDate,
 		&i.ValidUntil,
 		&i.Subtotal,
-		&i.TaxRate,
-		&i.TaxRateID,
-		&i.TaxAmount,
+		&i.Tax,
 		&i.Total,
 		&i.Notes,
-		&i.Status,
-		&i.CurrencyCode,
 		&i.ConvertedInvoiceID,
 		&i.BusinessSnapshot,
 		&i.ClientSnapshot,
 		&i.PayerSnapshot,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ClientName,
+		&i.ParticipantName,
 	)
 	return i, err
 }
 
-const listClientEstimates = `-- name: ListClientEstimates :many
-SELECT e.id, e.uuid, e.estimate_number, e.client_id, e.date, e.valid_until, e.subtotal, e.tax_rate, e.tax_rate_id, e.tax_amount, e.total, e.notes, e.status, e.currency_code, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, c.name AS client_name FROM estimates e LEFT JOIN clients c ON e.client_id = c.id WHERE e.client_id = ? ORDER BY e.created_at DESC
-`
-
-type ListClientEstimatesRow struct {
-	ID                 int64           `json:"id"`
-	Uuid               string          `json:"uuid"`
-	EstimateNumber     string          `json:"estimate_number"`
-	ClientID           sql.NullInt64   `json:"client_id"`
-	Date               string          `json:"date"`
-	ValidUntil         string          `json:"valid_until"`
-	Subtotal           sql.NullFloat64 `json:"subtotal"`
-	TaxRate            sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID          sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount          sql.NullFloat64 `json:"tax_amount"`
-	Total              sql.NullFloat64 `json:"total"`
-	Notes              sql.NullString  `json:"notes"`
-	Status             sql.NullString  `json:"status"`
-	CurrencyCode       sql.NullString  `json:"currency_code"`
-	ConvertedInvoiceID sql.NullInt64   `json:"converted_invoice_id"`
-	BusinessSnapshot   sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot     sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot      sql.NullString  `json:"payer_snapshot"`
-	CreatedAt          string          `json:"created_at"`
-	UpdatedAt          string          `json:"updated_at"`
-	ClientName         sql.NullString  `json:"client_name"`
-}
-
-func (q *Queries) ListClientEstimates(ctx context.Context, clientID sql.NullInt64) ([]ListClientEstimatesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listClientEstimates, clientID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListClientEstimatesRow
-	for rows.Next() {
-		var i ListClientEstimatesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Uuid,
-			&i.EstimateNumber,
-			&i.ClientID,
-			&i.Date,
-			&i.ValidUntil,
-			&i.Subtotal,
-			&i.TaxRate,
-			&i.TaxRateID,
-			&i.TaxAmount,
-			&i.Total,
-			&i.Notes,
-			&i.Status,
-			&i.CurrencyCode,
-			&i.ConvertedInvoiceID,
-			&i.BusinessSnapshot,
-			&i.ClientSnapshot,
-			&i.PayerSnapshot,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ClientName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listEstimates = `-- name: ListEstimates :many
-SELECT e.id, e.uuid, e.estimate_number, e.client_id, e.date, e.valid_until, e.subtotal, e.tax_rate, e.tax_rate_id, e.tax_amount, e.total, e.notes, e.status, e.currency_code, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, c.name AS client_name FROM estimates e LEFT JOIN clients c ON e.client_id = c.id ORDER BY e.created_at DESC
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name
+FROM estimates e
+LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = ?
+ORDER BY e.created_at DESC
 `
 
 type ListEstimatesRow struct {
-	ID                 int64           `json:"id"`
-	Uuid               string          `json:"uuid"`
-	EstimateNumber     string          `json:"estimate_number"`
-	ClientID           sql.NullInt64   `json:"client_id"`
-	Date               string          `json:"date"`
-	ValidUntil         string          `json:"valid_until"`
-	Subtotal           sql.NullFloat64 `json:"subtotal"`
-	TaxRate            sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID          sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount          sql.NullFloat64 `json:"tax_amount"`
-	Total              sql.NullFloat64 `json:"total"`
-	Notes              sql.NullString  `json:"notes"`
-	Status             sql.NullString  `json:"status"`
-	CurrencyCode       sql.NullString  `json:"currency_code"`
-	ConvertedInvoiceID sql.NullInt64   `json:"converted_invoice_id"`
-	BusinessSnapshot   sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot     sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot      sql.NullString  `json:"payer_snapshot"`
-	CreatedAt          string          `json:"created_at"`
-	UpdatedAt          string          `json:"updated_at"`
-	ClientName         sql.NullString  `json:"client_name"`
+	ID                 int64          `json:"id"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	Number             string         `json:"number"`
+	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
+	Status             string         `json:"status"`
+	IssueDate          string         `json:"issue_date"`
+	ValidUntil         string         `json:"valid_until"`
+	Subtotal           float64        `json:"subtotal"`
+	Tax                float64        `json:"tax"`
+	Total              float64        `json:"total"`
+	Notes              sql.NullString `json:"notes"`
+	ConvertedInvoiceID sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot   sql.NullString `json:"business_snapshot"`
+	ClientSnapshot     sql.NullString `json:"client_snapshot"`
+	PayerSnapshot      sql.NullString `json:"payer_snapshot"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	ParticipantName    sql.NullString `json:"participant_name"`
 }
 
-func (q *Queries) ListEstimates(ctx context.Context) ([]ListEstimatesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listEstimates)
+func (q *Queries) ListEstimates(ctx context.Context, tenantID int64) ([]ListEstimatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEstimates, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -262,25 +206,24 @@ func (q *Queries) ListEstimates(ctx context.Context) ([]ListEstimatesRow, error)
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uuid,
-			&i.EstimateNumber,
-			&i.ClientID,
-			&i.Date,
+			&i.TenantID,
+			&i.Number,
+			&i.ParticipantID,
+			&i.PlanManagerID,
+			&i.Status,
+			&i.IssueDate,
 			&i.ValidUntil,
 			&i.Subtotal,
-			&i.TaxRate,
-			&i.TaxRateID,
-			&i.TaxAmount,
+			&i.Tax,
 			&i.Total,
 			&i.Notes,
-			&i.Status,
-			&i.CurrencyCode,
 			&i.ConvertedInvoiceID,
 			&i.BusinessSnapshot,
 			&i.ClientSnapshot,
 			&i.PayerSnapshot,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ClientName,
+			&i.ParticipantName,
 		); err != nil {
 			return nil, err
 		}
@@ -296,35 +239,43 @@ func (q *Queries) ListEstimates(ctx context.Context) ([]ListEstimatesRow, error)
 }
 
 const listEstimatesByStatus = `-- name: ListEstimatesByStatus :many
-SELECT e.id, e.uuid, e.estimate_number, e.client_id, e.date, e.valid_until, e.subtotal, e.tax_rate, e.tax_rate_id, e.tax_amount, e.total, e.notes, e.status, e.currency_code, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, c.name AS client_name FROM estimates e LEFT JOIN clients c ON e.client_id = c.id WHERE e.status = ? ORDER BY e.created_at DESC
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name
+FROM estimates e
+LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = ? AND e.status = ?
+ORDER BY e.created_at DESC
 `
 
-type ListEstimatesByStatusRow struct {
-	ID                 int64           `json:"id"`
-	Uuid               string          `json:"uuid"`
-	EstimateNumber     string          `json:"estimate_number"`
-	ClientID           sql.NullInt64   `json:"client_id"`
-	Date               string          `json:"date"`
-	ValidUntil         string          `json:"valid_until"`
-	Subtotal           sql.NullFloat64 `json:"subtotal"`
-	TaxRate            sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID          sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount          sql.NullFloat64 `json:"tax_amount"`
-	Total              sql.NullFloat64 `json:"total"`
-	Notes              sql.NullString  `json:"notes"`
-	Status             sql.NullString  `json:"status"`
-	CurrencyCode       sql.NullString  `json:"currency_code"`
-	ConvertedInvoiceID sql.NullInt64   `json:"converted_invoice_id"`
-	BusinessSnapshot   sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot     sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot      sql.NullString  `json:"payer_snapshot"`
-	CreatedAt          string          `json:"created_at"`
-	UpdatedAt          string          `json:"updated_at"`
-	ClientName         sql.NullString  `json:"client_name"`
+type ListEstimatesByStatusParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Status   string `json:"status"`
 }
 
-func (q *Queries) ListEstimatesByStatus(ctx context.Context, status sql.NullString) ([]ListEstimatesByStatusRow, error) {
-	rows, err := q.db.QueryContext(ctx, listEstimatesByStatus, status)
+type ListEstimatesByStatusRow struct {
+	ID                 int64          `json:"id"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	Number             string         `json:"number"`
+	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
+	Status             string         `json:"status"`
+	IssueDate          string         `json:"issue_date"`
+	ValidUntil         string         `json:"valid_until"`
+	Subtotal           float64        `json:"subtotal"`
+	Tax                float64        `json:"tax"`
+	Total              float64        `json:"total"`
+	Notes              sql.NullString `json:"notes"`
+	ConvertedInvoiceID sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot   sql.NullString `json:"business_snapshot"`
+	ClientSnapshot     sql.NullString `json:"client_snapshot"`
+	PayerSnapshot      sql.NullString `json:"payer_snapshot"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	ParticipantName    sql.NullString `json:"participant_name"`
+}
+
+func (q *Queries) ListEstimatesByStatus(ctx context.Context, arg ListEstimatesByStatusParams) ([]ListEstimatesByStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEstimatesByStatus, arg.TenantID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -335,25 +286,24 @@ func (q *Queries) ListEstimatesByStatus(ctx context.Context, status sql.NullStri
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uuid,
-			&i.EstimateNumber,
-			&i.ClientID,
-			&i.Date,
+			&i.TenantID,
+			&i.Number,
+			&i.ParticipantID,
+			&i.PlanManagerID,
+			&i.Status,
+			&i.IssueDate,
 			&i.ValidUntil,
 			&i.Subtotal,
-			&i.TaxRate,
-			&i.TaxRateID,
-			&i.TaxAmount,
+			&i.Tax,
 			&i.Total,
 			&i.Notes,
-			&i.Status,
-			&i.CurrencyCode,
 			&i.ConvertedInvoiceID,
 			&i.BusinessSnapshot,
 			&i.ClientSnapshot,
 			&i.PayerSnapshot,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ClientName,
+			&i.ParticipantName,
 		); err != nil {
 			return nil, err
 		}
@@ -368,80 +318,192 @@ func (q *Queries) ListEstimatesByStatus(ctx context.Context, status sql.NullStri
 	return items, nil
 }
 
+const listParticipantEstimates = `-- name: ListParticipantEstimates :many
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name
+FROM estimates e
+LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+WHERE e.tenant_id = ? AND e.participant_id = ?
+ORDER BY e.created_at DESC
+`
+
+type ListParticipantEstimatesParams struct {
+	TenantID      int64         `json:"tenant_id"`
+	ParticipantID sql.NullInt64 `json:"participant_id"`
+}
+
+type ListParticipantEstimatesRow struct {
+	ID                 int64          `json:"id"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	Number             string         `json:"number"`
+	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
+	Status             string         `json:"status"`
+	IssueDate          string         `json:"issue_date"`
+	ValidUntil         string         `json:"valid_until"`
+	Subtotal           float64        `json:"subtotal"`
+	Tax                float64        `json:"tax"`
+	Total              float64        `json:"total"`
+	Notes              sql.NullString `json:"notes"`
+	ConvertedInvoiceID sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot   sql.NullString `json:"business_snapshot"`
+	ClientSnapshot     sql.NullString `json:"client_snapshot"`
+	PayerSnapshot      sql.NullString `json:"payer_snapshot"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	ParticipantName    sql.NullString `json:"participant_name"`
+}
+
+func (q *Queries) ListParticipantEstimates(ctx context.Context, arg ListParticipantEstimatesParams) ([]ListParticipantEstimatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listParticipantEstimates, arg.TenantID, arg.ParticipantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListParticipantEstimatesRow
+	for rows.Next() {
+		var i ListParticipantEstimatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.TenantID,
+			&i.Number,
+			&i.ParticipantID,
+			&i.PlanManagerID,
+			&i.Status,
+			&i.IssueDate,
+			&i.ValidUntil,
+			&i.Subtotal,
+			&i.Tax,
+			&i.Total,
+			&i.Notes,
+			&i.ConvertedInvoiceID,
+			&i.BusinessSnapshot,
+			&i.ClientSnapshot,
+			&i.PayerSnapshot,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ParticipantName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const maxEstimateNumberLike = `-- name: MaxEstimateNumberLike :one
+SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST(?1 AS INTEGER) + 1) AS INTEGER)), 0) AS INTEGER) AS max_seq
+FROM estimates
+WHERE tenant_id = ?2 AND number LIKE ?3
+`
+
+type MaxEstimateNumberLikeParams struct {
+	PrefixLen int64  `json:"prefix_len"`
+	TenantID  int64  `json:"tenant_id"`
+	Pattern   string `json:"pattern"`
+}
+
+// Highest numeric sequence (parsed from the suffix after prefix_len chars),
+// pad-width independent. prefix_len is the length of the non-numeric prefix
+// (e.g. 4 for 'EST-'); the numeric part begins at prefix_len + 1.
+func (q *Queries) MaxEstimateNumberLike(ctx context.Context, arg MaxEstimateNumberLikeParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxEstimateNumberLike, arg.PrefixLen, arg.TenantID, arg.Pattern)
+	var max_seq int64
+	err := row.Scan(&max_seq)
+	return max_seq, err
+}
+
 const setEstimateConverted = `-- name: SetEstimateConverted :exec
-UPDATE estimates SET converted_invoice_id = ?, status = 'converted', updated_at = ? WHERE id = ?
+UPDATE estimates SET converted_invoice_id = ?, status = 'converted', updated_at = ?
+WHERE tenant_id = ? AND id = ?
 `
 
 type SetEstimateConvertedParams struct {
 	ConvertedInvoiceID sql.NullInt64 `json:"converted_invoice_id"`
 	UpdatedAt          string        `json:"updated_at"`
+	TenantID           int64         `json:"tenant_id"`
 	ID                 int64         `json:"id"`
 }
 
 func (q *Queries) SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error {
-	_, err := q.db.ExecContext(ctx, setEstimateConverted, arg.ConvertedInvoiceID, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, setEstimateConverted,
+		arg.ConvertedInvoiceID,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.ID,
+	)
 	return err
 }
 
 const updateEstimate = `-- name: UpdateEstimate :one
-UPDATE estimates SET client_id = ?, date = ?, valid_until = ?, subtotal = ?, tax_rate = ?, tax_rate_id = ?, tax_amount = ?, total = ?, notes = ?, status = ?, currency_code = ?, business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
-WHERE id = ? RETURNING id, uuid, estimate_number, client_id, date, valid_until, subtotal, tax_rate, tax_rate_id, tax_amount, total, notes, status, currency_code, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+UPDATE estimates SET
+    number = ?, participant_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, valid_until = ?,
+    subtotal = ?, tax = ?, total = ?, notes = ?,
+    business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
+WHERE tenant_id = ? AND id = ?
+RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type UpdateEstimateParams struct {
-	ClientID         sql.NullInt64   `json:"client_id"`
-	Date             string          `json:"date"`
-	ValidUntil       string          `json:"valid_until"`
-	Subtotal         sql.NullFloat64 `json:"subtotal"`
-	TaxRate          sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID        sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount        sql.NullFloat64 `json:"tax_amount"`
-	Total            sql.NullFloat64 `json:"total"`
-	Notes            sql.NullString  `json:"notes"`
-	Status           sql.NullString  `json:"status"`
-	CurrencyCode     sql.NullString  `json:"currency_code"`
-	BusinessSnapshot sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot   sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot    sql.NullString  `json:"payer_snapshot"`
-	UpdatedAt        string          `json:"updated_at"`
-	ID               int64           `json:"id"`
+	Number           string         `json:"number"`
+	ParticipantID    sql.NullInt64  `json:"participant_id"`
+	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
+	Status           string         `json:"status"`
+	IssueDate        string         `json:"issue_date"`
+	ValidUntil       string         `json:"valid_until"`
+	Subtotal         float64        `json:"subtotal"`
+	Tax              float64        `json:"tax"`
+	Total            float64        `json:"total"`
+	Notes            sql.NullString `json:"notes"`
+	BusinessSnapshot sql.NullString `json:"business_snapshot"`
+	ClientSnapshot   sql.NullString `json:"client_snapshot"`
+	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
+	UpdatedAt        string         `json:"updated_at"`
+	TenantID         int64          `json:"tenant_id"`
+	ID               int64          `json:"id"`
 }
 
 func (q *Queries) UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error) {
 	row := q.db.QueryRowContext(ctx, updateEstimate,
-		arg.ClientID,
-		arg.Date,
+		arg.Number,
+		arg.ParticipantID,
+		arg.PlanManagerID,
+		arg.Status,
+		arg.IssueDate,
 		arg.ValidUntil,
 		arg.Subtotal,
-		arg.TaxRate,
-		arg.TaxRateID,
-		arg.TaxAmount,
+		arg.Tax,
 		arg.Total,
 		arg.Notes,
-		arg.Status,
-		arg.CurrencyCode,
 		arg.BusinessSnapshot,
 		arg.ClientSnapshot,
 		arg.PayerSnapshot,
 		arg.UpdatedAt,
+		arg.TenantID,
 		arg.ID,
 	)
 	var i Estimate
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
-		&i.EstimateNumber,
-		&i.ClientID,
-		&i.Date,
+		&i.TenantID,
+		&i.Number,
+		&i.ParticipantID,
+		&i.PlanManagerID,
+		&i.Status,
+		&i.IssueDate,
 		&i.ValidUntil,
 		&i.Subtotal,
-		&i.TaxRate,
-		&i.TaxRateID,
-		&i.TaxAmount,
+		&i.Tax,
 		&i.Total,
 		&i.Notes,
-		&i.Status,
-		&i.CurrencyCode,
 		&i.ConvertedInvoiceID,
 		&i.BusinessSnapshot,
 		&i.ClientSnapshot,
@@ -453,16 +515,22 @@ func (q *Queries) UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) 
 }
 
 const updateEstimateStatus = `-- name: UpdateEstimateStatus :exec
-UPDATE estimates SET status = ?, updated_at = ? WHERE id = ?
+UPDATE estimates SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
 `
 
 type UpdateEstimateStatusParams struct {
-	Status    sql.NullString `json:"status"`
-	UpdatedAt string         `json:"updated_at"`
-	ID        int64          `json:"id"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	TenantID  int64  `json:"tenant_id"`
+	ID        int64  `json:"id"`
 }
 
 func (q *Queries) UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateEstimateStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, updateEstimateStatus,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.ID,
+	)
 	return err
 }
