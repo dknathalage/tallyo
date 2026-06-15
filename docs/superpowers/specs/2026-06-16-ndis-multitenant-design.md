@@ -138,6 +138,17 @@ Per NASA rule 5: ≥2 assertions per non-trivial function; validate at the servi
 - **Realtime** (`internal/realtime`): SSE hub keyed by `tenant_id`; `/api/events` only delivers events for the subscriber's tenant.
 - **Audit** (`internal/audit`): every entry stamped with `tenant_id` + `user_id`.
 - **Sweeps** (`main.go` hourly ticker for overdue + recurring): iterate per tenant.
+- **Structured logging** (§8.1): replace all stdlib `log.Printf`/`log.Fatal` with `log/slog`.
+
+### 8.1 Structured logging
+
+Replace the current scattered stdlib `log.Printf` calls (`main.go`, `http/middleware.go`, `http/respond.go`, `http/auth.go`, `http/invoices.go`) with **`log/slog`** (Go 1.26 stdlib, no new dependency).
+
+- **Setup (`main.go`):** one root `slog.Logger` with a **JSON handler** in production, **text handler** for dev; level configurable via `--log-level` flag / `LOG_LEVEL` env (default `info`). Set as `slog.SetDefault`.
+- **Request-scoped logger:** `RequestLogger` middleware generates a `request_id` (e.g. UUID), builds a child logger with `request_id`, and stores it in the request context. After auth resolves the session, enrich the context logger with `tenant_id` and `user_id`. Handlers/services retrieve the logger from context via a helper (`httpapi.LoggerFrom(ctx)`), falling back to default.
+- **Standard fields:** request logs carry `method`, `path`, `status`, `duration_ms`, `request_id`, and (when authenticated) `tenant_id`, `user_id`. Panics (recover middleware) log at `error` with the stack.
+- **Leveling:** `error` for unexpected failures, `warn` for recoverable/expected-but-notable (e.g. failed login), `info` for lifecycle (startup, shutdown, sweep summaries), `debug` for verbose tracing. No secrets/PII (no passwords, tokens, NDIS numbers) in logs.
+- **Multi-tenant payoff:** every log line is filterable by `tenant_id` — essential for SaaS support/debugging.
 
 ## 9. Frontend Changes
 
@@ -156,6 +167,7 @@ Per NASA rule 5: ≥2 assertions per non-trivial function; validate at the servi
 - Per-tenant numbering concurrency test (`-race`).
 - SSE tenant-scoping test (events don't leak across tenants).
 - Catalogue parser test against a sample NDIA XLSX fixture (incl. missing-column rejection).
+- Structured-logging test: request logger attaches `request_id`/`tenant_id`/`user_id`; assert no secrets/PII fields emitted (capture with a `slog` test handler).
 - `svelte-check` 0 errors / 0 warnings.
 
 ## 11. Compliance / Legal Note
