@@ -1,0 +1,102 @@
+version: "3"
+
+vars:
+  BINARY: tallyo
+  PORT: '{{.PORT | default "8080"}}'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # ---- Build ----
+
+  web:
+    desc: Build the SvelteKit SPA (emits web/build, embedded by the Go build)
+    dir: web
+    cmds:
+      - npm install
+      - npm run build
+
+  build:
+    desc: Build the cgo-free single binary (builds the SPA first)
+    deps: [web]
+    cmds:
+      - CGO_ENABLED=0 go build -o {{.BINARY}} .
+
+  build:go:
+    desc: Build the Go binary only (assumes web/build already exists)
+    cmds:
+      - CGO_ENABLED=0 go build -o {{.BINARY}} .
+
+  # ---- Run ----
+
+  run:
+    desc: Run the server (builds the SPA first). Override port with PORT=...
+    deps: [web]
+    cmds:
+      - go run . --port {{.PORT}}
+
+  dev:
+    desc: Frontend dev with hot reload (Vite proxies /api to :8080)
+    dir: web
+    cmds:
+      - npm run dev
+
+  # ---- Quality gate ----
+
+  test:
+    desc: Run Go tests
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Run Go tests with the race detector (full gate)
+    cmds:
+      - go test -race ./...
+
+  vet:
+    desc: go vet
+    cmds:
+      - go vet ./...
+
+  fmt:
+    desc: Format Go sources
+    cmds:
+      - gofmt -w .
+
+  fmt:check:
+    desc: Check Go formatting (fails if any file needs gofmt)
+    cmds:
+      - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+  check:
+    desc: svelte-check (0 errors / 0 warnings)
+    dir: web
+    cmds:
+      - npm run check
+
+  lint:
+    desc: Run the full backend + frontend quality gate
+    cmds:
+      - task: vet
+      - task: fmt:check
+      - task: test:race
+      - task: check
+
+  # ---- Codegen ----
+
+  sqlc:
+    desc: Regenerate internal/db/gen from queries/*.sql
+    cmds:
+      - '"$(go env GOPATH)/bin/sqlc" generate'
+
+  # ---- Housekeeping ----
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f {{.BINARY}}
+      - rm -rf web/build
