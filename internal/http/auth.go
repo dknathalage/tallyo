@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
@@ -49,6 +49,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !found || !auth.VerifyPassword(hash, in.Password) {
 		// Same message for unknown email + bad password (no user enumeration).
+		// Log at warn for security visibility WITHOUT the email/password (PII).
+		LoggerFrom(r.Context()).Warn("failed login attempt")
 		WriteError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -60,7 +62,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.sm.Put(r.Context(), "tenantID", int(tenantID))
 	// Last-login is best-effort: login must not fail if recording it errors.
 	if err := h.users.TouchLastLogin(r.Context(), id); err != nil {
-		log.Printf("Login: touch last login: %v", err)
+		LoggerFrom(r.Context()).Warn("touch last login failed", slog.Any("error", err))
 	}
 	u, err := h.users.GetByID(r.Context(), tenantID, id)
 	if err != nil || u == nil {

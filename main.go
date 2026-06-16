@@ -5,11 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,8 +28,48 @@ var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		slog.Error("fatal", slog.Any("error", err))
+		os.Exit(1)
 	}
+}
+
+// envOr returns the value of env var key, or def when it is unset/empty. Used to
+// let flags default from the environment while remaining overridable on the CLI.
+func envOr(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+// parseLevel maps a textual level (case-insensitive) to slog.Level, defaulting
+// to info for empty or unrecognized input.
+func parseLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+// setupLogger builds the root slog.Logger and installs it as the default. format
+// is "json" (production) or "text" (dev); any other value falls back to json.
+func setupLogger(format, level string) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: parseLevel(level)}
+	var h slog.Handler
+	if strings.EqualFold(strings.TrimSpace(format), "text") {
+		h = slog.NewTextHandler(os.Stderr, opts)
+	} else {
+		h = slog.NewJSONHandler(os.Stderr, opts)
+	}
+	l := slog.New(h)
+	slog.SetDefault(l)
+	return l
 }
 
 // overdueSweepInterval is how often the background sweeper flips due invoices.
@@ -37,7 +78,7 @@ const overdueSweepInterval = 1 * time.Hour
 // runSweeper flips overdue invoices and generates due recurring invoices on each
 // tick until done is closed. It owns its single ticker and stops cleanly, so it
 // never leaks a goroutine.
-func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, done <-chan struct{}) {
+func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, logger *slog.Logger, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -46,14 +87,14 @@ func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, done
 			return
 		case <-ticker.C:
 			if rows, err := inv.MarkOverdue(context.Background()); err != nil {
-				log.Printf("overdue sweep: %v", err)
+				logger.Error("overdue sweep failed", slog.Any("error", err))
 			} else if len(rows) > 0 {
-				log.Printf("overdue sweep: %d invoice(s) flipped", len(rows))
+				logger.Info("overdue sweep", slog.Int("flipped", len(rows)))
 			}
 			if gens, err := rec.GenerateDue(context.Background()); err != nil {
-				log.Printf("recurring sweep: %v", err)
+				logger.Error("recurring sweep failed", slog.Any("error", err))
 			} else if len(gens) > 0 {
-				log.Printf("recurring sweep: %d invoice(s) generated", len(gens))
+				logger.Info("recurring sweep", slog.Int("generated", len(gens)))
 			}
 		}
 	}
@@ -64,12 +105,16 @@ func run() error {
 	dataDir := flag.String("data-dir", "", "data directory for the SQLite database (default: OS app data dir)")
 	secureCookie := flag.Bool("secure-cookie", false, "mark the session cookie Secure (HTTPS only)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	logLevel := flag.String("log-level", envOr("LOG_LEVEL", "info"), "log level: debug|info|warn|error")
+	logFormat := flag.String("log-format", envOr("LOG_FORMAT", "json"), "log format: json (production) | text (dev)")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println(version)
 		return nil
 	}
+
+	logger := setupLogger(*logFormat, *logLevel)
 
 	dir := *dataDir
 	if dir == "" {
@@ -86,7 +131,7 @@ func run() error {
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			log.Printf("close db: %v", cerr)
+			logger.Error("close db failed", slog.Any("error", cerr))
 		}
 	}()
 
@@ -152,22 +197,22 @@ func run() error {
 	// an hourly tick. The done channel stops the goroutine on shutdown so it does
 	// not leak.
 	if rows, err := invoiceSvc.MarkOverdue(context.Background()); err != nil {
-		log.Printf("startup overdue sweep: %v", err)
+		logger.Error("startup overdue sweep failed", slog.Any("error", err))
 	} else {
-		log.Printf("startup overdue sweep: %d invoice(s) flipped", len(rows))
+		logger.Info("startup overdue sweep", slog.Int("flipped", len(rows)))
 	}
 	if gens, err := recurringSvc.GenerateDue(context.Background()); err != nil {
-		log.Printf("startup recurring sweep: %v", err)
+		logger.Error("startup recurring sweep failed", slog.Any("error", err))
 	} else {
-		log.Printf("startup recurring sweep: %d invoice(s) generated", len(gens))
+		logger.Info("startup recurring sweep", slog.Int("generated", len(gens)))
 	}
 	overdueDone := make(chan struct{})
-	go runSweeper(invoiceSvc, recurringSvc, overdueDone)
+	go runSweeper(invoiceSvc, recurringSvc, logger, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("listening on :%d", *port)
+		logger.Info("listening", slog.Int("port", *port))
 		if serveErr := srv.ListenAndServe(); serveErr != nil && serveErr != http.ErrServerClosed {
 			errCh <- serveErr
 			return
@@ -185,7 +230,7 @@ func run() error {
 		}
 		return nil
 	case <-stop:
-		log.Println("shutting down")
+		logger.Info("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {

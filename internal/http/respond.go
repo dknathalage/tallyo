@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -18,13 +18,13 @@ const maxRequestBody = 1 << 20 // 1 MiB
 // cannot change the already-written status, so it is logged.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	if w == nil {
-		log.Printf("httpapi.WriteJSON: nil ResponseWriter")
+		slog.Error("httpapi.WriteJSON: nil ResponseWriter")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("httpapi.WriteJSON: encode: %v", err)
+		slog.Error("httpapi.WriteJSON: encode failed", slog.Any("error", err))
 	}
 }
 

@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -35,7 +35,7 @@ type invoiceRequest struct {
 // optional ?participantId= or ?status= query params.
 func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.svc.MarkOverdue(r.Context()); err != nil {
-		log.Printf("httpapi: overdue sweep on list: %v", err)
+		LoggerFrom(r.Context()).Error("overdue sweep on list failed", slog.Any("error", err))
 	}
 	q := r.URL.Query()
 	if pid := q.Get("participantId"); pid != "" {
