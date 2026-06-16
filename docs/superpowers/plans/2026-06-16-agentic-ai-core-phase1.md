@@ -1109,7 +1109,7 @@ Expected: FAIL.
 
 - [ ] **Step 4: Wire in `main.go`**
 
-Construct `agent.Store`, `llm` client (anthropic when enabled, else nil → handler disabled), `Registry` with invoice tools, `Budget`, `Agent`, `AgentHandler`; set `deps.Agent`. Guard all agent wiring behind `agentCfg.Enabled()`.
+Construct `agent.Store`, `llm` client (anthropic when enabled, else nil → handler disabled), `Registry` with invoice tools, `Budget`, `Agent`, `AgentHandler`; set `deps.Agent`. Guard all agent wiring behind `agentCfg.Enabled()`. **One source of truth for the disabled state:** when `!agentCfg.Enabled()`, leave `deps.Agent` **nil** (so the server route guard `deps.Agent != nil` skips registration entirely) — do not register a non-nil-but-disabled handler. The handler's internal `enabled` flag is belt-and-suspenders for any route that is registered. `ON DELETE` asymmetry to note for the retention/prune logic: `agent_step.checkpoint_id` is `SET NULL` (steps survive as history) while `agent_checkpoint_change.checkpoint_id` is `CASCADE` (changes die with their checkpoint) — don't assume deleting a checkpoint cleans up its steps.
 
 Sweep wiring: `runSweepOnce` (`main.go:88`) and `runSweeper` (`main.go:112`) currently take `(inv, rec, logger, ...)`. Add the agent service as a parameter to **both**, and update **both call sites** — the launch call (`main.go:218`) and the ticker goroutine (`main.go:220`). Inside `runSweepOnce`, per active tenant, also call `agentSvc.SweepExpired(ctx)` as a system action (NULL audit user — already supported). When the agent is disabled, pass a nil agent service and skip the call (guard with a nil check) so the sweep still runs the existing overdue/recurring work.
 
