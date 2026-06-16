@@ -54,7 +54,7 @@ Each unit has one purpose, a clear interface, and is testable in isolation.
 | Unit | Purpose | Depends on |
 |---|---|---|
 | `agent.go` | Orchestrator: runs plan phase then execute loop; owns per-message iteration cap. | sdk, registry, store, permission |
-| `tools.go` | Tool registry. Each tool = `{name, description, inputSchema, risk: read\|risky, render: table\|card\|summary, handler}`. Handlers call **services only**. | `internal/service/*` |
+| `tools.go` | Tool registry. Each tool = `{name, description, inputSchema, risk: read\|risky\|meta, render: table\|card\|summary, handler}`. Domain handlers call **services only**; `meta` tools (e.g. `propose_plan`) perform no service call and are neither gated nor audited. | `internal/service/*` |
 | `plan.go` | Plan phase: first turn forced via `tool_choice` to call `propose_plan`; returns ordered steps; persisted + streamed before any execution. | sdk, store |
 | `permission.go` | Risk gate: on a `risky` tool call, block the loop, emit `access_request`, await an allow/deny decision via a channel, then resume. | store, realtime |
 | `checkpoint.go` | Opens an `agent_checkpoint` per execute phase; records each mutation's audit change; performs atomic per-turn revert (inverse changes). | repository, audit, db |
@@ -68,20 +68,64 @@ HTTP handlers live in `internal/http/agent.go` (handlers call the agent service,
 ## 5. Plan → execute flow
 
 1. **Send.** `POST /api/agent/conversations/{id}/messages` with the user text. Auth + tenant
-   from the existing session guard. Budget check first (§9); hard-stop if exceeded.
+   from the existing session guard. Budget pre-check (§9); hard-stop if already exceeded.
+   Budget is **also re-checked between loop iterations** using usage returned on each model
+   response — if the running daily total crosses the ceiling mid-turn, the loop stops cleanly
+   after the current iteration, emits `budget_exceeded`, and commits any checkpoint changes so
+   far (no partial silent overshoot beyond one in-flight model call).
 2. **Plan phase.** Model called with `tool_choice = {type: "tool", name: "propose_plan"}`
-   (forced). `propose_plan` input schema: `{steps: [{tool, summary, risk}]}`. The plan is
-   persisted (`agent_step` rows) and streamed (`plan` event). No mutations yet.
-3. **Execute phase.** Manual loop, bounded by `maxIterations` (default 25 → rule 2):
+   (forced). `propose_plan` is a registered **meta-tool** (§6) — `risk: meta`, no service
+   call, not audited, never gated. Input schema: `{steps: [{tool, summary, risk}]}`. The plan
+   is persisted as `agent_step` rows (`status = planned`) and streamed (`plan` event). No
+   mutations yet.
+
+   **Plan vs. execute steps.** Planned rows are advisory, for display. The execute loop is
+   authoritative: each actual tool call (planned or not — the model may read tools it didn't
+   plan, or deviate after a deny) creates/updates an `agent_step` row keyed by its
+   `tool_use_id`. A planned row is matched to its execution by tool_use_id when the model
+   follows the plan, or left `planned` (unexecuted) when the model deviates. All steps for a
+   turn carry the **assistant `message_id` of that turn's first assistant message** (the plan
+   message); the loop's intermediate model turns are stored as `agent_message` rows but steps
+   belong to the turn, not each intermediate message.
+3. **Execute phase.** A **resumable** manual loop (see §5a), bounded by `maxIterations`
+   (default 25 → rule 2):
    - Open an `agent_checkpoint` for this turn.
    - `read` tool calls run immediately; result streamed (`tool_result` event) and fed back.
-   - First `risky` tool call → pause; emit `access_request` (step id + human summary);
-     block on a Go channel. `POST /api/agent/steps/{id}/decision` (`allow`/`deny`) unblocks.
-     - allow → run service call (audited, SSE), record change under checkpoint, feed result.
+   - A `risky` tool call → the loop **suspends**: persist its state, set the step
+     `status = awaiting`, emit `access_request` (step id + human summary), and **return the
+     HTTP request**. Nothing blocks a goroutine waiting for a human.
+   - `POST /api/agent/steps/{id}/decision` (`allow`/`deny`) **resumes** the loop from
+     persisted state (§5a):
+     - allow → run service call (audited, SSE), record change under checkpoint, feed result,
+       continue the loop.
      - deny → feed an `is_error` tool_result ("user denied"); model adapts or stops.
    - Loop until `stop_reason != tool_use`.
 4. **Finalize.** Stream final assistant text. If the turn mutated, the checkpoint is
-   non-empty and the turn is shown with a **Revert** affordance.
+   committed (non-empty) and the turn is shown with a **Revert** affordance.
+
+## 5a. Resumable loop & gate mechanism
+
+The gate spans two HTTP requests (the message request that proposes a risky step; the
+decision request that answers it). **No in-memory channel block.** Instead:
+
+- **Loop state is persisted, not held in a goroutine.** The model conversation window is
+  reconstructable from stored `agent_message` content blocks (§8), so the loop can stop and
+  resume. The message request runs the loop until it either finishes or hits a risky step;
+  on a risky step it persists `agent_step.status = awaiting` (with the pending `tool_use`
+  block + tool_use_id stored on the step) and returns.
+- **Resume** is driven by the decision request: it loads the conversation, appends the
+  `tool_result` (allow→service result, deny→error), and re-enters the same loop function.
+  The loop function is pure over (stored history → next action), so message-start and
+  resume share one code path.
+- **Streaming during resume**: the decision request opens the agent SSE stream (§12) for the
+  continuation, exactly as the message request does.
+- **Never-answered steps (timeout/cleanup).** An `awaiting` step has a TTL (default 30 min).
+  The existing hourly sweep (extended in `main.go`) reaps expired `awaiting` steps: mark the
+  step `denied (expired)`, mark the turn's `open` checkpoint `committed` (prior allowed
+  changes in the turn stand and remain revertible), emit a `step_expired` event. A user can
+  also explicitly cancel (`Esc`, §11) which denies the awaiting step immediately.
+- **Concurrency**: at most one `awaiting` step per conversation; a decision is idempotent
+  (a second decision for an already-resolved step is a no-op + clear error).
 
 Model config: `claude-opus-4-8`, adaptive thinking (`display: summarized` so progress is
 visible), `effort: high`, streaming (`max_tokens` ~64000). `ANTHROPIC_API_KEY` via env or a
@@ -89,6 +133,8 @@ new flag; if unset, the agent UI shows a disabled banner and the endpoints retur
 "AI not configured" error.
 
 ## 6. Tool surface (v1)
+
+**Meta (control-plane, not gated/audited):** `propose_plan`.
 
 **Read (auto-run):** list/get for participants, invoices, estimates, payments, plan
 managers, support catalogue; cashflow / overdue summaries.
@@ -108,23 +154,36 @@ All tables tenant-scoped (`tenant_id`), all mutations via `audit.WithTx`, list q
 return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 
 - `agent_conversation` — `id, tenant_id, user_id, title, created_at, updated_at, archived_at`.
-- `agent_message` — `id, conversation_id, tenant_id, role (user|assistant|system), content (json), token_usage (json), created_at`.
+- `agent_message` — `id, conversation_id, tenant_id, role (user|assistant), content (json — stores the raw SDK content blocks verbatim, including thinking and compaction blocks, see §8), token_usage (json), created_at`. (No `system` role: the system prompt is the cached prefix built by `context.go`, never a stored message.)
 - `agent_step` — `id, message_id, tenant_id, ordinal, tool_name, summary, risk, status (planned|awaiting|allowed|denied|done|error), result (json), created_at`.
 - `agent_checkpoint` — `id, message_id, tenant_id, status (open|committed|reverted), created_at, reverted_at`.
-- `agent_checkpoint_change` — `id, checkpoint_id, tenant_id, ordinal, entity_type, entity_id, op (create|update), before (json), after (json)`. Mirrors audit change capture; the inverse-apply source for revert.
+- `agent_checkpoint_change` — `id, checkpoint_id, tenant_id, ordinal, entity_type, entity_id, op (create|update), before (json — full prior row snapshot, captured by the tool handler before mutating; null for create), after (json — full new row), entity_version (the entity's updated_at/version at mutation time, for conflict detection)`. The full-row `before` is captured by the checkpoint writer itself, **not** derived from `audit.Changes` (which may store only field-level diffs); audit remains the independent immutable log.
 
 ## 8. Context management
 
-- **Full history** lives in SQLite (UI + revert source of truth).
-- **Model window** is built per turn by `context.go`, NOT a raw replay:
-  - Stable prefix (system prompt + tool definitions) carries `cache_control` (prompt caching).
-  - **Compaction** enabled (beta `compact-2026-01-12`): API summarizes older turns near the
-    threshold. We append `response.content` (including compaction blocks) back each turn —
-    losing them silently drops compaction state.
-  - **Context editing**: clear stale `tool_result` blocks (large read dumps) after they're
-    consumed, so the window stays lean without summarizing structure.
-- Verify cache hits via `usage.cache_read_input_tokens`; keep volatile content after the
-  last cache breakpoint.
+**Source of truth.** `agent_message.content` stores the **raw SDK content blocks verbatim**
+for every turn — user blocks, assistant text/thinking blocks, `tool_use`/`tool_result`
+blocks, and any server-side **compaction blocks**. This is what makes the loop resumable
+(§5a) and what preserves compaction state across turns.
+
+**Building the model window** (`context.go`) — a faithful replay of stored blocks, made lean,
+not a lossy paraphrase:
+
+- **Replay**: map stored `agent_message.content` rows directly to SDK `MessageParam` blocks,
+  in order. Because compaction blocks were stored verbatim, appending them back each turn
+  preserves compaction state (dropping them would silently lose it — the one hard rule).
+- **Compaction** (beta `compact-2026-01-12`, Opus 4.8): the API summarizes older turns near
+  the threshold and returns a compaction block in `response.content`; we persist that block
+  with the assistant message so subsequent turns replay it instead of the raw older history.
+- **Context editing**: large, already-consumed `tool_result` blocks (read dumps) are cleared
+  from the *replayed window* (kept in SQLite for the UI). Keeps the window lean without
+  paraphrasing structure.
+- **Caching**: stable prefix (system prompt + tool definitions) carries `cache_control`;
+  volatile content sits after the last breakpoint. Verify hits via
+  `usage.cache_read_input_tokens`.
+
+So "not a raw replay" means *stale tool dumps are pruned and old turns are compacted* — the
+blocks that remain are replayed verbatim, never reconstructed.
 
 ## 9. Guardrails
 
@@ -144,16 +203,25 @@ return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 ## 10. Revert / versioning
 
 - One `agent_checkpoint` per execute phase (per-turn granularity).
-- Each mutating tool call records an `agent_checkpoint_change` (entity, op, before/after),
-  derived from the same change data `audit.Changes` already captures.
+- Each mutating tool call records an `agent_checkpoint_change` with a **full prior-row
+  snapshot** captured by the tool handler immediately before the mutation (§7) — independent
+  of `audit.Changes`, so revert never depends on audit storing complete prior state.
 - **Revert** (`POST /api/agent/checkpoints/{id}/revert`): in a single tx, apply the inverse
-  of each change in reverse ordinal order — `create→delete`, `update→restore before`,
-  `record payment→remove`. The revert is itself audited and marks the checkpoint `reverted`
-  (so a revert is traceable; re-running the turn is a fresh checkpoint).
+  of each change in reverse ordinal order via the service layer:
+  - `create → delete` the created entity.
+  - `update → restore` the full `before` snapshot.
+  - `record payment →` issue a **compensating reversal/removal** of that payment. This is a
+    deliberate, audited exception to the v1 "no delete tools" rule: revert is a system
+    operation (not an agent tool), and it must be able to undo a recorded payment. Whether
+    that is a hard delete or a reversal entry is decided per-entity to keep invoice balances
+    correct (see open question §14).
+  - The revert is itself audited via `audit.WithTx` and marks the checkpoint `reverted` (so
+    the revert is traceable; re-running the turn produces a fresh checkpoint).
 - UI lists exactly what a revert will undo before the user confirms.
-- Conflict handling: if an entity changed after the checkpoint (edited outside the agent),
-  the revert surfaces the conflict and asks the user to confirm or skip that change rather
-  than blindly overwriting.
+- **Conflict detection**: each change stored `entity_version` (updated_at/version) at mutation
+  time. On revert, compare the entity's current version; if it changed after the checkpoint
+  (edited outside the agent, or by a later agent turn), surface the conflict and let the user
+  confirm-overwrite or skip that specific change rather than blindly clobbering.
 
 ## 11. Frontend (`web/`)
 
@@ -168,10 +236,21 @@ return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
   running agent.
 - svelte-check clean (0/0), Svelte 5 runes, Tailwind 4 (existing conventions).
 
-## 12. Streaming events (over existing realtime hub)
+## 12. Streaming events
 
-`thinking` (summary), `plan`, `step_start`, `tool_result`, `access_request`, `decision`,
-`message_final`, `error`, `budget_exceeded`. SPA refetches/renders into runes as today.
+Two distinct channels — don't conflate them:
+
+- **Existing realtime hub** (`/api/events`): unchanged. Entity-change broadcasts so the SPA
+  refetches lists/cards when the agent's *service calls* mutate domain data (same as any
+  other mutation today).
+- **Dedicated agent stream** (new, per-conversation SSE, e.g. `/api/agent/conversations/{id}/stream`):
+  high-frequency, single-user agent events — token/`thinking` deltas, `plan`, `step_start`,
+  `tool_result`, `access_request`, `step_expired`, `message_final`, `error`,
+  `budget_exceeded`. This is a per-request stream (interruptible via `Esc`, §11), **not** the
+  broadcast hub. The decision/resume request (§5a) attaches to this same stream.
+
+`decision` is **inbound** (`POST .../steps/{id}/decision`), not a streamed event; the
+outbound acknowledgement is `step_start`/`tool_result` for the resumed step.
 
 ## 13. Testing
 
@@ -186,8 +265,12 @@ return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 
 - Compaction/context-editing betas: confirm exact `anthropic-sdk-go` surface during
   implementation; fall back to manual truncation of stale tool_results if a beta is
-  unavailable in the pinned SDK version.
-- Revert of an `update` assumes `before` is fully captured; verify audit change capture
-  includes complete prior row state for every v1 risky tool.
+  unavailable in the pinned SDK version (this is why the window builder treats context
+  editing as a prune of replayed blocks, not an SDK-only feature).
+- **Payment revert mechanism** (§10): decide per-entity whether reverting a recorded payment
+  is a hard delete or a compensating reversal entry, so invoice balances/aggregates stay
+  correct. Resolve before implementing the payment tool's revert path.
 - Interrupt (`Esc`) semantics mid-tool-call: cancel before the next tool starts; a tool
-  already committed stays committed (revert is the undo path).
+  already committed stays committed (revert is the undo path); an `awaiting` step is denied.
+- `maxIterations` (25) vs. long plans with many gated steps: confirm the cap counts model
+  iterations, not gated waits, so a legitimately long plan isn't truncated by the bound.
