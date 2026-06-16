@@ -56,7 +56,7 @@ Each unit has one purpose, a clear interface, and is testable in isolation.
 | `agent.go` | Orchestrator: runs plan phase then execute loop; owns per-message iteration cap. | sdk, registry, store, permission |
 | `tools.go` | Tool registry. Each tool = `{name, description, inputSchema, risk: read\|risky\|meta, render: table\|card\|summary, handler}`. Domain handlers call **services only**; `meta` tools (e.g. `propose_plan`) perform no service call and are neither gated nor audited. | `internal/service/*` |
 | `plan.go` | Plan phase: first turn forced via `tool_choice` to call `propose_plan`; returns ordered steps; persisted + streamed before any execution. | sdk, store |
-| `permission.go` | Risk gate: on a `risky` tool call, block the loop, emit `access_request`, await an allow/deny decision via a channel, then resume. | store, realtime |
+| `permission.go` | Risk gate: on a `risky` tool call, suspend the loop (persist `agent_step.status = awaiting` + pending tool_use), emit `access_request`, and return; a later decision request resumes from persisted state (§5a). No in-memory block. | store, realtime |
 | `checkpoint.go` | Opens an `agent_checkpoint` per execute phase; records each mutation's audit change; performs atomic per-turn revert (inverse changes). | repository, audit, db |
 | `context.go` | Builds the model request: stable cached prefix (system + tools), compaction config, context-editing config; maps stored history → model window. | sdk |
 | `store.go` | sqlc repo over agent tables; tenant-scoped; mutations via `audit.WithTx`. | repository, db |
@@ -153,7 +153,7 @@ fixed value set exists; returns structured JSON + a `render` hint.
 All tables tenant-scoped (`tenant_id`), all mutations via `audit.WithTx`, list queries
 return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 
-- `agent_conversation` — `id, tenant_id, user_id, title, created_at, updated_at, archived_at`.
+- `agent_conversation` — `id, tenant_id, user_id, title, compacted_through_message_id (nullable — boundary the latest compaction block subsumes, see §8), created_at, updated_at, archived_at`.
 - `agent_message` — `id, conversation_id, tenant_id, role (user|assistant), content (json — stores the raw SDK content blocks verbatim, including thinking and compaction blocks, see §8), token_usage (json), created_at`. (No `system` role: the system prompt is the cached prefix built by `context.go`, never a stored message.)
 - `agent_step` — `id, message_id, tenant_id, ordinal, tool_name, summary, risk, status (planned|awaiting|allowed|denied|done|error), result (json), created_at`.
 - `agent_checkpoint` — `id, message_id, tenant_id, status (open|committed|reverted), created_at, reverted_at`.
@@ -173,8 +173,14 @@ not a lossy paraphrase:
   in order. Because compaction blocks were stored verbatim, appending them back each turn
   preserves compaction state (dropping them would silently lose it — the one hard rule).
 - **Compaction** (beta `compact-2026-01-12`, Opus 4.8): the API summarizes older turns near
-  the threshold and returns a compaction block in `response.content`; we persist that block
-  with the assistant message so subsequent turns replay it instead of the raw older history.
+  the threshold and returns a compaction block in `response.content`. We persist that block
+  with the assistant message **and** record the boundary it subsumes in
+  `agent_conversation.compacted_through_message_id`. **Replay rule** (applies equally to a
+  fresh turn and a §5a resume, so the resumable-loop guarantee and compaction stay
+  consistent): replay messages with id `>` `compacted_through_message_id` verbatim, prefixed
+  by the stored compaction block; never replay the raw rows the compaction block already
+  subsumes. A later compaction advances the marker and supersedes the prior block. This is
+  the single boundary that prevents duplicated/stale history on resume.
 - **Context editing**: large, already-consumed `tool_result` blocks (read dumps) are cleared
   from the *replayed window* (kept in SQLite for the UI). Keeps the window lean without
   paraphrasing structure.
