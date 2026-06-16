@@ -6,6 +6,7 @@
 	import { page } from '$app/state';
 	import { session } from '$lib/stores/session.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
+	import { agentChat } from '$lib/stores/agentChat.svelte';
 
 	let { children } = $props();
 
@@ -20,7 +21,39 @@
 	onMount(() => {
 		theme.init();
 		void bootstrap();
+		window.addEventListener('keydown', onGlobalKeydown);
+		return () => window.removeEventListener('keydown', onGlobalKeydown);
 	});
+
+	// Whether the event originated from an editable field — never hijack typing.
+	function isEditableTarget(target: EventTarget | null): boolean {
+		const el = target as HTMLElement | null;
+		if (el === null) return false;
+		const tag = el.tagName;
+		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+	}
+
+	// Authed-only global shortcuts. ⌘↵ send lives in the Composer (not here).
+	function onGlobalKeydown(event: KeyboardEvent): void {
+		if (session.user === null) return;
+		const mod = event.metaKey || event.ctrlKey;
+		const key = event.key.toLowerCase();
+
+		if (mod && key === 'k') {
+			event.preventDefault();
+			agentChat.newConversation();
+			if (!event.shiftKey) void goto('/');
+			return;
+		}
+
+		// Esc — client-side dismiss of a pending prompt / running turn (no backend
+		// interrupt). Don't steal Esc while the user is typing.
+		if (event.key === 'Escape' && !isEditableTarget(event.target)) {
+			if (agentChat.turn.pendingAccess != null || agentChat.status === 'running') {
+				agentChat.disconnect();
+			}
+		}
+	}
 
 	async function bootstrap(): Promise<void> {
 		try {
@@ -40,11 +73,15 @@
 	// Match length of href against path (-1 = no match). Used to pick the most
 	// specific sibling when routes nest, e.g. /settings vs /settings/users.
 	function matchLen(href: string, path: string): number {
+		// The home/assistant route only matches exactly — otherwise it would match
+		// every path (all paths start with '/').
+		if (href === '/') return path === '/' ? href.length : -1;
 		if (path === href || path.startsWith(href + '/')) return href.length;
 		return -1;
 	}
 
 	import type { Icon as IconType } from '@lucide/svelte';
+	import MessageSquare from '@lucide/svelte/icons/message-square';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Users from '@lucide/svelte/icons/users';
 	import BookOpen from '@lucide/svelte/icons/book-open';
@@ -58,6 +95,11 @@
 	// Sidebar shows one entry per group (links to the first child); each page renders
 	// the group's sub-tabs. Routes are unchanged — this is purely a visual grouping.
 	const NAV_GROUPS: NavGroup[] = [
+		{
+			label: 'Assistant',
+			icon: MessageSquare,
+			children: [{ href: '/', label: 'Assistant' }]
+		},
 		{
 			label: 'Invoices',
 			icon: FileText,
