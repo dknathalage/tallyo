@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import type { CustomItem } from '$lib/api/types';
 
 	// New-item form fields.
@@ -10,6 +11,20 @@
 	let newGstFree = $state(true);
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
+	let showCreate = $state(false);
+
+	function resetNew(): void {
+		newName = '';
+		newRate = 0;
+		newUnit = '';
+		newGstFree = true;
+	}
+
+	function openCreate(): void {
+		resetNew();
+		formError = null;
+		showCreate = true;
+	}
 
 	// Client-side search.
 	let search = $state('');
@@ -45,10 +60,8 @@
 				gstFree: newGstFree,
 				metadata: ''
 			});
-			newName = '';
-			newRate = 0;
-			newUnit = '';
-			newGstFree = true;
+			resetNew();
+			showCreate = false;
 			await customItems.load();
 		} catch (err) {
 			formError = err instanceof Error ? err.message : 'Failed to create custom item.';
@@ -132,10 +145,18 @@
 				>
 					Export Excel
 				</a>
+				<button
+					type="button"
+					onclick={openCreate}
+					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+				>
+					New item
+				</button>
 			</div>
 		</div>
 
-		<form class="grid max-w-3xl grid-cols-2 gap-3" onsubmit={createItem}>
+		<Modal bind:open={showCreate} title="New item">
+			<form class="grid grid-cols-2 gap-3" onsubmit={createItem}>
 			<label class="col-span-1">
 				<span class="mb-1 block text-sm font-medium">Name</span>
 				<input
@@ -166,20 +187,27 @@
 				<input type="checkbox" bind:checked={newGstFree} class="h-4 w-4" />
 				<span class="text-sm font-medium">GST-free</span>
 			</label>
-			<div class="col-span-2">
-				<button
-					type="submit"
-					disabled={creating}
-					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-				>
-					{creating ? 'Adding…' : 'Add item'}
-				</button>
-			</div>
-		</form>
-
-		{#if formError}
-			<p class="mt-3 text-sm text-red-600">{formError}</p>
-		{/if}
+				{#if formError}
+					<p class="col-span-2 text-sm text-red-600">{formError}</p>
+				{/if}
+				<div class="col-span-2 flex gap-2">
+					<button
+						type="submit"
+						disabled={creating}
+						class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+					>
+						{creating ? 'Adding…' : 'Add item'}
+					</button>
+					<button
+						type="button"
+						onclick={() => (showCreate = false)}
+						class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+					>
+						Cancel
+					</button>
+				</div>
+			</form>
+		</Modal>
 	</section>
 
 	<section>

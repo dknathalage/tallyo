@@ -34,16 +34,19 @@ tasks:
   # ---- Run ----
 
   run:
-    desc: Run the server (builds the SPA first). Override port with PORT=...
+    desc: Run the server on the LAN (builds the SPA first). Override port with PORT=...
     deps: [web]
     cmds:
+      - 'echo "Reachable on this machine and your local network: http://$(ipconfig getifaddr en0 2>/dev/null || hostname):{{.PORT}}"'
+      # The server binds 0.0.0.0:{{.PORT}}, so it is reachable from other devices on the LAN.
       - go run . --port {{.PORT}}
 
   dev:
-    desc: Frontend dev with hot reload (Vite proxies /api to :8080)
+    desc: Frontend dev with hot reload, exposed on the LAN (Vite proxies /api to :8080)
     dir: web
     cmds:
-      - npm run dev
+      # --host binds 0.0.0.0 so phones/other machines on the LAN can load the dev server.
+      - npm run dev -- --host
 
   # ---- Quality gate ----
 
