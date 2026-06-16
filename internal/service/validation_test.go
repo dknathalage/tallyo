@@ -343,6 +343,67 @@ func TestValidateGstFreeNotDefaultedWhenItemTaxable(t *testing.T) {
 	}
 }
 
+// TestValidateClientGstFreeOverrideIgnoredForSupportItem guards the compliance
+// fix: the catalogue is authoritative for a support item's GST status, so a
+// client that sends gstFree:true on a TAXABLE catalogue item must be ignored —
+// the line ends up taxable AND contributes tax.
+func TestValidateClientGstFreeOverrideIgnoredForSupportItem(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn)
+	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	if _, err := repository.NewTaxRates(conn).Create(tctx(tid), tid, repository.TaxRateInput{
+		Name: "GST", Rate: 0.10, IsDefault: true,
+	}); err != nil {
+		t.Fatalf("seed tax rate: %v", err)
+	}
+	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(1000)})
+	v := NewLineValidator(conn)
+
+	// Client lies: gstFree:true on a taxable catalogue item.
+	line := supportLine("02_022", "2026-01-15", 1, 200)
+	line.GstFree = true
+	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{line})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Items[0].GstFree {
+		t.Fatal("catalogue is authoritative: a taxable item must stay taxable despite client gstFree:true")
+	}
+	if res.Tax != 20 {
+		t.Fatalf("tax = %v, want 20 (the override must NOT zero the tax)", res.Tax)
+	}
+}
+
+// TestValidateSupportItemNegativeRejected exercises the non-negativity checks on
+// the support-item path (the custom-item path is covered separately).
+func TestValidateSupportItemNegativeRejected(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn)
+	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
+	v := NewLineValidator(conn)
+
+	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+		supportLine("01_011", "2026-01-15", -1, -5),
+	})
+	ve, ok := err.(*ValidationError)
+	if !ok {
+		t.Fatalf("want *ValidationError, got %T: %v", err, err)
+	}
+	var sawQty, sawPrice bool
+	for _, fe := range ve.Errors {
+		if fe.Field == "quantity" {
+			sawQty = true
+		}
+		if fe.Field == "unitPrice" {
+			sawPrice = true
+		}
+	}
+	if !sawQty || !sawPrice {
+		t.Fatalf("want negative quantity AND unitPrice errors, got %+v", ve.Errors)
+	}
+}
+
 // --- custom-item path (spec §6) -------------------------------------------
 
 func TestValidateCustomItemSkipsCatalogChecks(t *testing.T) {

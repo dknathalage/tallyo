@@ -246,6 +246,8 @@ func (v *LineValidator) assertPriceCap(ctx context.Context, idx int, versionID i
 		return // quotable item: no fixed cap (spec §6 step 4).
 	}
 	priceCap := *price.PriceCap
+	// Compare at cent granularity (round2 both sides) so float representation
+	// noise can't spuriously fail an at-cap price; the cap is a money value.
 	if round2(line.UnitPrice) > round2(priceCap) {
 		ve.Errors = append(ve.Errors, FieldError{
 			Line:    idx,
@@ -277,8 +279,13 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 
 // snapshotSupportItem pins the resolved version and snapshots the support item's
 // identity onto the line (spec §6 step 2 + step 6). The description is filled
-// from the item name only when the caller left it blank; gst_free is defaulted
-// from the item only when the caller did not explicitly set it true.
+// from the item name only when the caller left it blank.
+//
+// gst_free is set UNCONDITIONALLY from the catalogue item: the NDIS catalogue is
+// authoritative for a support item's GST status (spec §6 step 6). A client must
+// not be able to flip a taxable item to GST-free (or vice versa) by sending its
+// own gstFree, which would corrupt the computed tax. Custom-item lines keep
+// their client-controlled gst_free (they never reach this function).
 func snapshotSupportItem(line *repository.LineItemInput, versionID int64, item *repository.SupportItem) {
 	id := item.ID
 	line.SupportItemID = &id
@@ -288,9 +295,7 @@ func snapshotSupportItem(line *repository.LineItemInput, versionID int64, item *
 	if line.Description == "" {
 		line.Description = item.Name
 	}
-	if !line.GstFree {
-		line.GstFree = item.GstFree
-	}
+	line.GstFree = item.GstFree
 }
 
 // isSupportItemLine reports whether a line is an NDIS support-item line (it
