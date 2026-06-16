@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { payers } from '$lib/stores/payers.svelte';
-	import type { Payer } from '$lib/api/types';
+	import { planManagers } from '$lib/stores/planManagers.svelte';
+	import type { PlanManager } from '$lib/api/types';
 
 	// New-item form fields.
 	let newName = $state('');
@@ -13,10 +13,10 @@
 
 	// Client-side search (generic store has no query support).
 	let search = $state('');
-	const filtered = $derived.by<Payer[]>(() => {
+	const filtered = $derived.by<PlanManager[]>(() => {
 		const q = search.trim().toLowerCase();
-		if (q === '') return payers.items;
-		return payers.items.filter(
+		if (q === '') return planManagers.items;
+		return planManagers.items.filter(
 			(p) =>
 				p.name.toLowerCase().includes(q) ||
 				p.email.toLowerCase().includes(q) ||
@@ -34,16 +34,16 @@
 	let busy = $state(false);
 
 	onMount(() => {
-		payers.ensureSubscribed();
-		void payers.load();
+		planManagers.ensureSubscribed();
+		void planManagers.load();
 	});
 
-	async function createPayer(e: SubmitEvent): Promise<void> {
+	async function createManager(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		formError = null;
 		creating = true;
 		try {
-			await payers.crud.create({
+			await planManagers.crud.create({
 				name: newName,
 				email: newEmail,
 				phone: newPhone,
@@ -54,21 +54,21 @@
 			newEmail = '';
 			newPhone = '';
 			newAddress = '';
-			await payers.load();
+			await planManagers.load();
 		} catch (err) {
-			formError = err instanceof Error ? err.message : 'Failed to create payer.';
+			formError = err instanceof Error ? err.message : 'Failed to create plan manager.';
 		} finally {
 			creating = false;
 		}
 	}
 
-	function startEdit(payer: Payer): void {
+	function startEdit(pm: PlanManager): void {
 		rowError = null;
-		editId = payer.id;
-		editName = payer.name;
-		editEmail = payer.email;
-		editPhone = payer.phone;
-		editAddress = payer.address;
+		editId = pm.id;
+		editName = pm.name;
+		editEmail = pm.email;
+		editPhone = pm.phone;
+		editAddress = pm.address;
 	}
 
 	function cancelEdit(): void {
@@ -76,34 +76,34 @@
 		rowError = null;
 	}
 
-	async function saveEdit(payer: Payer): Promise<void> {
+	async function saveEdit(pm: PlanManager): Promise<void> {
 		rowError = null;
 		busy = true;
 		try {
-			await payers.crud.update(payer.id, {
+			await planManagers.crud.update(pm.id, {
 				name: editName,
 				email: editEmail,
 				phone: editPhone,
 				address: editAddress,
-				metadata: payer.metadata
+				metadata: pm.metadata
 			});
 			editId = null;
-			await payers.load();
+			await planManagers.load();
 		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to update payer.';
+			rowError = err instanceof Error ? err.message : 'Failed to update plan manager.';
 		} finally {
 			busy = false;
 		}
 	}
 
-	async function removePayer(id: number): Promise<void> {
+	async function removeManager(id: number): Promise<void> {
 		rowError = null;
 		busy = true;
 		try {
-			await payers.crud.remove(id);
-			await payers.load();
+			await planManagers.crud.remove(id);
+			await planManagers.load();
 		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to delete payer.';
+			rowError = err instanceof Error ? err.message : 'Failed to delete plan manager.';
 		} finally {
 			busy = false;
 		}
@@ -112,10 +112,12 @@
 
 <div class="space-y-8">
 	<section>
-		<h1 class="mb-1 text-xl font-semibold">Payers</h1>
-		<p class="mb-6 text-sm text-gray-500">Manage the payers billed on invoices.</p>
+		<h1 class="mb-1 text-xl font-semibold">Plan managers</h1>
+		<p class="mb-6 text-sm text-gray-500">
+			NDIS plan-management organisations you invoice on behalf of participants.
+		</p>
 
-		<form class="flex max-w-3xl flex-wrap items-end gap-3" onsubmit={createPayer}>
+		<form class="flex max-w-3xl flex-wrap items-end gap-3" onsubmit={createManager}>
 			<label class="flex-1">
 				<span class="mb-1 block text-sm font-medium">Name</span>
 				<input
@@ -174,11 +176,11 @@
 			/>
 		</label>
 
-		{#if payers.loading}
+		{#if planManagers.loading}
 			<p class="text-sm text-gray-500">Loading…</p>
 		{/if}
-		{#if payers.error}
-			<p class="text-sm text-red-600">{payers.error}</p>
+		{#if planManagers.error}
+			<p class="text-sm text-red-600">{planManagers.error}</p>
 		{/if}
 		{#if rowError}
 			<p class="mb-3 text-sm text-red-600">{rowError}</p>
@@ -196,9 +198,9 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each filtered as payer (payer.id)}
+					{#each filtered as pm (pm.id)}
 						<tr class="border-b border-gray-100 last:border-0">
-							{#if editId === payer.id}
+							{#if editId === pm.id}
 								<td class="px-3 py-2">
 									<input
 										type="text"
@@ -231,28 +233,24 @@
 									<button
 										type="button"
 										disabled={busy}
-										onclick={() => saveEdit(payer)}
+										onclick={() => saveEdit(pm)}
 										class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
 									>
 										Save
 									</button>
-									<button
-										type="button"
-										onclick={cancelEdit}
-										class="text-gray-500 hover:underline"
-									>
+									<button type="button" onclick={cancelEdit} class="text-gray-500 hover:underline">
 										Cancel
 									</button>
 								</td>
 							{:else}
-								<td class="px-3 py-2 font-medium">{payer.name}</td>
-								<td class="px-3 py-2 text-gray-600">{payer.email || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{payer.phone || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{payer.address || '—'}</td>
+								<td class="px-3 py-2 font-medium">{pm.name}</td>
+								<td class="px-3 py-2 text-gray-600">{pm.email || '—'}</td>
+								<td class="px-3 py-2 text-gray-600">{pm.phone || '—'}</td>
+								<td class="px-3 py-2 text-gray-600">{pm.address || '—'}</td>
 								<td class="px-3 py-2 text-right whitespace-nowrap">
 									<button
 										type="button"
-										onclick={() => startEdit(payer)}
+										onclick={() => startEdit(pm)}
 										class="mr-2 text-gray-900 hover:underline"
 									>
 										Edit
@@ -260,7 +258,7 @@
 									<button
 										type="button"
 										disabled={busy}
-										onclick={() => removePayer(payer.id)}
+										onclick={() => removeManager(pm.id)}
 										class="text-red-600 hover:underline disabled:opacity-50"
 									>
 										Delete
@@ -271,7 +269,7 @@
 					{:else}
 						<tr>
 							<td colspan="5" class="px-3 py-6 text-center text-gray-500">
-								No payers found.
+								No plan managers found.
 							</td>
 						</tr>
 					{/each}

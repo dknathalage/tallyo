@@ -7,6 +7,7 @@
 
 	let token = $state('');
 	let invite = $state<InviteInfo | null>(null);
+	let name = $state('');
 	let password = $state('');
 	let error = $state<string | null>(null);
 	let loading = $state(true);
@@ -42,7 +43,7 @@
 		error = null;
 		submitting = true;
 		try {
-			await apiPost(`/api/invites/${encodeURIComponent(token)}/accept`, { password });
+			await apiPost(`/api/invites/${encodeURIComponent(token)}/accept`, { name, password });
 			await goto('/login');
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to accept invite.';
@@ -63,6 +64,16 @@
 			({invite.role}).
 		</p>
 		<form class="space-y-4" onsubmit={submit}>
+			<label class="block">
+				<span class="mb-1 block text-sm font-medium">Your name</span>
+				<input
+					type="text"
+					bind:value={name}
+					required
+					autocomplete="name"
+					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+				/>
+			</label>
 			<label class="block">
 				<span class="mb-1 block text-sm font-medium">Password</span>
 				<input

@@ -1,28 +1,22 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { catalog } from '$lib/stores/catalog.svelte';
-	import type { CatalogItem } from '$lib/api/types';
+	import { customItems } from '$lib/stores/customItems.svelte';
+	import type { CustomItem } from '$lib/api/types';
 
 	// New-item form fields.
 	let newName = $state('');
 	let newRate = $state(0);
 	let newUnit = $state('');
-	let newCategory = $state('');
-	let newSku = $state('');
+	let newGstFree = $state(true);
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
 
-	// Client-side search (generic store has no query support).
+	// Client-side search.
 	let search = $state('');
-	const filtered = $derived.by<CatalogItem[]>(() => {
+	const filtered = $derived.by<CustomItem[]>(() => {
 		const q = search.trim().toLowerCase();
-		if (q === '') return catalog.items;
-		return catalog.items.filter(
-			(c) =>
-				c.name.toLowerCase().includes(q) ||
-				c.sku.toLowerCase().includes(q) ||
-				c.category.toLowerCase().includes(q)
-		);
+		if (q === '') return customItems.items;
+		return customItems.items.filter((c) => c.name.toLowerCase().includes(q));
 	});
 
 	// Inline edit state.
@@ -30,14 +24,13 @@
 	let editName = $state('');
 	let editRate = $state(0);
 	let editUnit = $state('');
-	let editCategory = $state('');
-	let editSku = $state('');
+	let editGstFree = $state(true);
 	let rowError = $state<string | null>(null);
 	let busy = $state(false);
 
 	onMount(() => {
-		catalog.ensureSubscribed();
-		void catalog.load();
+		customItems.ensureSubscribed();
+		void customItems.load();
 	});
 
 	async function createItem(e: SubmitEvent): Promise<void> {
@@ -45,35 +38,32 @@
 		formError = null;
 		creating = true;
 		try {
-			await catalog.crud.create({
+			await customItems.crud.create({
 				name: newName,
-				rate: newRate,
+				rate: Number(newRate),
 				unit: newUnit,
-				category: newCategory,
-				sku: newSku,
+				gstFree: newGstFree,
 				metadata: ''
 			});
 			newName = '';
 			newRate = 0;
 			newUnit = '';
-			newCategory = '';
-			newSku = '';
-			await catalog.load();
+			newGstFree = true;
+			await customItems.load();
 		} catch (err) {
-			formError = err instanceof Error ? err.message : 'Failed to create catalog item.';
+			formError = err instanceof Error ? err.message : 'Failed to create custom item.';
 		} finally {
 			creating = false;
 		}
 	}
 
-	function startEdit(item: CatalogItem): void {
+	function startEdit(item: CustomItem): void {
 		rowError = null;
 		editId = item.id;
 		editName = item.name;
 		editRate = item.rate;
 		editUnit = item.unit;
-		editCategory = item.category;
-		editSku = item.sku;
+		editGstFree = item.gstFree;
 	}
 
 	function cancelEdit(): void {
@@ -81,22 +71,21 @@
 		rowError = null;
 	}
 
-	async function saveEdit(item: CatalogItem): Promise<void> {
+	async function saveEdit(item: CustomItem): Promise<void> {
 		rowError = null;
 		busy = true;
 		try {
-			await catalog.crud.update(item.id, {
+			await customItems.crud.update(item.id, {
 				name: editName,
-				rate: editRate,
+				rate: Number(editRate),
 				unit: editUnit,
-				category: editCategory,
-				sku: editSku,
+				gstFree: editGstFree,
 				metadata: item.metadata
 			});
 			editId = null;
-			await catalog.load();
+			await customItems.load();
 		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to update catalog item.';
+			rowError = err instanceof Error ? err.message : 'Failed to update custom item.';
 		} finally {
 			busy = false;
 		}
@@ -106,10 +95,10 @@
 		rowError = null;
 		busy = true;
 		try {
-			await catalog.crud.remove(id);
-			await catalog.load();
+			await customItems.crud.remove(id);
+			await customItems.load();
 		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to delete catalog item.';
+			rowError = err instanceof Error ? err.message : 'Failed to delete custom item.';
 		} finally {
 			busy = false;
 		}
@@ -120,8 +109,11 @@
 	<section>
 		<div class="mb-6 flex items-start justify-between">
 			<div>
-				<h1 class="mb-1 text-xl font-semibold">Catalog</h1>
-				<p class="text-sm text-gray-500">Manage catalog items used as invoice line items.</p>
+				<h1 class="mb-1 text-xl font-semibold">Custom items</h1>
+				<p class="text-sm text-gray-500">
+					Your own non-NDIS line items (e.g. travel, gap fees). NDIS support items come from the
+					Support catalogue.
+				</p>
 			</div>
 			<div class="flex items-center gap-2">
 				<a
@@ -170,21 +162,9 @@
 					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
-			<label class="col-span-1">
-				<span class="mb-1 block text-sm font-medium">Category</span>
-				<input
-					type="text"
-					bind:value={newCategory}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="col-span-1">
-				<span class="mb-1 block text-sm font-medium">SKU</span>
-				<input
-					type="text"
-					bind:value={newSku}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
+			<label class="col-span-1 flex items-end gap-2">
+				<input type="checkbox" bind:checked={newGstFree} class="h-4 w-4" />
+				<span class="text-sm font-medium">GST-free</span>
 			</label>
 			<div class="col-span-2">
 				<button
@@ -208,16 +188,16 @@
 			<input
 				type="text"
 				bind:value={search}
-				placeholder="Filter by name, SKU, or category"
+				placeholder="Filter by name"
 				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 			/>
 		</label>
 
-		{#if catalog.loading}
+		{#if customItems.loading}
 			<p class="text-sm text-gray-500">Loading…</p>
 		{/if}
-		{#if catalog.error}
-			<p class="text-sm text-red-600">{catalog.error}</p>
+		{#if customItems.error}
+			<p class="text-sm text-red-600">{customItems.error}</p>
 		{/if}
 		{#if rowError}
 			<p class="mb-3 text-sm text-red-600">{rowError}</p>
@@ -230,8 +210,7 @@
 						<th class="px-3 py-2 font-medium">Name</th>
 						<th class="px-3 py-2 font-medium">Rate</th>
 						<th class="px-3 py-2 font-medium">Unit</th>
-						<th class="px-3 py-2 font-medium">Category</th>
-						<th class="px-3 py-2 font-medium">SKU</th>
+						<th class="px-3 py-2 font-medium">GST</th>
 						<th class="px-3 py-2 font-medium text-right">Actions</th>
 					</tr>
 				</thead>
@@ -262,18 +241,10 @@
 									/>
 								</td>
 								<td class="px-3 py-2">
-									<input
-										type="text"
-										bind:value={editCategory}
-										class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-									/>
-								</td>
-								<td class="px-3 py-2">
-									<input
-										type="text"
-										bind:value={editSku}
-										class="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
-									/>
+									<label class="flex items-center gap-1">
+										<input type="checkbox" bind:checked={editGstFree} class="h-4 w-4" />
+										<span class="text-xs">GST-free</span>
+									</label>
 								</td>
 								<td class="px-3 py-2 text-right whitespace-nowrap">
 									<button
@@ -284,20 +255,15 @@
 									>
 										Save
 									</button>
-									<button
-										type="button"
-										onclick={cancelEdit}
-										class="text-gray-500 hover:underline"
-									>
+									<button type="button" onclick={cancelEdit} class="text-gray-500 hover:underline">
 										Cancel
 									</button>
 								</td>
 							{:else}
 								<td class="px-3 py-2 font-medium">{item.name}</td>
-								<td class="px-3 py-2 text-gray-600">{item.rate}</td>
+								<td class="px-3 py-2 text-gray-600">{item.rate.toFixed(2)}</td>
 								<td class="px-3 py-2 text-gray-600">{item.unit || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{item.category || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{item.sku || '—'}</td>
+								<td class="px-3 py-2 text-gray-600">{item.gstFree ? 'GST-free' : 'Taxable'}</td>
 								<td class="px-3 py-2 text-right whitespace-nowrap">
 									<button
 										type="button"
@@ -319,8 +285,8 @@
 						</tr>
 					{:else}
 						<tr>
-							<td colspan="6" class="px-3 py-6 text-center text-gray-500">
-								No catalog items found.
+							<td colspan="5" class="px-3 py-6 text-center text-gray-500">
+								No custom items found.
 							</td>
 						</tr>
 					{/each}

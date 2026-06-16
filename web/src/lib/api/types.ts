@@ -1,15 +1,40 @@
 export type Role = 'owner' | 'admin' | 'member' | string;
 
+export type Zone = 'national' | 'remote' | 'very_remote';
+
+export type MgmtType = 'plan' | 'self' | string;
+
 export interface User {
 	id: number;
 	uuid: string;
+	tenantId: number;
 	email: string;
+	name: string;
 	role: Role;
+	isPlatformAdmin: boolean;
 	lastLoginAt: string | null;
 }
 
-export interface SetupStatus {
-	ownerExists: boolean;
+/** One candidate tenant returned with the 409 tenant-disambiguation login response. */
+export interface EmailTenant {
+	tenantId: number;
+	tenantName: string;
+	tenantUuid: string;
+}
+
+/** 409 body when an email is registered in more than one tenant. */
+export interface TenantRequired {
+	error: string;
+	tenantRequired: true;
+	tenants: EmailTenant[];
+}
+
+export interface SignupInput {
+	businessName: string;
+	name: string;
+	email: string;
+	password: string;
+	zone?: Zone;
 }
 
 export interface InviteInfo {
@@ -22,7 +47,7 @@ export interface InviteCreated {
 	acceptUrl: string;
 }
 
-export interface Payer {
+export interface PlanManager {
 	id: number;
 	uuid: string;
 	name: string;
@@ -34,7 +59,7 @@ export interface Payer {
 	updatedAt: string;
 }
 
-export interface PayerInput {
+export interface PlanManagerInput {
 	name: string;
 	email: string;
 	phone: string;
@@ -58,72 +83,122 @@ export interface TaxRateInput {
 	isDefault: boolean;
 }
 
-export interface Client {
+export interface Participant {
 	id: number;
 	uuid: string;
 	name: string;
+	ndisNumber: string;
+	planStart: string;
+	planEnd: string;
+	mgmtType: MgmtType;
+	planManagerId: number | null;
+	planManagerName: string;
 	email: string;
 	phone: string;
 	address: string;
-	pricingTierId: number | null;
-	pricingTierName: string;
-	metadata: string;
-	payerId: number | null;
-	payerName: string;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface ClientInput {
-	name: string;
-	email: string;
-	phone: string;
-	address: string;
-	pricingTierId: number | null;
-	metadata: string;
-	payerId: number | null;
-}
-
-export interface CatalogItem {
-	id: number;
-	uuid: string;
-	name: string;
-	rate: number;
-	unit: string;
-	category: string;
-	sku: string;
 	metadata: string;
 	createdAt: string;
 	updatedAt: string;
 }
 
-export interface CatalogItemInput {
+export interface ParticipantInput {
+	name: string;
+	ndisNumber: string;
+	planStart: string;
+	planEnd: string;
+	mgmtType: MgmtType;
+	planManagerId: number | null;
+	email: string;
+	phone: string;
+	address: string;
+	metadata: string;
+}
+
+export interface CustomItem {
+	id: number;
+	uuid: string;
 	name: string;
 	rate: number;
 	unit: string;
-	category: string;
-	sku: string;
+	gstFree: boolean;
+	metadata: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CustomItemInput {
+	name: string;
+	rate: number;
+	unit: string;
+	gstFree: boolean;
 	metadata: string;
 }
+
+// ---- Global NDIS Support Catalogue (read-only for tenants) ----
+
+export interface CatalogVersion {
+	id: number;
+	uuid: string;
+	label: string;
+	effectiveFrom: string;
+	effectiveTo: string;
+	sourceFilename: string;
+	createdAt: string;
+}
+
+export interface SupportItem {
+	id: number;
+	uuid: string;
+	catalogVersionId: number;
+	code: string;
+	name: string;
+	unit: string;
+	supportCategory: string;
+	registrationGroup: string;
+	claimType: string;
+	gstFree: boolean;
+	metadata: string;
+}
+
+export interface SupportItemPrice {
+	id: number;
+	supportItemId: number;
+	zone: Zone;
+	priceCap: number | null;
+}
+
+// ---- Invoice + estimate domain ----
 
 export interface LineItem {
 	id: number;
 	uuid: string;
+	supportItemId: number | null;
+	customItemId: number | null;
+	catalogVersionId: number | null;
+	code: string;
 	description: string;
+	serviceDate: string;
+	unit: string;
 	quantity: number;
-	rate: number;
-	amount: number;
-	notes: string;
+	unitPrice: number;
+	gstFree: boolean;
+	lineTotal: number;
 	sortOrder: number;
-	catalogItemId: number | null;
-	rateTierId: number | null;
 }
 
+// LineItemInput is the writable subset of a line item (no id/uuid/lineTotal —
+// the server's DecodeJSON rejects unknown fields, so only these are sent).
 export interface LineItemInput {
+	supportItemId: number | null;
+	customItemId: number | null;
+	catalogVersionId: number | null;
+	code: string;
 	description: string;
+	serviceDate: string;
+	unit: string;
 	quantity: number;
-	rate: number;
-	notes: string;
+	unitPrice: number;
+	gstFree: boolean;
 	sortOrder: number;
 }
 
@@ -132,28 +207,37 @@ export type InvoiceStatus = 'draft' | 'sent' | 'overdue' | 'paid' | string;
 export interface Invoice {
 	id: number;
 	uuid: string;
-	invoiceNumber: string;
-	clientId: number;
-	clientName: string;
-	date: string;
-	dueDate: string;
-	paymentTerms: string;
-	subtotal: number;
-	taxRate: number;
-	taxRateId: number | null;
-	taxAmount: number;
-	total: number;
-	totalPaid: number;
-	balance: number;
-	notes: string;
+	number: string;
+	participantId: number;
+	participantName: string;
+	planManagerId: number | null;
 	status: InvoiceStatus;
-	currencyCode: string;
+	issueDate: string;
+	dueDate: string;
+	subtotal: number;
+	tax: number;
+	total: number;
+	notes: string;
 	businessSnapshot: string;
-	clientSnapshot: string;
-	payerSnapshot: string;
+	participantSnapshot: string;
+	planManagerSnapshot: string;
 	createdAt: string;
 	updatedAt: string;
+	totalPaid: number;
+	balance: number;
 	lineItems: LineItem[];
+}
+
+// The create/update payload: the flat InvoiceInput fields plus line items.
+// tax is server-derived; it is intentionally omitted from the payload.
+export interface InvoiceInput {
+	participantId: number;
+	planManagerId: number | null;
+	status: InvoiceStatus;
+	issueDate: string;
+	dueDate: string;
+	notes: string;
+	lineItems: LineItemInput[];
 }
 
 export interface Payment {
@@ -175,120 +259,70 @@ export interface PaymentInput {
 	notes: string;
 }
 
-export interface InvoiceInput {
-	clientId: number;
-	date: string;
-	dueDate: string;
-	paymentTerms: string;
-	taxRate: number;
-	taxRateId: number | null;
-	notes: string;
-	status: InvoiceStatus;
-	currencyCode: string;
-	lineItems: LineItemInput[];
+export interface ParticipantStats {
+	invoiceCount: number;
+	totalInvoiced: number;
+	totalPaid: number;
 }
 
 export type EstimateStatus = 'draft' | 'accepted' | 'declined' | 'converted' | string;
 
-// EstimateLineItem has the same shape as LineItem.
 export type EstimateLineItem = LineItem;
-
-// EstimateLineItemInput is identical to LineItemInput.
 export type EstimateLineItemInput = LineItemInput;
 
 export interface Estimate {
 	id: number;
 	uuid: string;
-	estimateNumber: string;
-	clientId: number;
-	clientName: string;
-	date: string;
+	number: string;
+	participantId: number | null;
+	participantName: string;
+	planManagerId: number | null;
+	status: EstimateStatus;
+	issueDate: string;
 	validUntil: string;
 	subtotal: number;
-	taxRate: number;
-	taxRateId: number | null;
-	taxAmount: number;
+	tax: number;
 	total: number;
 	notes: string;
-	status: EstimateStatus;
-	currencyCode: string;
 	convertedInvoiceId: number | null;
 	businessSnapshot: string;
-	clientSnapshot: string;
-	payerSnapshot: string;
+	participantSnapshot: string;
+	planManagerSnapshot: string;
 	createdAt: string;
 	updatedAt: string;
 	lineItems: EstimateLineItem[];
 }
 
 export interface EstimateInput {
-	clientId: number;
-	date: string;
-	validUntil: string;
-	taxRate: number;
-	taxRateId: number | null;
-	notes: string;
+	participantId: number;
+	planManagerId: number | null;
 	status: EstimateStatus;
-	currencyCode: string;
+	issueDate: string;
+	validUntil: string;
+	notes: string;
 	lineItems: EstimateLineItemInput[];
-}
-
-export interface ImportSuggestion {
-	fields: Record<string, string>;
-	baseHeader: string;
-	priceCols: { header: string; suggestName: string }[];
-}
-
-export interface ImportParseResult {
-	headers: string[];
-	sample: Record<string, string>[];
-	suggestion: ImportSuggestion;
-}
-
-export interface MappedRow {
-	name: string;
-	sku: string;
-	unit: string;
-	category: string;
-	rate: number;
-	metadata?: Record<string, string>;
-	tierRates?: Record<string, number>;
-}
-
-export interface DiffResult {
-	new: MappedRow[];
-	updated: { existing: unknown; incoming: MappedRow }[];
-	unchangedCount: number;
-	summary: {
-		total: number;
-		new: number;
-		updated: number;
-		unchanged: number;
-		errors: number;
-	};
-}
-
-export interface CommitResult {
-	inserted: number;
-	updated: number;
-	batchId: string;
 }
 
 export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
 
 export interface RecurringLine {
+	supportItemId: number | null;
+	customItemId: number | null;
+	code: string;
 	description: string;
+	unit: string;
 	quantity: number;
-	rate: number;
-	notes: string;
+	unitPrice: number;
+	gstFree: boolean;
 	sortOrder: number;
 }
 
 export interface RecurringTemplate {
 	id: number;
 	uuid: string;
-	clientId: number | null;
-	clientName: string;
+	participantId: number | null;
+	participantName: string;
+	planManagerId: number | null;
 	name: string;
 	frequency: RecurringFrequency;
 	nextDue: string;
@@ -301,7 +335,8 @@ export interface RecurringTemplate {
 }
 
 export interface RecurringInput {
-	clientId: number;
+	participantId: number | null;
+	planManagerId: number | null;
 	name: string;
 	frequency: RecurringFrequency;
 	nextDue: string;
@@ -309,4 +344,11 @@ export interface RecurringInput {
 	taxRate: number;
 	notes: string;
 	isActive: boolean;
+}
+
+/** One field-level validation failure from the 422 response. */
+export interface ValidationDetail {
+	line: number;
+	field: string;
+	message: string;
 }
