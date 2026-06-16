@@ -16,7 +16,7 @@ import (
 // newTestAgent wires a real Store + InvoiceService over the same temp DB, a
 // Registry with list_invoices + propose_plan, a Checkpoint, Events, and the
 // supplied scripted llm. It returns the agent, store, and an authed context.
-func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, context.Context) {
+func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.InvoiceService, context.Context) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "agent.db"))
 	if err != nil {
@@ -36,11 +36,12 @@ func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, context.Cont
 
 	reg := NewRegistry()
 	reg.Register(NewListInvoicesTool(inv))
+	reg.Register(NewCreateInvoiceTool(inv, cp))
 
 	events := NewEvents()
 	cfg := Config{APIKey: "test", MaxIterations: 5}.WithDefaults()
 	ag := NewAgent(cfg, client, store, reg, cp, events)
-	return ag, store, ctx
+	return ag, store, inv, ctx
 }
 
 func toolUseResp(stop, toolName, useID, input string) llm.Response {
@@ -58,7 +59,7 @@ func TestPlanPhase(t *testing.T) {
 		toolUseResp(llm.StopToolUse, "propose_plan", "tu_plan",
 			`{"steps":[{"tool":"list_invoices","summary":"list them","risk":"read"}]}`),
 	)
-	ag, store, ctx := newTestAgent(t, fake)
+	ag, store, _, ctx := newTestAgent(t, fake)
 
 	conv, err := store.CreateConversation(ctx, "Plan test")
 	if err != nil {
@@ -105,7 +106,7 @@ func TestExecuteReads(t *testing.T) {
 		// 3: execute turn 2 — end turn
 		llm.Response{StopReason: llm.StopEndTurn, Content: []llm.Block{{Type: llm.BlockText, Text: "here are your invoices"}}},
 	)
-	ag, store, ctx := newTestAgent(t, fake)
+	ag, store, _, ctx := newTestAgent(t, fake)
 
 	conv, err := store.CreateConversation(ctx, "Execute test")
 	if err != nil {
@@ -204,16 +205,23 @@ func TestExecuteReads(t *testing.T) {
 // an llm.Message the adapter turns into a tool_result block (Task 9 resume).
 func TestLoadHistoryToolResultRoundTrip(t *testing.T) {
 	fake := llm.NewFake()
-	ag, store, ctx := newTestAgent(t, fake)
+	ag, store, _, ctx := newTestAgent(t, fake)
 
 	conv, err := store.CreateConversation(ctx, "history")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
-	ag.feedToolResult(ctx, conv.ID, "tu_abc", Result{JSON: []string{"INV-1"}, Render: "table"}, false)
-	ag.feedToolError(ctx, conv.ID, "tu_err", "boom")
+	if err := ag.feedToolResult(ctx, conv.ID, "tu_abc", Result{JSON: []string{"INV-1"}, Render: "table"}, false); err != nil {
+		t.Fatalf("feedToolResult: %v", err)
+	}
+	if err := ag.feedToolError(ctx, conv.ID, "tu_err", "boom"); err != nil {
+		t.Fatalf("feedToolError: %v", err)
+	}
 
-	hist := ag.loadHistory(ctx, conv.ID)
+	hist, err := ag.loadHistory(ctx, conv.ID)
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
 	var okResult, okErr bool
 	for _, m := range hist {
 		for _, tr := range m.ToolResults {
@@ -231,4 +239,122 @@ func TestLoadHistoryToolResultRoundTrip(t *testing.T) {
 	if !okErr {
 		t.Fatalf("tool error did not round-trip as an is_error tool_result; hist=%+v", hist)
 	}
+}
+
+// TestExecuteRisky proves the suspend path: a risky tool_use stops the loop,
+// persists an awaiting step (with pending_input + checkpoint_id + tool_use_id),
+// publishes an access_request event, and does NOT create the invoice.
+func TestExecuteRisky(t *testing.T) {
+	const riskyInput = `{"participantId":1,"items":[{"description":"x","quantity":1,"unitPrice":10}]}`
+	fake := llm.NewFake(
+		// 1: plan turn
+		toolUseResp(llm.StopToolUse, "propose_plan", "tu_plan",
+			`{"steps":[{"tool":"create_invoice","summary":"make one","risk":"risky"}]}`),
+		// 2: execute turn 1 — a risky tool use (must suspend)
+		toolUseResp(llm.StopToolUse, "create_invoice", "tu_risky", riskyInput),
+	)
+	ag, store, inv, ctx := newTestAgent(t, fake)
+
+	conv, err := store.CreateConversation(ctx, "Risky test")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	ch, unsub := ag.events.Subscribe(conv.ID)
+	defer unsub()
+	var got []Event
+	done := make(chan struct{})
+	go func() {
+		for ev := range ch {
+			got = append(got, ev)
+		}
+		close(done)
+	}()
+
+	if err := ag.Start(ctx, conv.ID, "create an invoice"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	unsub()
+	<-done
+
+	// access_request was published; message_final was not.
+	var sawAccessReq, sawFinal bool
+	for _, ev := range got {
+		switch ev.Type {
+		case "access_request":
+			sawAccessReq = true
+		case "message_final":
+			sawFinal = true
+		}
+	}
+	if !sawAccessReq {
+		t.Fatalf("expected an access_request event; got %+v", got)
+	}
+	if sawFinal {
+		t.Fatalf("did not expect message_final on the suspend path")
+	}
+
+	// The loop suspended: only the plan call + one execute call ran.
+	if len(fake.Requests) != 2 {
+		t.Fatalf("expected 2 model calls (plan + 1 execute), got %d", len(fake.Requests))
+	}
+
+	// An awaiting step exists with the expected fields.
+	steps, err := store.ListSteps(ctx, planMessageID(t, ctx, store, conv.ID))
+	if err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	var awaiting *struct {
+		ToolUseID    string
+		PendingInput string
+		HasCP        bool
+	}
+	for i := range steps {
+		if steps[i].Status == "awaiting" {
+			awaiting = &struct {
+				ToolUseID    string
+				PendingInput string
+				HasCP        bool
+			}{steps[i].ToolUseID, steps[i].PendingInput, steps[i].CheckpointID.Valid}
+			break
+		}
+	}
+	if awaiting == nil {
+		t.Fatalf("no awaiting step persisted; steps=%+v", steps)
+	}
+	if awaiting.ToolUseID != "tu_risky" {
+		t.Fatalf("awaiting tool_use_id = %q, want tu_risky", awaiting.ToolUseID)
+	}
+	if awaiting.PendingInput != riskyInput {
+		t.Fatalf("awaiting pending_input = %q, want %q", awaiting.PendingInput, riskyInput)
+	}
+	if !awaiting.HasCP {
+		t.Fatalf("awaiting step missing checkpoint_id")
+	}
+
+	// No invoice was created.
+	rows, err := inv.List(ctx)
+	if err != nil {
+		t.Fatalf("inv.List: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected 0 invoices (risky tool suspended), got %d", len(rows))
+	}
+}
+
+// planMessageID returns the id of the assistant plan message (the FIRST
+// assistant message in the conversation — the turn's checkpoint/steps anchor).
+func planMessageID(t *testing.T, ctx context.Context, store *Store, convID int64) int64 {
+	t.Helper()
+	msgs, err := store.ListMessages(ctx, convID)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			return msgs[i].ID
+		}
+	}
+	t.Fatalf("no assistant message found")
+	return 0
 }

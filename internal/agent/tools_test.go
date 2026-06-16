@@ -42,6 +42,20 @@ func TestRegistryRejectsDuplicate(t *testing.T) {
 	}
 }
 
+func TestRegistryRejectsSentinelName(t *testing.T) {
+	reg := NewRegistry()
+	if err := reg.register(Tool{
+		Name: "__tool_result__", Risk: RiskRead, Schema: []byte(`{}`), Handler: noopHandler,
+	}); err == nil {
+		t.Fatal("expected error registering reserved sentinel tool name")
+	}
+	if err := reg.register(Tool{
+		Name: "__tool_result_anything", Risk: RiskRead, Schema: []byte(`{}`), Handler: noopHandler,
+	}); err == nil {
+		t.Fatal("expected error registering reserved-prefixed tool name")
+	}
+}
+
 func TestRegistryDefsExcludeMeta(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register(Tool{Name: "r", Risk: RiskRead, Schema: []byte(`{}`), Handler: noopHandler})

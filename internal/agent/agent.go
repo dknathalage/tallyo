@@ -38,6 +38,11 @@ func sqlString(v string) sql.NullString {
 // a real tool_result block keyed by the original tool_use id, with IsError
 // preserved. Task 9's resume reconstructs the model window from exactly this.
 const (
+	// reservedToolNamePrefix namespaces the tool-result sentinel markers below.
+	// The Registry rejects any real tool whose name starts with it so a tool can
+	// never collide with the persisted tool-result encoding.
+	reservedToolNamePrefix = "__tool_result"
+
 	toolResultMarker      = "__tool_result__"
 	toolResultErrorMarker = "__tool_result_error__"
 )
@@ -124,7 +129,15 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 	for i := 0; i < a.cfg.MaxIterations; i++ { // bounded by MaxIterations
 		// TODO(task10): budget check (skip the turn / suspend when over budget).
 
-		req := buildRequest(a.cfg, a.reg, defaultSystemPrompt, a.loadHistory(ctx, convID), "")
+		history, err := a.loadHistory(ctx, convID)
+		if err != nil {
+			a.events.Publish(convID, Event{Type: "error", Data: "failed to load conversation history"})
+			if cErr := a.commitCheckpoint(ctx, checkpointID); cErr != nil {
+				return fmt.Errorf("execute: %w (commit: %v)", err, cErr)
+			}
+			return fmt.Errorf("execute: %w", err)
+		}
+		req := buildRequest(a.cfg, a.reg, defaultSystemPrompt, history, "")
 		resp, err := a.llm.CreateMessage(ctx, req)
 		if err != nil {
 			return fmt.Errorf("execute: model call: %w", err)
@@ -149,6 +162,12 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 
 		suspended, err := a.runTools(ctx, convID, messageID, checkpointID, resp)
 		if err != nil {
+			// A persistence gap here would corrupt the resume window: stop the
+			// turn rather than continue the loop with incomplete history.
+			a.events.Publish(convID, Event{Type: "error", Data: "tool execution persistence failed"})
+			if cErr := a.commitCheckpoint(ctx, checkpointID); cErr != nil {
+				return fmt.Errorf("execute: run tools: %w (commit: %v)", err, cErr)
+			}
 			return fmt.Errorf("execute: run tools: %w", err)
 		}
 		if suspended {
@@ -169,7 +188,12 @@ func (a *Agent) runTools(ctx context.Context, convID, messageID, checkpointID in
 		b := uses[i]
 		tool, ok := a.reg.Get(b.ToolName)
 		if !ok {
-			a.feedToolError(ctx, convID, b.ToolUseID, fmt.Sprintf("unknown tool %q", b.ToolName))
+			if e := a.recordToolStep(ctx, messageID, i, b.ToolName, b.ToolUseID, "", "error"); e != nil {
+				return false, e
+			}
+			if e := a.feedToolError(ctx, convID, b.ToolUseID, fmt.Sprintf("unknown tool %q", b.ToolName)); e != nil {
+				return false, e
+			}
 			continue
 		}
 		if tool.Risk == RiskRisky {
@@ -181,23 +205,38 @@ func (a *Agent) runTools(ctx context.Context, convID, messageID, checkpointID in
 
 		res, err := tool.Handler(withCheckpoint(ctx, checkpointID), b.Input)
 		if err != nil {
-			a.feedToolError(ctx, convID, b.ToolUseID, err.Error())
+			if e := a.recordToolStep(ctx, messageID, i, b.ToolName, b.ToolUseID, string(tool.Risk), "error"); e != nil {
+				return false, e
+			}
+			if e := a.feedToolError(ctx, convID, b.ToolUseID, err.Error()); e != nil {
+				return false, e
+			}
 			continue
 		}
-		if _, e := a.store.CreateStep(ctx, gen.CreateAgentStepParams{
-			MessageID: messageID,
-			Ordinal:   int64(i),
-			ToolName:  b.ToolName,
-			ToolUseID: b.ToolUseID,
-			Summary:   "",
-			Risk:      string(tool.Risk),
-			Status:    "done",
-		}); e != nil {
-			return false, fmt.Errorf("persist step %q: %w", b.ToolName, e)
+		if e := a.recordToolStep(ctx, messageID, i, b.ToolName, b.ToolUseID, string(tool.Risk), "done"); e != nil {
+			return false, e
 		}
-		a.feedToolResult(ctx, convID, b.ToolUseID, res, false)
+		if e := a.feedToolResult(ctx, convID, b.ToolUseID, res, false); e != nil {
+			return false, e
+		}
 	}
 	return false, nil
+}
+
+// recordToolStep persists an executed-tool step row (status "done" | "error").
+func (a *Agent) recordToolStep(ctx context.Context, messageID int64, ordinal int, toolName, toolUseID, risk, status string) error {
+	if _, err := a.store.CreateStep(ctx, gen.CreateAgentStepParams{
+		MessageID: messageID,
+		Ordinal:   int64(ordinal),
+		ToolName:  toolName,
+		ToolUseID: toolUseID,
+		Summary:   "",
+		Risk:      risk,
+		Status:    status,
+	}); err != nil {
+		return fmt.Errorf("persist step %q: %w", toolName, err)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -207,14 +246,15 @@ func (a *Agent) runTools(ctx context.Context, convID, messageID, checkpointID in
 // loadHistory loads the conversation's messages and maps them to []llm.Message
 // for replay. Assistant/user text and tool_use blocks replay verbatim; a
 // persisted tool-result user message (per the convention above) is rebuilt as
-// an llm.Message with ToolResults so the adapter emits a tool_result block.
-func (a *Agent) loadHistory(ctx context.Context, convID int64) []llm.Message {
+// an llm.Message with ToolResults so the adapter emits a tool_result block. A
+// load failure is returned so callers never send an empty/incorrect window.
+func (a *Agent) loadHistory(ctx context.Context, convID int64) ([]llm.Message, error) {
 	if convID <= 0 {
-		return nil
+		return nil, fmt.Errorf("load history: invalid convID %d", convID)
 	}
 	msgs, err := a.store.ListMessages(ctx, convID)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("load history: %w", err)
 	}
 	out := make([]llm.Message, 0, len(msgs))
 	for i := range msgs { // bounded by len(msgs)
@@ -225,7 +265,7 @@ func (a *Agent) loadHistory(ctx context.Context, convID int64) []llm.Message {
 		}
 		out = append(out, llm.Message{Role: llm.Role(m.Role), Content: m.Content})
 	}
-	return out
+	return out, nil
 }
 
 // toToolResult recognises a persisted tool-result block (per the convention)
@@ -246,36 +286,46 @@ func toToolResult(blocks []llm.Block) (llm.ToolResult, bool) {
 }
 
 // feedToolResult persists a successful tool-result user message (per the
-// convention) and publishes a tool_result event.
-func (a *Agent) feedToolResult(ctx context.Context, convID int64, toolUseID string, res Result, isErr bool) {
+// convention) THEN publishes a tool_result event. Persistence happens first so
+// a failure aborts the turn before the event implies success; a missing
+// tool_result in history would corrupt the Task 9 resume window.
+func (a *Agent) feedToolResult(ctx context.Context, convID int64, toolUseID string, res Result, isErr bool) error {
 	content := encodeResultJSON(res.JSON)
-	a.persistToolResult(ctx, convID, toolUseID, content, isErr)
+	if err := a.persistToolResult(ctx, convID, toolUseID, content, isErr); err != nil {
+		return err
+	}
 	a.events.Publish(convID, Event{Type: "tool_result", Data: map[string]any{
 		"toolUseId": toolUseID, "render": res.Render, "result": res.JSON, "isError": isErr,
 	}})
+	return nil
 }
 
-// feedToolError persists an is_error tool-result user message and publishes a
-// tool_result event flagged as an error.
-func (a *Agent) feedToolError(ctx context.Context, convID int64, toolUseID, msg string) {
-	a.persistToolResult(ctx, convID, toolUseID, msg, true)
+// feedToolError persists an is_error tool-result user message THEN publishes a
+// tool_result event flagged as an error. Persistence-first, same rationale as
+// feedToolResult.
+func (a *Agent) feedToolError(ctx context.Context, convID int64, toolUseID, msg string) error {
+	if err := a.persistToolResult(ctx, convID, toolUseID, msg, true); err != nil {
+		return err
+	}
 	a.events.Publish(convID, Event{Type: "tool_result", Data: map[string]any{
 		"toolUseId": toolUseID, "error": msg, "isError": true,
 	}})
+	return nil
 }
 
 // persistToolResult writes the tool-result user message per the convention. A
-// persistence failure is non-fatal to the loop (best-effort), but it is
-// surfaced as an error event so the turn is not silently corrupted.
-func (a *Agent) persistToolResult(ctx context.Context, convID int64, toolUseID, content string, isErr bool) {
+// persistence failure is returned (NOT swallowed) so the caller stops the turn
+// rather than continue the loop with a gap in the persisted history.
+func (a *Agent) persistToolResult(ctx context.Context, convID int64, toolUseID, content string, isErr bool) error {
 	marker := toolResultMarker
 	if isErr {
 		marker = toolResultErrorMarker
 	}
 	block := llm.Block{Type: llm.BlockToolUse, ToolUseID: toolUseID, ToolName: marker, Text: content}
 	if _, err := a.store.CreateMessage(ctx, convID, "user", []llm.Block{block}, "{}"); err != nil {
-		a.events.Publish(convID, Event{Type: "error", Data: "failed to persist tool result"})
+		return fmt.Errorf("persist tool result: %w", err)
 	}
+	return nil
 }
 
 // persistAssistant stores the assistant response (raw blocks + token usage).

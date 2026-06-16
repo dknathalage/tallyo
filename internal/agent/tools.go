@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 )
@@ -54,6 +55,9 @@ func (r *Registry) Register(t Tool) {
 func (r *Registry) register(t Tool) error {
 	if t.Name == "" || t.Handler == nil {
 		return fmt.Errorf("registry: tool needs name and handler")
+	}
+	if strings.HasPrefix(t.Name, reservedToolNamePrefix) {
+		return fmt.Errorf("registry: tool %q uses reserved name prefix %q", t.Name, reservedToolNamePrefix)
 	}
 	if t.Risk != RiskRead && t.Risk != RiskRisky && t.Risk != RiskMeta {
 		return fmt.Errorf("registry: tool %q invalid risk %q", t.Name, t.Risk)
