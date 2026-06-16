@@ -18,7 +18,7 @@ func newPlanManagerSvc(t *testing.T) (*PlanManagerService, *realtime.Hub, int64)
 
 func TestPlanManagerCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID := newPlanManagerSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	pm, err := svc.Create(tctx(tenantID), repository.PlanManagerInput{Name: "Acme"})
@@ -41,7 +41,7 @@ func TestPlanManagerCreateBroadcasts(t *testing.T) {
 
 func TestPlanManagerCreateEmptyNameNoEvent(t *testing.T) {
 	svc, hub, tenantID := newPlanManagerSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if _, err := svc.Create(tctx(tenantID), repository.PlanManagerInput{Name: ""}); err == nil {

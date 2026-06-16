@@ -18,7 +18,7 @@ func newTaxSvc(t *testing.T) (*TaxRateService, *realtime.Hub, int64) {
 
 func TestTaxRateCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID := newTaxSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	tr, err := svc.Create(tctx(tenantID), repository.TaxRateInput{Name: "GST", Rate: 10})
@@ -41,7 +41,7 @@ func TestTaxRateCreateBroadcasts(t *testing.T) {
 
 func TestTaxRateCreateEmptyNameNoEvent(t *testing.T) {
 	svc, hub, tenantID := newTaxSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if _, err := svc.Create(tctx(tenantID), repository.TaxRateInput{Name: ""}); err == nil {

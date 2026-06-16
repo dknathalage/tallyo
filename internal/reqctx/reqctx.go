@@ -19,6 +19,9 @@ type ctxKey int
 const (
 	// tenantKey is the context key under which the tenant id is stored.
 	tenantKey ctxKey = iota
+	// userKey is the context key under which the acting user id is stored. The
+	// audit layer reads it to stamp every mutation with who performed it.
+	userKey
 )
 
 // WithTenant returns a copy of ctx that carries the given tenant id. A non-zero
@@ -32,6 +35,28 @@ func WithTenant(ctx context.Context, tenantID int64) context.Context {
 // ok is false (and the id is 0) when no tenant has been attached.
 func TenantFrom(ctx context.Context) (int64, bool) {
 	v := ctx.Value(tenantKey)
+	if v == nil {
+		return 0, false
+	}
+	id, ok := v.(int64)
+	if !ok {
+		return 0, false
+	}
+	return id, true
+}
+
+// WithUser returns a copy of ctx that carries the acting user's id. The auth
+// middleware attaches it after resolving the session so audited mutations can
+// record who performed them. A zero/absent user id means "no user" (e.g. system
+// sweeps or the pre-auth signup transaction) and is recorded as NULL by audit.
+func WithUser(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, userKey, userID)
+}
+
+// UserFrom returns the acting user id stored in ctx and whether one was present.
+// ok is false (and the id is 0) when no user has been attached.
+func UserFrom(ctx context.Context) (int64, bool) {
+	v := ctx.Value(userKey)
 	if v == nil {
 		return 0, false
 	}

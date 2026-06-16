@@ -20,7 +20,7 @@ func newCustomItemSvc(t *testing.T) (*CustomItemService, *realtime.Hub, int64) {
 
 func TestCustomItemCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID := newCustomItemSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	item, err := svc.Create(tctx(tenantID), repository.CustomItemInput{Name: "Widget", Rate: 5})
@@ -43,7 +43,7 @@ func TestCustomItemCreateBroadcasts(t *testing.T) {
 
 func TestCustomItemCreateEmptyNameNoEvent(t *testing.T) {
 	svc, hub, tenantID := newCustomItemSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if _, err := svc.Create(tctx(tenantID), repository.CustomItemInput{Name: ""}); err == nil {
@@ -66,7 +66,7 @@ func TestCustomItemBulkDeleteBroadcasts(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if err := svc.BulkDelete(ctx, []int64{item.ID}); err != nil {
@@ -143,7 +143,9 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 		{"15_056_0128_1_3", "Assessment Recommendation", "Hour", "CB", "Therapeutic Supports", "Quote", "", "Quote"},
 	})
 
-	ch, unsub := hub.Subscribe()
+	// Catalogue ingest is GLOBAL: it broadcasts with the GlobalTenantID sentinel,
+	// so a subscriber of any arbitrary tenant must receive it.
+	ch, unsub := hub.Subscribe(1)
 	defer unsub()
 
 	summary, err := ingest.IngestXLSX(context.Background(), data, "2025-26 v1.1", "2025-07-01", "catalogue.xlsx")

@@ -102,7 +102,7 @@ func TestRecurringGenerateDue(t *testing.T) {
 	past := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
 	mkTemplate(t, repo, tid, pid, past)
 
-	gen1, err := repo.GenerateDue(ctx)
+	gen1, err := repo.GenerateDueForTenant(ctx, tid)
 	if err != nil {
 		t.Fatalf("GenerateDue: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestRecurringGenerateDue(t *testing.T) {
 		t.Fatalf("GenerateDue produced %d, want 1", len(gen1))
 	}
 	// Idempotent: re-running finds nothing due (next_due advanced into future).
-	gen2, err := repo.GenerateDue(ctx)
+	gen2, err := repo.GenerateDueForTenant(ctx, tid)
 	if err != nil {
 		t.Fatalf("GenerateDue 2: %v", err)
 	}

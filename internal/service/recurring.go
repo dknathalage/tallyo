@@ -43,7 +43,7 @@ func (s *RecurringService) Create(ctx context.Context, in repository.RecurringIn
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "recurring_template", ID: tpl.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "create"})
 	return tpl, nil
 }
 
@@ -58,7 +58,7 @@ func (s *RecurringService) Update(ctx context.Context, id int64, in repository.R
 	if tpl == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "recurring_template", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: id, Action: "update"})
 	return tpl, nil
 }
 
@@ -68,7 +68,7 @@ func (s *RecurringService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "recurring_template", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: id, Action: "delete"})
 	return nil
 }
 
@@ -84,23 +84,35 @@ func (s *RecurringService) GenerateOne(ctx context.Context, id int64) (*reposito
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "recurring_template", ID: id, Action: "generate"})
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: inv.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: id, Action: "generate"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
 	return inv, nil
 }
 
-// GenerateDue generates one invoice per due template across ALL tenants (the
-// sweep path). When any were generated it broadcasts a single sweep event so
-// subscribers resync.
+// GenerateDueForTenant generates one invoice per due template of ONE tenant (the
+// per-tenant sweep path, spec §8). When any were generated it broadcasts a
+// single sweep event SCOPED to that tenant so only its subscribers resync. ctx
+// must carry the tenant (the sweep driver attaches it via reqctx.WithTenant).
 //
-// TODO(J11): per-tenant SSE scoping — the sweep currently broadcasts globally.
-func (s *RecurringService) GenerateDue(ctx context.Context) ([]repository.GeneratedInvoice, error) {
-	gens, err := s.repo.GenerateDue(ctx)
+// Validation-engine note (J10/J11 decision): generated invoices are produced
+// DB-side in the repository (tx-scoped numbering + idempotent next_due advance
+// in one transaction) and do NOT pass through the J10 LineValidator. Routing
+// them through it was DEFERRED because recurring template lines carry no
+// per-line service_date — the validator's version-resolution and plan-window
+// checks are keyed on service_date, so they have nothing to validate against
+// without first defining a service-date policy for generated lines. RISK: a
+// generated line whose template unit_price exceeds the current price cap, or
+// whose participant plan window has lapsed, is NOT blocked at generation time;
+// it surfaces only when the invoice is next edited (which re-validates). This is
+// acceptable for this scope: generated invoices are drafts, reviewed before
+// being sent. Revisit when adding a service-date policy for recurring lines.
+func (s *RecurringService) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]repository.GeneratedInvoice, error) {
+	gens, err := s.repo.GenerateDueForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	if len(gens) > 0 {
-		s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "recurring_sweep"})
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "recurring_sweep"})
 	}
 	return gens, nil
 }

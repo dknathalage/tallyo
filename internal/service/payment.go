@@ -39,8 +39,8 @@ func (s *PaymentService) Create(ctx context.Context, in repository.PaymentInput)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "payment", ID: p.ID, Action: "create"})
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: in.InvoiceID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: p.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: in.InvoiceID, Action: "update"})
 	return p, nil
 }
 
@@ -56,7 +56,7 @@ func (s *PaymentService) Delete(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "payment", ID: id, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: invoiceID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: invoiceID, Action: "update"})
 	return nil
 }

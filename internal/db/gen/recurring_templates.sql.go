@@ -202,14 +202,19 @@ func (q *Queries) ListActiveRecurringTemplates(ctx context.Context, tenantID int
 	return items, nil
 }
 
-const listDueTemplates = `-- name: ListDueTemplates :many
+const listDueTemplatesForTenant = `-- name: ListDueTemplatesForTenant :many
 SELECT id, uuid, tenant_id, participant_id, plan_manager_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at FROM recurring_templates
-WHERE is_active = 1 AND next_due <= ?
+WHERE tenant_id = ? AND is_active = 1 AND next_due <= ?
 ORDER BY next_due
 `
 
-func (q *Queries) ListDueTemplates(ctx context.Context, nextDue string) ([]RecurringTemplate, error) {
-	rows, err := q.db.QueryContext(ctx, listDueTemplates, nextDue)
+type ListDueTemplatesForTenantParams struct {
+	TenantID int64  `json:"tenant_id"`
+	NextDue  string `json:"next_due"`
+}
+
+func (q *Queries) ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemplatesForTenantParams) ([]RecurringTemplate, error) {
+	rows, err := q.db.QueryContext(ctx, listDueTemplatesForTenant, arg.TenantID, arg.NextDue)
 	if err != nil {
 		return nil, err
 	}

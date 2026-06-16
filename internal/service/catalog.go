@@ -49,7 +49,7 @@ func (s *CustomItemService) Create(ctx context.Context, in repository.CustomItem
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "custom_item", ID: item.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: item.ID, Action: "create"})
 	return item, nil
 }
 
@@ -64,7 +64,7 @@ func (s *CustomItemService) Update(ctx context.Context, id int64, in repository.
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "custom_item", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: id, Action: "update"})
 	return item, nil
 }
 
@@ -74,7 +74,7 @@ func (s *CustomItemService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "custom_item", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: id, Action: "delete"})
 	return nil
 }
 
@@ -85,7 +85,7 @@ func (s *CustomItemService) BulkDelete(ctx context.Context, ids []int64) error {
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "custom_item", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: 0, Action: "bulk_delete"})
 	return nil
 }
 
@@ -214,7 +214,10 @@ func (s *CatalogIngestService) IngestXLSX(ctx context.Context, data []byte, labe
 		return nil, err
 	}
 
-	s.hub.Broadcast(realtime.Event{Entity: "catalog_version", ID: res.Version.ID, Action: "ingest"})
+	// The NDIS Support Catalogue is GLOBAL shared reference data (spec §4.3) with
+	// no owning tenant: broadcast with the GlobalTenantID sentinel so the event
+	// reaches every tenant's open SSE stream, not just one tenant's.
+	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "catalog_version", ID: res.Version.ID, Action: "ingest"})
 	return &IngestSummary{
 		VersionID:     res.Version.ID,
 		VersionUUID:   res.Version.UUID,

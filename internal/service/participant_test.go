@@ -18,7 +18,7 @@ func newParticipantSvc(t *testing.T) (*ParticipantService, *realtime.Hub, int64)
 
 func TestParticipantCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID := newParticipantSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	c, err := svc.Create(tctx(tenantID), repository.ParticipantInput{Name: "Acme"})
@@ -41,7 +41,7 @@ func TestParticipantCreateBroadcasts(t *testing.T) {
 
 func TestParticipantCreateEmptyNameNoEvent(t *testing.T) {
 	svc, hub, tenantID := newParticipantSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if _, err := svc.Create(tctx(tenantID), repository.ParticipantInput{Name: ""}); err == nil {
@@ -64,7 +64,7 @@ func TestParticipantBulkDeleteBroadcasts(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if err := svc.BulkDelete(ctx, []int64{c.ID}); err != nil {

@@ -18,9 +18,9 @@ FROM recurring_templates r
 LEFT JOIN participants p ON r.participant_id = p.id AND p.tenant_id = r.tenant_id
 WHERE r.tenant_id = ? AND r.id = ?;
 
--- name: ListDueTemplates :many
+-- name: ListDueTemplatesForTenant :many
 SELECT * FROM recurring_templates
-WHERE is_active = 1 AND next_due <= ?
+WHERE tenant_id = ? AND is_active = 1 AND next_due <= ?
 ORDER BY next_due;
 
 -- name: CreateRecurringTemplate :one

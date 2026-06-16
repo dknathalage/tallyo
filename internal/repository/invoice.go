@@ -11,10 +11,11 @@ package repository
 //     validation engine). This repo only sums line totals → subtotal and
 //     subtotal+tax → total, rounding to the cent at each boundary (spec §6 money
 //     note). It does NOT perform price-cap / plan-window validation (J10).
-//   - Per-tenant document numbering is allocated inline via the tenant-scoped
-//     gen.MaxInvoiceNumberLike query inside the create tx, wrapped in
-//     numbering.WithRetry (the numbering package's schema-specific Config path is
-//     superseded; full per-tenant numbering hardening is J11).
+//   - Per-tenant document numbering: the tenant-scoped gen.MaxInvoiceNumberLike
+//     query (WHERE tenant_id = ?) reads the current max suffix inside the create
+//     tx; numbering.Format builds the next number; numbering.WithRetry wraps the
+//     tx so a UNIQUE(tenant_id, number) collision from a concurrent creator is
+//     retried. This is the single numbering implementation (J11 consolidation).
 
 import (
 	"context"
@@ -242,7 +243,7 @@ func nextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (str
 	if err != nil {
 		return "", fmt.Errorf("next invoice number: %w", err)
 	}
-	return fmt.Sprintf("%s%04d", prefix, max+1), nil
+	return numbering.Format(prefix, max), nil
 }
 
 // createInvoiceParams builds the insert params, applying defaults (draft) and
@@ -514,10 +515,14 @@ func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, ids
 	})
 }
 
-// MarkOverdue flips every 'sent' invoice whose due date has passed to 'overdue',
-// across ALL tenants, auditing each, atomically. Returns the affected invoices.
-// This is the launch/hourly sweep path; per-tenant iteration is J11's concern.
-func (r *InvoicesRepo) MarkOverdue(ctx context.Context) ([]OverdueInvoice, error) {
+// MarkOverdueForTenant flips every 'sent' invoice of one tenant whose due date
+// has passed to 'overdue', auditing each, atomically. Returns the affected
+// invoices. This is the per-tenant sweep path (spec §8): the caller iterates
+// active tenants and skips suspended ones.
+func (r *InvoicesRepo) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]OverdueInvoice, error) {
+	if tenantID == 0 {
+		return nil, errors.New("mark overdue: tenant id required")
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mark overdue: begin: %w", err)
@@ -525,7 +530,7 @@ func (r *InvoicesRepo) MarkOverdue(ctx context.Context) ([]OverdueInvoice, error
 	defer func() { _ = tx.Rollback() }()
 
 	q := gen.New(tx)
-	rows, err := q.SelectOverdueInvoices(ctx)
+	rows, err := q.SelectOverdueInvoicesForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("mark overdue: select: %w", err)
 	}
@@ -541,6 +546,16 @@ func (r *InvoicesRepo) MarkOverdue(ctx context.Context) ([]OverdueInvoice, error
 		return nil, fmt.Errorf("mark overdue: commit: %w", err)
 	}
 	return out, nil
+}
+
+// ActiveTenantIDs returns the ids of tenants whose status is 'active' (suspended
+// tenants are excluded), used by the per-tenant sweeps.
+func (r *InvoicesRepo) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("active tenant ids: %w", err)
+	}
+	return ids, nil
 }
 
 // flipOverdue sets one invoice to overdue and logs the transition.

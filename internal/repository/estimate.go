@@ -173,7 +173,7 @@ func nextEstimateNumber(ctx context.Context, q *gen.Queries, tenantID int64) (st
 	if err != nil {
 		return "", fmt.Errorf("next estimate number: %w", err)
 	}
-	return fmt.Sprintf("%s%04d", prefix, max+1), nil
+	return numbering.Format(prefix, max), nil
 }
 
 // createEstimateParams builds the insert params, applying defaults and totals.

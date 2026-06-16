@@ -40,7 +40,7 @@ func (s *PlanManagerService) Create(ctx context.Context, in repository.PlanManag
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "plan_manager", ID: p.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: p.ID, Action: "create"})
 	return p, nil
 }
 
@@ -55,7 +55,7 @@ func (s *PlanManagerService) Update(ctx context.Context, id int64, in repository
 	if p == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "plan_manager", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: id, Action: "update"})
 	return p, nil
 }
 
@@ -65,7 +65,7 @@ func (s *PlanManagerService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "plan_manager", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: id, Action: "delete"})
 	return nil
 }
 
@@ -76,6 +76,6 @@ func (s *PlanManagerService) BulkDelete(ctx context.Context, ids []int64) error 
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "plan_manager", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: 0, Action: "bulk_delete"})
 	return nil
 }

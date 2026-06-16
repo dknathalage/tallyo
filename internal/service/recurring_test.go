@@ -37,7 +37,7 @@ func seedRecurringInput(participantID int64) repository.RecurringInput {
 
 func TestRecurringCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newRecurringSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
@@ -67,7 +67,7 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	inv, err := svc.GenerateOne(ctx, tpl.ID)

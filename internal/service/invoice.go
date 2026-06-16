@@ -67,7 +67,7 @@ func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput,
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: inv.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
 	return inv, nil
 }
 
@@ -87,7 +87,7 @@ func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.Inv
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "update"})
 	return inv, nil
 }
 
@@ -97,7 +97,7 @@ func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status stri
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "status"})
 	return nil
 }
 
@@ -107,7 +107,7 @@ func (s *InvoiceService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "delete"})
 	return nil
 }
 
@@ -117,7 +117,7 @@ func (s *InvoiceService) BulkDelete(ctx context.Context, ids []int64) error {
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "bulk_delete"})
 	return nil
 }
 
@@ -127,21 +127,27 @@ func (s *InvoiceService) BulkUpdateStatus(ctx context.Context, ids []int64, stat
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "bulk_status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "bulk_status"})
 	return nil
 }
 
-// MarkOverdue flips overdue invoices across ALL tenants (the sweep path) and,
-// when any flipped, broadcasts a sweep event so subscribers resync.
-//
-// TODO(J11): per-tenant SSE scoping — the sweep currently broadcasts globally.
-func (s *InvoiceService) MarkOverdue(ctx context.Context) ([]repository.OverdueInvoice, error) {
-	rows, err := s.repo.MarkOverdue(ctx)
+// ActiveTenantIDs returns the ids of active (non-suspended) tenants. The sweep
+// driver uses it to iterate tenants and skip suspended ones (spec §8).
+func (s *InvoiceService) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+	return s.repo.ActiveTenantIDs(ctx)
+}
+
+// MarkOverdueForTenant flips overdue invoices for ONE tenant (the per-tenant
+// sweep path) and, when any flipped, broadcasts a sweep event scoped to that
+// tenant so only its subscribers resync. ctx must carry the tenant (the sweep
+// driver attaches it via reqctx.WithTenant).
+func (s *InvoiceService) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]repository.OverdueInvoice, error) {
+	rows, err := s.repo.MarkOverdueForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	if len(rows) > 0 {
-		s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "overdue_sweep"})
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "overdue_sweep"})
 	}
 	return rows, nil
 }

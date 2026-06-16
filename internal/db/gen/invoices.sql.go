@@ -440,26 +440,26 @@ func (q *Queries) ParticipantInvoiceStats(ctx context.Context, arg ParticipantIn
 	return i, err
 }
 
-const selectOverdueInvoices = `-- name: SelectOverdueInvoices :many
+const selectOverdueInvoicesForTenant = `-- name: SelectOverdueInvoicesForTenant :many
 SELECT id, tenant_id, number FROM invoices
-WHERE status = 'sent' AND due_date < date('now')
+WHERE tenant_id = ? AND status = 'sent' AND due_date < date('now')
 `
 
-type SelectOverdueInvoicesRow struct {
+type SelectOverdueInvoicesForTenantRow struct {
 	ID       int64  `json:"id"`
 	TenantID int64  `json:"tenant_id"`
 	Number   string `json:"number"`
 }
 
-func (q *Queries) SelectOverdueInvoices(ctx context.Context) ([]SelectOverdueInvoicesRow, error) {
-	rows, err := q.db.QueryContext(ctx, selectOverdueInvoices)
+func (q *Queries) SelectOverdueInvoicesForTenant(ctx context.Context, tenantID int64) ([]SelectOverdueInvoicesForTenantRow, error) {
+	rows, err := q.db.QueryContext(ctx, selectOverdueInvoicesForTenant, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectOverdueInvoicesRow
+	var items []SelectOverdueInvoicesForTenantRow
 	for rows.Next() {
-		var i SelectOverdueInvoicesRow
+		var i SelectOverdueInvoicesForTenantRow
 		if err := rows.Scan(&i.ID, &i.TenantID, &i.Number); err != nil {
 			return nil, err
 		}

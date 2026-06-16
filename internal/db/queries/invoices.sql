@@ -55,9 +55,9 @@ SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST(sqlc.arg(prefix_len) AS INTEGE
 FROM invoices
 WHERE tenant_id = sqlc.arg(tenant_id) AND number LIKE sqlc.arg(pattern);
 
--- name: SelectOverdueInvoices :many
+-- name: SelectOverdueInvoicesForTenant :many
 SELECT id, tenant_id, number FROM invoices
-WHERE status = 'sent' AND due_date < date('now');
+WHERE tenant_id = ? AND status = 'sent' AND due_date < date('now');
 
 -- name: ParticipantInvoiceStats :one
 SELECT

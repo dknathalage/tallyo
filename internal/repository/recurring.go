@@ -389,12 +389,19 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []Line
 	}
 }
 
-// GenerateDue generates one invoice per due template across ALL tenants whose
-// next_due has passed. Idempotent: each generation advances next_due in its own
-// transaction. Returns a non-nil slice. (Per-tenant iteration hardening is J11.)
-func (r *RecurringRepo) GenerateDue(ctx context.Context) ([]GeneratedInvoice, error) {
+// GenerateDueForTenant generates one invoice per due template of ONE tenant
+// whose next_due has passed. Idempotent: each generation advances next_due in
+// its own transaction. Returns a non-nil slice. This is the per-tenant sweep
+// path (spec §8): the caller iterates active tenants and skips suspended ones.
+func (r *RecurringRepo) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]GeneratedInvoice, error) {
+	if tenantID == 0 {
+		return nil, errors.New("generate due: tenant id required")
+	}
 	today := time.Now().UTC().Format("2006-01-02")
-	rows, err := gen.New(r.db).ListDueTemplates(ctx, today)
+	rows, err := gen.New(r.db).ListDueTemplatesForTenant(ctx, gen.ListDueTemplatesForTenantParams{
+		TenantID: tenantID,
+		NextDue:  today,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("generate due: list: %w", err)
 	}

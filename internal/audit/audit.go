@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +26,12 @@ type Entry struct {
 }
 
 // Log writes one audit row. Every DB mutation must call this.
+//
+// Every row is stamped with the acting tenant_id and user_id sourced from ctx
+// (reqctx). Both are nullable: tenant_id is NULL for the GLOBAL NDIS catalogue
+// (spec §4.3 — shared reference data owned by no tenant), and user_id is NULL
+// for system actions (the launch/hourly sweeps) and the pre-auth signup
+// transaction. A real, authenticated mutation carries both.
 func Log(ctx context.Context, db Execer, e Entry) error {
 	if e.EntityType == "" {
 		return fmt.Errorf("audit: empty entity_type")
@@ -40,16 +47,27 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	if e.BatchID != "" {
 		batch = e.BatchID
 	}
+	tenant := nullInt64(reqctx.TenantFrom(ctx))
+	user := nullInt64(reqctx.UserFrom(ctx))
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO audit_log (uuid, entity_type, entity_id, action, changes, context, batch_id, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		uuid.NewString(), e.EntityType, e.EntityID, e.Action, changes, e.Context, batch,
+		`INSERT INTO audit_log (uuid, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uuid.NewString(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context, batch,
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		return fmt.Errorf("audit insert: %w", err)
 	}
 	return nil
+}
+
+// nullInt64 maps a (value, present) pair from reqctx into a SQL argument: the
+// raw id when present and non-zero, otherwise nil (stored as NULL).
+func nullInt64(v int64, ok bool) any {
+	if !ok || v == 0 {
+		return nil
+	}
+	return v
 }
 
 // WithTx runs fn inside a transaction, writes the audit Entry in the SAME tx,

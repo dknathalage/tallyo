@@ -7,6 +7,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
@@ -34,7 +35,7 @@ type invoiceRequest struct {
 // List performs a read-time overdue sweep, then returns invoices filtered by the
 // optional ?participantId= or ?status= query params.
 func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.svc.MarkOverdue(r.Context()); err != nil {
+	if _, err := h.svc.MarkOverdueForTenant(r.Context(), reqctx.MustTenant(r.Context())); err != nil {
 		LoggerFrom(r.Context()).Error("overdue sweep on list failed", slog.Any("error", err))
 	}
 	q := r.URL.Query()

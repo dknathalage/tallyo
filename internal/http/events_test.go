@@ -11,12 +11,25 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
+
+// testTenant is the tenant the SSE test streams subscribe under (the real
+// handler reads it from reqctx, attached upstream by RequireAuth).
+const testTenant int64 = 1
+
+// withTenant injects a tenant into the request context, standing in for the
+// RequireAuth middleware that runs before Stream in production.
+func withTenant(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(reqctx.WithTenant(r.Context(), testTenant)))
+	})
+}
 
 func TestEventsStreamsBroadcast(t *testing.T) {
 	hub := realtime.NewHub()
 	h := NewEventsHandler(hub)
-	srv := httptest.NewServer(http.HandlerFunc(h.Stream))
+	srv := httptest.NewServer(withTenant(http.HandlerFunc(h.Stream)))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -33,7 +46,7 @@ func TestEventsStreamsBroadcast(t *testing.T) {
 
 	// give the handler a moment to subscribe, then broadcast
 	time.Sleep(50 * time.Millisecond)
-	hub.Broadcast(realtime.Event{Entity: "invoice", ID: 7, Action: "update"})
+	hub.Broadcast(realtime.Event{TenantID: testTenant, Entity: "invoice", ID: 7, Action: "update"})
 
 	// read lines until we see a data: frame containing the event
 	reader := bufio.NewReader(resp.Body)
@@ -58,7 +71,7 @@ func TestEventsStreamsThroughMiddleware(t *testing.T) {
 	hub := realtime.NewHub()
 	h := NewEventsHandler(hub)
 	sm := scs.New()
-	handler := RequestLogger(sm.LoadAndSave(http.HandlerFunc(h.Stream)))
+	handler := RequestLogger(sm.LoadAndSave(withTenant(http.HandlerFunc(h.Stream))))
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
@@ -75,7 +88,7 @@ func TestEventsStreamsThroughMiddleware(t *testing.T) {
 	}
 
 	time.Sleep(50 * time.Millisecond)
-	hub.Broadcast(realtime.Event{Entity: "business_profile", ID: 1, Action: "update"})
+	hub.Broadcast(realtime.Event{TenantID: testTenant, Entity: "business_profile", ID: 1, Action: "update"})
 
 	reader := bufio.NewReader(resp.Body)
 	deadline := time.Now().Add(2 * time.Second)

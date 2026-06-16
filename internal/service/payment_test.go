@@ -35,7 +35,7 @@ func seedInvoice(t *testing.T, invoices *repository.InvoicesRepo, tenantID, part
 func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
 	inv := seedInvoice(t, invoices, tenantID, participantID)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
@@ -73,7 +73,7 @@ func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 func TestPaymentCreateZeroAmountNoEvent(t *testing.T) {
 	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
 	inv := seedInvoice(t, invoices, tenantID, participantID)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if _, err := svc.Create(tctx(tenantID), repository.PaymentInput{
@@ -116,7 +116,7 @@ func TestPaymentDeleteBroadcastsPaymentAndInvoice(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if err := svc.Delete(ctx, p.ID); err != nil {
@@ -146,7 +146,7 @@ func TestPaymentDeleteBroadcastsPaymentAndInvoice(t *testing.T) {
 
 func TestPaymentDeleteMissingReturnsErr(t *testing.T) {
 	svc, hub, _, tenantID, _ := newPaymentSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if err := svc.Delete(tctx(tenantID), 99999); err == nil {

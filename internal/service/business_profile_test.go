@@ -18,7 +18,7 @@ func newSvc(t *testing.T) (*BusinessProfileService, *realtime.Hub, int64) {
 
 func TestSaveBroadcastsAfterCommit(t *testing.T) {
 	svc, hub, tenantID := newSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
@@ -42,7 +42,7 @@ func TestSaveBroadcastsAfterCommit(t *testing.T) {
 
 func TestSaveEmptyNameNoEvent(t *testing.T) {
 	svc, hub, tenantID := newSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	if err := svc.Save(tctx(tenantID), repository.BusinessProfileInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")

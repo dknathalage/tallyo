@@ -69,10 +69,11 @@ type Querier interface {
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
 	ListActiveRecurringTemplates(ctx context.Context, tenantID int64) ([]ListActiveRecurringTemplatesRow, error)
+	ListActiveTenantIDs(ctx context.Context) ([]int64, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListCatalogVersions(ctx context.Context) ([]CatalogVersion, error)
 	ListCustomItems(ctx context.Context, tenantID int64) ([]CustomItem, error)
-	ListDueTemplates(ctx context.Context, nextDue string) ([]RecurringTemplate, error)
+	ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemplatesForTenantParams) ([]RecurringTemplate, error)
 	ListEstimateLineItems(ctx context.Context, arg ListEstimateLineItemsParams) ([]EstimateLineItem, error)
 	ListEstimates(ctx context.Context, tenantID int64) ([]ListEstimatesRow, error)
 	ListEstimatesByStatus(ctx context.Context, arg ListEstimatesByStatusParams) ([]ListEstimatesByStatusRow, error)
@@ -110,7 +111,7 @@ type Querier interface {
 	SearchParticipants(ctx context.Context, arg SearchParticipantsParams) ([]SearchParticipantsRow, error)
 	SearchPlanManagers(ctx context.Context, arg SearchPlanManagersParams) ([]PlanManager, error)
 	SearchSupportItems(ctx context.Context, arg SearchSupportItemsParams) ([]SupportItem, error)
-	SelectOverdueInvoices(ctx context.Context) ([]SelectOverdueInvoicesRow, error)
+	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID int64) ([]SelectOverdueInvoicesForTenantRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error

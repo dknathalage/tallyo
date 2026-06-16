@@ -57,7 +57,7 @@ func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInpu
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: est.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: est.ID, Action: "create"})
 	return est, nil
 }
 
@@ -77,7 +77,7 @@ func (s *EstimateService) Update(ctx context.Context, id int64, in repository.Es
 	if est == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "update"})
 	return est, nil
 }
 
@@ -87,7 +87,7 @@ func (s *EstimateService) UpdateStatus(ctx context.Context, id int64, status str
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: id, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "status"})
 	return nil
 }
 
@@ -97,7 +97,7 @@ func (s *EstimateService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "delete"})
 	return nil
 }
 
@@ -108,7 +108,7 @@ func (s *EstimateService) Duplicate(ctx context.Context, id int64) (*repository.
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: est.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: est.ID, Action: "create"})
 	return est, nil
 }
 
@@ -118,7 +118,7 @@ func (s *EstimateService) BulkDelete(ctx context.Context, ids []int64) error {
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: 0, Action: "bulk_delete"})
 	return nil
 }
 
@@ -128,7 +128,7 @@ func (s *EstimateService) BulkUpdateStatus(ctx context.Context, ids []int64, sta
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: 0, Action: "bulk_status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: 0, Action: "bulk_status"})
 	return nil
 }
 
@@ -144,7 +144,7 @@ func (s *EstimateService) Convert(ctx context.Context, id int64) (*repository.Co
 	if res == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: id, Action: "convert"})
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: res.InvoiceID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "convert"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: res.InvoiceID, Action: "create"})
 	return res, nil
 }

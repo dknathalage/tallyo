@@ -94,8 +94,10 @@ func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth.Te
 				return
 			}
 			// Attach the tenant to the context BEFORE the user re-check so the
-			// tenant-scoped GetByID is filtered to the session's tenant.
+			// tenant-scoped GetByID is filtered to the session's tenant. Attach
+			// the acting user id too so audited mutations record who acted.
 			ctx := reqctx.WithTenant(r.Context(), int64(tenantID))
+			ctx = reqctx.WithUser(ctx, int64(id))
 			// Enrich the request-scoped logger so every line for this request
 			// (including the final request summary) carries tenant_id/user_id.
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {

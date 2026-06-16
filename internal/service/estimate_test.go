@@ -19,7 +19,7 @@ func newEstimateSvc(t *testing.T) (*EstimateService, *realtime.Hub, int64, int64
 
 func TestEstimateCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newEstimateSvc(t)
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
@@ -56,7 +56,7 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	res, err := svc.Convert(ctx, est.ID)
@@ -98,7 +98,7 @@ func TestEstimateDuplicateBroadcasts(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe()
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	dup, err := svc.Duplicate(ctx, est.ID)
