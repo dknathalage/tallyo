@@ -92,6 +92,13 @@ func NewBudget(store *Store, cfg Config, clk clock) *Budget {
 	}
 }
 
+// NewBudgetWallClock constructs a Budget backed by the real wall clock. It is
+// the production entry point (main.go), keeping the unexported clock interface
+// internal while letting callers outside the package build a Budget.
+func NewBudgetWallClock(store *Store, cfg Config) *Budget {
+	return NewBudget(store, cfg, wallClock{})
+}
+
 // today returns the current UTC date in YYYY-MM-DD form for the budget key.
 func (b *Budget) today() string {
 	return b.clock.Now().UTC().Format("2006-01-02")
