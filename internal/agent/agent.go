@@ -66,6 +66,9 @@ type Agent struct {
 	events *Events
 	clock  clock
 	budget *Budget // optional; nil means no cap enforced
+	// restore wires the checkpoint-revert RestoreFunc (e.g. InvoiceRestoreFunc).
+	// Optional; when nil, Revert returns an error rather than guessing a restorer.
+	restore RestoreFunc
 }
 
 // NewAgent constructs an Agent and ensures the propose_plan meta tool is
@@ -409,6 +412,39 @@ func (a *Agent) suspendForApproval(ctx context.Context, convID, messageID, check
 func (a *Agent) WithBudget(b *Budget) *Agent {
 	a.budget = b
 	return a
+}
+
+// WithRestore attaches the RestoreFunc used by Revert to undo a checkpoint's
+// recorded changes (e.g. agent.InvoiceRestoreFunc(invSvc)). Optional; Revert
+// fails loudly when none is set.
+func (a *Agent) WithRestore(r RestoreFunc) *Agent {
+	a.restore = r
+	return a
+}
+
+// Store exposes the agent's persistence layer to the HTTP layer (conversation
+// create/list, message history). It never returns nil for a constructed Agent.
+func (a *Agent) Store() *Store { return a.store }
+
+// Events exposes the per-conversation pub/sub hub so the HTTP layer can stream
+// agent activity over SSE. It never returns nil for a constructed Agent.
+func (a *Agent) Events() *Events { return a.events }
+
+// Revert undoes every change recorded under the checkpoint, returning the
+// conflicts it skipped (rows whose live version no longer matched). It requires
+// a RestoreFunc to have been wired via WithRestore.
+func (a *Agent) Revert(ctx context.Context, checkpointID int64) ([]Conflict, error) {
+	if checkpointID <= 0 {
+		return nil, fmt.Errorf("revert: invalid checkpointID %d", checkpointID)
+	}
+	if a.restore == nil {
+		return nil, fmt.Errorf("revert: no restore func configured")
+	}
+	conflicts, err := a.cp.Revert(ctx, checkpointID, a.restore)
+	if err != nil {
+		return nil, fmt.Errorf("revert: %w", err)
+	}
+	return conflicts, nil
 }
 
 // commitCheckpoint marks the turn's checkpoint committed.
