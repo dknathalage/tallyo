@@ -192,9 +192,12 @@ func run() error {
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
 
-	// AI agent (optional): only constructed when ANTHROPIC_API_KEY is set. When
-	// disabled, agentHandler stays nil → Deps.Agent nil → routes are not
-	// registered, and agentSvc stays nil → the sweeper skips SweepExpired.
+	// AI agent (optional): the full service is only constructed when
+	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired
+	// (BUG 3): when disabled it is a guard-only handler (nil agent/budget,
+	// enabled=false) so /api/agent/* routes are registered and return a clean 503
+	// instead of falling through to the SPA catch-all (200 index.html). agentSvc
+	// stays nil when disabled → the sweeper skips SweepExpired.
 	var agentHandler *httpapi.AgentHandler
 	var agentSvc *agent.Agent
 	if agentCfg.Enabled() {
@@ -210,6 +213,8 @@ func run() error {
 			WithBudget(agentBudget).
 			WithRestore(agent.InvoiceRestoreFunc(invoiceSvc))
 		agentHandler = httpapi.NewAgentHandler(agentSvc, agentBudget, true)
+	} else {
+		agentHandler = httpapi.NewAgentHandler(nil, nil, false)
 	}
 
 	assets, err := fs.Sub(tallyoweb.Build, "build")

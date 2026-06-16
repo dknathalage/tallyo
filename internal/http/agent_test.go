@@ -125,6 +125,57 @@ func TestAgentDisabled503(t *testing.T) {
 	}
 }
 
+// TestServerDisabledAgentReturns503 guards BUG 3 end-to-end through NewServer:
+// when the agent is disabled, a disabled handler is still wired into Deps.Agent
+// so /api/agent/* routes are REGISTERED and return 503 (no nil-deref) instead of
+// falling through to the SPA catch-all (200 index.html). It also confirms the
+// SPA catch-all still serves non-/api routes.
+func TestServerDisabledAgentReturns503(t *testing.T) {
+	conn := openMigratedDB(t, "agent_disabled.db")
+	users, _, _ := seedTenantOwner(t, conn)
+	sm := auth.NewSessionManager(conn, false)
+	tenants := auth.NewTenants(conn)
+
+	// Disabled handler: nil agent + nil budget + enabled=false. This is exactly
+	// what main.go now passes when ANTHROPIC_API_KEY is unset.
+	disabled := NewAgentHandler(nil, nil, false)
+
+	deps := Deps{
+		Assets:  newServerFS(),
+		Session: sm,
+		Users:   users,
+		Tenants: tenants,
+		Auth:    NewAuthHandler(sm, users, tenants),
+		Agent:   disabled,
+	}
+	s := NewServer(deps)
+	srv := httptest.NewServer(s.Router)
+	t.Cleanup(srv.Close)
+
+	c := loggedInClient(t, srv.URL)
+
+	// GET conversations: route registered, guard returns 503 (NOT 200 SPA).
+	getResp := get(t, c, srv.URL+"/api/agent/conversations")
+	defer func() { _ = getResp.Body.Close() }()
+	if getResp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("GET disabled agent: want 503 got %d", getResp.StatusCode)
+	}
+
+	// POST conversations: same — 503, not a 200 SPA fallthrough.
+	postResp := postJSON(t, c, srv.URL+"/api/agent/conversations", `{"title":"x"}`)
+	defer func() { _ = postResp.Body.Close() }()
+	if postResp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST disabled agent: want 503 got %d", postResp.StatusCode)
+	}
+
+	// SPA catch-all still works for non-/api routes.
+	spaResp := get(t, c, srv.URL+"/some-spa-route")
+	defer func() { _ = spaResp.Body.Close() }()
+	if spaResp.StatusCode != http.StatusOK {
+		t.Fatalf("SPA fallback: want 200 got %d", spaResp.StatusCode)
+	}
+}
+
 func TestAgentListConversationsTenantScoping(t *testing.T) {
 	// Tenant A and B share the same DB but different sessions. A conversation
 	// created by A must not appear in B's list.

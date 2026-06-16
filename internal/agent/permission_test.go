@@ -160,6 +160,8 @@ func TestDecideAllowCreatesAndResumes(t *testing.T) {
 		t.Fatalf("expected 3 model calls (plan + execute + resume), got %d", len(fake.Requests))
 	}
 	resumeReq := fake.Requests[2]
+	// Guard BUG 1 on the resume path too: every tool_use in the window is answered.
+	assertBalanced(t, resumeReq.Messages)
 	if resumeReq.ToolChoice.ForceTool != "" {
 		t.Fatalf("resume ForceTool = %q, want empty (auto)", resumeReq.ToolChoice.ForceTool)
 	}

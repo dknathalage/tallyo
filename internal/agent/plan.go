@@ -102,13 +102,36 @@ func (a *Agent) plan(ctx context.Context, convID, messageID int64) ([]PlanStep, 
 		return nil, 0, fmt.Errorf("plan: %w", err)
 	}
 
+	// BUG 1: propose_plan is parsed, never executed, so its tool_use block has no
+	// matching tool_result. Replaying the assistant tool_use without an answering
+	// tool_result makes the real Anthropic API reject the first execute call
+	// ("tool_use ids were found without tool_result blocks"). Persist a
+	// tool_result keyed by the real propose_plan tool_use id (same sentinel
+	// convention loadHistory/feedToolResult use) so the window stays balanced.
+	planUseID := proposePlanUseID(resp)
+	if planUseID == "" {
+		return nil, 0, fmt.Errorf("plan: propose_plan tool_use missing id")
+	}
+	if e := a.feedToolResult(ctx, convID, planUseID,
+		Result{JSON: map[string]string{"status": "plan recorded, proceeding"}, Render: "summary"}, false); e != nil {
+		return nil, 0, fmt.Errorf("plan: persist plan tool_result: %w", e)
+	}
+
 	for i := range steps { // bounded by len(steps)
+		// BUG 2: the model's free-text risk (steps[i].Risk) may not match the
+		// agent_step.risk CHECK ('read','risky','meta') and would abort the
+		// INSERT. Persist the AUTHORITATIVE risk derived from the registered
+		// tool; unknown tools default to 'risky' (safe — gates them).
+		risk := string(RiskRisky)
+		if tool, ok := a.reg.Get(steps[i].Tool); ok {
+			risk = string(tool.Risk)
+		}
 		if _, e := a.store.CreateStep(ctx, gen.CreateAgentStepParams{
 			MessageID: planMsg.ID,
 			Ordinal:   int64(i),
 			ToolName:  steps[i].Tool,
 			Summary:   steps[i].Summary,
-			Risk:      steps[i].Risk,
+			Risk:      risk,
 			Status:    "planned",
 		}); e != nil {
 			return nil, 0, fmt.Errorf("plan: persist step %d: %w", i, e)
@@ -117,6 +140,21 @@ func (a *Agent) plan(ctx context.Context, convID, messageID int64) ([]PlanStep, 
 
 	a.events.Publish(convID, Event{Type: "plan", Data: steps})
 	return steps, planMsg.ID, nil
+}
+
+// proposePlanUseID returns the tool_use id of the propose_plan block in resp, or
+// "" if absent. Used to key the balancing tool_result for the plan turn.
+func proposePlanUseID(resp *llm.Response) string {
+	if resp == nil {
+		return ""
+	}
+	for i := range resp.Content { // bounded by len(resp.Content)
+		b := resp.Content[i]
+		if b.Type == llm.BlockToolUse && b.ToolName == proposePlanTool {
+			return b.ToolUseID
+		}
+	}
+	return ""
 }
 
 // extractPlanSteps finds the propose_plan tool_use block in resp and unmarshals

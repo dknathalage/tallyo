@@ -54,6 +54,126 @@ func toolUseResp(stop, toolName, useID, input string) llm.Response {
 	}
 }
 
+// assertBalanced walks a request's message window and fails if any assistant
+// tool_use block (by ToolUseID) lacks a matching user ToolResult with the same
+// ToolUseID in a later message. This guards BUG 1: an unanswered tool_use makes
+// the real Anthropic API reject the request.
+func assertBalanced(t *testing.T, msgs []llm.Message) {
+	t.Helper()
+	answered := map[string]bool{}
+	// Collect all tool_result ids first (they appear in later user messages).
+	for i := range msgs {
+		for _, tr := range msgs[i].ToolResults {
+			answered[tr.ToolUseID] = true
+		}
+	}
+	for i := range msgs {
+		if msgs[i].Role != llm.RoleAssistant {
+			continue
+		}
+		for _, b := range msgs[i].Content {
+			if b.Type != llm.BlockToolUse {
+				continue
+			}
+			if b.ToolUseID == "" {
+				t.Fatalf("assistant tool_use %q has empty ToolUseID", b.ToolName)
+			}
+			if !answered[b.ToolUseID] {
+				t.Fatalf("unbalanced window: assistant tool_use id %q (%s) has no matching tool_result", b.ToolUseID, b.ToolName)
+			}
+		}
+	}
+}
+
+// TestExecuteFirstRequestBalanced guards BUG 1: after the plan turn persists the
+// forced propose_plan tool_use, the FIRST execute-loop request must answer it
+// with a tool_result so the window the real API sees is balanced.
+func TestExecuteFirstRequestBalanced(t *testing.T) {
+	fake := llm.NewFake(
+		// 1: plan turn — forced propose_plan tool_use
+		toolUseResp(llm.StopToolUse, "propose_plan", "tu_plan",
+			`{"steps":[{"tool":"list_invoices","summary":"list","risk":"read"}]}`),
+		// 2: execute turn 1 — end the turn immediately so the loop stops cleanly
+		llm.Response{StopReason: llm.StopEndTurn, Content: []llm.Block{{Type: llm.BlockText, Text: "done"}}},
+	)
+	ag, store, _, ctx := newTestAgent(t, fake)
+
+	conv, err := store.CreateConversation(ctx, "Balance test")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if err := ag.Start(ctx, conv.ID, "list my invoices"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Request[0] is the forced plan call; Request[1] is the first execute call —
+	// the one that must already include the answering tool_result.
+	if len(fake.Requests) < 2 {
+		t.Fatalf("expected >=2 requests, got %d", len(fake.Requests))
+	}
+	assertBalanced(t, fake.Requests[1].Messages)
+
+	// And specifically that the propose_plan tool_use was answered.
+	var answered bool
+	for _, m := range fake.Requests[1].Messages {
+		for _, tr := range m.ToolResults {
+			if tr.ToolUseID == "tu_plan" {
+				answered = true
+			}
+		}
+	}
+	if !answered {
+		t.Fatalf("propose_plan tool_use tu_plan was not answered by a tool_result; messages=%+v", fake.Requests[1].Messages)
+	}
+}
+
+// TestPlanRiskRegistryDerived guards BUG 2: the persisted agent_step.risk is
+// derived from the registered tool, NOT the model's free-text claim. A read tool
+// the model mislabels "low" persists as "read"; a risky tool the model mislabels
+// "read" persists as "risky".
+func TestPlanRiskRegistryDerived(t *testing.T) {
+	fake := llm.NewFake(
+		toolUseResp(llm.StopToolUse, "propose_plan", "tu_plan",
+			`{"steps":[`+
+				`{"tool":"list_invoices","summary":"list","risk":"low"},`+
+				`{"tool":"create_invoice","summary":"make","risk":"read"}`+
+				`]}`),
+	)
+	ag, store, _, ctx := newTestAgent(t, fake)
+
+	conv, err := store.CreateConversation(ctx, "Risk test")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	userMsg, err := store.CreateMessage(ctx, conv.ID, "user", []llm.Block{{Type: llm.BlockText, Text: "go"}}, "{}")
+	if err != nil {
+		t.Fatalf("CreateMessage: %v", err)
+	}
+
+	_, planMsgID, err := ag.plan(ctx, conv.ID, userMsg.ID)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	persisted, err := store.ListSteps(ctx, planMsgID)
+	if err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if len(persisted) != 2 {
+		t.Fatalf("expected 2 persisted steps, got %d", len(persisted))
+	}
+	byTool := map[string]string{}
+	for i := range persisted {
+		byTool[persisted[i].ToolName] = persisted[i].Risk
+	}
+	if byTool["list_invoices"] != "read" {
+		t.Fatalf("list_invoices risk = %q, want read (registry-derived, model claimed \"low\")", byTool["list_invoices"])
+	}
+	if byTool["create_invoice"] != "risky" {
+		t.Fatalf("create_invoice risk = %q, want risky (registry-derived, model claimed \"read\")", byTool["create_invoice"])
+	}
+}
+
 func TestPlanPhase(t *testing.T) {
 	fake := llm.NewFake(
 		toolUseResp(llm.StopToolUse, "propose_plan", "tu_plan",
