@@ -19,7 +19,7 @@ Endpoints (auth-gated, tenant-scoped; 503 `{"error":"AI not configured"}` when k
 - `POST /api/agent/conversations/{id}/messages` `{text}` → **202** (runs async; watch the stream)
 - `POST /api/agent/steps/{id}/decision` `{decision:"allow"|"deny"}` → **202** (resumes async)
 - `POST /api/agent/checkpoints/{id}/revert` → `{conflicts:[...]}` (synchronous)
-- `GET /api/agent/conversations/{id}/stream` → SSE; each frame is `data: {"Type":...,"Data":...}` (Go JSON of `agent.Event` — note **capitalized** `Type`/`Data` unless the backend adds json tags; CONFIRM by curling/reading `agent.Event` json tags in `internal/agent/stream.go` and match the client to the actual casing).
+- `GET /api/agent/conversations/{id}/stream` → SSE; each frame is `data: {"type":...,"data":...}`. **Casing is lowercase `type`/`data`** — confirmed: `agent.Event` has json tags `json:"type"` / `json:"data"` (`internal/agent/stream.go`). Encode the parser to lowercase keys.
 
 **SSE event shapes** (`Data` payloads):
 | `Type` | `Data` |
@@ -31,6 +31,8 @@ Endpoints (auth-gated, tenant-scoped; 503 `{"error":"AI not configured"}` when k
 | `error` | `string` |
 | `budget_exceeded` | `string` |
 | `step_expired` | `{stepId, toolName}` |
+
+All keys above are **lowercase** (the Go structs carry json tags). `stepId` is a number. The 202 responses for send/decision also include a `{status:"accepted", ...}` body — ignore it.
 
 The per-conversation stream has **no replay** — on (re)connect, refetch `GET .../messages` to reconcile.
 
@@ -78,7 +80,7 @@ The per-conversation stream has **no replay** — on (re)connect, refetch `GET .
 
 - [ ] **Step 1: Write the failing test** — mock `fetch` (or the `apiPost`/`apiGet` layer) and assert each function calls the right method+path with the right body and returns the parsed value: `createConversation()` → POST `/api/agent/conversations`; `listConversations()` → GET; `listMessages(id)` → GET `/api/agent/conversations/${id}/messages`; `sendMessage(id, text)` → POST `.../messages` `{text}`; `decide(stepId, decision)` → POST `/api/agent/steps/${stepId}/decision` `{decision}`; `revert(checkpointId)` → POST `/api/agent/checkpoints/${id}/revert`. Assert a 503 surfaces as an `ApiError` the caller can detect (status 503).
 - [ ] **Step 2: Run** `npx vitest run src/lib/api/agent.test.ts` → FAIL.
-- [ ] **Step 3: Implement `api/agent.ts`** using `apiGet/apiPost` from `./client`. Define DTO types: `AgentConversation{id, title, createdAt, updatedAt}`, `AgentMessageDTO{id, role, content, createdAt}` (content is the raw block array — define a minimal `AgentBlock` type for rendering: `{type, text?, toolName?, toolUseId?, input?}`), `PlanStepDTO{tool, summary, risk}`, `RevertResult{conflicts: {table, pk}[]}`. Keep functions thin.
+- [ ] **Step 3: Implement `api/agent.ts`** using `apiGet/apiPost` from `./client`. Define DTO types: `AgentConversation{id, title, createdAt, updatedAt}`, `AgentMessageDTO{id, role, content, createdAt}` (content is the raw block array — define a minimal `AgentBlock` type for rendering: `{type, text?, toolName?, toolUseId?, input?}`), `PlanStepDTO{tool, summary, risk}`, `RevertResult{conflicts: {table, pk}[]}`. Keep functions thin. **Note:** `apiGet`/`apiPost` return `Promise<T | null>` (null on 401-redirect/204) — declare the function return types accordingly (`Promise<X | null>`) or coalesce, so `npm run check` stays 0/0 under strict mode; tests must handle the `| null`.
 - [ ] **Step 4: Run** → PASS. `npm run check` 0/0.
 - [ ] **Step 5: Commit** `feat(web): agent API client + types`
 
@@ -193,7 +195,7 @@ This is the core. State (runes):
 - [ ] **Step 2:** `npm run check` 0/0.
 - [ ] **Step 3: Commit** `feat(web): revert control with conflict display`
 
-> **Pre-task check:** verify what `GET /api/agent/conversations/{id}/messages` returns about checkpoints. If a turn's `checkpointId` isn't exposed, this task needs a tiny backend addition (return checkpoint id/status on assistant messages, or a `GET /api/agent/conversations/{id}/checkpoints`). Surface this as a BLOCKED/NEEDS_CONTEXT to the controller rather than guessing — it may pull a small backend change into this plan.
+> **CONFIRMED backend gap (resolved in plan review):** `listMessages` does NOT expose a checkpoint id — the `Message` DTO (`internal/agent/store.go`) is `{id, conversationId, tenantId, role, content, tokenUsage, createdAt}`, the checkpoint is opened against the plan message id (`Agent.Start` → `cp.Open(ctx, planMsgID)`) but never surfaced, and there is no checkpoints endpoint. **This task therefore REQUIRES a small backend addition first** — the smallest fix: extend the messages DTO/query to include `checkpointId` + `checkpointStatus` for the assistant/plan message (join `agent_checkpoint` on `message_id`), so the UI knows which turns are revertible and with which checkpoint id. Do that backend change as Step 0 of this task (migration not needed — the table exists; add a query/DTO field + a tenant-scoped getter), with its own Go test, then build the UI. If you prefer, add `GET /api/agent/conversations/{id}/checkpoints` instead — but the DTO field is smaller. Keep the handler→service→repo + tenant-scoping invariants.
 
 ---
 
