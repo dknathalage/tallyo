@@ -65,6 +65,7 @@ type Agent struct {
 	cp     *Checkpoint
 	events *Events
 	clock  clock
+	budget *Budget // optional; nil means no cap enforced
 }
 
 // NewAgent constructs an Agent and ensures the propose_plan meta tool is
@@ -127,7 +128,25 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 	}
 
 	for i := 0; i < a.cfg.MaxIterations; i++ { // bounded by MaxIterations
-		// TODO(task10): budget check (skip the turn / suspend when over budget).
+		// Budget check (task10): if a daily token cap is configured and the
+		// tenant has exceeded it, publish a budget_exceeded event, commit the
+		// checkpoint, and stop the loop cleanly — no partial silent overshoot.
+		if a.budget != nil {
+			over, bErr := a.budget.Exceeded(ctx)
+			if bErr != nil {
+				// Budget read failure: stop the turn rather than continue
+				// unaccounted; this matches the history-load error policy.
+				a.events.Publish(convID, Event{Type: "error", Data: "budget check failed"})
+				if cErr := a.commitCheckpoint(ctx, checkpointID); cErr != nil {
+					return fmt.Errorf("execute: budget check: %w (commit: %v)", bErr, cErr)
+				}
+				return fmt.Errorf("execute: budget check: %w", bErr)
+			}
+			if over {
+				a.events.Publish(convID, Event{Type: "budget_exceeded", Data: "daily token budget reached"})
+				return a.commitCheckpoint(ctx, checkpointID)
+			}
+		}
 
 		history, err := a.loadHistory(ctx, convID)
 		if err != nil {
@@ -147,6 +166,15 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 		}
 		if _, err := a.persistAssistant(ctx, convID, resp); err != nil {
 			return fmt.Errorf("execute: persist assistant: %w", err)
+		}
+		// Mid-loop accounting: record this turn's token spend after a
+		// successful model call so the budget is accurate for the NEXT
+		// iteration's check. Errors are non-fatal to avoid dropping a
+		// valid model response, but they are surfaced as a logged event.
+		if a.budget != nil {
+			if aErr := a.budget.Add(ctx, resp.Usage); aErr != nil {
+				a.events.Publish(convID, Event{Type: "error", Data: "budget accounting failed"})
+			}
 		}
 
 		switch resp.StopReason {
@@ -374,6 +402,13 @@ func (a *Agent) suspendForApproval(ctx context.Context, convID, messageID, check
 		"expiresAt": expires,
 	}})
 	return nil
+}
+
+// WithBudget attaches a Budget to the agent (optional; if never called the
+// Execute loop runs without token-cap or rate-limit enforcement).
+func (a *Agent) WithBudget(b *Budget) *Agent {
+	a.budget = b
+	return a
 }
 
 // commitCheckpoint marks the turn's checkpoint committed.
