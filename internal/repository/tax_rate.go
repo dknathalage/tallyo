@@ -35,7 +35,7 @@ type TaxRateInput struct {
 var errTaxNotFound = errors.New("not found")
 
 // TaxRatesRepo reads and writes the tax_rates table with audited mutations and
-// exclusive-default semantics: at most one row may have is_default = 1.
+// exclusive-default semantics: at most one row per tenant may have is_default=1.
 type TaxRatesRepo struct {
 	db *sql.DB
 }
@@ -48,9 +48,9 @@ func NewTaxRates(db *sql.DB) *TaxRatesRepo {
 	return &TaxRatesRepo{db: db}
 }
 
-// List returns all tax rates ordered by is_default desc then name.
-func (r *TaxRatesRepo) List(ctx context.Context) ([]*TaxRate, error) {
-	rows, err := gen.New(r.db).ListTaxRates(ctx)
+// List returns the tenant's tax rates ordered by is_default desc then name.
+func (r *TaxRatesRepo) List(ctx context.Context, tenantID int64) ([]*TaxRate, error) {
+	rows, err := gen.New(r.db).ListTaxRates(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list tax rates: %w", err)
 	}
@@ -61,9 +61,9 @@ func (r *TaxRatesRepo) List(ctx context.Context) ([]*TaxRate, error) {
 	return out, nil
 }
 
-// Get returns the tax rate, or (nil, nil) when none matches.
-func (r *TaxRatesRepo) Get(ctx context.Context, id int64) (*TaxRate, error) {
-	row, err := gen.New(r.db).GetTaxRate(ctx, id)
+// Get returns the tenant's tax rate, or (nil, nil) when none matches.
+func (r *TaxRatesRepo) Get(ctx context.Context, tenantID, id int64) (*TaxRate, error) {
+	row, err := gen.New(r.db).GetTaxRate(ctx, gen.GetTaxRateParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -73,9 +73,9 @@ func (r *TaxRatesRepo) Get(ctx context.Context, id int64) (*TaxRate, error) {
 	return toTaxRate(row), nil
 }
 
-// GetDefault returns the default tax rate, or (nil, nil) when none is set.
-func (r *TaxRatesRepo) GetDefault(ctx context.Context) (*TaxRate, error) {
-	row, err := gen.New(r.db).GetDefaultTaxRate(ctx)
+// GetDefault returns the tenant's default tax rate, or (nil, nil) when unset.
+func (r *TaxRatesRepo) GetDefault(ctx context.Context, tenantID int64) (*TaxRate, error) {
+	row, err := gen.New(r.db).GetDefaultTaxRate(ctx, tenantID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -86,9 +86,12 @@ func (r *TaxRatesRepo) GetDefault(ctx context.Context) (*TaxRate, error) {
 }
 
 // Create inserts a tax rate and writes one audit row, atomically. When
-// in.IsDefault is true, all other rows' is_default are cleared in the same tx
-// first, preserving the only-one-default invariant.
-func (r *TaxRatesRepo) Create(ctx context.Context, in TaxRateInput) (*TaxRate, error) {
+// in.IsDefault is true, the tenant's other rows' is_default are cleared in the
+// same tx first, preserving the one-default-per-tenant invariant.
+func (r *TaxRatesRepo) Create(ctx context.Context, tenantID int64, in TaxRateInput) (*TaxRate, error) {
+	if tenantID == 0 {
+		return nil, errors.New("create tax rate: tenant id required")
+	}
 	if in.Name == "" {
 		return nil, errors.New("create tax rate: name is required")
 	}
@@ -97,13 +100,14 @@ func (r *TaxRatesRepo) Create(ctx context.Context, in TaxRateInput) (*TaxRate, e
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		if in.IsDefault {
-			if e := q.ClearDefaultTaxRates(ctx); e != nil {
+			if e := q.ClearDefaultTaxRates(ctx, tenantID); e != nil {
 				return fmt.Errorf("clear defaults: %w", e)
 			}
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		t, e := q.CreateTaxRate(ctx, gen.CreateTaxRateParams{
 			Uuid:      uuid.NewString(),
+			TenantID:  tenantID,
 			Name:      in.Name,
 			Rate:      in.Rate,
 			IsDefault: b2i(in.IsDefault),
@@ -128,9 +132,9 @@ func (r *TaxRatesRepo) Create(ctx context.Context, in TaxRateInput) (*TaxRate, e
 }
 
 // Update writes the tax rate's fields and one audit row, atomically. When
-// in.IsDefault is true, all other rows are cleared in the same tx first.
-// Returns (nil, nil) when the row does not exist so the caller can 404.
-func (r *TaxRatesRepo) Update(ctx context.Context, id int64, in TaxRateInput) (*TaxRate, error) {
+// in.IsDefault is true, the tenant's other rows are cleared in the same tx
+// first. Returns (nil, nil) when the row does not exist so the caller can 404.
+func (r *TaxRatesRepo) Update(ctx context.Context, tenantID, id int64, in TaxRateInput) (*TaxRate, error) {
 	if in.Name == "" {
 		return nil, errors.New("update tax rate: name is required")
 	}
@@ -139,7 +143,7 @@ func (r *TaxRatesRepo) Update(ctx context.Context, id int64, in TaxRateInput) (*
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		if in.IsDefault {
-			if e := q.ClearDefaultTaxRates(ctx); e != nil {
+			if e := q.ClearDefaultTaxRates(ctx, tenantID); e != nil {
 				return fmt.Errorf("clear defaults: %w", e)
 			}
 		}
@@ -149,6 +153,7 @@ func (r *TaxRatesRepo) Update(ctx context.Context, id int64, in TaxRateInput) (*
 			Rate:      in.Rate,
 			IsDefault: b2i(in.IsDefault),
 			UpdatedAt: now,
+			TenantID:  tenantID,
 			ID:        id,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
@@ -175,13 +180,13 @@ func (r *TaxRatesRepo) Update(ctx context.Context, id int64, in TaxRateInput) (*
 }
 
 // Delete removes a tax rate and writes one audit row, atomically.
-func (r *TaxRatesRepo) Delete(ctx context.Context, id int64) error {
+func (r *TaxRatesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "tax_rate",
 		EntityID:   id,
 		Action:     "delete",
 	}, func(tx *sql.Tx) error {
-		if e := gen.New(tx).DeleteTaxRate(ctx, id); e != nil {
+		if e := gen.New(tx).DeleteTaxRate(ctx, gen.DeleteTaxRateParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return nil

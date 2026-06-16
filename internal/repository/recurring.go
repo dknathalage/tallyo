@@ -1,5 +1,11 @@
 package repository
 
+// NOTE (J4): rewritten for the tenant-scoped NDIS recurring_templates schema.
+// Templates carry participant_id / plan_manager_id and a JSON line_items column.
+// The stored line shape is NDIS-aware (code, serviceDate, unit, unitPrice,
+// gstFree). tax_rate is a stored percentage on the template; generation computes
+// the tax amount from it. NDIS price-cap / plan-window validation is J10.
+
 import (
 	"context"
 	"database/sql"
@@ -17,40 +23,46 @@ import (
 // RecurringTemplate is the domain view of a recurring invoice template. Line
 // items are stored as a JSON string column and unmarshalled into the slice.
 type RecurringTemplate struct {
-	ID         int64            `json:"id"`
-	UUID       string           `json:"uuid"`
-	ClientID   *int64           `json:"clientId"`
-	ClientName string           `json:"clientName"`
-	Name       string           `json:"name"`
-	Frequency  string           `json:"frequency"`
-	NextDue    string           `json:"nextDue"`
-	LineItems  []*RecurringLine `json:"lineItems"`
-	TaxRate    float64          `json:"taxRate"`
-	Notes      string           `json:"notes"`
-	IsActive   bool             `json:"isActive"`
-	CreatedAt  string           `json:"createdAt"`
-	UpdatedAt  string           `json:"updatedAt"`
+	ID              int64            `json:"id"`
+	UUID            string           `json:"uuid"`
+	ParticipantID   *int64           `json:"participantId"`
+	ParticipantName string           `json:"participantName"`
+	PlanManagerID   *int64           `json:"planManagerId"`
+	Name            string           `json:"name"`
+	Frequency       string           `json:"frequency"`
+	NextDue         string           `json:"nextDue"`
+	LineItems       []*RecurringLine `json:"lineItems"`
+	TaxRate         float64          `json:"taxRate"`
+	Notes           string           `json:"notes"`
+	IsActive        bool             `json:"isActive"`
+	CreatedAt       string           `json:"createdAt"`
+	UpdatedAt       string           `json:"updatedAt"`
 }
 
 // RecurringLine is one line in a template's stored line_items JSON.
 type RecurringLine struct {
-	Description string  `json:"description"`
-	Quantity    float64 `json:"quantity"`
-	Rate        float64 `json:"rate"`
-	Notes       string  `json:"notes"`
-	SortOrder   int64   `json:"sortOrder"`
+	SupportItemID *int64  `json:"supportItemId"`
+	CustomItemID  *int64  `json:"customItemId"`
+	Code          string  `json:"code"`
+	Description   string  `json:"description"`
+	Unit          string  `json:"unit"`
+	Quantity      float64 `json:"quantity"`
+	UnitPrice     float64 `json:"unitPrice"`
+	GstFree       bool    `json:"gstFree"`
+	SortOrder     int64   `json:"sortOrder"`
 }
 
 // RecurringInput is the writable subset of a recurring template.
 type RecurringInput struct {
-	ClientID  *int64          `json:"clientId"`
-	Name      string          `json:"name"`
-	Frequency string          `json:"frequency"`
-	NextDue   string          `json:"nextDue"`
-	LineItems []RecurringLine `json:"lineItems"`
-	TaxRate   float64         `json:"taxRate"`
-	Notes     string          `json:"notes"`
-	IsActive  bool            `json:"isActive"`
+	ParticipantID *int64          `json:"participantId"`
+	PlanManagerID *int64          `json:"planManagerId"`
+	Name          string          `json:"name"`
+	Frequency     string          `json:"frequency"`
+	NextDue       string          `json:"nextDue"`
+	LineItems     []RecurringLine `json:"lineItems"`
+	TaxRate       float64         `json:"taxRate"`
+	Notes         string          `json:"notes"`
+	IsActive      bool            `json:"isActive"`
 }
 
 // GeneratedInvoice identifies an invoice produced by the due sweep.
@@ -60,12 +72,13 @@ type GeneratedInvoice struct {
 	InvoiceNumber string `json:"invoiceNumber"`
 }
 
-// RecurringRepo reads and writes recurring_templates and generates invoices from
-// them. Generation advances next_due in the same transaction as the invoice
-// insert so re-running the due sweep never double-generates.
+// RecurringRepo reads and writes recurring_templates (tenant-scoped) and
+// generates invoices from them. Generation advances next_due in the same
+// transaction as the invoice insert so re-running the due sweep never
+// double-generates.
 type RecurringRepo struct {
 	db   *sql.DB
-	snap *InvoicesRepo // reused for the shared snapshot builders
+	snap *InvoicesRepo
 }
 
 // NewRecurring constructs a repository. A nil db is a programmer error.
@@ -84,8 +97,8 @@ func (r *RecurringRepo) validate(in RecurringInput) error {
 	if in.Name == "" {
 		return errors.New("recurring: name is required")
 	}
-	if in.ClientID == nil || *in.ClientID == 0 {
-		return errors.New("recurring: client required")
+	if in.ParticipantID == nil || *in.ParticipantID == 0 {
+		return errors.New("recurring: participant required")
 	}
 	if !validFrequencies[in.Frequency] {
 		return errors.New("recurring: invalid frequency")
@@ -96,12 +109,12 @@ func (r *RecurringRepo) validate(in RecurringInput) error {
 	return nil
 }
 
-// List returns templates (all, or active only), each with client name and
+// List returns templates (all, or active only), each with participant name and
 // parsed line items. The slice is always non-nil.
-func (r *RecurringRepo) List(ctx context.Context, activeOnly bool) ([]*RecurringTemplate, error) {
+func (r *RecurringRepo) List(ctx context.Context, tenantID int64, activeOnly bool) ([]*RecurringTemplate, error) {
 	q := gen.New(r.db)
 	if activeOnly {
-		rows, err := q.ListActiveRecurringTemplates(ctx)
+		rows, err := q.ListActiveRecurringTemplates(ctx, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("list active recurring: %w", err)
 		}
@@ -111,7 +124,7 @@ func (r *RecurringRepo) List(ctx context.Context, activeOnly bool) ([]*Recurring
 		}
 		return out, nil
 	}
-	rows, err := q.ListRecurringTemplates(ctx)
+	rows, err := q.ListRecurringTemplates(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list recurring: %w", err)
 	}
@@ -122,10 +135,10 @@ func (r *RecurringRepo) List(ctx context.Context, activeOnly bool) ([]*Recurring
 	return out, nil
 }
 
-// Get returns the template (with client name and line items), or (nil, nil)
+// Get returns the template (with participant name and line items), or (nil, nil)
 // when absent.
-func (r *RecurringRepo) Get(ctx context.Context, id int64) (*RecurringTemplate, error) {
-	row, err := gen.New(r.db).GetRecurringTemplate(ctx, id)
+func (r *RecurringRepo) Get(ctx context.Context, tenantID, id int64) (*RecurringTemplate, error) {
+	row, err := gen.New(r.db).GetRecurringTemplate(ctx, gen.GetRecurringTemplateParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -137,7 +150,10 @@ func (r *RecurringRepo) Get(ctx context.Context, id int64) (*RecurringTemplate, 
 
 // Create validates and inserts a template, auditing the create with the real id,
 // then re-reads the row.
-func (r *RecurringRepo) Create(ctx context.Context, in RecurringInput) (*RecurringTemplate, error) {
+func (r *RecurringRepo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*RecurringTemplate, error) {
+	if tenantID == 0 {
+		return nil, errors.New("create recurring: tenant id required")
+	}
 	if err := r.validate(in); err != nil {
 		return nil, err
 	}
@@ -149,17 +165,19 @@ func (r *RecurringRepo) Create(ctx context.Context, in RecurringInput) (*Recurri
 	var newID int64
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		tpl, e := gen.New(tx).CreateRecurringTemplate(ctx, gen.CreateRecurringTemplateParams{
-			Uuid:      uuid.NewString(),
-			ClientID:  nullID(in.ClientID),
-			Name:      in.Name,
-			Frequency: in.Frequency,
-			NextDue:   in.NextDue,
-			LineItems: lineItemsJSON,
-			TaxRate:   in.TaxRate,
-			Notes:     in.Notes,
-			IsActive:  boolToInt(in.IsActive),
-			CreatedAt: now,
-			UpdatedAt: now,
+			Uuid:          uuid.NewString(),
+			TenantID:      tenantID,
+			ParticipantID: nullID(in.ParticipantID),
+			PlanManagerID: nullID(in.PlanManagerID),
+			Name:          in.Name,
+			Frequency:     in.Frequency,
+			NextDue:       in.NextDue,
+			LineItems:     lineItemsJSON,
+			TaxRate:       in.TaxRate,
+			Notes:         in.Notes,
+			IsActive:      b2i(in.IsActive),
+			CreatedAt:     now,
+			UpdatedAt:     now,
 		})
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
@@ -172,16 +190,16 @@ func (r *RecurringRepo) Create(ctx context.Context, in RecurringInput) (*Recurri
 	if err != nil {
 		return nil, fmt.Errorf("create recurring: %w", err)
 	}
-	return r.Get(ctx, newID)
+	return r.Get(ctx, tenantID, newID)
 }
 
 // Update validates and rewrites a template, atomically with one audit row.
 // Returns (nil, nil) when the template does not exist.
-func (r *RecurringRepo) Update(ctx context.Context, id int64, in RecurringInput) (*RecurringTemplate, error) {
+func (r *RecurringRepo) Update(ctx context.Context, tenantID, id int64, in RecurringInput) (*RecurringTemplate, error) {
 	if err := r.validate(in); err != nil {
 		return nil, err
 	}
-	if _, err := gen.New(r.db).GetRecurringTemplate(ctx, id); errors.Is(err, sql.ErrNoRows) {
+	if _, err := gen.New(r.db).GetRecurringTemplate(ctx, gen.GetRecurringTemplateParams{TenantID: tenantID, ID: id}); errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("update recurring: load existing: %w", err)
@@ -194,16 +212,18 @@ func (r *RecurringRepo) Update(ctx context.Context, id int64, in RecurringInput)
 		EntityType: "recurring_template", EntityID: id, Action: "update",
 	}, func(tx *sql.Tx) error {
 		_, e := gen.New(tx).UpdateRecurringTemplate(ctx, gen.UpdateRecurringTemplateParams{
-			ClientID:  nullID(in.ClientID),
-			Name:      in.Name,
-			Frequency: in.Frequency,
-			NextDue:   in.NextDue,
-			LineItems: lineItemsJSON,
-			TaxRate:   in.TaxRate,
-			Notes:     in.Notes,
-			IsActive:  boolToInt(in.IsActive),
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-			ID:        id,
+			ParticipantID: nullID(in.ParticipantID),
+			PlanManagerID: nullID(in.PlanManagerID),
+			Name:          in.Name,
+			Frequency:     in.Frequency,
+			NextDue:       in.NextDue,
+			LineItems:     lineItemsJSON,
+			TaxRate:       in.TaxRate,
+			Notes:         in.Notes,
+			IsActive:      b2i(in.IsActive),
+			UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+			TenantID:      tenantID,
+			ID:            id,
 		})
 		if e != nil {
 			return fmt.Errorf("update: %w", e)
@@ -213,15 +233,15 @@ func (r *RecurringRepo) Update(ctx context.Context, id int64, in RecurringInput)
 	if err != nil {
 		return nil, fmt.Errorf("update recurring: %w", err)
 	}
-	return r.Get(ctx, id)
+	return r.Get(ctx, tenantID, id)
 }
 
 // Delete removes a template and writes one audit row.
-func (r *RecurringRepo) Delete(ctx context.Context, id int64) error {
+func (r *RecurringRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "recurring_template", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
-		if e := gen.New(tx).DeleteRecurringTemplate(ctx, id); e != nil {
+		if e := gen.New(tx).DeleteRecurringTemplate(ctx, gen.DeleteRecurringTemplateParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return nil
@@ -250,8 +270,8 @@ func (r *RecurringRepo) AdvanceDate(date, freq string) (string, error) {
 // GenerateOne creates a draft invoice from the template AND advances next_due in
 // the same transaction (idempotent re-runs). Returns (nil, nil) when the
 // template is missing. The returned invoice is re-read after commit.
-func (r *RecurringRepo) GenerateOne(ctx context.Context, templateID int64) (*Invoice, error) {
-	tpl, err := r.Get(ctx, templateID)
+func (r *RecurringRepo) GenerateOne(ctx context.Context, tenantID, templateID int64) (*Invoice, error) {
+	tpl, err := r.Get(ctx, tenantID, templateID)
 	if err != nil {
 		return nil, fmt.Errorf("generate one: %w", err)
 	}
@@ -260,17 +280,19 @@ func (r *RecurringRepo) GenerateOne(ctx context.Context, templateID int64) (*Inv
 	}
 	items := parseLines(tpl.LineItems)
 	today := time.Now().UTC().Format("2006-01-02")
-	t := computeTotals(items, tpl.TaxRate)
-	snaps := r.buildGenSnapshots(ctx, tpl.ClientID)
+	// tax_rate is a percentage; compute the tax amount from the subtotal.
+	subtotal := computeTotals(items, 0).subtotal
+	tax := round2(subtotal * (tpl.TaxRate / 100))
+	snaps := r.buildGenSnapshots(ctx, tenantID, tpl.ParticipantID, tpl.PlanManagerID)
 
 	var invID int64
 	err = numbering.WithRetry(ctx, 10, func() error {
-		return r.generateTx(ctx, tpl, items, today, t, snaps, &invID)
+		return r.generateTx(ctx, tenantID, tpl, items, today, tax, snaps, &invID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("generate one: %w", err)
 	}
-	return NewInvoices(r.db).Get(ctx, invID)
+	return NewInvoices(r.db).Get(ctx, tenantID, invID)
 }
 
 // genSnapshots holds the default snapshot JSON for a generated invoice.
@@ -280,39 +302,38 @@ type genSnapshots struct {
 	payer    string
 }
 
-// buildGenSnapshots builds default snapshots; payer is "{}" for recurring.
-func (r *RecurringRepo) buildGenSnapshots(ctx context.Context, clientID *int64) genSnapshots {
-	var cid int64
-	if clientID != nil {
-		cid = *clientID
+// buildGenSnapshots builds default snapshots for a generated invoice.
+func (r *RecurringRepo) buildGenSnapshots(ctx context.Context, tenantID int64, participantID, planManagerID *int64) genSnapshots {
+	var pid int64
+	if participantID != nil {
+		pid = *participantID
 	}
 	return genSnapshots{
-		business: r.snap.buildBusinessSnapshot(ctx),
-		client:   r.snap.buildClientSnapshot(ctx, cid),
-		payer:    "{}",
+		business: r.snap.buildBusinessSnapshot(ctx, tenantID),
+		client:   r.snap.buildParticipantSnapshot(ctx, tenantID, pid),
+		payer:    r.snap.buildPlanManagerSnapshot(ctx, tenantID, planManagerID),
 	}
 }
 
-// generateTx runs one generation attempt: number the invoice, insert header +
-// items, advance next_due, and audit — all in one transaction for idempotency.
-func (r *RecurringRepo) generateTx(ctx context.Context, tpl *RecurringTemplate, items []LineItemInput,
-	today string, t totals, snaps genSnapshots, invID *int64) error {
+// generateTx runs one generation attempt in one transaction for idempotency.
+func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *RecurringTemplate, items []LineItemInput,
+	today string, tax float64, snaps genSnapshots, invID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	num, err := numbering.Next(ctx, tx, numbering.Invoice)
-	if err != nil {
-		return err
-	}
 	q := gen.New(tx)
-	inv, err := q.CreateInvoice(ctx, recurringInvoiceParams(tpl, today, t, snaps, num))
+	num, err := nextInvoiceNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}
-	if err := insertItems(ctx, q, inv.ID, items); err != nil {
+	inv, err := q.CreateInvoice(ctx, recurringInvoiceParams(tenantID, tpl, items, today, tax, snaps, num))
+	if err != nil {
+		return err
+	}
+	if err := insertItems(ctx, q, tenantID, inv.ID, items); err != nil {
 		return err
 	}
 	newDue, err := r.AdvanceDate(tpl.NextDue, tpl.Frequency)
@@ -339,39 +360,38 @@ func (r *RecurringRepo) generateTx(ctx context.Context, tpl *RecurringTemplate, 
 }
 
 // recurringInvoiceParams maps a template + computed totals onto invoice create
-// params: a draft invoice dated today with custom terms and default snapshots.
-func recurringInvoiceParams(tpl *RecurringTemplate, today string, t totals, snaps genSnapshots, num string) gen.CreateInvoiceParams {
-	var cid int64
-	if tpl.ClientID != nil {
-		cid = *tpl.ClientID
+// params: a draft invoice dated today with default snapshots.
+func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []LineItemInput, today string, tax float64, snaps genSnapshots, num string) gen.CreateInvoiceParams {
+	var pid int64
+	if tpl.ParticipantID != nil {
+		pid = *tpl.ParticipantID
 	}
+	t := computeTotals(items, tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
 		Uuid:             uuid.NewString(),
-		InvoiceNumber:    num,
-		ClientID:         cid,
-		Date:             today,
+		TenantID:         tenantID,
+		Number:           num,
+		ParticipantID:    pid,
+		PlanManagerID:    nullID(tpl.PlanManagerID),
+		Status:           "draft",
+		IssueDate:        today,
 		DueDate:          today,
-		PaymentTerms:     nz("custom"),
-		Subtotal:         sql.NullFloat64{Float64: t.subtotal, Valid: true},
-		TaxRate:          sql.NullFloat64{Float64: tpl.TaxRate, Valid: true},
-		TaxRateID:        sql.NullInt64{},
-		TaxAmount:        sql.NullFloat64{Float64: t.taxAmount, Valid: true},
-		Total:            sql.NullFloat64{Float64: t.total, Valid: true},
-		Notes:            nz(tpl.Notes),
-		Status:           nz("draft"),
-		CurrencyCode:     nz("USD"),
-		BusinessSnapshot: nz(snaps.business),
-		ClientSnapshot:   nz(snaps.client),
-		PayerSnapshot:    nz(snaps.payer),
+		Subtotal:         t.subtotal,
+		Tax:              t.tax,
+		Total:            t.total,
+		Notes:            nzMaybe(tpl.Notes),
+		BusinessSnapshot: nzMaybe(snaps.business),
+		ClientSnapshot:   nzMaybe(snaps.client),
+		PayerSnapshot:    nzMaybe(snaps.payer),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 }
 
-// GenerateDue generates one invoice per template whose next_due has passed.
-// Idempotent: each generation advances next_due in its own transaction, so a
-// re-run finds nothing due. Returns a non-nil slice.
+// GenerateDue generates one invoice per due template across ALL tenants whose
+// next_due has passed. Idempotent: each generation advances next_due in its own
+// transaction. Returns a non-nil slice. (Per-tenant iteration hardening is J11.)
 func (r *RecurringRepo) GenerateDue(ctx context.Context) ([]GeneratedInvoice, error) {
 	today := time.Now().UTC().Format("2006-01-02")
 	rows, err := gen.New(r.db).ListDueTemplates(ctx, today)
@@ -380,7 +400,7 @@ func (r *RecurringRepo) GenerateDue(ctx context.Context) ([]GeneratedInvoice, er
 	}
 	out := make([]GeneratedInvoice, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		inv, e := r.GenerateOne(ctx, rows[i].ID)
+		inv, e := r.GenerateOne(ctx, rows[i].TenantID, rows[i].ID)
 		if e != nil {
 			return nil, fmt.Errorf("generate due: template %d: %w", rows[i].ID, e)
 		}
@@ -388,7 +408,7 @@ func (r *RecurringRepo) GenerateDue(ctx context.Context) ([]GeneratedInvoice, er
 			continue
 		}
 		out = append(out, GeneratedInvoice{
-			TemplateID: rows[i].ID, InvoiceID: inv.ID, InvoiceNumber: inv.InvoiceNumber,
+			TemplateID: rows[i].ID, InvoiceID: inv.ID, InvoiceNumber: inv.Number,
 		})
 	}
 	return out, nil
@@ -425,28 +445,25 @@ func parseLines(lines []*RecurringLine) []LineItemInput {
 	for i := range lines { // bounded by len(lines)
 		l := lines[i]
 		out = append(out, LineItemInput{
-			Description: l.Description,
-			Quantity:    l.Quantity,
-			Rate:        l.Rate,
-			Notes:       l.Notes,
-			SortOrder:   l.SortOrder,
+			SupportItemID: l.SupportItemID,
+			CustomItemID:  l.CustomItemID,
+			Code:          l.Code,
+			Description:   l.Description,
+			Unit:          l.Unit,
+			Quantity:      l.Quantity,
+			UnitPrice:     l.UnitPrice,
+			GstFree:       l.GstFree,
+			SortOrder:     l.SortOrder,
 		})
 	}
 	return out
 }
 
-// boolToInt maps a Go bool to the SQLite 0/1 integer convention.
-func boolToInt(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func listRowToTemplate(r gen.ListRecurringTemplatesRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, ClientID: ptrID(r.ClientID), ClientName: r.ClientName.String,
-		Name: r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
+		ID: r.ID, UUID: r.Uuid, ParticipantID: ptrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
+		PlanManagerID: ptrID(r.PlanManagerID),
+		Name:          r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
@@ -454,8 +471,9 @@ func listRowToTemplate(r gen.ListRecurringTemplatesRow) *RecurringTemplate {
 
 func activeRowToTemplate(r gen.ListActiveRecurringTemplatesRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, ClientID: ptrID(r.ClientID), ClientName: r.ClientName.String,
-		Name: r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
+		ID: r.ID, UUID: r.Uuid, ParticipantID: ptrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
+		PlanManagerID: ptrID(r.PlanManagerID),
+		Name:          r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
@@ -463,8 +481,9 @@ func activeRowToTemplate(r gen.ListActiveRecurringTemplatesRow) *RecurringTempla
 
 func getRowToTemplate(r gen.GetRecurringTemplateRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, ClientID: ptrID(r.ClientID), ClientName: r.ClientName.String,
-		Name: r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
+		ID: r.ID, UUID: r.Uuid, ParticipantID: ptrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
+		PlanManagerID: ptrID(r.PlanManagerID),
+		Name:          r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}

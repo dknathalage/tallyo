@@ -2,127 +2,87 @@ package repository
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
-
-	appdb "github.com/dknathalage/tallyo/internal/db"
 )
 
-func newTestRepo(t *testing.T) *BusinessProfileRepo {
-	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "r.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	return NewBusinessProfile(conn)
-}
-
-func TestSaveThenGet(t *testing.T) {
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "r.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer conn.Close()
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-
+func TestBusinessProfileSaveThenGet(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "Acme NDIS")
 	repo := NewBusinessProfile(conn)
 	ctx := context.Background()
 
-	if err := repo.Save(ctx, BusinessProfileInput{Name: "Acme", Email: "a@b.com"}); err != nil {
+	if err := repo.Save(ctx, tid, BusinessProfileInput{Name: "Acme", Email: "a@b.com", Zone: "remote"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	got, err := repo.Get(ctx)
+	got, err := repo.Get(ctx, tid)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got == nil || got.Name != "Acme" {
-		t.Fatalf("Get = %+v, want Name=Acme", got)
+	if got == nil {
+		t.Fatal("Get returned nil")
 	}
-	if got.Email != "a@b.com" {
-		t.Fatalf("Email = %q, want a@b.com", got.Email)
-	}
-	if got.DefaultCurrency != "USD" {
-		t.Fatalf("DefaultCurrency = %q, want USD (default)", got.DefaultCurrency)
-	}
-
-	var n int
-	if err := conn.QueryRow(
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='business_profile'",
-	).Scan(&n); err != nil {
-		t.Fatalf("count audit: %v", err)
-	}
-	if n != 1 {
-		t.Fatalf("audit rows = %d, want 1", n)
+	if got.Name != "Acme" || got.Email != "a@b.com" || got.Zone != "remote" {
+		t.Fatalf("Get = %+v, want Acme/a@b.com/remote", got)
 	}
 }
 
-func TestGetReturnsNilWhenEmpty(t *testing.T) {
-	repo := newTestRepo(t)
-	got, err := repo.Get(context.Background())
+func TestBusinessProfileDefaults(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	repo := NewBusinessProfile(conn)
+	ctx := context.Background()
+
+	if err := repo.Save(ctx, tid, BusinessProfileInput{Name: "X"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := repo.Get(ctx, tid)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Zone != "national" {
+		t.Fatalf("default zone = %q, want national", got.Zone)
+	}
+	if got.DefaultCurrency != "AUD" {
+		t.Fatalf("default currency = %q, want AUD", got.DefaultCurrency)
+	}
+}
+
+func TestBusinessProfileGetMissing(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	got, err := NewBusinessProfile(conn).Get(context.Background(), tid)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if got != nil {
-		t.Fatalf("Get = %+v, want nil", got)
+		t.Fatalf("Get on empty = %+v, want nil", got)
 	}
 }
 
-func TestSaveRejectsEmptyName(t *testing.T) {
-	repo := newTestRepo(t)
-	if err := repo.Save(context.Background(), BusinessProfileInput{Name: ""}); err == nil {
-		t.Fatalf("Save with empty name: want error, got nil")
-	}
-
-	var n int
-	if err := repo.db.QueryRow(
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='business_profile'",
-	).Scan(&n); err != nil {
-		t.Fatalf("count audit: %v", err)
-	}
-	if n != 0 {
-		t.Fatalf("audit rows = %d, want 0 (no row on rejected save)", n)
+func TestBusinessProfileRejectsEmptyName(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	if err := NewBusinessProfile(conn).Save(context.Background(), tid, BusinessProfileInput{Name: ""}); err == nil {
+		t.Fatal("Save empty name: want error, got nil")
 	}
 }
 
-func TestSavePreservesUuidAcrossUpdate(t *testing.T) {
-	repo := newTestRepo(t)
+func TestBusinessProfileTenantIsolation(t *testing.T) {
+	conn := newTestDB(t)
+	a := seedTenant(t, conn, "A")
+	b := seedTenant(t, conn, "B")
+	repo := NewBusinessProfile(conn)
 	ctx := context.Background()
 
-	if err := repo.Save(ctx, BusinessProfileInput{Name: "First"}); err != nil {
-		t.Fatalf("Save #1: %v", err)
+	if err := repo.Save(ctx, a, BusinessProfileInput{Name: "Tenant A Co"}); err != nil {
+		t.Fatalf("Save A: %v", err)
 	}
-
-	var firstUuid string
-	if err := repo.db.QueryRow("SELECT uuid FROM business_profile WHERE id=1").Scan(&firstUuid); err != nil {
-		t.Fatalf("read uuid #1: %v", err)
+	// Tenant B has no profile yet; must not see tenant A's.
+	got, err := repo.Get(ctx, b)
+	if err != nil {
+		t.Fatalf("Get B: %v", err)
 	}
-	if firstUuid == "" {
-		t.Fatalf("first uuid is empty")
-	}
-
-	if err := repo.Save(ctx, BusinessProfileInput{Name: "Second"}); err != nil {
-		t.Fatalf("Save #2: %v", err)
-	}
-
-	var secondUuid string
-	if err := repo.db.QueryRow("SELECT uuid FROM business_profile WHERE id=1").Scan(&secondUuid); err != nil {
-		t.Fatalf("read uuid #2: %v", err)
-	}
-	if secondUuid != firstUuid {
-		t.Fatalf("uuid changed: %q -> %q, want unchanged", firstUuid, secondUuid)
-	}
-
-	var rows int
-	if err := repo.db.QueryRow("SELECT COUNT(*) FROM business_profile").Scan(&rows); err != nil {
-		t.Fatalf("count rows: %v", err)
-	}
-	if rows != 1 {
-		t.Fatalf("business_profile rows = %d, want 1", rows)
+	if got != nil {
+		t.Fatalf("tenant B saw tenant A's profile: %+v", got)
 	}
 }

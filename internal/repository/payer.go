@@ -1,5 +1,10 @@
 package repository
 
+// NOTE (J4): the old "payer" domain now backs the NDIS plan_managers table.
+// Types and constructor are renamed to PlanManager (low-friction, per J8/J9
+// direction); the FILE name stays payer.go to keep this change's scope bounded.
+// J8 owns renaming the file and updating service/http call sites.
+
 import (
 	"context"
 	"database/sql"
@@ -12,9 +17,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// Payer is the domain view of a row in the payers table. All nullable columns
-// are unwrapped to plain strings ("" when absent).
-type Payer struct {
+// PlanManager is the domain view of a row in the plan_managers table. All
+// nullable columns are unwrapped to plain strings ("" when absent).
+type PlanManager struct {
 	ID        int64  `json:"id"`
 	UUID      string `json:"uuid"`
 	Name      string `json:"name"`
@@ -26,8 +31,8 @@ type Payer struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// PayerInput is the writable subset of a payer.
-type PayerInput struct {
+// PlanManagerInput is the writable subset of a plan manager.
+type PlanManagerInput struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
@@ -35,65 +40,74 @@ type PayerInput struct {
 	Metadata string `json:"metadata"`
 }
 
-// PayersRepo reads and writes the payers table with audited mutations.
-type PayersRepo struct {
+// PlanManagersRepo reads and writes the plan_managers table (tenant-scoped) with
+// audited mutations.
+type PlanManagersRepo struct {
 	db *sql.DB
 }
 
-// NewPayers constructs a repository. A nil db is a programmer error.
-func NewPayers(db *sql.DB) *PayersRepo {
+// NewPlanManagers constructs a repository. A nil db is a programmer error.
+func NewPlanManagers(db *sql.DB) *PlanManagersRepo {
 	if db == nil {
-		panic("repository: NewPayers requires a non-nil *sql.DB")
+		panic("repository: NewPlanManagers requires a non-nil *sql.DB")
 	}
-	return &PayersRepo{db: db}
+	return &PlanManagersRepo{db: db}
 }
 
-// List returns all payers ordered by name. When search is non-empty it filters
-// to payers whose name or email matches the term (case-insensitive LIKE).
-func (r *PayersRepo) List(ctx context.Context, search string) ([]*Payer, error) {
+// List returns the tenant's plan managers ordered by name. When search is
+// non-empty it filters to name or email matches (LIKE).
+func (r *PlanManagersRepo) List(ctx context.Context, tenantID int64, search string) ([]*PlanManager, error) {
 	q := gen.New(r.db)
 	if search == "" {
-		rows, err := q.ListPayers(ctx)
+		rows, err := q.ListPlanManagers(ctx, tenantID)
 		if err != nil {
-			return nil, fmt.Errorf("list payers: %w", err)
+			return nil, fmt.Errorf("list plan managers: %w", err)
 		}
-		return mapPayers(rows), nil
+		return mapPlanManagers(rows), nil
 	}
 	like := "%" + search + "%"
-	rows, err := q.SearchPayers(ctx, gen.SearchPayersParams{Name: like, Email: nz(like)})
+	rows, err := q.SearchPlanManagers(ctx, gen.SearchPlanManagersParams{
+		TenantID: tenantID,
+		Name:     like,
+		Email:    nz(like),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("search payers: %w", err)
+		return nil, fmt.Errorf("search plan managers: %w", err)
 	}
-	return mapPayers(rows), nil
+	return mapPlanManagers(rows), nil
 }
 
-// Get returns the payer, or (nil, nil) when none matches.
-func (r *PayersRepo) Get(ctx context.Context, id int64) (*Payer, error) {
-	row, err := gen.New(r.db).GetPayer(ctx, id)
+// Get returns the tenant's plan manager, or (nil, nil) when none matches.
+func (r *PlanManagersRepo) Get(ctx context.Context, tenantID, id int64) (*PlanManager, error) {
+	row, err := gen.New(r.db).GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get payer: %w", err)
+		return nil, fmt.Errorf("get plan manager: %w", err)
 	}
-	return toPayer(row), nil
+	return toPlanManager(row), nil
 }
 
-// Create inserts a payer and writes one audit row, atomically.
-func (r *PayersRepo) Create(ctx context.Context, in PayerInput) (*Payer, error) {
+// Create inserts a plan manager and writes one audit row, atomically.
+func (r *PlanManagersRepo) Create(ctx context.Context, tenantID int64, in PlanManagerInput) (*PlanManager, error) {
+	if tenantID == 0 {
+		return nil, errors.New("create plan manager: tenant id required")
+	}
 	if in.Name == "" {
-		return nil, errors.New("create payer: name is required")
+		return nil, errors.New("create plan manager: name is required")
 	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
 	}
 
-	var created gen.Payer
+	var created gen.PlanManager
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
-		p, e := gen.New(tx).CreatePayer(ctx, gen.CreatePayerParams{
+		p, e := gen.New(tx).CreatePlanManager(ctx, gen.CreatePlanManagerParams{
 			Uuid:      uuid.NewString(),
+			TenantID:  tenantID,
 			Name:      in.Name,
 			Email:     nz(in.Email),
 			Phone:     nz(in.Phone),
@@ -107,45 +121,46 @@ func (r *PayersRepo) Create(ctx context.Context, in PayerInput) (*Payer, error) 
 		}
 		created = p
 		return audit.Log(ctx, tx, audit.Entry{
-			EntityType: "payer",
+			EntityType: "plan_manager",
 			EntityID:   p.ID,
 			Action:     "create",
 			Changes:    audit.Changes(map[string]any{"name": in.Name, "email": in.Email}),
 		})
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create payer: %w", err)
+		return nil, fmt.Errorf("create plan manager: %w", err)
 	}
-	return toPayer(created), nil
+	return toPlanManager(created), nil
 }
 
-// Update writes the payer's fields and one audit row, atomically. Returns
-// (nil, nil) when the payer does not exist so the caller can 404.
-func (r *PayersRepo) Update(ctx context.Context, id int64, in PayerInput) (*Payer, error) {
+// Update writes the plan manager's fields and one audit row, atomically.
+// Returns (nil, nil) when the row does not exist so the caller can 404.
+func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in PlanManagerInput) (*PlanManager, error) {
 	if in.Name == "" {
-		return nil, errors.New("update payer: name is required")
+		return nil, errors.New("update plan manager: name is required")
 	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
 	}
 
-	var updated gen.Payer
+	var updated gen.PlanManager
 	var missing bool
 	err := audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "payer",
+		EntityType: "plan_manager",
 		EntityID:   id,
 		Action:     "update",
 		Changes:    audit.Changes(map[string]any{"name": in.Name}),
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
-		p, e := gen.New(tx).UpdatePayer(ctx, gen.UpdatePayerParams{
+		p, e := gen.New(tx).UpdatePlanManager(ctx, gen.UpdatePlanManagerParams{
 			Name:      in.Name,
 			Email:     nz(in.Email),
 			Phone:     nz(in.Phone),
 			Address:   nz(in.Address),
 			Metadata:  nz(metadata),
 			UpdatedAt: now,
+			TenantID:  tenantID,
 			ID:        id,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
@@ -162,40 +177,40 @@ func (r *PayersRepo) Update(ctx context.Context, id int64, in PayerInput) (*Paye
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("update payer: %w", err)
+		return nil, fmt.Errorf("update plan manager: %w", err)
 	}
-	return toPayer(updated), nil
+	return toPlanManager(updated), nil
 }
 
-// Delete removes a payer and writes one audit row, atomically.
-func (r *PayersRepo) Delete(ctx context.Context, id int64) error {
+// Delete removes a plan manager and writes one audit row, atomically.
+func (r *PlanManagersRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "payer",
+		EntityType: "plan_manager",
 		EntityID:   id,
 		Action:     "delete",
 	}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).DeletePayer(ctx, id); err != nil {
+		if err := gen.New(tx).DeletePlanManager(ctx, gen.DeletePlanManagerParams{TenantID: tenantID, ID: id}); err != nil {
 			return fmt.Errorf("delete: %w", err)
 		}
 		return nil
 	})
 }
 
-// BulkDelete removes several payers and writes one audit row, atomically. An
-// empty id list is a no-op.
-func (r *PayersRepo) BulkDelete(ctx context.Context, ids []int64) error {
+// BulkDelete removes several plan managers and writes one audit row, atomically.
+// An empty id list is a no-op.
+func (r *PlanManagersRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
-			if err := q.DeletePayer(ctx, id); err != nil {
+			if err := q.DeletePlanManager(ctx, gen.DeletePlanManagerParams{TenantID: tenantID, ID: id}); err != nil {
 				return fmt.Errorf("delete %d: %w", id, err)
 			}
 		}
 		return audit.Log(ctx, tx, audit.Entry{
-			EntityType: "payer",
+			EntityType: "plan_manager",
 			EntityID:   0,
 			Action:     "bulk_delete",
 			Changes:    audit.Changes(map[string]any{"ids": ids}),
@@ -203,18 +218,18 @@ func (r *PayersRepo) BulkDelete(ctx context.Context, ids []int64) error {
 	})
 }
 
-// mapPayers converts a slice of generated rows to a non-nil domain slice.
-func mapPayers(rows []gen.Payer) []*Payer {
-	out := make([]*Payer, 0, len(rows))
+// mapPlanManagers converts a slice of generated rows to a non-nil domain slice.
+func mapPlanManagers(rows []gen.PlanManager) []*PlanManager {
+	out := make([]*PlanManager, 0, len(rows))
 	for i := range rows {
-		out = append(out, toPayer(rows[i]))
+		out = append(out, toPlanManager(rows[i]))
 	}
 	return out
 }
 
-// toPayer maps a generated row to the domain Payer, unwrapping NullStrings.
-func toPayer(row gen.Payer) *Payer {
-	return &Payer{
+// toPlanManager maps a generated row to the domain PlanManager.
+func toPlanManager(row gen.PlanManager) *PlanManager {
+	return &PlanManager{
 		ID:        row.ID,
 		UUID:      row.Uuid,
 		Name:      row.Name,
