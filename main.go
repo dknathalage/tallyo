@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/agent"
+	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
@@ -85,7 +87,7 @@ const overdueSweepInterval = 1 * time.Hour
 //
 // A failure for one tenant is logged and the sweep continues with the next, so
 // one tenant's data problem cannot stall every other tenant's sweep.
-func runSweepOnce(inv *service.InvoiceService, rec *service.RecurringService, logger *slog.Logger) {
+func runSweepOnce(inv *service.InvoiceService, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger) {
 	tenantIDs, err := inv.ActiveTenantIDs(context.Background())
 	if err != nil {
 		logger.Error("sweep: list active tenants failed", slog.Any("error", err))
@@ -105,11 +107,18 @@ func runSweepOnce(inv *service.InvoiceService, rec *service.RecurringService, lo
 			logger.Info("recurring sweep", slog.Int64("tenant_id", tid), slog.Int("generated", len(gens)))
 		}
 	}
+	// Agent expired-step + retention sweep (global, not per-tenant). nil when the
+	// AI agent is disabled. A failure is logged and does not abort the sweep.
+	if ag != nil {
+		if err := ag.SweepExpired(context.Background()); err != nil {
+			logger.Error("agent sweep failed", slog.Any("error", err))
+		}
+	}
 }
 
 // runSweeper runs the per-tenant sweeps on each tick until done is closed. It
 // owns its single ticker and stops cleanly, so it never leaks a goroutine.
-func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, logger *slog.Logger, done <-chan struct{}) {
+func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -117,7 +126,7 @@ func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, logg
 		case <-done:
 			return
 		case <-ticker.C:
-			runSweepOnce(inv, rec, logger)
+			runSweepOnce(inv, rec, ag, logger)
 		}
 	}
 }
@@ -137,6 +146,11 @@ func run() error {
 	}
 
 	logger := setupLogger(*logFormat, *logLevel)
+
+	agentCfg := agent.Config{APIKey: envOr("ANTHROPIC_API_KEY", "")}.WithDefaults()
+	if !agentCfg.Enabled() {
+		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
+	}
 
 	dir := *dataDir
 	if dir == "" {
@@ -178,6 +192,31 @@ func run() error {
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
 
+	// AI agent (optional): the full service is only constructed when
+	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired
+	// (BUG 3): when disabled it is a guard-only handler (nil agent/budget,
+	// enabled=false) so /api/agent/* routes are registered and return a clean 503
+	// instead of falling through to the SPA catch-all (200 index.html). agentSvc
+	// stays nil when disabled → the sweeper skips SweepExpired.
+	var agentHandler *httpapi.AgentHandler
+	var agentSvc *agent.Agent
+	if agentCfg.Enabled() {
+		agentStore := agent.NewStore(conn)
+		agentEvents := agent.NewEvents()
+		agentReg := agent.NewRegistry()
+		agentCP := agent.NewCheckpoint(agentStore, conn)
+		agentReg.Register(agent.NewListInvoicesTool(invoiceSvc))
+		agentReg.Register(agent.NewCreateInvoiceTool(invoiceSvc, agentCP))
+		agentBudget := agent.NewBudgetWallClock(agentStore, agentCfg)
+		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, "high")
+		agentSvc = agent.NewAgent(agentCfg, llmClient, agentStore, agentReg, agentCP, agentEvents).
+			WithBudget(agentBudget).
+			WithRestore(agent.InvoiceRestoreFunc(invoiceSvc))
+		agentHandler = httpapi.NewAgentHandler(agentSvc, agentBudget, true)
+	} else {
+		agentHandler = httpapi.NewAgentHandler(nil, nil, false)
+	}
+
 	assets, err := fs.Sub(tallyoweb.Build, "build")
 	if err != nil {
 		return fmt.Errorf("sub web build: %w", err)
@@ -207,6 +246,7 @@ func run() error {
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 		Export:          httpapi.NewExportHandler(customItemSvc, invoiceSvc, estimateSvc),
+		Agent:           agentHandler,
 	}
 
 	server := httpapi.NewServer(deps)
@@ -215,9 +255,9 @@ func run() error {
 	// Run one per-tenant sweep at startup, then keep a background sweeper running
 	// on an hourly tick. The done channel stops the goroutine on shutdown so it
 	// does not leak.
-	runSweepOnce(invoiceSvc, recurringSvc, logger)
+	runSweepOnce(invoiceSvc, recurringSvc, agentSvc, logger)
 	overdueDone := make(chan struct{})
-	go runSweeper(invoiceSvc, recurringSvc, logger, overdueDone)
+	go runSweeper(invoiceSvc, recurringSvc, agentSvc, logger, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)
