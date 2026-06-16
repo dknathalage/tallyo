@@ -179,12 +179,14 @@ func NewServer(deps Deps) *Server {
 					pr.Put("/custom-items/{id}", deps.CustomItems.Update)
 					pr.Delete("/custom-items/{id}", deps.CustomItems.Delete)
 				}
-				// SupportCatalog is the GLOBAL NDIS catalogue (read-only here).
-				// TODO(J7): platform-admin ingest (XLSX upload) endpoint is J7.
+				// SupportCatalog is the GLOBAL NDIS catalogue. Reads are open to
+				// any authenticated tenant user; the XLSX ingest (write) is gated
+				// to platform admins (spec §5).
 				if deps.SupportCatalog != nil {
 					pr.Get("/support-catalog/versions", deps.SupportCatalog.ListVersions)
 					pr.Get("/support-catalog/versions/{id}/items", deps.SupportCatalog.ListItems)
 					pr.Get("/support-catalog/items/{itemId}/prices", deps.SupportCatalog.ListPrices)
+					pr.With(RequirePlatformAdmin).Post("/support-catalog/versions", deps.SupportCatalog.Ingest)
 				}
 				if deps.Invoices != nil {
 					pr.Get("/invoices", deps.Invoices.List)

@@ -408,6 +408,106 @@ func (r *CatalogRepo) ListPrices(ctx context.Context, supportItemID int64) ([]*S
 	return out, nil
 }
 
+// IngestItem is one parsed support-item row destined for the ingest. Prices maps
+// zone → cap; a nil cap denotes a quotable item (no fixed cap). Zones absent
+// from the map get no price row.
+type IngestItem struct {
+	Code              string
+	Name              string
+	Unit              string
+	SupportCategory   string
+	RegistrationGroup string
+	ClaimType         string
+	GstFree           bool
+	Prices            map[string]*float64 // zone → cap (nil = quotable)
+}
+
+// IngestResult summarises a completed catalogue ingest.
+type IngestResult struct {
+	Version    *CatalogVersion
+	ItemCount  int
+	PriceCount int
+}
+
+// Ingest creates a new catalog_version and bulk-upserts every support_item +
+// its per-zone price rows in ONE audited transaction. Any error rolls the whole
+// thing back (no partial-version state, spec §5). The version-create audit row is
+// written inside the same tx. Returns the created version and counts.
+func (r *CatalogRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFilename string, items []IngestItem) (*IngestResult, error) {
+	if label == "" {
+		return nil, errors.New("ingest catalogue: label required")
+	}
+	if effectiveFrom == "" {
+		return nil, errors.New("ingest catalogue: effective_from required")
+	}
+	if len(items) == 0 {
+		return nil, errors.New("ingest catalogue: no data rows")
+	}
+
+	var result IngestResult
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		now := time.Now().UTC().Format(time.RFC3339)
+		ver, e := q.CreateCatalogVersion(ctx, gen.CreateCatalogVersionParams{
+			Uuid:           uuid.NewString(),
+			Label:          label,
+			EffectiveFrom:  effectiveFrom,
+			EffectiveTo:    sql.NullString{},
+			SourceFilename: nzMaybe(sourceFilename),
+			CreatedAt:      now,
+		})
+		if e != nil {
+			return fmt.Errorf("create version: %w", e)
+		}
+
+		priceCount := 0
+		for i := range items { // bounded by len(items)
+			it := items[i]
+			si, e := q.UpsertSupportItem(ctx, gen.UpsertSupportItemParams{
+				Uuid:              uuid.NewString(),
+				CatalogVersionID:  ver.ID,
+				Code:              it.Code,
+				Name:              it.Name,
+				Unit:              nzMaybe(it.Unit),
+				SupportCategory:   nzMaybe(it.SupportCategory),
+				RegistrationGroup: nzMaybe(it.RegistrationGroup),
+				ClaimType:         nzMaybe(it.ClaimType),
+				GstFree:           b2i(it.GstFree),
+				Metadata:          sql.NullString{String: "{}", Valid: true},
+			})
+			if e != nil {
+				return fmt.Errorf("upsert item %q: %w", it.Code, e)
+			}
+			for zone, capPtr := range it.Prices { // bounded by len(it.Prices)
+				cap := sql.NullFloat64{}
+				if capPtr != nil {
+					cap = sql.NullFloat64{Float64: *capPtr, Valid: true}
+				}
+				if e := q.UpsertSupportItemPrice(ctx, gen.UpsertSupportItemPriceParams{
+					SupportItemID: si.ID,
+					Zone:          zone,
+					PriceCap:      cap,
+				}); e != nil {
+					return fmt.Errorf("upsert price %q/%s: %w", it.Code, zone, e)
+				}
+				priceCount++
+			}
+		}
+
+		result = IngestResult{Version: toCatalogVersion(ver), ItemCount: len(items), PriceCount: priceCount}
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "catalog_version",
+			EntityID:   ver.ID,
+			Action:     "ingest",
+			Changes:    audit.Changes(map[string]any{"label": label, "items": len(items), "prices": priceCount}),
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ingest catalogue: %w", err)
+	}
+	return &result, nil
+}
+
 func toCatalogVersion(row gen.CatalogVersion) *CatalogVersion {
 	return &CatalogVersion{
 		ID:             row.ID,

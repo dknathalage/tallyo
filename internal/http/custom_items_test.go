@@ -23,7 +23,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	ciH := NewCustomItemHandler(service.NewCustomItemService(conn, hub))
-	scH := NewSupportCatalogHandler(service.NewSupportCatalogService(conn))
+	scH := NewSupportCatalogHandler(service.NewSupportCatalogService(conn), service.NewCatalogIngestService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

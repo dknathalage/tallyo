@@ -150,6 +150,7 @@ func run() error {
 	participantSvc := service.NewParticipantService(conn, hub)
 	customItemSvc := service.NewCustomItemService(conn, hub)
 	supportCatalogSvc := service.NewSupportCatalogService(conn)
+	catalogIngestSvc := service.NewCatalogIngestService(conn, hub)
 	invoiceSvc := service.NewInvoiceService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
@@ -178,7 +179,7 @@ func run() error {
 		TaxRates:        httpapi.NewTaxRateHandler(taxRateSvc),
 		Participants:    httpapi.NewParticipantHandler(participantSvc),
 		CustomItems:     httpapi.NewCustomItemHandler(customItemSvc),
-		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc),
+		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
