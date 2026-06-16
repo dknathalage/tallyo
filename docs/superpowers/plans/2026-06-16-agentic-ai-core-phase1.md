@@ -39,8 +39,8 @@
 
 ## Conventions to follow (from the codebase)
 
-- Mutations go through `audit.WithTx(ctx, db, audit.Entry{...}, func(tx *sql.Tx) error {...})`. When the id is generated inside `fn`, pass `Entry.Action == ""` and log manually inside `fn`.
-- Tenant from `reqctx.MustTenant(ctx)`; user from `reqctx.UserFrom(ctx)`.
+- Mutations go through `audit.WithTx(ctx, db, audit.Entry{...}, func(tx *sql.Tx) error {...})`. When the id is generated inside `fn`, pass `Entry.Action == ""` and log manually inside `fn`. **Note:** audit + transaction live at the *repository* layer (e.g. `InvoicesRepo.Create` opens its own tx and commits internally); `InvoiceService.Create` returns *after* that commit. So an agent tool **cannot** enroll its checkpoint-change insert into the service call's transaction (see Task 6 / B1 handling).
+- Tenant from `reqctx.MustTenant(ctx)` (panics if absent). User from `reqctx.UserFrom(ctx)` which returns `(int64, bool)` — check the bool; do not treat it as a single value.
 - Services are built `service.NewXService(conn, hub)` and broadcast `realtime.Event{TenantID, Entity, ID, Action}` after commit.
 - sqlc: add SQL to `internal/db/queries/agent.sql`, run `"$(go env GOPATH)/bin/sqlc" generate`, never hand-edit `internal/db/gen`.
 - Every non-trivial function validates inputs (≥2 checks). Bounded loops. cgo-free.
@@ -109,7 +109,7 @@ func (c Config) Enabled() bool { return c.APIKey != "" }
 // WithDefaults fills unset fields with sensible defaults.
 func (c Config) WithDefaults() Config {
 	if c.Model == "" {
-		c.Model = "claude-opus-4-8"
+		c.Model = "claude-opus-4-8" // confirm the exact public API id via the claude-api skill before first live call
 	}
 	if c.MaxIterations == 0 {
 		c.MaxIterations = 25
@@ -346,11 +346,13 @@ git commit -m "feat(agent): provider-agnostic llm client interface + scripted fa
 - Create: `internal/agent/llm/anthropic.go`
 - Test: `internal/agent/llm/anthropic_test.go` (mapping only — no network)
 
-> The adapter maps our `Request`/`Response` to `anthropic-sdk-go` (`client.Messages.New`, `MessageNewParams`, adaptive thinking, `output_config.effort`, tool defs, `tool_choice`). Confirm exact SDK symbols against `go/claude-api` patterns; the manual loop uses `resp.StopReason`, `resp.Content` (`AsAny()` switch), `variant.JSON.Input.Raw()`.
+> **Before writing this task, invoke the `claude-api` skill** (available in this environment) and read its Go section for the exact `anthropic-sdk-go` symbols — do not guess them. The adapter maps our `Request`/`Response` to `client.Messages.New(ctx, anthropic.MessageNewParams{...})`: `Model`, `MaxTokens`, adaptive thinking (`Thinking: anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{}}`), `output_config.effort: "high"`, `Tools` (`ToolUnionParam{OfTool: &ToolParam{...}}`), and `ToolChoice` (force a tool for the plan phase, else auto). The manual loop reads `resp.StopReason` (`StopReasonToolUse`/`StopReasonRefusal`), walks `resp.Content` via the `AsAny()` type switch (`TextBlock`/`ToolUseBlock`/`ThinkingBlock`), and reads tool input with `variant.JSON.Input.Raw()`.
+>
+> **Critical round-trip:** the resume path (Task 9) depends on sending a `tool_result` back. Map our `Message.ToolResults` → an `anthropic.NewToolResultBlock(toolUseID, content, isError)` inside a user message (`anthropic.NewUserMessage(...)`), and our assistant `tool_use` blocks back into the history. The mapping test (Step 1) MUST cover **both** directions: a response `tool_use` parsed into our `Block`, **and** a request containing a `ToolResult` producing a valid SDK user message.
 
 - [ ] **Step 1: Write the failing mapping test**
 
-Test pure mapping helpers (no client call): `toSDKMessages([]Message) -> []anthropic.MessageParam` and `fromSDK(*anthropic.Message) -> *Response`. Assert a `tool_use` round-trips name/id/input and a refusal stop reason maps to `StopRefusal`.
+Test pure mapping helpers (no client call): `toSDKMessages([]Message) -> []anthropic.MessageParam` and `fromSDK(*anthropic.Message) -> *Response`. Assert: (a) a response `tool_use` round-trips name/id/input; (b) a refusal stop reason maps to `StopRefusal`; (c) a `Message` carrying a `ToolResult{ToolUseID, Content, IsError}` maps to a user message with a tool_result block carrying the same id + is_error flag (the load-bearing resume direction).
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -386,7 +388,7 @@ git commit -m "feat(agent): anthropic-sdk-go adapter for llm.Client"
 - Create: `internal/db/migrations/NNNNN_agent.sql`, `internal/db/queries/agent.sql`, `internal/agent/store.go`
 - Test: `internal/agent/store_test.go`
 
-- [ ] **Step 1: Write the migration** (`NNNNN` = next number after the latest in `internal/db/migrations/`)
+- [ ] **Step 1: Write the migration** — file `internal/db/migrations/00002_agent.sql` (the only existing migration is `00001_ndis_baseline.sql`; match the 5-digit zero-padded convention)
 
 ```sql
 -- +goose Up
@@ -412,9 +414,20 @@ CREATE TABLE agent_message (
 );
 CREATE INDEX idx_agent_msg_conv ON agent_message(conversation_id, id);
 
+CREATE TABLE agent_checkpoint (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id  INTEGER NOT NULL REFERENCES agent_message(id) ON DELETE CASCADE,
+  tenant_id   INTEGER NOT NULL,
+  status      TEXT NOT NULL CHECK (status IN ('open','committed','reverted')),
+  created_at  TEXT NOT NULL,
+  reverted_at TEXT
+);
+
+-- agent_step is created AFTER agent_checkpoint because it FKs it.
 CREATE TABLE agent_step (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   message_id   INTEGER NOT NULL REFERENCES agent_message(id) ON DELETE CASCADE,
+  checkpoint_id INTEGER REFERENCES agent_checkpoint(id) ON DELETE SET NULL, -- execute-phase checkpoint; read on resume
   tenant_id    INTEGER NOT NULL,
   ordinal      INTEGER NOT NULL,
   tool_name    TEXT NOT NULL,
@@ -429,15 +442,6 @@ CREATE TABLE agent_step (
 );
 CREATE INDEX idx_agent_step_msg ON agent_step(message_id, ordinal);
 CREATE INDEX idx_agent_step_await ON agent_step(status, await_expires_at);
-
-CREATE TABLE agent_checkpoint (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  message_id  INTEGER NOT NULL REFERENCES agent_message(id) ON DELETE CASCADE,
-  tenant_id   INTEGER NOT NULL,
-  status      TEXT NOT NULL CHECK (status IN ('open','committed','reverted')),
-  created_at  TEXT NOT NULL,
-  reverted_at TEXT
-);
 
 CREATE TABLE agent_checkpoint_change (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -464,15 +468,15 @@ CREATE TABLE agent_token_usage (
 -- +goose Down
 DROP TABLE agent_token_usage;
 DROP TABLE agent_checkpoint_change;
+DROP TABLE agent_step;          -- drop child before its FK parent
 DROP TABLE agent_checkpoint;
-DROP TABLE agent_step;
 DROP TABLE agent_message;
 DROP TABLE agent_conversation;
 ```
 
 - [ ] **Step 2: Write sqlc queries** in `internal/db/queries/agent.sql`
 
-Cover (named `-- name: X :one|:many|:exec`): `CreateAgentConversation`, `GetAgentConversation` (tenant-scoped), `ListAgentConversations` (by tenant), `TouchAgentConversation` (updated_at), `CreateAgentMessage`, `ListAgentMessages` (by conversation), `CreateAgentStep`, `UpdateAgentStepStatus`, `GetAgentStep`, `ListAgentSteps` (by message), `ListExpiredAwaitingSteps` (status='awaiting' AND await_expires_at < ?), `CreateCheckpoint`, `UpdateCheckpointStatus`, `CreateCheckpointChange`, `ListCheckpointChanges` (by checkpoint, ordinal desc), `GetCheckpoint`, `AddTokenUsage` (UPSERT into agent_token_usage), `GetTokenUsage` (tenant, day), `PruneCheckpointChanges`/`PruneAgentSteps` (retention). Every read filters by `tenant_id`.
+Cover (named `-- name: X :one|:many|:exec`): `CreateAgentConversation`, `GetAgentConversation` (tenant-scoped), `GetConversationByMessage` (join agent_message → conversation, tenant-scoped — used by resume in Task 9), `ListAgentConversations` (by tenant), `TouchAgentConversation` (updated_at), `CreateAgentMessage`, `ListAgentMessages` (by conversation, ordered by id — this is `loadHistory`'s source in Task 8), `CreateAgentStep` (incl. `checkpoint_id`), `CreateAwaitingStep` (sets status='awaiting', `checkpoint_id`, `tool_use_id`, `pending_input`, `await_expires_at`), `UpdateAgentStepStatus`, `GetAgentStep` (tenant-scoped), `ListAgentSteps` (by message), `ListExpiredAwaitingSteps` (status='awaiting' AND await_expires_at < ?), `CreateCheckpoint`, `UpdateCheckpointStatus`, `GetCheckpoint`, `CreateCheckpointChange`, `ListCheckpointChanges` (by checkpoint, ordinal DESC), `AddTokenUsage` (UPSERT into agent_token_usage), `GetTokenUsage` (tenant, day), `PruneCheckpointChanges`/`PruneAgentSteps` (retention). Every read filters by `tenant_id`.
 
 - [ ] **Step 3: Generate sqlc**
 
@@ -651,9 +655,11 @@ git commit -m "feat(agent): tool registry + list_invoices read tool"
 - Modify: `internal/agent/tools_invoice.go`
 - Test: `internal/agent/checkpoint_test.go`
 
+> **B1 — checkpoint change is recorded *after* the service call, not in its tx.** Audit + transaction live in the repository layer: `InvoicesRepo.Create` opens and commits its own tx, and `InvoiceService.Create` returns after that commit. A tool therefore cannot enroll the `agent_checkpoint_change` insert into the same transaction without changing service/repo signatures (out of Phase-1 scope). So the risky tool: (1) calls the service, (2) on success records the checkpoint change in a *separate* `audit.WithTx`. Accept the small window between commit and change-record; mitigate by recording immediately and, on a record failure, logging loudly (the created row still exists and is audited independently). **Do not describe this as atomic.** (Spec §10 wording updated to match.)
+
 - [ ] **Step 1: Write the failing checkpoint test**
 
-Create a checkpoint, record a `create` change for a fake row, then revert and assert: a `create` revert deletes the row; an `update` revert restores `before_row`; a conflict (changed `entity_version`) is reported, not applied. Use the invoice service against a temp DB so the restore path is real.
+Create a checkpoint, record a `create` change for a fake row, then revert and assert: a `create` revert deletes the row (via `InvoiceService.Delete`); an `update` revert restores `before_row`; a conflict (changed `entity_version`) is reported, not applied. Use the invoice service against a temp DB so the restore path is real.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -748,7 +754,11 @@ type RestoreFunc func(ctx context.Context, ch Change) error
 
 - [ ] **Step 4: Make `create_invoice` risky + snapshot-aware**
 
-In `tools_invoice.go` add `create_invoice` (`Risk: RiskRisky`): input `{participantId, items:[...], ...}`; validate; capture nothing on `before` (create); call `inv.Create(ctx, in, items)`; on success record a `Change{Table:"invoices", PK:inv.ID, Op:"create", AfterRow: json(inv), EntityVersion: inv.UpdatedAt}` to the active checkpoint (the checkpoint id is threaded via `context.Context`, set by the loop — Task 8). Provide the invoice `RestoreFunc`: `create→` call an invoice delete/void path; `update→` restore fields. (v1 create-only revert deletes the created invoice.)
+In `tools_invoice.go` add `create_invoice` (`Risk: RiskRisky`): input `{participantId, items:[...], ...}`; validate it unmarshals and `participantId > 0` and `len(items) > 0`. Map the input to `repository.InvoiceInput` + `[]repository.LineItemInput` (the typed args `InvoiceService.Create` expects — Create runs the NDIS `LineValidator` which recomputes tax and may return `*service.ValidationError`). Call `inv.Create(ctx, in, items)`:
+- On `*service.ValidationError`, **return it as a structured tool error** (`Result` with the field-level detail, and signal `IsError` to the caller) so the loop feeds it back as an `is_error` tool_result and the model can adapt — never a 500.
+- On success, record (in a *separate* `audit.WithTx`, per B1) `Change{Table:"invoices", PK:inv.ID, Op:"create", AfterRow: json(inv), EntityVersion: inv.UpdatedAt}` to the active checkpoint (id threaded via `context.Context`, set by the loop/gate — Tasks 8/9).
+
+Provide the invoice `RestoreFunc`: `create →` `inv.Delete(ctx, ch.PK)` (this real method exists); `update →` restore fields from `before_row`. v1 is create-only, so the delete path is the primary one. Conflict: compare the live invoice `UpdatedAt` to `ch.EntityVersion` before deleting; mismatch → `ErrConflict`.
 
 - [ ] **Step 5: Run to verify it passes**
 
@@ -868,6 +878,12 @@ func (a *Agent) Execute(ctx context.Context, conv *Conversation, checkpointID, m
 ```
 
 Implement helpers: `loadHistory`, `persistAssistant`, `runReadTool` (calls handler, sets the checkpoint id on ctx, persists a `done` step + `tool_result` user message, publishes `tool_result`), `feedToolError`, `commitCheckpoint`, `finalText`, `toolUses`.
+
+**Resume reconstruction (load-bearing — spec §5a).** `Execute` is the single entry for both a fresh turn and a resume, so it must rebuild the model window purely from persisted state:
+- `feedToolResult`/`feedToolError` persist a `role=user` `agent_message` whose content is a single `tool_result` block keyed by the originating `tool_use_id` (`IsError` set for denials/errors). This is what the model sees as the answer to its `tool_use`.
+- `loadHistory` returns every `agent_message` for the conversation in `id` order, mapped verbatim to `llm.Message` blocks (assistant `tool_use` blocks and user `tool_result` blocks included).
+- `buildRequest` for the execute loop uses `ToolChoice{}` (**auto**), never the forced `propose_plan` — forcing only happens in the plan phase (Task 7). On resume, the latest block is the freshly-appended `tool_result`, so the model continues rather than re-planning or emitting an orphaned `tool_use`.
+Add a resume-specific test asserting the request sent on the first post-decision iteration has `ToolChoice.ForceTool == ""` and its last message is the `tool_result`.
 
 - [ ] **Step 6: Run to verify it passes**
 
@@ -1054,7 +1070,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement `internal/http/agent.go`**
 
-`type AgentHandler struct { agent *agent.Agent; enabled bool }`. Each handler: pull tenant/user from `reqctx`; if `!enabled` return a clean 503 `{"error":"AI not configured"}`. The SSE handler mirrors `EventsHandler` (subscribe to `agent.Events` for the conversation, flush per event, respect request context cancellation for `Esc`). Send-message runs `agent.Start(ctx, convID, text)` (plan + Execute). Follow `internal/http/respond.go` JSON helpers.
+`type AgentHandler struct { agent *agent.Agent; enabled bool }`. Each handler: pull tenant/user from `reqctx`; if `!enabled` return a clean 503 `{"error":"AI not configured"}`. The SSE handler mirrors `internal/http/events.go::EventsHandler` precisely — `http.NewResponseController(w)` + `rc.Flush()` per event, `text/event-stream` headers, and `r.Context()` cancellation to end the stream (this is the `Esc`/disconnect path) — but subscribes to `agent.Events` for the path's conversation id instead of the tenant hub. Send-message runs `agent.Start(ctx, convID, text)` (plan + Execute). Follow `internal/http/respond.go` JSON helpers.
 
 - [ ] **Step 4: Wire `Deps.Agent` + routes in `server.go`**
 
@@ -1093,7 +1109,9 @@ Expected: FAIL.
 
 - [ ] **Step 4: Wire in `main.go`**
 
-Construct `agent.Store`, `llm` client (anthropic when enabled, else nil → handler disabled), `Registry` with invoice tools, `Budget`, `Agent`, `AgentHandler`; set `deps.Agent`. Extend `runSweepOnce` to also call `agentSvc.SweepExpired(ctx)` per tenant (system action, null user). Guard all agent wiring behind `agentCfg.Enabled()`.
+Construct `agent.Store`, `llm` client (anthropic when enabled, else nil → handler disabled), `Registry` with invoice tools, `Budget`, `Agent`, `AgentHandler`; set `deps.Agent`. Guard all agent wiring behind `agentCfg.Enabled()`.
+
+Sweep wiring: `runSweepOnce` (`main.go:88`) and `runSweeper` (`main.go:112`) currently take `(inv, rec, logger, ...)`. Add the agent service as a parameter to **both**, and update **both call sites** — the launch call (`main.go:218`) and the ticker goroutine (`main.go:220`). Inside `runSweepOnce`, per active tenant, also call `agentSvc.SweepExpired(ctx)` as a system action (NULL audit user — already supported). When the agent is disabled, pass a nil agent service and skip the call (guard with a nil check) so the sweep still runs the existing overdue/recurring work.
 
 - [ ] **Step 5: Run full suite + cgo-free build**
 

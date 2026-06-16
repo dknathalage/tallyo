@@ -212,11 +212,16 @@ Scope for v1: **per-turn checkpoint revert**, captured in application code at th
 boundary. The richer DB-wide / git-style reversibility (trigger journal, reverse-diff,
 re-revertible append-only history) is explicitly **deferred** — see "Deferred" below.
 
-**Capture.** One `agent_checkpoint` per execute phase. Each risky tool, inside its
-`audit.WithTx` tx, records an `agent_checkpoint_change` (§7): the full prior-row snapshot
-(`before_row`, null for create), the new row (`after_row`), and the row's `entity_version`
-(updated_at/version) at mutation time. Snapshots are captured by the tool handler itself, so
-revert does not depend on `audit.Changes` completeness.
+**Capture.** One `agent_checkpoint` per execute phase. Because audit + transaction live in
+the **repository** layer (the service call commits its own tx and returns), the risky tool
+records the `agent_checkpoint_change` (§7) in a **separate `audit.WithTx` immediately after**
+the service call returns — not in the same transaction. The change captures the full prior-row
+snapshot (`before_row`, null for create), the new row (`after_row`), and the row's
+`entity_version` (updated_at/version) at mutation time. Snapshots are captured by the tool
+handler itself, so revert does not depend on `audit.Changes` completeness. There is a small
+window between the commit and the change-record; the created row is independently audited, and
+a record failure is logged loudly. (Closing that window fully is part of the deferred DB-wide
+journal, which captures at the data layer.)
 
 **Revert** (`POST /api/agent/checkpoints/{id}/revert`): in a single tx, for each change in
 reverse `ordinal`, restore via the service/repository layer:
