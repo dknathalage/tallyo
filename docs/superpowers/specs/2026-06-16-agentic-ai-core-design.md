@@ -27,7 +27,7 @@ primary surface, data-entry copilot parsing, cross-tenant or admin operations, d
 | Tool scope (v1) | Focused: all-domain reads + invoice/estimate/payment/participant writes + sweeps. No deletes. |
 | Memory | Per-conversation (full history persisted; compacted window sent to model). No cross-session memory. |
 | Context mgmt | Server-side compaction + context editing + prompt caching |
-| Revert | Per agent turn (= a git-like commit); DB-level, trigger-driven `row_change` journal; reverse-diff (column-level, `git revert`-style) replay; append-only + re-revertible |
+| Revert | Per agent turn: the checkpoint snapshots the rows each risky tool mutates; revert restores the snapshots, blocking on conflict. (DB-wide / git-style reversibility deferred — see §10.) |
 | Budget cap | Hard stop + clear notice when tenant hits daily token ceiling |
 
 ## 3. Why this architecture
@@ -57,7 +57,7 @@ Each unit has one purpose, a clear interface, and is testable in isolation.
 | `tools.go` | Tool registry. Each tool = `{name, description, inputSchema, risk: read\|risky\|meta, render: table\|card\|summary, handler}`. Domain handlers call **services only**; `meta` tools (e.g. `propose_plan`) perform no service call and are neither gated nor audited. | `internal/service/*` |
 | `plan.go` | Plan phase: first turn forced via `tool_choice` to call `propose_plan`; returns ordered steps; persisted + streamed before any execution. | sdk, store |
 | `permission.go` | Risk gate: on a `risky` tool call, suspend the loop (persist `agent_step.status = awaiting` + pending tool_use), emit `access_request`, and return; a later decision request resumes from persisted state (§5a). No in-memory block. | store, realtime |
-| `checkpoint.go` | Opens an `agent_checkpoint` per execute phase, stamps the per-tx checkpoint tag so the DB-level journal (§7, §10) attributes writes to it; performs atomic per-turn revert by replaying the journal's generic inverse. | db, repository |
+| `checkpoint.go` | Opens an `agent_checkpoint` per execute phase; each risky tool records a full prior-row snapshot of the rows it mutates; revert restores those snapshots in one tx, conflict-checked (§10). | repository, db |
 | `context.go` | Builds the model request: stable cached prefix (system + tools), compaction config, context-editing config; maps stored history → model window. | sdk |
 | `store.go` | sqlc repo over agent tables; tenant-scoped; mutations via `audit.WithTx`. | repository, db |
 | `stream.go` | Publishes agent events over the existing realtime hub. | `internal/realtime` |
@@ -156,17 +156,8 @@ return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 - `agent_conversation` — `id, tenant_id, user_id, title, compacted_through_message_id (nullable — boundary the latest compaction block subsumes, see §8), created_at, updated_at, archived_at`.
 - `agent_message` — `id, conversation_id, tenant_id, role (user|assistant), content (json — stores the raw SDK content blocks verbatim, including thinking and compaction blocks, see §8), token_usage (json), created_at`. (No `system` role: the system prompt is the cached prefix built by `context.go`, never a stored message.)
 - `agent_step` — `id, message_id, tenant_id, ordinal, tool_name, summary, risk, status (planned|awaiting|allowed|denied|done|error), result (json), created_at`.
-- `agent_checkpoint` — `id, message_id, tenant_id, status (open|committed|reverted), created_at, reverted_at`. The checkpoint `id` **is** the journal `txn_tag` (§10).
-
-**DB-level reversibility (not agent-specific; lives in `internal/db`):**
-
-- `row_change` — the generic, DB-wide change journal, populated by triggers (§10), **not**
-  by application code: `seq (single INTEGER PRIMARY KEY AUTOINCREMENT — globally monotonic
-  across all tables; revert orders by this), table_name, pk, tenant_id (nullable), op
-  (insert|update|delete), old_row (json — null for insert), new_row (json — null for delete),
-  txn_tag (nullable — the agent_checkpoint id when the write happened inside a tagged span,
-  else null), actor_user_id, created_at`. Single source of truth for revert; replaces the
-  previous per-entity `agent_checkpoint_change` table. Exempt from the audit invariant (§10).
+- `agent_checkpoint` — `id, message_id, tenant_id, status (open|committed|reverted), created_at, reverted_at`.
+- `agent_checkpoint_change` — `id, checkpoint_id, tenant_id, ordinal, table_name, pk, op (create|update), before_row (json — full prior row snapshot, null for create), after_row (json — full new row), entity_version (the row's updated_at/version at mutation time, for conflict detection), created_at`. The snapshot is captured by the risky tool handler immediately before/after its service call — **not** derived from `audit.Changes` — so revert never depends on audit storing complete prior state. The `audit_log` stays independent.
 
 ## 8. Context management
 
@@ -217,59 +208,35 @@ blocks that remain are replayed verbatim, never reconstructed.
 
 ## 10. Revert / versioning
 
-Reversibility is a property of the **data layer**, not reconstructed in services/handlers.
-The model is **git-like**: checkpoints are commits on a per-conversation timeline, history is
-append-only, and revert is a forward operation (like `git revert`, not `git reset`) that is
-itself journaled and therefore re-revertible ("un-revert" = revert the revert span).
+Scope for v1: **per-turn checkpoint revert**, captured in application code at the risky-tool
+boundary. The richer DB-wide / git-style reversibility (trigger journal, reverse-diff,
+re-revertible append-only history) is explicitly **deferred** — see "Deferred" below.
 
-**Capture (triggers).** Every mutable domain table gets `AFTER INSERT/UPDATE/DELETE`
-triggers that write a `row_change` row: `op`, the full `old_row`/`new_row` as
-`json_object(...)` of all columns, the table's `tenant_id` (null for tenant-less tables, see
-§14), the actor, and the current `txn_tag`. Triggers are **generated from the schema** and
-shipped as goose migrations (regenerated when columns change — a generator + a test asserting
-every mutable table has current triggers). This catches every write — including FK cascade
-and side-effect writes (e.g. a payment also bumping an invoice's stored balance) — regardless
-of which Go code issued it. `row_change` is itself written only by triggers and is **exempt
-from the "every mutation audited" invariant** by design (it's infrastructure, not a domain
-mutation); the independent `audit_log` is untouched.
+**Capture.** One `agent_checkpoint` per execute phase. Each risky tool, inside its
+`audit.WithTx` tx, records an `agent_checkpoint_change` (§7): the full prior-row snapshot
+(`before_row`, null for create), the new row (`after_row`), and the row's `entity_version`
+(updated_at/version) at mutation time. Snapshots are captured by the tool handler itself, so
+revert does not depend on `audit.Changes` completeness.
 
-**Tagging (lifecycle-safe across the pool).** Tagging is folded into the shared
-`audit.WithTx` wrapper so the stamp and the domain mutation always ride the **same** pinned
-`*sql.Tx` connection (no separate tx, no layering break): as its **first** statement every
-write tx does `DELETE FROM _txn_context` (clearing any stale tag left on a pooled connection),
-then, if a checkpoint id is present on the `context.Context`, `INSERT INTO _txn_context`. The
-agent sets that context value when running a risky tool; all other callers leave it unset →
-`txn_tag` null. Triggers read `(SELECT checkpoint_id FROM _txn_context)`. Because the table is
-cleared at the start of *every* write tx, pooled-connection reuse can never carry a stale tag.
-`database/sql` pins one connection per `*sql.Tx` and `_txlock=immediate` serializes writers,
-so the stamp is isolated to its tx.
+**Revert** (`POST /api/agent/checkpoints/{id}/revert`): in a single tx, for each change in
+reverse `ordinal`, restore via the service/repository layer:
+- `create → delete` the created row.
+- `update → restore` the full `before_row` snapshot.
 
-**Revert** (`POST /api/agent/checkpoints/{id}/revert`): one generic operation, identical for
-every table — no per-entity logic. In a single tx that first sets `PRAGMA defer_foreign_keys
-= ON` (so intra-tx FK ordering doesn't matter — restored child/parent rows are checked only at
-commit; required because reverse-`seq` order does not respect referential ordering against the
-`ON DELETE CASCADE` FKs in the schema). For each `row_change` with `txn_tag = checkpoint_id`
-in **reverse `seq`**, apply a **reverse-diff** (column-level, git-style), not a snapshot reset:
-- `insert →` `DELETE` by pk.
-- `delete →` `INSERT old_row`.
-- `update →` compute the columns this change altered (`old_row` vs `new_row`); set **only
-  those columns** back to their `old_row` values on the **current** row. Later edits to
-  *other* columns of the same row survive — exactly like `git revert`'s 3-way merge.
+The revert runs through `audit.WithTx` (logged) and marks the checkpoint `reverted`.
+v1 risky tools don't delete, so there is no `delete → insert` inverse to handle.
 
-Cascade/side-effect writes were journaled too, so reverting the span restores payments **and**
-the balances they touched atomically — the prior "compensating reversal" special-case is gone.
-The revert runs through `audit.WithTx` (logged) and is itself journaled (re-revertible); it
-marks the checkpoint `reverted`.
+**Conflict detection.** Before restoring a row, compare its current `entity_version` to the
+snapshot's. If it changed after the checkpoint (edited by a human or a later agent turn),
+**block that row** and surface the conflict (the user confirms overwrite or skips it) rather
+than clobbering newer data. The UI lists exactly what a revert will undo, and any conflicts,
+before the user confirms.
 
-**Conflict detection (per-column, git-like).** For an `update` change, conflict iff a journal
-entry on the same `(table_name, pk)` with `seq` greater than this checkpoint's max seq for that
-pk **and** `txn_tag != checkpoint_id` (excludes the checkpoint's own multi-write spans and the
-in-progress revert) altered **one of the same columns** this revert would touch. Same-column
-later edit → surface the conflict (overwrite/skip per row, like git's ours/theirs); edits to
-other columns are not conflicts and revert cleanly. For `insert→delete` and `delete→insert`,
-conflict iff the row's existence changed again afterward.
-
-**UI** lists exactly what a revert will undo (and any conflicts) before the user confirms.
+**Deferred (future work, not v1).** DB-wide reversibility via `AFTER` triggers writing a
+generic row-change journal, column-level reverse-diff (`git revert` semantics surviving
+unrelated later edits), append-only re-revertible history, and capturing FK-cascade /
+side-effect writes automatically. Revisit once the agent ships; the v1 snapshot approach is
+forward-compatible (a journal can subsume `agent_checkpoint_change` later).
 
 ## 11. Frontend (`web/`)
 
@@ -315,18 +282,14 @@ outbound acknowledgement is `step_start`/`tool_result` for the resumed step.
   implementation; fall back to manual truncation of stale tool_results if a beta is
   unavailable in the pinned SDK version (this is why the window builder treats context
   editing as a prune of replayed blocks, not an SDK-only feature).
-- **Trigger generation** (§10): build the schema→trigger generator and the test that asserts
-  every mutable table has up-to-date INSERT/UPDATE/DELETE triggers; decide build-time vs
-  hand-maintained. Generator must handle **tenant-less tables** (catalog tables keyed by
-  `catalog_version_id`, `business_profile`, etc.) by writing `tenant_id = null` rather than
-  referencing a missing column. All v1 gated tables (invoices, line_items, estimates,
-  estimate_line_items, payments, participants) carry `tenant_id`. (Payment-vs-balance is no
-  longer open — the journal captures both writes, so revert restores them together.)
-- **Journal retention** (§7): `row_change` grows with every mutation. Prune in the hourly
-  sweep, keyed to **checkpoint lifecycle, not age** — never prune rows whose `txn_tag` points
-  at a still-`committed` (revertible) checkpoint, or the turn's Revert affordance silently
-  breaks. Null-`txn_tag` rows (non-agent writes) have no owning checkpoint → separate
-  age-based retention (e.g. keep N days).
+- **Payment-revert side-effects** (§10): the v1 snapshot revert restores the payment row and,
+  via the service, must also restore the invoice balance/aggregate the payment touched. Confirm
+  each risky tool snapshots **all** rows its service call mutates (not just the primary entity),
+  or restore through a service method that recomputes derived fields. This is the snapshot-era
+  version of the deferred journal's "capture side-effects" property.
+- **Checkpoint retention** (§7): prune `agent_checkpoint_change` snapshots in the hourly sweep
+  keyed to checkpoint lifecycle (keep while `committed`/revertible; drop after N days or once
+  the conversation is archived).
 - Interrupt (`Esc`) semantics mid-tool-call: cancel before the next tool starts; a tool
   already committed stays committed (revert is the undo path); an `awaiting` step is denied.
 - `maxIterations` (25) vs. long plans with many gated steps: confirm the cap counts model
