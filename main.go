@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
@@ -137,6 +138,12 @@ func run() error {
 	}
 
 	logger := setupLogger(*logFormat, *logLevel)
+
+	agentCfg := agent.Config{APIKey: envOr("ANTHROPIC_API_KEY", "")}.WithDefaults()
+	if !agentCfg.Enabled() {
+		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
+	}
+	_ = agentCfg // TODO(agent): wired in Task 13
 
 	dir := *dataDir
 	if dir == "" {
