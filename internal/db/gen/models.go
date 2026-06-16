@@ -8,6 +8,72 @@ import (
 	"database/sql"
 )
 
+type AgentCheckpoint struct {
+	ID         int64          `json:"id"`
+	MessageID  int64          `json:"message_id"`
+	TenantID   int64          `json:"tenant_id"`
+	Status     string         `json:"status"`
+	CreatedAt  string         `json:"created_at"`
+	RevertedAt sql.NullString `json:"reverted_at"`
+}
+
+type AgentCheckpointChange struct {
+	ID            int64          `json:"id"`
+	CheckpointID  int64          `json:"checkpoint_id"`
+	TenantID      int64          `json:"tenant_id"`
+	Ordinal       int64          `json:"ordinal"`
+	TableName     string         `json:"table_name"`
+	Pk            int64          `json:"pk"`
+	Op            string         `json:"op"`
+	BeforeRow     sql.NullString `json:"before_row"`
+	AfterRow      string         `json:"after_row"`
+	EntityVersion string         `json:"entity_version"`
+	CreatedAt     string         `json:"created_at"`
+}
+
+type AgentConversation struct {
+	ID         int64          `json:"id"`
+	TenantID   int64          `json:"tenant_id"`
+	UserID     int64          `json:"user_id"`
+	Title      string         `json:"title"`
+	CreatedAt  string         `json:"created_at"`
+	UpdatedAt  string         `json:"updated_at"`
+	ArchivedAt sql.NullString `json:"archived_at"`
+}
+
+type AgentMessage struct {
+	ID             int64  `json:"id"`
+	ConversationID int64  `json:"conversation_id"`
+	TenantID       int64  `json:"tenant_id"`
+	Role           string `json:"role"`
+	Content        string `json:"content"`
+	TokenUsage     string `json:"token_usage"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type AgentStep struct {
+	ID             int64          `json:"id"`
+	MessageID      int64          `json:"message_id"`
+	CheckpointID   sql.NullInt64  `json:"checkpoint_id"`
+	TenantID       int64          `json:"tenant_id"`
+	Ordinal        int64          `json:"ordinal"`
+	ToolName       string         `json:"tool_name"`
+	ToolUseID      string         `json:"tool_use_id"`
+	Summary        string         `json:"summary"`
+	Risk           string         `json:"risk"`
+	Status         string         `json:"status"`
+	PendingInput   string         `json:"pending_input"`
+	Result         string         `json:"result"`
+	AwaitExpiresAt sql.NullString `json:"await_expires_at"`
+	CreatedAt      string         `json:"created_at"`
+}
+
+type AgentTokenUsage struct {
+	TenantID int64  `json:"tenant_id"`
+	Day      string `json:"day"`
+	Tokens   int64  `json:"tokens"`
+}
+
 type AuditLog struct {
 	ID         int64          `json:"id"`
 	Uuid       string         `json:"uuid"`
