@@ -238,10 +238,12 @@ func validateInviteTx(ctx context.Context, q *gen.Queries, token string) (*Invit
 	return inv, nil
 }
 
-// isUniqueViolation reports whether err is a SQLite unique-constraint failure.
+// isUniqueViolation reports whether err is a SQLite UNIQUE-constraint failure.
+// modernc.org/sqlite surfaces these as "UNIQUE constraint failed: ...". We match
+// only that phrase: matching a bare "constraint" would misclassify FK / NOT NULL
+// failures (e.g. a bad tenant_id) as ErrEmailTaken in Accept().
 func isUniqueViolation(err error) bool {
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "unique") || strings.Contains(s, "constraint")
+	return strings.Contains(strings.ToLower(err.Error()), "unique constraint")
 }
 
 // toInvite maps a generated row to the domain Invite.

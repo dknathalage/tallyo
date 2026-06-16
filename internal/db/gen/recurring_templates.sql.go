@@ -312,17 +312,23 @@ func (q *Queries) ListRecurringTemplates(ctx context.Context, tenantID int64) ([
 }
 
 const setRecurringNextDue = `-- name: SetRecurringNextDue :exec
-UPDATE recurring_templates SET next_due = ?, updated_at = ? WHERE id = ?
+UPDATE recurring_templates SET next_due = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
 `
 
 type SetRecurringNextDueParams struct {
 	NextDue   string `json:"next_due"`
 	UpdatedAt string `json:"updated_at"`
+	TenantID  int64  `json:"tenant_id"`
 	ID        int64  `json:"id"`
 }
 
 func (q *Queries) SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error {
-	_, err := q.db.ExecContext(ctx, setRecurringNextDue, arg.NextDue, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, setRecurringNextDue,
+		arg.NextDue,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.ID,
+	)
 	return err
 }
 

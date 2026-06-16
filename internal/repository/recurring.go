@@ -342,7 +342,7 @@ func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *Rec
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := q.SetRecurringNextDue(ctx, gen.SetRecurringNextDueParams{
-		NextDue: newDue, UpdatedAt: now, ID: tpl.ID,
+		NextDue: newDue, UpdatedAt: now, TenantID: tenantID, ID: tpl.ID,
 	}); err != nil {
 		return err
 	}

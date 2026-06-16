@@ -38,7 +38,7 @@ WHERE tenant_id = ? AND id = ?
 RETURNING *;
 
 -- name: SetRecurringNextDue :exec
-UPDATE recurring_templates SET next_due = ?, updated_at = ? WHERE id = ?;
+UPDATE recurring_templates SET next_due = ?, updated_at = ? WHERE tenant_id = ? AND id = ?;
 
 -- name: DeleteRecurringTemplate :exec
 DELETE FROM recurring_templates WHERE tenant_id = ? AND id = ?;
