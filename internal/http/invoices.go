@@ -32,7 +32,7 @@ type invoiceRequest struct {
 }
 
 // List performs a read-time overdue sweep, then returns invoices filtered by the
-// optional ?clientId= or ?status= query params.
+// optional ?participantId= or ?status= query params.
 func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.svc.MarkOverdue(r.Context()); err != nil {
 		log.Printf("httpapi: overdue sweep on list: %v", err)
@@ -107,7 +107,7 @@ func (h *InvoiceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, inv)
 }
 
-// Update rewrites an invoice. Missing client/items → 400; unknown id → 404.
+// Update rewrites an invoice. Missing participant/items → 400; unknown id → 404.
 func (h *InvoiceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r)
 	if !ok {

@@ -65,7 +65,7 @@ func validateRecurring(in repository.RecurringInput) (string, bool) {
 	return "", true
 }
 
-// Create inserts a template after validating name, client and frequency.
+// Create inserts a template after validating name, participant and frequency.
 func (h *RecurringHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var in repository.RecurringInput
 	if err := DecodeJSON(r, &in); err != nil {

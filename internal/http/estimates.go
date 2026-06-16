@@ -31,7 +31,7 @@ type estimateRequest struct {
 	LineItems []repository.LineItemInput `json:"lineItems"`
 }
 
-// List returns estimates filtered by the optional ?clientId= or ?status= query
+// List returns estimates filtered by the optional ?participantId= or ?status= query
 // params. Unlike invoices there is no read-time overdue sweep.
 func (h *EstimateHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -85,7 +85,7 @@ func (h *EstimateHandler) Get(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, est)
 }
 
-// Create inserts an estimate. A missing client or empty line items → 400.
+// Create inserts an estimate. A missing participant or empty line items → 400.
 func (h *EstimateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req estimateRequest
 	if err := DecodeJSON(r, &req); err != nil {
@@ -104,7 +104,7 @@ func (h *EstimateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, est)
 }
 
-// Update rewrites an estimate. Missing client/items → 400; unknown id → 404.
+// Update rewrites an estimate. Missing participant/items → 400; unknown id → 404.
 func (h *EstimateHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r)
 	if !ok {

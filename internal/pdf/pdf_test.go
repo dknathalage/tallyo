@@ -52,3 +52,20 @@ func TestRenderNilErrors(t *testing.T) {
 		t.Fatal("nil invoice must error")
 	}
 }
+
+// TestMoneyConsistentCurrency locks the single currency presentation used across
+// the whole document: line-item amounts and the totals block must all render via
+// money() so they share one "AUD <amount>" format.
+func TestMoneyConsistentCurrency(t *testing.T) {
+	cases := map[float64]string{
+		10:   "AUD 10.00",
+		2.5:  "AUD 2.50",
+		27.5: "AUD 27.50",
+		0:    "AUD 0.00",
+	}
+	for v, want := range cases {
+		if got := money(v); got != want {
+			t.Fatalf("money(%g)=%q want %q", v, got, want)
+		}
+	}
+}

@@ -118,8 +118,8 @@ func lineItemRows(items []*repository.LineItem) [][4]string {
 		rows = append(rows, [4]string{
 			it.Description,
 			fmt.Sprintf("%g", it.Quantity),
-			fmt.Sprintf("%.2f", it.UnitPrice),
-			fmt.Sprintf("%.2f", it.LineTotal),
+			money(it.UnitPrice),
+			money(it.LineTotal),
 		})
 	}
 	return rows
