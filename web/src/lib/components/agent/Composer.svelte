@@ -39,7 +39,7 @@
 		}
 	}
 
-	const disabled = $derived(agentChat.status === 'running');
+	const disabled = $derived(agentChat.status === 'running' || agentChat.status === 'awaiting');
 </script>
 
 <div class="flex items-end gap-2 border-t border-gray-200 px-3 py-3">

@@ -46,6 +46,20 @@ export function chooseRenderer(
 }
 
 /**
+ * Format a single table/card cell value for display.
+ * - null/undefined  → ''
+ * - string          → as-is
+ * - number/boolean  → String(v)
+ * - object/array    → JSON.stringify(v)
+ */
+export function formatCell(v: unknown): string {
+	if (v === null || v === undefined) return '';
+	if (typeof v === 'string') return v;
+	if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+	return JSON.stringify(v);
+}
+
+/**
  * Derive an ordered column list from an array of row objects.
  * Keys appear in first-seen order, deduplicated.
  */

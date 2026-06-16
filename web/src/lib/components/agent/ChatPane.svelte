@@ -21,11 +21,13 @@
 			agentChat.status === 'error'
 	);
 
-	// Auto-scroll to the bottom whenever messages or the active turn change.
+	// Auto-scroll to the bottom whenever messages, the active turn, status, or error change.
 	$effect(() => {
 		// Access reactive dependencies so the effect re-runs on change.
 		void agentChat.messages.length;
 		void agentChat.turn;
+		void agentChat.status;
+		void agentChat.errorText;
 		if (scrollEl !== null) {
 			scrollEl.scrollTop = scrollEl.scrollHeight;
 		}

@@ -1,5 +1,40 @@
 import { describe, it, expect } from 'vitest';
-import { chooseRenderer, tableColumns } from './resultRender';
+import { chooseRenderer, tableColumns, formatCell } from './resultRender';
+
+// ---------------------------------------------------------------------------
+// formatCell
+// ---------------------------------------------------------------------------
+
+describe('formatCell', () => {
+	it('returns empty string for null', () => {
+		expect(formatCell(null)).toBe('');
+	});
+
+	it('returns empty string for undefined', () => {
+		expect(formatCell(undefined)).toBe('');
+	});
+
+	it('passes string through as-is', () => {
+		expect(formatCell('hello')).toBe('hello');
+	});
+
+	it('converts number to string', () => {
+		expect(formatCell(42)).toBe('42');
+	});
+
+	it('converts boolean to string', () => {
+		expect(formatCell(true)).toBe('true');
+		expect(formatCell(false)).toBe('false');
+	});
+
+	it('JSON.stringifies plain objects', () => {
+		expect(formatCell({ a: 1 })).toBe('{"a":1}');
+	});
+
+	it('JSON.stringifies arrays', () => {
+		expect(formatCell([1, 2, 3])).toBe('[1,2,3]');
+	});
+});
 
 // ---------------------------------------------------------------------------
 // chooseRenderer

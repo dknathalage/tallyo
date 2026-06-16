@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tableColumns } from './resultRender';
+	import { tableColumns, formatCell } from './resultRender';
 
 	interface Props {
 		rows: Record<string, unknown>[];
@@ -32,7 +32,7 @@
 						<td
 							class="px-3 py-2 text-gray-800 {isNumeric(row[col]) ? 'text-right tabular-nums' : ''}"
 						>
-							{String(row[col] ?? '')}
+							{formatCell(row[col])}
 						</td>
 					{/each}
 				</tr>
