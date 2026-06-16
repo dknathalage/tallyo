@@ -22,6 +22,9 @@ type Querier interface {
 	CreateAwaitingStep(ctx context.Context, arg CreateAwaitingStepParams) (AgentStep, error)
 	CreateCatalogVersion(ctx context.Context, arg CreateCatalogVersionParams) (CatalogVersion, error)
 	CreateCheckpoint(ctx context.Context, arg CreateCheckpointParams) (AgentCheckpoint, error)
+	// ordinal is auto-assigned as the next value per checkpoint (atomic within the
+	// insert) so callers never have to track it; reverse-ordinal replay in Revert
+	// is therefore correct across a multi-step turn.
 	CreateCheckpointChange(ctx context.Context, arg CreateCheckpointChangeParams) (AgentCheckpointChange, error)
 	CreateCustomItem(ctx context.Context, arg CreateCustomItemParams) (CustomItem, error)
 	CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error)
