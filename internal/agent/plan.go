@@ -83,7 +83,7 @@ func (a *Agent) plan(ctx context.Context, convID, messageID int64) ([]PlanStep, 
 	if err != nil {
 		return nil, 0, fmt.Errorf("plan: load history: %w", err)
 	}
-	req := buildRequest(a.cfg, a.reg, defaultSystemPrompt, history, proposePlanTool)
+	req := buildRequest(a.cfg, a.reg, SystemPrompt(), history, proposePlanTool)
 	resp, err := a.llm.CreateMessage(ctx, req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("plan: model call: %w", err)

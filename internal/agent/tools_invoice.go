@@ -9,6 +9,16 @@ import (
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
+// Untrusted-content seam (Task 11): Invoice records returned by these tools
+// may contain free-text fields authored by end-users or imported from external
+// sources — in particular Invoice.Notes and LineItem.Description. These fields
+// are returned as part of the structured JSON payload (the model needs the full
+// record for IDs and numeric values). The system prompt (SystemPrompt()) guards
+// against treating embedded content as instructions. For future turns that
+// surface individual notes/descriptions as standalone text (e.g. a "get_invoice"
+// detail tool), pass them through wrapUntrusted("invoice-notes", ...) before
+// including them in a text block so the model processes them as data.
+
 // listInvoicesInput is the parsed input for the list_invoices tool.
 // Status is optional; when empty all invoices are returned.
 type listInvoicesInput struct {

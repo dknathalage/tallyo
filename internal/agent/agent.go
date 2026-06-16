@@ -156,7 +156,7 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 			}
 			return fmt.Errorf("execute: %w", err)
 		}
-		req := buildRequest(a.cfg, a.reg, defaultSystemPrompt, history, "")
+		req := buildRequest(a.cfg, a.reg, SystemPrompt(), history, "")
 		resp, err := a.llm.CreateMessage(ctx, req)
 		if err != nil {
 			return fmt.Errorf("execute: model call: %w", err)

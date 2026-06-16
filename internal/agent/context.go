@@ -10,11 +10,6 @@ const maxHistoryMessages = 40
 // requestMaxTokens is the per-turn output token ceiling for the model.
 const requestMaxTokens = 64000
 
-// defaultSystemPrompt is the placeholder guardrail prompt. The real, hardened
-// system prompt is built in Task 11; keep this minimal until then.
-// TODO(task11): replace with the hardened guardrail prompt.
-const defaultSystemPrompt = "You are Tallyo's assistant."
-
 // buildRequest assembles an llm.Request for a turn. It windows history to the
 // last maxHistoryMessages messages, exposes every tool (meta included so the
 // model can see propose_plan), and forces the named tool when force != "".
@@ -23,7 +18,7 @@ func buildRequest(cfg Config, reg *Registry, system string, history []llm.Messag
 		panic("agent: buildRequest requires a non-nil registry")
 	}
 	if system == "" {
-		system = defaultSystemPrompt
+		system = SystemPrompt()
 	}
 	if len(history) > maxHistoryMessages {
 		history = history[len(history)-maxHistoryMessages:]
