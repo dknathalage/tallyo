@@ -1,10 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-
-	onMount(() => {
-		void goto('/settings');
-	});
+	import ChatPane from '$lib/components/agent/ChatPane.svelte';
+	import ConversationList from '$lib/components/agent/ConversationList.svelte';
 </script>
 
-<p class="text-sm text-gray-500">Redirecting…</p>
+<div class="flex h-[calc(100vh-4rem)] gap-4 overflow-hidden">
+	<aside class="w-56 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-white">
+		<ConversationList />
+	</aside>
+	<section class="flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white">
+		<ChatPane />
+	</section>
+</div>

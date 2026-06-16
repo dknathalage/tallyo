@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { participants } from '$lib/stores/participants.svelte';
 	import { planManagers } from '$lib/stores/planManagers.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import type { Participant, MgmtType } from '$lib/api/types';
 
 	// Selects bind to a string id ('' means none); convert to number | null.
@@ -21,6 +22,19 @@
 	let newAddress = $state('');
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
+	let showForm = $state(false);
+
+	function openCreate(): void {
+		resetNew();
+		formError = null;
+		showForm = true;
+	}
+
+	function cancelCreate(): void {
+		resetNew();
+		formError = null;
+		showForm = false;
+	}
 
 	// Client-side search (generic store has no query support).
 	let search = $state('');
@@ -86,6 +100,7 @@
 				metadata: ''
 			});
 			resetNew();
+			showForm = false;
 			await participants.load();
 		} catch (err) {
 			formError = err instanceof Error ? err.message : 'Failed to create participant.';
@@ -154,12 +169,24 @@
 
 <div class="space-y-8">
 	<section>
-		<h1 class="mb-1 text-xl font-semibold">Participants</h1>
-		<p class="mb-6 text-sm text-gray-500">
-			NDIS participants you invoice — plan-managed or self-managed.
-		</p>
+		<div class="mb-6 flex items-start justify-between gap-4">
+			<div>
+				<h1 class="mb-1 text-xl font-semibold">Participants</h1>
+				<p class="text-sm text-gray-500">
+					NDIS participants you invoice — plan-managed or self-managed.
+				</p>
+			</div>
+			<button
+				type="button"
+				onclick={openCreate}
+				class="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+			>
+				New participant
+			</button>
+		</div>
 
-		<form class="grid max-w-3xl grid-cols-2 gap-3" onsubmit={createParticipant}>
+		<Modal bind:open={showForm} title="New participant">
+			<form class="grid grid-cols-2 gap-3" onsubmit={createParticipant}>
 			<label class="col-span-1">
 				<span class="mb-1 block text-sm font-medium">Name</span>
 				<input
@@ -240,7 +267,10 @@
 					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
-			<div class="col-span-2">
+			{#if formError}
+				<p class="col-span-2 text-sm text-red-600">{formError}</p>
+			{/if}
+			<div class="col-span-2 flex gap-2">
 				<button
 					type="submit"
 					disabled={creating}
@@ -248,12 +278,16 @@
 				>
 					{creating ? 'Adding…' : 'Add participant'}
 				</button>
+				<button
+					type="button"
+					onclick={cancelCreate}
+					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+				>
+					Cancel
+				</button>
 			</div>
-		</form>
-
-		{#if formError}
-			<p class="mt-3 text-sm text-red-600">{formError}</p>
-		{/if}
+			</form>
+		</Modal>
 	</section>
 
 	<section>

@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+/*
+ * Dark mode. Tailwind v4 compiles colour utilities to var(--color-*), so
+ * redefining the gray scale + white under .dark flips the whole app without
+ * touching any markup. text-white only pairs with bg-gray-900 (primary
+ * buttons), so inverting white -> dark keeps those buttons readable.
+ */
+.dark {
+	--color-white: #11161d; /* raised surfaces: cards, header, inputs */
+	--color-gray-50: #0b0e13; /* app background (darkest) */
+	--color-gray-100: #1c222b; /* hover / disabled surfaces */
+	--color-gray-200: #2a313c; /* subtle borders, dividers */
+	--color-gray-300: #3a424e; /* input borders */
+	--color-gray-400: #707a86; /* placeholder / faint text */
+	--color-gray-500: #9aa3af; /* muted text */
+	--color-gray-600: #b3bcc7; /* secondary text, nav links */
+	--color-gray-700: #cfd5dd;
+	--color-gray-800: #e5e8ec;
+	--color-gray-900: #f1f3f5; /* primary text AND primary button fill */
+	--color-black: #f8fafc;
+
+	/* Soften the bright pastel status chips so they sit on a dark surface. */
+	--color-red-50: #2a1416;
+	--color-red-100: #3a191c;
+	--color-green-50: #0f2417;
+	--color-green-100: #14301d;
+	--color-amber-50: #2a2110;
+	--color-amber-100: #352a13;
+	--color-blue-50: #122231;
+	--color-blue-100: #16293a;
+}
+
+/* Honour the OS scrollbar / form-control colour scheme. */
+:root {
+	color-scheme: light;
+}
+.dark {
+	color-scheme: dark;
+}

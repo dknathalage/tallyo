@@ -464,9 +464,14 @@ func (q *Queries) ListAgentConversations(ctx context.Context, tenantID int64) ([
 }
 
 const listAgentMessages = `-- name: ListAgentMessages :many
-SELECT id, conversation_id, tenant_id, role, content, token_usage, created_at FROM agent_message
-WHERE tenant_id = ? AND conversation_id = ?
-ORDER BY id ASC
+SELECT
+    m.id, m.conversation_id, m.tenant_id, m.role, m.content, m.token_usage, m.created_at,
+    ck.id AS checkpoint_id,
+    ck.status AS checkpoint_status
+FROM agent_message m
+LEFT JOIN agent_checkpoint ck ON ck.message_id = m.id AND ck.tenant_id = m.tenant_id
+WHERE m.tenant_id = ? AND m.conversation_id = ?
+ORDER BY m.id ASC
 `
 
 type ListAgentMessagesParams struct {
@@ -474,15 +479,27 @@ type ListAgentMessagesParams struct {
 	ConversationID int64 `json:"conversation_id"`
 }
 
-func (q *Queries) ListAgentMessages(ctx context.Context, arg ListAgentMessagesParams) ([]AgentMessage, error) {
+type ListAgentMessagesRow struct {
+	ID               int64          `json:"id"`
+	ConversationID   int64          `json:"conversation_id"`
+	TenantID         int64          `json:"tenant_id"`
+	Role             string         `json:"role"`
+	Content          string         `json:"content"`
+	TokenUsage       string         `json:"token_usage"`
+	CreatedAt        string         `json:"created_at"`
+	CheckpointID     sql.NullInt64  `json:"checkpoint_id"`
+	CheckpointStatus sql.NullString `json:"checkpoint_status"`
+}
+
+func (q *Queries) ListAgentMessages(ctx context.Context, arg ListAgentMessagesParams) ([]ListAgentMessagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAgentMessages, arg.TenantID, arg.ConversationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AgentMessage
+	var items []ListAgentMessagesRow
 	for rows.Next() {
-		var i AgentMessage
+		var i ListAgentMessagesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ConversationID,
@@ -491,6 +508,8 @@ func (q *Queries) ListAgentMessages(ctx context.Context, arg ListAgentMessagesPa
 			&i.Content,
 			&i.TokenUsage,
 			&i.CreatedAt,
+			&i.CheckpointID,
+			&i.CheckpointStatus,
 		); err != nil {
 			return nil, err
 		}

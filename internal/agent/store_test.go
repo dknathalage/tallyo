@@ -63,6 +63,98 @@ func TestStoreConversationAndMessageRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStoreListMessagesSurfacesCheckpoint(t *testing.T) {
+	s := newTestStore(t)
+	tenantID, userID := seedTenantUser(t, s.db)
+	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
+
+	conv, err := s.CreateConversation(ctx, "chat")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	// A plan/assistant message that owns a checkpoint.
+	planMsg, err := s.CreateMessage(ctx, conv.ID, "assistant", []llm.Block{{Type: llm.BlockText, Text: "plan"}}, "{}")
+	if err != nil {
+		t.Fatalf("CreateMessage plan: %v", err)
+	}
+	// A plain user message with no checkpoint.
+	userMsg, err := s.CreateMessage(ctx, conv.ID, "user", []llm.Block{{Type: llm.BlockText, Text: "hi"}}, "{}")
+	if err != nil {
+		t.Fatalf("CreateMessage user: %v", err)
+	}
+
+	chk, err := s.CreateCheckpoint(ctx, planMsg.ID, "committed")
+	if err != nil {
+		t.Fatalf("CreateCheckpoint: %v", err)
+	}
+
+	msgs, err := s.ListMessages(ctx, conv.ID)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("ListMessages: got %d, want 2", len(msgs))
+	}
+
+	byID := map[int64]*Message{}
+	for _, m := range msgs {
+		byID[m.ID] = m
+	}
+
+	got := byID[planMsg.ID]
+	if got == nil {
+		t.Fatalf("plan message missing from list")
+	}
+	if got.CheckpointID == nil {
+		t.Fatalf("plan message CheckpointID = nil, want %d", chk.ID)
+	}
+	if *got.CheckpointID != chk.ID {
+		t.Fatalf("plan message CheckpointID = %d, want %d", *got.CheckpointID, chk.ID)
+	}
+	if got.CheckpointStatus != "committed" {
+		t.Fatalf("plan message CheckpointStatus = %q, want committed", got.CheckpointStatus)
+	}
+
+	plain := byID[userMsg.ID]
+	if plain == nil {
+		t.Fatalf("user message missing from list")
+	}
+	if plain.CheckpointID != nil {
+		t.Fatalf("user message CheckpointID = %d, want nil", *plain.CheckpointID)
+	}
+	if plain.CheckpointStatus != "" {
+		t.Fatalf("user message CheckpointStatus = %q, want empty", plain.CheckpointStatus)
+	}
+}
+
+func TestStoreListMessagesCheckpointTenantScoped(t *testing.T) {
+	s := newTestStore(t)
+	tenantA, userA := seedTenantUser(t, s.db)
+	ctxA := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantA), userA)
+
+	conv, err := s.CreateConversation(ctxA, "A chat")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	msg, err := s.CreateMessage(ctxA, conv.ID, "assistant", []llm.Block{{Type: llm.BlockText, Text: "plan"}}, "{}")
+	if err != nil {
+		t.Fatalf("CreateMessage: %v", err)
+	}
+	if _, err := s.CreateCheckpoint(ctxA, msg.ID, "committed"); err != nil {
+		t.Fatalf("CreateCheckpoint: %v", err)
+	}
+
+	// Tenant A sees the checkpoint on its own message.
+	msgs, err := s.ListMessages(ctxA, conv.ID)
+	if err != nil {
+		t.Fatalf("ListMessages A: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].CheckpointID == nil {
+		t.Fatalf("tenant A expected one message with a checkpoint, got %+v", msgs)
+	}
+}
+
 func TestStoreTokenUsageAccumulates(t *testing.T) {
 	s := newTestStore(t)
 	tenantID, userID := seedTenantUser(t, s.db)

@@ -4,6 +4,16 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			// Apply the saved/system theme before paint to avoid a flash of light UI.
+			try {
+				const t = localStorage.getItem('tallyo-theme');
+				const dark = t === 'dark' || (t === null && matchMedia('(prefers-color-scheme: dark)').matches);
+				if (dark) document.documentElement.classList.add('dark');
+			} catch (e) {
+				/* localStorage blocked — default to light. */
+			}
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

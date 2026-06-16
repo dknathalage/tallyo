@@ -87,7 +87,7 @@ type Querier interface {
 	ListActiveRecurringTemplates(ctx context.Context, tenantID int64) ([]ListActiveRecurringTemplatesRow, error)
 	ListActiveTenantIDs(ctx context.Context) ([]int64, error)
 	ListAgentConversations(ctx context.Context, tenantID int64) ([]AgentConversation, error)
-	ListAgentMessages(ctx context.Context, arg ListAgentMessagesParams) ([]AgentMessage, error)
+	ListAgentMessages(ctx context.Context, arg ListAgentMessagesParams) ([]ListAgentMessagesRow, error)
 	ListAgentSteps(ctx context.Context, arg ListAgentStepsParams) ([]AgentStep, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListCatalogVersions(ctx context.Context) ([]CatalogVersion, error)

@@ -461,7 +461,7 @@
 	</section>
 
 	<section>
-		<div class="mb-4 flex items-center gap-2">
+		<div class="mb-4 flex flex-wrap items-center gap-2">
 			<span class="text-sm font-medium">Filter:</span>
 			<button
 				type="button"
