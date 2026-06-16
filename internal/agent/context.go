@@ -1,0 +1,40 @@
+package agent
+
+import "github.com/dknathalage/tallyo/internal/agent/llm"
+
+// maxHistoryMessages caps how many trailing conversation messages are replayed
+// into a request. Compaction/summarization is a later phase; for Phase 1 we
+// simply window the most recent messages (rule 2: bounded).
+const maxHistoryMessages = 40
+
+// requestMaxTokens is the per-turn output token ceiling for the model.
+const requestMaxTokens = 64000
+
+// defaultSystemPrompt is the placeholder guardrail prompt. The real, hardened
+// system prompt is built in Task 11; keep this minimal until then.
+// TODO(task11): replace with the hardened guardrail prompt.
+const defaultSystemPrompt = "You are Tallyo's assistant."
+
+// buildRequest assembles an llm.Request for a turn. It windows history to the
+// last maxHistoryMessages messages, exposes every tool (meta included so the
+// model can see propose_plan), and forces the named tool when force != "".
+func buildRequest(cfg Config, reg *Registry, system string, history []llm.Message, force string) llm.Request {
+	if reg == nil {
+		panic("agent: buildRequest requires a non-nil registry")
+	}
+	if system == "" {
+		system = defaultSystemPrompt
+	}
+	if len(history) > maxHistoryMessages {
+		history = history[len(history)-maxHistoryMessages:]
+	}
+	return llm.Request{
+		System:     system,
+		Tools:      reg.Defs(true),
+		ToolChoice: llm.ToolChoice{ForceTool: force},
+		Messages:   history,
+		MaxTokens:  requestMaxTokens,
+		Model:      cfg.Model,
+		Effort:     "high",
+	}
+}
