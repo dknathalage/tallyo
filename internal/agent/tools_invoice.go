@@ -147,7 +147,7 @@ func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 				if mErr != nil {
 					return Result{}, fmt.Errorf("create_invoice: encode checkpoint row: %w", mErr)
 				}
-				if rErr := cp.Record(ctx, checkpointID, 1, Change{
+				if rErr := cp.Record(ctx, checkpointID, Change{
 					Table: "invoices", PK: created.ID, Op: "create",
 					AfterRow: after, EntityVersion: created.UpdatedAt,
 				}); rErr != nil {

@@ -91,11 +91,14 @@ func (c *Checkpoint) Open(ctx context.Context, messageID int64) (int64, error) {
 	return chk.ID, nil
 }
 
-// Record persists one change under the checkpoint. It runs in its own audited
-// transaction, taken AFTER the service call it describes (see B1): the change
-// log is not enrolled in the service's transaction, so a small window exists
-// where the service write committed but the change was not yet recorded.
-func (c *Checkpoint) Record(ctx context.Context, checkpointID int64, ord int, ch Change) error {
+// Record persists one change under the checkpoint. The ordinal is assigned by
+// the data layer (next per-checkpoint value, atomic within the insert) so
+// callers never track it and multi-step turns replay in the right order. It
+// runs in its own audited transaction, taken AFTER the service call it
+// describes (see B1): the change log is not enrolled in the service's
+// transaction, so a small window exists where the service write committed but
+// the change was not yet recorded.
+func (c *Checkpoint) Record(ctx context.Context, checkpointID int64, ch Change) error {
 	if checkpointID == 0 || ch.Table == "" {
 		return fmt.Errorf("checkpoint: invalid record (checkpoint=%d table=%q)", checkpointID, ch.Table)
 	}
@@ -104,7 +107,6 @@ func (c *Checkpoint) Record(ctx context.Context, checkpointID int64, ord int, ch
 	}
 	if _, err := c.store.CreateCheckpointChange(ctx, gen.CreateCheckpointChangeParams{
 		CheckpointID:  checkpointID,
-		Ordinal:       int64(ord),
 		TableName:     ch.Table,
 		Pk:            ch.PK,
 		Op:            ch.Op,

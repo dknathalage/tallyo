@@ -251,14 +251,17 @@ const createCheckpointChange = `-- name: CreateCheckpointChange :one
 INSERT INTO agent_checkpoint_change (
     checkpoint_id, tenant_id, ordinal, table_name, pk, op,
     before_row, after_row, entity_version, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (
+    ?1, ?2,
+    (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM agent_checkpoint_change WHERE checkpoint_id = ?1),
+    ?3, ?4, ?5, ?6, ?7, ?8, ?9
+)
 RETURNING id, checkpoint_id, tenant_id, ordinal, table_name, pk, op, before_row, after_row, entity_version, created_at
 `
 
 type CreateCheckpointChangeParams struct {
 	CheckpointID  int64          `json:"checkpoint_id"`
 	TenantID      int64          `json:"tenant_id"`
-	Ordinal       int64          `json:"ordinal"`
 	TableName     string         `json:"table_name"`
 	Pk            int64          `json:"pk"`
 	Op            string         `json:"op"`
@@ -268,11 +271,13 @@ type CreateCheckpointChangeParams struct {
 	CreatedAt     string         `json:"created_at"`
 }
 
+// ordinal is auto-assigned as the next value per checkpoint (atomic within the
+// insert) so callers never have to track it; reverse-ordinal replay in Revert
+// is therefore correct across a multi-step turn.
 func (q *Queries) CreateCheckpointChange(ctx context.Context, arg CreateCheckpointChangeParams) (AgentCheckpointChange, error) {
 	row := q.db.QueryRowContext(ctx, createCheckpointChange,
 		arg.CheckpointID,
 		arg.TenantID,
-		arg.Ordinal,
 		arg.TableName,
 		arg.Pk,
 		arg.Op,
@@ -552,7 +557,7 @@ func (q *Queries) ListAgentSteps(ctx context.Context, arg ListAgentStepsParams) 
 const listCheckpointChanges = `-- name: ListCheckpointChanges :many
 SELECT id, checkpoint_id, tenant_id, ordinal, table_name, pk, op, before_row, after_row, entity_version, created_at FROM agent_checkpoint_change
 WHERE tenant_id = ? AND checkpoint_id = ?
-ORDER BY ordinal DESC
+ORDER BY ordinal DESC, id DESC
 `
 
 type ListCheckpointChangesParams struct {

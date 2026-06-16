@@ -81,16 +81,23 @@ SELECT * FROM agent_checkpoint
 WHERE tenant_id = ? AND id = ?;
 
 -- name: CreateCheckpointChange :one
+-- ordinal is auto-assigned as the next value per checkpoint (atomic within the
+-- insert) so callers never have to track it; reverse-ordinal replay in Revert
+-- is therefore correct across a multi-step turn.
 INSERT INTO agent_checkpoint_change (
     checkpoint_id, tenant_id, ordinal, table_name, pk, op,
     before_row, after_row, entity_version, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (
+    @checkpoint_id, @tenant_id,
+    (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM agent_checkpoint_change WHERE checkpoint_id = @checkpoint_id),
+    @table_name, @pk, @op, @before_row, @after_row, @entity_version, @created_at
+)
 RETURNING *;
 
 -- name: ListCheckpointChanges :many
 SELECT * FROM agent_checkpoint_change
 WHERE tenant_id = ? AND checkpoint_id = ?
-ORDER BY ordinal DESC;
+ORDER BY ordinal DESC, id DESC;
 
 -- name: AddTokenUsage :exec
 INSERT INTO agent_token_usage (tenant_id, day, tokens)

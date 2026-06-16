@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
@@ -62,7 +63,7 @@ func TestCheckpointRevertCreateDeletesRow(t *testing.T) {
 	}
 
 	after, _ := json.Marshal(created)
-	if err := cp.Record(ctx, checkpointID, 1, Change{
+	if err := cp.Record(ctx, checkpointID, Change{
 		Table: "invoices", PK: created.ID, Op: "create",
 		AfterRow: after, EntityVersion: created.UpdatedAt,
 	}); err != nil {
@@ -106,7 +107,7 @@ func TestCheckpointRevertConflictReportedNotApplied(t *testing.T) {
 
 	after, _ := json.Marshal(created)
 	// Stale entity version: does NOT match the live row's UpdatedAt.
-	if err := cp.Record(ctx, checkpointID, 1, Change{
+	if err := cp.Record(ctx, checkpointID, Change{
 		Table: "invoices", PK: created.ID, Op: "create",
 		AfterRow: after, EntityVersion: "1999-01-01T00:00:00Z",
 	}); err != nil {
@@ -180,5 +181,58 @@ func TestCreateInvoiceToolValidationError(t *testing.T) {
 	_, err := tool.Handler(ctx, input)
 	if err == nil {
 		t.Fatalf("Handler: want validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "validation") {
+		t.Fatalf("Handler error = %q, want it to mention validation", err.Error())
+	}
+}
+
+// TestCheckpointMultiChangeOrdering proves a multi-step turn records monotonic
+// per-checkpoint ordinals and that ListCheckpointChanges returns them in
+// descending order (newest ordinal first) so reverse-replay reverts in LIFO
+// order: the last write is undone first.
+func TestCheckpointMultiChangeOrdering(t *testing.T) {
+	ctx, s, inv, cp, checkpointID, participantID := newCheckpointFixture(t)
+
+	first, err := inv.Create(ctx, repository.InvoiceInput{
+		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+	}, []repository.LineItemInput{{Description: "First", Quantity: 1, UnitPrice: 10}})
+	if err != nil {
+		t.Fatalf("Create first: %v", err)
+	}
+	second, err := inv.Create(ctx, repository.InvoiceInput{
+		ParticipantID: participantID, IssueDate: "2026-01-02", DueDate: "2026-02-02",
+	}, []repository.LineItemInput{{Description: "Second", Quantity: 1, UnitPrice: 20}})
+	if err != nil {
+		t.Fatalf("Create second: %v", err)
+	}
+
+	fJSON, _ := json.Marshal(first)
+	if err := cp.Record(ctx, checkpointID, Change{
+		Table: "invoices", PK: first.ID, Op: "create", AfterRow: fJSON, EntityVersion: first.UpdatedAt,
+	}); err != nil {
+		t.Fatalf("Record first: %v", err)
+	}
+	sJSON, _ := json.Marshal(second)
+	if err := cp.Record(ctx, checkpointID, Change{
+		Table: "invoices", PK: second.ID, Op: "create", AfterRow: sJSON, EntityVersion: second.UpdatedAt,
+	}); err != nil {
+		t.Fatalf("Record second: %v", err)
+	}
+
+	changes, err := s.ListCheckpointChanges(ctx, checkpointID)
+	if err != nil {
+		t.Fatalf("ListCheckpointChanges: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("recorded %d changes, want 2", len(changes))
+	}
+	// Descending ordinal: the second-recorded change (ordinal 2) comes first.
+	if changes[0].Ordinal != 2 || changes[1].Ordinal != 1 {
+		t.Fatalf("ordinals = [%d, %d], want [2, 1]", changes[0].Ordinal, changes[1].Ordinal)
+	}
+	if changes[0].Pk != second.ID || changes[1].Pk != first.ID {
+		t.Fatalf("reverse-replay order wrong: got pks [%d, %d], want [%d, %d]",
+			changes[0].Pk, changes[1].Pk, second.ID, first.ID)
 	}
 }
