@@ -57,7 +57,7 @@ Each unit has one purpose, a clear interface, and is testable in isolation.
 | `tools.go` | Tool registry. Each tool = `{name, description, inputSchema, risk: read\|risky\|meta, render: table\|card\|summary, handler}`. Domain handlers call **services only**; `meta` tools (e.g. `propose_plan`) perform no service call and are neither gated nor audited. | `internal/service/*` |
 | `plan.go` | Plan phase: first turn forced via `tool_choice` to call `propose_plan`; returns ordered steps; persisted + streamed before any execution. | sdk, store |
 | `permission.go` | Risk gate: on a `risky` tool call, suspend the loop (persist `agent_step.status = awaiting` + pending tool_use), emit `access_request`, and return; a later decision request resumes from persisted state (§5a). No in-memory block. | store, realtime |
-| `checkpoint.go` | Opens an `agent_checkpoint` per execute phase; records each mutation's audit change; performs atomic per-turn revert (inverse changes). | repository, audit, db |
+| `checkpoint.go` | Opens an `agent_checkpoint` per execute phase, stamps the per-tx checkpoint tag so the DB-level journal (§7, §10) attributes writes to it; performs atomic per-turn revert by replaying the journal's generic inverse. | db, repository |
 | `context.go` | Builds the model request: stable cached prefix (system + tools), compaction config, context-editing config; maps stored history → model window. | sdk |
 | `store.go` | sqlc repo over agent tables; tenant-scoped; mutations via `audit.WithTx`. | repository, db |
 | `stream.go` | Publishes agent events over the existing realtime hub. | `internal/realtime` |
@@ -156,8 +156,16 @@ return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 - `agent_conversation` — `id, tenant_id, user_id, title, compacted_through_message_id (nullable — boundary the latest compaction block subsumes, see §8), created_at, updated_at, archived_at`.
 - `agent_message` — `id, conversation_id, tenant_id, role (user|assistant), content (json — stores the raw SDK content blocks verbatim, including thinking and compaction blocks, see §8), token_usage (json), created_at`. (No `system` role: the system prompt is the cached prefix built by `context.go`, never a stored message.)
 - `agent_step` — `id, message_id, tenant_id, ordinal, tool_name, summary, risk, status (planned|awaiting|allowed|denied|done|error), result (json), created_at`.
-- `agent_checkpoint` — `id, message_id, tenant_id, status (open|committed|reverted), created_at, reverted_at`.
-- `agent_checkpoint_change` — `id, checkpoint_id, tenant_id, ordinal, entity_type, entity_id, op (create|update), before (json — full prior row snapshot, captured by the tool handler before mutating; null for create), after (json — full new row), entity_version (the entity's updated_at/version at mutation time, for conflict detection)`. The full-row `before` is captured by the checkpoint writer itself, **not** derived from `audit.Changes` (which may store only field-level diffs); audit remains the independent immutable log.
+- `agent_checkpoint` — `id, message_id, tenant_id, status (open|committed|reverted), created_at, reverted_at`. The checkpoint `id` **is** the journal `txn_tag` (§10).
+
+**DB-level reversibility (not agent-specific; lives in `internal/db`):**
+
+- `row_change` — the generic, DB-wide change journal, populated by triggers (§10), **not**
+  by application code: `seq (monotonic), table_name, pk, tenant_id, op (insert|update|delete),
+  old_row (json — null for insert), new_row (json — null for delete), txn_tag (nullable — the
+  agent_checkpoint id when the write happened inside a tagged span, else null), actor_user_id,
+  created_at`. This is the single source of truth for revert and replaces the previous
+  per-entity `agent_checkpoint_change` table. The independent `audit` log is unchanged.
 
 ## 8. Context management
 
@@ -208,26 +216,42 @@ blocks that remain are replayed verbatim, never reconstructed.
 
 ## 10. Revert / versioning
 
-- One `agent_checkpoint` per execute phase (per-turn granularity).
-- Each mutating tool call records an `agent_checkpoint_change` with a **full prior-row
-  snapshot** captured by the tool handler immediately before the mutation (§7) — independent
-  of `audit.Changes`, so revert never depends on audit storing complete prior state.
-- **Revert** (`POST /api/agent/checkpoints/{id}/revert`): in a single tx, apply the inverse
-  of each change in reverse ordinal order via the service layer:
-  - `create → delete` the created entity.
-  - `update → restore` the full `before` snapshot.
-  - `record payment →` issue a **compensating reversal/removal** of that payment. This is a
-    deliberate, audited exception to the v1 "no delete tools" rule: revert is a system
-    operation (not an agent tool), and it must be able to undo a recorded payment. Whether
-    that is a hard delete or a reversal entry is decided per-entity to keep invoice balances
-    correct (see open question §14).
-  - The revert is itself audited via `audit.WithTx` and marks the checkpoint `reverted` (so
-    the revert is traceable; re-running the turn produces a fresh checkpoint).
-- UI lists exactly what a revert will undo before the user confirms.
-- **Conflict detection**: each change stored `entity_version` (updated_at/version) at mutation
-  time. On revert, compare the entity's current version; if it changed after the checkpoint
-  (edited outside the agent, or by a later agent turn), surface the conflict and let the user
-  confirm-overwrite or skip that specific change rather than blindly clobbering.
+Reversibility is a property of the **data layer**, not reconstructed in services/handlers.
+
+**Capture (triggers).** Every mutable domain table gets `AFTER INSERT/UPDATE/DELETE`
+triggers that write a `row_change` row: `op`, the full `old_row`/`new_row` as
+`json_object(...)` of all columns, the table's `tenant_id`, the actor, and the current
+`txn_tag`. Triggers are **generated from the schema** and shipped as goose migrations
+(regenerated whenever a table's columns change — a generation step + a test asserting every
+mutable table has current triggers). This catches every write — including cascade and
+side-effect writes (e.g. a payment also bumping an invoice's stored balance) — regardless of
+which Go code issued it.
+
+**Tagging.** The agent's `checkpoint.go` opens an `agent_checkpoint` and, inside each risky
+tool's `audit.WithTx` tx, stamps a connection-local temp row `_txn_context(checkpoint_id)`;
+triggers read it for `txn_tag`. `database/sql` pins one connection per `*sql.Tx` and
+`_txlock=immediate` serializes writers, so the tag is isolated to that tx. Writes outside any
+agent span leave `txn_tag` null (still journaled — DB-wide reversibility).
+
+**Revert** (`POST /api/agent/checkpoints/{id}/revert`): one generic operation, identical for
+every table — no per-entity logic. In a single tx, for each `row_change` with
+`txn_tag = checkpoint_id` in **reverse `seq`**:
+- `insert → DELETE` by pk
+- `update → UPDATE` the row back to `old_row`
+- `delete → INSERT` `old_row`
+
+Because side-effect writes were journaled too, reverting the span restores payments **and**
+the balances they touched, atomically — the prior "compensating reversal" special-case is
+gone. The revert runs through `audit.WithTx` (so it's logged) and, being itself a set of
+writes, is journaled as well; it marks the checkpoint `reverted`.
+
+**Conflict detection (journal-based).** Before reverting a row, check the journal for any
+later entry (`seq` greater than this checkpoint's entries) touching the same
+`(table_name, pk)`. If found, that row was changed after the agent's write (by a human or a
+later agent turn) — surface the conflict and let the user confirm-overwrite or skip that
+specific row rather than clobbering newer data.
+
+**UI** lists exactly what a revert will undo (and any conflicts) before the user confirms.
 
 ## 11. Frontend (`web/`)
 
@@ -273,9 +297,14 @@ outbound acknowledgement is `step_start`/`tool_result` for the resumed step.
   implementation; fall back to manual truncation of stale tool_results if a beta is
   unavailable in the pinned SDK version (this is why the window builder treats context
   editing as a prune of replayed blocks, not an SDK-only feature).
-- **Payment revert mechanism** (§10): decide per-entity whether reverting a recorded payment
-  is a hard delete or a compensating reversal entry, so invoice balances/aggregates stay
-  correct. Resolve before implementing the payment tool's revert path.
+- **Trigger generation** (§10): build the schema→trigger generator and the test that asserts
+  every mutable table has up-to-date INSERT/UPDATE/DELETE triggers; decide whether generation
+  runs at build time (committed migrations) or is hand-maintained per table. (Payment-vs-
+  balance is no longer an open question — the journal captures both writes, so revert restores
+  them together.)
+- **Journal retention** (§7): `row_change` grows with every mutation. Decide a retention/prune
+  policy (e.g. keep N days, or until the owning checkpoint ages out) so the journal doesn't
+  grow unbounded; the per-tenant hourly sweep is the natural place to prune.
 - Interrupt (`Esc`) semantics mid-tool-call: cancel before the next tool starts; a tool
   already committed stays committed (revert is the undo path); an `awaiting` step is denied.
 - `maxIterations` (25) vs. long plans with many gated steps: confirm the cap counts model
