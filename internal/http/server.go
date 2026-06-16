@@ -16,8 +16,8 @@ type Deps struct {
 	// Assets is the file system serving the built SPA (index/200.html, _app/...).
 	Assets fs.FS
 
-	// Setup, when non-nil, serves the first-run setup routes under /api.
-	Setup *SetupHandler
+	// Signup, when non-nil, serves the public self-serve tenant signup route.
+	Signup *SignupHandler
 
 	// Session, when non-nil, wraps the router so sessions load and save per
 	// request. Required for the authenticated routes below to function.
@@ -25,6 +25,10 @@ type Deps struct {
 
 	// Users backs the auth-guard's user-exists recheck. Required when Auth is set.
 	Users *auth.UsersRepo
+
+	// Tenants backs the auth-guard's suspended-tenant recheck. Required when
+	// any authenticated route is registered.
+	Tenants *auth.TenantsRepo
 
 	// Auth, when non-nil, serves login/logout/me under /api.
 	Auth *AuthHandler
@@ -111,9 +115,8 @@ func NewServer(deps Deps) *Server {
 
 	// /api subrouter, mounted before the SPA catch-all so it takes precedence.
 	r.Route("/api", func(api chi.Router) {
-		if deps.Setup != nil {
-			api.Get("/setup/status", deps.Setup.Status)
-			api.Post("/setup", deps.Setup.CreateOwner)
+		if deps.Signup != nil {
+			api.Post("/signup", deps.Signup.Signup)
 		}
 		if deps.Auth != nil {
 			api.Post("/auth/login", deps.Auth.Login)
@@ -129,19 +132,21 @@ func NewServer(deps Deps) *Server {
 		// protected route, since RequireAuth requires non-nil Session and Users.
 		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil {
 			api.Group(func(pr chi.Router) {
-				pr.Use(RequireAuth(deps.Session, deps.Users))
+				pr.Use(RequireAuth(deps.Session, deps.Users, deps.Tenants))
 				if deps.Auth != nil {
 					pr.Get("/auth/me", deps.Auth.Me)
 				}
 				if deps.Invites != nil {
-					pr.Post("/invites", deps.Invites.Create)
+					// User management is owner/admin only (spec §3.2).
+					pr.With(RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
 				}
 				if deps.Events != nil {
 					pr.Get("/events", deps.Events.Stream)
 				}
 				if deps.BusinessProfile != nil {
+					// Business settings: all roles may read; owner/admin may edit.
 					pr.Get("/business-profile", deps.BusinessProfile.Get)
-					pr.Put("/business-profile", deps.BusinessProfile.Put)
+					pr.With(RequireRole("owner", "admin")).Put("/business-profile", deps.BusinessProfile.Put)
 				}
 				if deps.PlanManagers != nil {
 					pr.Get("/plan-managers", deps.PlanManagers.List)

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/auth"
@@ -35,8 +36,8 @@ func (h *InviteHandler) Create(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if u.Role != "owner" {
-		WriteError(w, http.StatusForbidden, "owner only")
+	if u.Role != "owner" && u.Role != "admin" {
+		WriteError(w, http.StatusForbidden, "owner or admin only")
 		return
 	}
 	var in struct {
@@ -54,6 +55,10 @@ func (h *InviteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	role := in.Role
 	if role == "" {
 		role = "member"
+	}
+	if role != "owner" && role != "admin" && role != "member" {
+		WriteError(w, http.StatusBadRequest, "invalid role")
+		return
 	}
 	inv, err := h.invites.Create(r.Context(), u.TenantID, in.Email, role, u.ID, inviteTTL)
 	if err != nil {
@@ -88,10 +93,16 @@ func (h *InviteHandler) Validate(w http.ResponseWriter, r *http.Request) {
 func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	var in struct {
+		Name     string `json:"name"`
 		Password string `json:"password"`
 	}
 	if err := DecodeJSON(r, &in); err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		WriteError(w, http.StatusBadRequest, "name required")
 		return
 	}
 	if len(in.Password) < minPasswordLen {
@@ -103,9 +114,7 @@ func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	// TODO(J5): the invitee's display name should come from the accept form;
-	// passed empty for now.
-	if _, err := h.invites.Accept(r.Context(), token, "", hash); err != nil {
+	if _, err := h.invites.Accept(r.Context(), token, name, hash); err != nil {
 		if errors.Is(err, auth.ErrInviteInvalid) {
 			WriteError(w, http.StatusConflict, "invite invalid or already used")
 			return

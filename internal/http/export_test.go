@@ -35,7 +35,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 	}
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	expH := NewExportHandler(
 		customItemSvc,
 		service.NewInvoiceService(conn, hub),
@@ -46,7 +46,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/export/catalog", expH.Catalog)
 			pr.Get("/export/invoices", expH.Invoices)
 			pr.Get("/export/estimates", expH.Estimates)

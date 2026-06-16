@@ -21,14 +21,14 @@ func newBusinessProfileServer(t *testing.T) *httptest.Server {
 	users, _, _ := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	bpH := NewBusinessProfileHandler(service.NewBusinessProfileService(conn, realtime.NewHub()))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/business-profile", bpH.Get)
 			pr.Put("/business-profile", bpH.Put)
 		})

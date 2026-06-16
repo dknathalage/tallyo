@@ -21,7 +21,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
 	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 
@@ -29,7 +29,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
 			pr.Get("/invoices", invH.List)
 			pr.Post("/invoices", invH.Create)

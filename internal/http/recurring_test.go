@@ -22,7 +22,7 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	recH := NewRecurringHandler(service.NewRecurringService(conn, hub))
 	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 
@@ -30,7 +30,7 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
 			pr.Get("/recurring", recH.List)
 			pr.Post("/recurring", recH.Create)

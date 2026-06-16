@@ -21,7 +21,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	ciH := NewCustomItemHandler(service.NewCustomItemService(conn, hub))
 	scH := NewSupportCatalogHandler(service.NewSupportCatalogService(conn))
 
@@ -29,7 +29,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/custom-items", ciH.List)
 			pr.Post("/custom-items", ciH.Create)
 			pr.Post("/custom-items/bulk-delete", ciH.BulkDelete)

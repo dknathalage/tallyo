@@ -21,6 +21,17 @@ func (q *Queries) CountUsers(ctx context.Context, tenantID int64) (int64, error)
 	return count, err
 }
 
+const countUsersByEmailGlobal = `-- name: CountUsersByEmailGlobal :one
+SELECT COUNT(*) FROM users WHERE email = ?
+`
+
+func (q *Queries) CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUsersByEmailGlobal, email)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -159,6 +170,43 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.LastLoginAt,
 	)
 	return i, err
+}
+
+const listTenantsByEmail = `-- name: ListTenantsByEmail :many
+SELECT u.tenant_id, t.name AS tenant_name, t.uuid AS tenant_uuid
+FROM users u
+JOIN tenants t ON t.id = u.tenant_id
+WHERE u.email = ?
+ORDER BY t.name
+`
+
+type ListTenantsByEmailRow struct {
+	TenantID   int64  `json:"tenant_id"`
+	TenantName string `json:"tenant_name"`
+	TenantUuid string `json:"tenant_uuid"`
+}
+
+func (q *Queries) ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTenantsByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTenantsByEmailRow
+	for rows.Next() {
+		var i ListTenantsByEmailRow
+		if err := rows.Scan(&i.TenantID, &i.TenantName, &i.TenantUuid); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUsers = `-- name: ListUsers :many

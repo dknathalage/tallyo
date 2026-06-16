@@ -61,14 +61,14 @@ func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int6
 	users, tenantID, ownerID := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Post("/auth/logout", authH.Logout)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/auth/me", authH.Me)
 			pr.Get("/probe", probe200)
 		})

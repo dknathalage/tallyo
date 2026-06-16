@@ -155,11 +155,6 @@ func run() error {
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
 
-	setup, err := httpapi.NewSetupHandler(users, tenants)
-	if err != nil {
-		return fmt.Errorf("setup handler: %w", err)
-	}
-
 	assets, err := fs.Sub(tallyoweb.Build, "build")
 	if err != nil {
 		return fmt.Errorf("sub web build: %w", err)
@@ -172,9 +167,10 @@ func run() error {
 	deps := httpapi.Deps{
 		Assets:          assets,
 		Users:           users,
+		Tenants:         tenants,
 		Session:         sm,
-		Setup:           setup,
-		Auth:            httpapi.NewAuthHandler(sm, users),
+		Signup:          httpapi.NewSignupHandler(sm, tenants, users),
+		Auth:            httpapi.NewAuthHandler(sm, users, tenants),
 		Invites:         httpapi.NewInviteHandler(invites, users),
 		Events:          httpapi.NewEventsHandler(hub),
 		BusinessProfile: httpapi.NewBusinessProfileHandler(bpSvc),

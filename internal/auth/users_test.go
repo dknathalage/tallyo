@@ -74,11 +74,11 @@ func TestUserCreateGetListDelete(t *testing.T) {
 	}
 
 	// global credentials lookup for login (pre-tenant)
-	id, gotTid, h, found, err := repo.GetCredentialsGlobal(ctx, "owner@x.com")
-	if err != nil || !found || id != u.ID || gotTid != tid || h != hash {
-		t.Fatalf("GetCredentialsGlobal id=%d tid=%d found=%v err=%v", id, gotTid, found, err)
+	creds, found, err := repo.GetCredentialsGlobal(ctx, "owner@x.com")
+	if err != nil || !found || creds.ID != u.ID || creds.TenantID != tid || creds.Hash != hash {
+		t.Fatalf("GetCredentialsGlobal %+v found=%v err=%v", creds, found, err)
 	}
-	_, _, _, found, _ = repo.GetCredentialsGlobal(ctx, "nobody@x.com")
+	_, found, _ = repo.GetCredentialsGlobal(ctx, "nobody@x.com")
 	if found {
 		t.Fatal("GetCredentialsGlobal should not find unknown email")
 	}

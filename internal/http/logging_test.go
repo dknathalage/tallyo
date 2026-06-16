@@ -64,7 +64,7 @@ func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *aut
 	conn := openMigratedDB(t, "log.db")
 	users, _, _ := seedTenantOwner(t, conn)
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 
 	router := chi.NewRouter()
 	router.Use(Recover)
@@ -74,7 +74,7 @@ func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *aut
 		g.Route("/api", func(api chi.Router) {
 			api.Post("/auth/login", authH.Login)
 			api.Group(func(pr chi.Router) {
-				pr.Use(RequireAuth(sm, users))
+				pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 				pr.Get("/probe", probe200)
 			})
 		})

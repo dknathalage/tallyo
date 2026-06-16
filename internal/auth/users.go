@@ -12,6 +12,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrAmbiguousEmail is returned by GetCredentialsGlobal when an email is
+// registered in more than one tenant. Login must then require a tenant selector
+// rather than authenticating into an arbitrary tenant (fail safe, spec §3.1).
+var ErrAmbiguousEmail = errors.New("email registered in multiple tenants")
+
 // User is the domain view of a row in the users table. It deliberately omits
 // the password hash so callers never receive credential material.
 type User struct {
@@ -130,18 +135,92 @@ func (r *UsersRepo) GetByID(ctx context.Context, tenantID, id int64) (*User, err
 	return toUser(row), nil
 }
 
-// GetCredentialsGlobal returns the id, tenant id and password hash for an email,
-// resolved across all tenants for the login flow (J5). This is the only method
-// that exposes the hash. found is false (with a nil error) when no user matches.
-func (r *UsersRepo) GetCredentialsGlobal(ctx context.Context, email string) (id, tenantID int64, hash string, found bool, err error) {
+// Credentials carries the fields needed to authenticate and establish a session.
+// It is the only return shape that exposes the password hash; callers must never
+// surface Hash to clients.
+type Credentials struct {
+	ID       int64
+	TenantID int64
+	Hash     string
+}
+
+// CountByEmailGlobal returns how many users across all tenants share an email.
+// Login uses this to detect the AMBIGUOUS case (count > 1) and fail safe rather
+// than authenticating into an arbitrary tenant.
+func (r *UsersRepo) CountByEmailGlobal(ctx context.Context, email string) (int64, error) {
+	n, err := gen.New(r.db).CountUsersByEmailGlobal(ctx, email)
+	if err != nil {
+		return 0, fmt.Errorf("count users by email: %w", err)
+	}
+	return n, nil
+}
+
+// EmailTenant identifies one tenant in which an email is registered. Returned by
+// TenantsForEmail so an ambiguous login can prompt the user to choose a tenant.
+type EmailTenant struct {
+	TenantID   int64  `json:"tenantId"`
+	TenantName string `json:"tenantName"`
+	TenantUUID string `json:"tenantUuid"`
+}
+
+// TenantsForEmail lists the tenants in which an email is registered, for the
+// tenant-disambiguation step of login.
+func (r *UsersRepo) TenantsForEmail(ctx context.Context, email string) ([]EmailTenant, error) {
+	rows, err := gen.New(r.db).ListTenantsByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("list tenants by email: %w", err)
+	}
+	out := make([]EmailTenant, 0, len(rows))
+	for i := range rows {
+		out = append(out, EmailTenant{
+			TenantID:   rows[i].TenantID,
+			TenantName: rows[i].TenantName,
+			TenantUUID: rows[i].TenantUuid,
+		})
+	}
+	return out, nil
+}
+
+// GetCredentialsGlobal returns the credentials for an email when EXACTLY ONE
+// user across all tenants has it. found is false (nil error) when no user
+// matches. When more than one tenant shares the email it returns ErrAmbiguous so
+// the caller can fail safe instead of picking an arbitrary tenant.
+func (r *UsersRepo) GetCredentialsGlobal(ctx context.Context, email string) (creds Credentials, found bool, err error) {
+	n, err := r.CountByEmailGlobal(ctx, email)
+	if err != nil {
+		return Credentials{}, false, err
+	}
+	if n == 0 {
+		return Credentials{}, false, nil
+	}
+	if n > 1 {
+		return Credentials{}, false, ErrAmbiguousEmail
+	}
 	row, qerr := gen.New(r.db).GetUserByEmailGlobal(ctx, email)
 	if errors.Is(qerr, sql.ErrNoRows) {
-		return 0, 0, "", false, nil
+		return Credentials{}, false, nil
 	}
 	if qerr != nil {
-		return 0, 0, "", false, fmt.Errorf("get credentials: %w", qerr)
+		return Credentials{}, false, fmt.Errorf("get credentials: %w", qerr)
 	}
-	return row.ID, row.TenantID, row.PasswordHash, true, nil
+	return Credentials{ID: row.ID, TenantID: row.TenantID, Hash: row.PasswordHash}, true, nil
+}
+
+// GetCredentialsForTenant returns the credentials for an (email, tenant) pair.
+// Used when the login request names a tenant (disambiguation). found is false
+// (nil error) when no such user exists.
+func (r *UsersRepo) GetCredentialsForTenant(ctx context.Context, tenantID int64, email string) (creds Credentials, found bool, err error) {
+	if tenantID == 0 {
+		return Credentials{}, false, errors.New("get credentials for tenant: tenant id required")
+	}
+	row, qerr := gen.New(r.db).GetUserByEmail(ctx, gen.GetUserByEmailParams{TenantID: tenantID, Email: email})
+	if errors.Is(qerr, sql.ErrNoRows) {
+		return Credentials{}, false, nil
+	}
+	if qerr != nil {
+		return Credentials{}, false, fmt.Errorf("get credentials for tenant: %w", qerr)
+	}
+	return Credentials{ID: row.ID, TenantID: row.TenantID, Hash: row.PasswordHash}, true, nil
 }
 
 // List returns a tenant's users ordered by id.

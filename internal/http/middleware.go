@@ -77,11 +77,12 @@ func (s *statusWriter) Unwrap() http.ResponseWriter {
 	return s.ResponseWriter
 }
 
-// RequireAuth requires a valid session whose userID maps to an existing user.
-// The user is re-checked against the store on every request so deleting a user
-// invalidates their session immediately. Nil dependencies are programmer errors.
-func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo) func(http.Handler) http.Handler {
-	if sm == nil || users == nil {
+// RequireAuth requires a valid session whose userID maps to an existing user
+// whose tenant is not suspended. The user is re-checked against the store on
+// every request so deleting a user (or suspending their tenant) invalidates
+// their session immediately. Nil dependencies are programmer errors.
+func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth.TenantsRepo) func(http.Handler) http.Handler {
+	if sm == nil || users == nil || tenants == nil {
 		panic("RequireAuth: nil dep")
 	}
 	return func(next http.Handler) http.Handler {
@@ -100,6 +101,20 @@ func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo) func(http.Handle
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {
 				return l.With(slog.Int("tenant_id", tenantID), slog.Int("user_id", id))
 			})
+			// Suspended-tenant guard: reject existing sessions whose tenant was
+			// suspended after they logged in (spec §3.1).
+			status, ok, err := tenants.Status(ctx, int64(tenantID))
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if !ok || status == auth.StatusSuspended {
+				if derr := sm.Destroy(ctx); derr != nil {
+					LoggerFrom(ctx).Error("destroy session for suspended tenant", slog.Any("error", derr))
+				}
+				WriteError(w, http.StatusForbidden, "tenant suspended")
+				return
+			}
 			u, err := users.GetByID(ctx, int64(tenantID), int64(id))
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal error")
@@ -116,6 +131,50 @@ func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo) func(http.Handle
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// RequireRole gates a route to users holding one of the allowed tenant roles
+// (owner | admin | member). It must be chained AFTER RequireAuth, which places
+// the authenticated user on the context. A missing user is treated as 401; an
+// insufficient role as 403.
+func RequireRole(allowed ...string) func(http.Handler) http.Handler {
+	if len(allowed) == 0 {
+		panic("RequireRole: at least one role is required")
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u := UserFrom(r.Context())
+			if u == nil {
+				WriteError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			for i := range allowed {
+				if u.Role == allowed[i] {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			WriteError(w, http.StatusForbidden, "insufficient role")
+		})
+	}
+}
+
+// RequirePlatformAdmin gates a route to platform admins. is_platform_admin is
+// ORTHOGONAL to the tenant role (spec §3.1): it is only checked for the global
+// catalogue-admin area (J7 ingest). Must be chained after RequireAuth.
+func RequirePlatformAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := UserFrom(r.Context())
+		if u == nil {
+			WriteError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !u.IsPlatformAdmin {
+			WriteError(w, http.StatusForbidden, "platform admin only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // UserFrom returns the authenticated user stored on the request context, or nil.

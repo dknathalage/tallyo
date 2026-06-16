@@ -22,12 +22,15 @@ type Tenant struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+// Tenant status values (spec §3.1). A suspended tenant blocks login for all of
+// its users.
+const (
+	StatusActive    = "active"
+	StatusSuspended = "suspended"
+)
+
 // TenantsRepo reads and writes the tenants table. Tenants are the top of the
 // isolation hierarchy and are therefore NOT themselves tenant-scoped.
-//
-// TODO(J5): full signup (tenant + owner provisioning, roles, suspended guard)
-// is owned by J5; this repo provides the minimal Create/Count that first-run
-// setup needs to compile and function.
 type TenantsRepo struct {
 	db *sql.DB
 }
@@ -87,4 +90,100 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 		CreatedAt: created.CreatedAt,
 		UpdatedAt: created.UpdatedAt,
 	}, nil
+}
+
+// Status returns a tenant's status string. Returns ("", false, nil) when no such
+// tenant exists. Used by the login + auth-guard suspended-tenant check.
+func (r *TenantsRepo) Status(ctx context.Context, tenantID int64) (status string, found bool, err error) {
+	if tenantID == 0 {
+		return "", false, errors.New("tenant status: tenant id required")
+	}
+	row, qerr := gen.New(r.db).GetTenant(ctx, tenantID)
+	if errors.Is(qerr, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if qerr != nil {
+		return "", false, fmt.Errorf("tenant status: %w", qerr)
+	}
+	return row.Status, true, nil
+}
+
+// SignupInput carries the validated fields for self-serve onboarding. Validation
+// (non-empty business name, valid email, password strength, allowed zone) is the
+// caller's (HTTP boundary) responsibility; this method assumes pre-validated
+// input and performs the all-or-nothing provisioning.
+type SignupInput struct {
+	BusinessName string
+	Email        string
+	PasswordHash string
+	OwnerName    string
+	Zone         string
+}
+
+// Signup provisions a brand-new tenant in ONE transaction: the tenant (status
+// active), its owner user (role "owner"), and the tenant's business_profile
+// (carrying the geographic zone). Any failure rolls back the whole transaction,
+// so a half-provisioned tenant can never exist (spec §3.2). Returns the created
+// owner user (without the password hash).
+func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput) (*User, error) {
+	if in.BusinessName == "" || in.Email == "" || in.PasswordHash == "" {
+		return nil, errors.New("signup: business name, email and password hash are required")
+	}
+	zone := in.Zone
+	if zone == "" {
+		zone = "national"
+	}
+	var owner gen.User
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		now := time.Now().UTC().Format(time.RFC3339)
+		t, e := q.CreateTenant(ctx, gen.CreateTenantParams{
+			Uuid:      uuid.NewString(),
+			Name:      in.BusinessName,
+			Status:    StatusActive,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+		if e != nil {
+			return fmt.Errorf("create tenant: %w", e)
+		}
+		u, e := q.CreateUser(ctx, gen.CreateUserParams{
+			Uuid:            uuid.NewString(),
+			TenantID:        t.ID,
+			Email:           in.Email,
+			PasswordHash:    in.PasswordHash,
+			Name:            in.OwnerName,
+			IsPlatformAdmin: 0,
+			Role:            "owner",
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		})
+		if e != nil {
+			return fmt.Errorf("create owner: %w", e)
+		}
+		owner = u
+		if e := q.UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
+			TenantID:        t.ID,
+			Uuid:            uuid.NewString(),
+			Name:            in.BusinessName,
+			Email:           sql.NullString{String: in.Email, Valid: true},
+			Zone:            zone,
+			Metadata:        sql.NullString{String: "{}", Valid: true},
+			DefaultCurrency: sql.NullString{String: "AUD", Valid: true},
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}); e != nil {
+			return fmt.Errorf("create business profile: %w", e)
+		}
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   t.ID,
+			Action:     "signup",
+			Changes:    audit.Changes(map[string]any{"name": in.BusinessName, "ownerEmail": in.Email, "zone": zone}),
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("signup: %w", err)
+	}
+	return toUser(owner), nil
 }

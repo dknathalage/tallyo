@@ -28,7 +28,7 @@ func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
 	}
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	invH := NewInviteHandler(auth.NewInvites(conn), users)
 
 	router := chi.NewRouter()
@@ -37,7 +37,7 @@ func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
 		api.Get("/invites/{token}", invH.Validate)
 		api.Post("/invites/{token}/accept", invH.Accept)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/invites", invH.Create)
 		})
 	})
@@ -153,19 +153,29 @@ func TestInviteAcceptCreatesMemberThenLogin(t *testing.T) {
 	token := createInvite(t, srv)
 
 	c := jarClient(t)
-	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"password":"password1"}`)
+	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("accept: want 201 got %d", resp.StatusCode)
 	}
 
-	// A member user must now exist.
-	_, _, _, found, err := users.GetCredentialsGlobal(t.Context(), "new@x.com")
+	// A member user must now exist in the invite's tenant, with the form's name.
+	creds, found, err := users.GetCredentialsGlobal(t.Context(), "new@x.com")
 	if err != nil {
 		t.Fatalf("GetCredentialsGlobal: %v", err)
 	}
 	if !found {
 		t.Fatalf("accept: member user not created")
+	}
+	u, err := users.GetByID(t.Context(), creds.TenantID, creds.ID)
+	if err != nil || u == nil {
+		t.Fatalf("GetByID: %+v err=%v", u, err)
+	}
+	if u.Name != "New Member" {
+		t.Fatalf("accept: display name not set, got %q", u.Name)
+	}
+	if u.Role != "member" {
+		t.Fatalf("accept: role wrong, got %q", u.Role)
 	}
 
 	// And the new member can log in.
@@ -182,13 +192,13 @@ func TestInviteAcceptTwiceConflict(t *testing.T) {
 	token := createInvite(t, srv)
 
 	c := jarClient(t)
-	r1 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"password":"password1"}`)
+	r1 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
 	_ = r1.Body.Close()
 	if r1.StatusCode != http.StatusCreated {
 		t.Fatalf("first accept: want 201 got %d", r1.StatusCode)
 	}
 
-	r2 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"password":"password1"}`)
+	r2 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
 	_ = r2.Body.Close()
 	if r2.StatusCode != http.StatusConflict {
 		t.Fatalf("second accept: want 409 got %d", r2.StatusCode)

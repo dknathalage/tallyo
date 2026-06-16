@@ -13,6 +13,7 @@ type Querier interface {
 	CloseCatalogVersion(ctx context.Context, arg CloseCatalogVersionParams) error
 	CountSupportItems(ctx context.Context, catalogVersionID int64) (int64, error)
 	CountUsers(ctx context.Context, tenantID int64) (int64, error)
+	CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error)
 	CreateCatalogVersion(ctx context.Context, arg CreateCatalogVersionParams) (CatalogVersion, error)
 	CreateCustomItem(ctx context.Context, arg CreateCustomItemParams) (CustomItem, error)
 	CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error)
@@ -91,6 +92,7 @@ type Querier interface {
 	ListSupportItems(ctx context.Context, catalogVersionID int64) ([]SupportItem, error)
 	ListTaxRates(ctx context.Context, tenantID int64) ([]TaxRate, error)
 	ListTenants(ctx context.Context) ([]Tenant, error)
+	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
 	ListUsers(ctx context.Context, tenantID int64) ([]User, error)
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
 	// Highest numeric sequence (parsed from the suffix after prefix_len chars),

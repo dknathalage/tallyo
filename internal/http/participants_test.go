@@ -21,7 +21,7 @@ func newParticipantServer(t *testing.T) *httptest.Server {
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 	pmH := NewPlanManagerHandler(service.NewPlanManagerService(conn, hub))
 
@@ -29,7 +29,7 @@ func newParticipantServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/participants", pH.List)
 			pr.Post("/participants", pH.Create)
 			pr.Post("/participants/bulk-delete", pH.BulkDelete)
