@@ -101,6 +101,9 @@ func (h *InvoiceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	inv, err := h.svc.Create(r.Context(), req.InvoiceInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -125,6 +128,9 @@ func (h *InvoiceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	inv, err := h.svc.Update(r.Context(), id, req.InvoiceInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

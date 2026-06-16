@@ -13,15 +13,16 @@ import (
 // after a successful commit. Unlike invoices it has no overdue sweep, but it adds
 // a Convert action that turns an accepted estimate into an invoice.
 type EstimateService struct {
-	repo *repository.EstimatesRepo
-	hub  *realtime.Hub
+	repo      *repository.EstimatesRepo
+	validator *LineValidator
+	hub       *realtime.Hub
 }
 
 func NewEstimateService(db *sql.DB, hub *realtime.Hub) *EstimateService {
 	if hub == nil {
 		panic("NewEstimateService: nil hub")
 	}
-	return &EstimateService{repo: repository.NewEstimates(db), hub: hub}
+	return &EstimateService{repo: repository.NewEstimates(db), validator: NewLineValidator(db), hub: hub}
 }
 
 func (s *EstimateService) List(ctx context.Context) ([]*repository.Estimate, error) {
@@ -47,7 +48,12 @@ func (s *EstimateService) Get(ctx context.Context, id int64) (*repository.Estima
 // Create inserts an estimate + line items, then broadcasts on success.
 func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInput, items []repository.LineItemInput) (*repository.Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	est, err := s.repo.Create(ctx, tenantID, in, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	if err != nil {
+		return nil, err
+	}
+	in.Tax = res.Tax
+	est, err := s.repo.Create(ctx, tenantID, in, res.Items)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +65,12 @@ func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInpu
 // case no event is published.
 func (s *EstimateService) Update(ctx context.Context, id int64, in repository.EstimateInput, items []repository.LineItemInput) (*repository.Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	est, err := s.repo.Update(ctx, tenantID, id, in, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	if err != nil {
+		return nil, err
+	}
+	in.Tax = res.Tax
+	est, err := s.repo.Update(ctx, tenantID, id, in, res.Items)
 	if err != nil {
 		return nil, err
 	}

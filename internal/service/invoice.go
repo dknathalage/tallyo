@@ -10,17 +10,19 @@ import (
 )
 
 // InvoiceService orchestrates invoice reads/writes and publishes change events
-// after a successful commit.
+// after a successful commit. Line items pass through the NDIS validation engine
+// (validator) on create/update before reaching the repository.
 type InvoiceService struct {
-	repo *repository.InvoicesRepo
-	hub  *realtime.Hub
+	repo      *repository.InvoicesRepo
+	validator *LineValidator
+	hub       *realtime.Hub
 }
 
 func NewInvoiceService(db *sql.DB, hub *realtime.Hub) *InvoiceService {
 	if hub == nil {
 		panic("NewInvoiceService: nil hub")
 	}
-	return &InvoiceService{repo: repository.NewInvoices(db), hub: hub}
+	return &InvoiceService{repo: repository.NewInvoices(db), validator: NewLineValidator(db), hub: hub}
 }
 
 func (s *InvoiceService) List(ctx context.Context) ([]*repository.Invoice, error) {
@@ -50,12 +52,18 @@ func (s *InvoiceService) ParticipantStats(ctx context.Context, participantID int
 
 // Create inserts an invoice + line items, then broadcasts on success.
 //
-// TODO(J10): NDIS price-cap / plan-window validation is performed by the
-// validation engine before this call; the service currently passes inputs
-// straight through with tax supplied as an input field.
+// Every line passes through the NDIS validation engine (price-cap, plan-window,
+// gst-free defaulting, snapshotting) first; tax is COMPUTED from the validated
+// lines and overrides any client-supplied value (see validation.go tax note).
+// A validation failure returns a *ValidationError with field-level detail.
 func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	inv, err := s.repo.Create(ctx, tenantID, in, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	if err != nil {
+		return nil, err
+	}
+	in.Tax = res.Tax
+	inv, err := s.repo.Create(ctx, tenantID, in, res.Items)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +75,12 @@ func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput,
 // case no event is published.
 func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	inv, err := s.repo.Update(ctx, tenantID, id, in, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	if err != nil {
+		return nil, err
+	}
+	in.Tax = res.Tax
+	inv, err := s.repo.Update(ctx, tenantID, id, in, res.Items)
 	if err != nil {
 		return nil, err
 	}

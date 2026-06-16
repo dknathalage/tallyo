@@ -98,6 +98,9 @@ func (h *EstimateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	est, err := h.svc.Create(r.Context(), req.EstimateInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -122,6 +125,9 @@ func (h *EstimateHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	est, err := h.svc.Update(r.Context(), id, req.EstimateInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

@@ -54,11 +54,12 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 }
 
 // createEstimate posts a two-line estimate for the given participant and returns
-// the id. Lines total 25; with tax 2.5 the total is 27.5.
+// the id. Lines total 25. The J10 validation engine computes tax from the lines
+// (no tenant default tax rate → tax 0), so the total equals the subtotal (25).
 func createEstimate(t *testing.T, c *http.Client, base string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01", "tax": 2.5,
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
 			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
@@ -90,7 +91,7 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, "Acme")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01", "tax": 2.5,
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
 			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
@@ -121,8 +122,8 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 	if est.Subtotal != 25 {
 		t.Fatalf("subtotal: want 25 got %v", est.Subtotal)
 	}
-	if est.Total != 27.5 {
-		t.Fatalf("total: want 27.5 got %v", est.Total)
+	if est.Total != 25 {
+		t.Fatalf("total: want 25 got %v", est.Total)
 	}
 	if len(est.LineItems) != 2 {
 		t.Fatalf("lineItems: want 2 got %d", len(est.LineItems))

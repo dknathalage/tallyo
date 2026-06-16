@@ -50,11 +50,14 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 }
 
 // createInvoice posts a two-line invoice for the given participant and returns
-// the id. Lines total 2*10 + 1*5 = 25; with tax 2.5 the total is 27.5.
+// the id. Lines total 2*10 + 1*5 = 25. The J10 validation engine now COMPUTES
+// tax from the lines (these custom lines aren't GST-free but the tenant has no
+// default tax rate → tax 0), so the client-supplied "tax" field is ignored and
+// the total equals the subtotal (25).
 func createInvoice(t *testing.T, c *http.Client, base string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01", "tax": 2.5,
+		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
 			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
@@ -86,7 +89,7 @@ func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, "Acme")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01", "tax": 2.5,
+		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
 			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
@@ -120,8 +123,8 @@ func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 	if inv.Subtotal != 25 {
 		t.Fatalf("subtotal: want 25 got %v", inv.Subtotal)
 	}
-	if inv.Total != 27.5 {
-		t.Fatalf("total: want 27.5 got %v", inv.Total)
+	if inv.Total != 25 {
+		t.Fatalf("total: want 25 got %v", inv.Total)
 	}
 	if len(inv.LineItems) != 2 {
 		t.Fatalf("lineItems: want 2 got %d", len(inv.LineItems))
@@ -231,8 +234,8 @@ func TestInvoiceParticipantStats(t *testing.T) {
 	if stats.InvoiceCount != 1 {
 		t.Fatalf("invoiceCount: want 1 got %d", stats.InvoiceCount)
 	}
-	if stats.TotalInvoiced != 27.5 {
-		t.Fatalf("totalInvoiced: want 27.5 got %v", stats.TotalInvoiced)
+	if stats.TotalInvoiced != 25 {
+		t.Fatalf("totalInvoiced: want 25 got %v", stats.TotalInvoiced)
 	}
 }
 
