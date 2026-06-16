@@ -38,7 +38,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "email and password required")
 		return
 	}
-	id, hash, found, err := h.users.GetCredentials(r.Context(), in.Email)
+	// TODO(J5): email is unique only per-tenant, so GetCredentialsGlobal returns
+	// the first matching user across tenants. Multi-tenant shared-email login
+	// (tenant selection / disambiguation) is J5's concern; for now the first
+	// match wins.
+	id, tenantID, hash, found, err := h.users.GetCredentialsGlobal(r.Context(), in.Email)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -53,11 +57,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.sm.Put(r.Context(), "userID", int(id))
+	h.sm.Put(r.Context(), "tenantID", int(tenantID))
 	// Last-login is best-effort: login must not fail if recording it errors.
 	if err := h.users.TouchLastLogin(r.Context(), id); err != nil {
 		log.Printf("Login: touch last login: %v", err)
 	}
-	u, err := h.users.GetByID(r.Context(), id)
+	u, err := h.users.GetByID(r.Context(), tenantID, id)
 	if err != nil || u == nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return

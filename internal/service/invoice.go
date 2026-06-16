@@ -6,6 +6,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // InvoiceService orchestrates invoice reads/writes and publishes change events
@@ -23,28 +24,38 @@ func NewInvoiceService(db *sql.DB, hub *realtime.Hub) *InvoiceService {
 }
 
 func (s *InvoiceService) List(ctx context.Context) ([]*repository.Invoice, error) {
-	return s.repo.List(ctx)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.List(ctx, tenantID)
 }
 
 func (s *InvoiceService) ListByStatus(ctx context.Context, status string) ([]*repository.Invoice, error) {
-	return s.repo.ListByStatus(ctx, status)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *InvoiceService) ListClientInvoices(ctx context.Context, clientID int64) ([]*repository.Invoice, error) {
-	return s.repo.ListClientInvoices(ctx, clientID)
+func (s *InvoiceService) ListParticipantInvoices(ctx context.Context, participantID int64) ([]*repository.Invoice, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ListParticipantInvoices(ctx, tenantID, participantID)
 }
 
 func (s *InvoiceService) Get(ctx context.Context, id int64) (*repository.Invoice, error) {
-	return s.repo.Get(ctx, id)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.Get(ctx, tenantID, id)
 }
 
-func (s *InvoiceService) ClientStats(ctx context.Context, clientID int64) (*repository.ClientStats, error) {
-	return s.repo.ClientStats(ctx, clientID)
+func (s *InvoiceService) ParticipantStats(ctx context.Context, participantID int64) (*repository.ParticipantStats, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ParticipantStats(ctx, tenantID, participantID)
 }
 
 // Create inserts an invoice + line items, then broadcasts on success.
+//
+// TODO(J10): NDIS price-cap / plan-window validation is performed by the
+// validation engine before this call; the service currently passes inputs
+// straight through with tax supplied as an input field.
 func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
-	inv, err := s.repo.Create(ctx, in, items)
+	tenantID := reqctx.MustTenant(ctx)
+	inv, err := s.repo.Create(ctx, tenantID, in, items)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +66,8 @@ func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput,
 // Update rewrites an invoice. A nil result means the row was not found, in which
 // case no event is published.
 func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
-	inv, err := s.repo.Update(ctx, id, in, items)
+	tenantID := reqctx.MustTenant(ctx)
+	inv, err := s.repo.Update(ctx, tenantID, id, in, items)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +80,8 @@ func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.Inv
 
 // UpdateStatus sets the invoice status, then broadcasts on success.
 func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status string) error {
-	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "status"})
@@ -77,26 +90,18 @@ func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status stri
 
 // Delete removes an invoice, then broadcasts on success.
 func (s *InvoiceService) Delete(ctx context.Context, id int64) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: id, Action: "delete"})
 	return nil
 }
 
-// Duplicate copies an invoice, then broadcasts a create for the new id.
-func (s *InvoiceService) Duplicate(ctx context.Context, id int64) (*repository.Invoice, error) {
-	inv, err := s.repo.Duplicate(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: inv.ID, Action: "create"})
-	return inv, nil
-}
-
 // BulkDelete removes several invoices, then broadcasts a single bulk event.
 func (s *InvoiceService) BulkDelete(ctx context.Context, ids []int64) error {
-	if err := s.repo.BulkDelete(ctx, ids); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "bulk_delete"})
@@ -105,15 +110,18 @@ func (s *InvoiceService) BulkDelete(ctx context.Context, ids []int64) error {
 
 // BulkUpdateStatus sets several invoices' status, then broadcasts a bulk event.
 func (s *InvoiceService) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
-	if err := s.repo.BulkUpdateStatus(ctx, ids, status); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: 0, Action: "bulk_status"})
 	return nil
 }
 
-// MarkOverdue flips overdue invoices and, when any flipped, broadcasts a sweep
-// event so subscribers resync.
+// MarkOverdue flips overdue invoices across ALL tenants (the sweep path) and,
+// when any flipped, broadcasts a sweep event so subscribers resync.
+//
+// TODO(J11): per-tenant SSE scoping — the sweep currently broadcasts globally.
 func (s *InvoiceService) MarkOverdue(ctx context.Context) ([]repository.OverdueInvoice, error) {
 	rows, err := s.repo.MarkOverdue(ctx)
 	if err != nil {

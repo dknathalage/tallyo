@@ -1,35 +1,26 @@
 package service
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newSvc(t *testing.T) (*BusinessProfileService, *realtime.Hub) {
+func newSvc(t *testing.T) (*BusinessProfileService, *realtime.Hub, int64) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "svc.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn)
 	hub := realtime.NewHub()
-	return NewBusinessProfileService(conn, hub), hub
+	return NewBusinessProfileService(conn, hub), hub, tenantID
 }
 
 func TestSaveBroadcastsAfterCommit(t *testing.T) {
-	svc, hub := newSvc(t)
+	svc, hub, tenantID := newSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
-	ctx := context.Background()
+	ctx := tctx(tenantID)
 
 	if err := svc.Save(ctx, repository.BusinessProfileInput{Name: "Acme"}); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -50,10 +41,10 @@ func TestSaveBroadcastsAfterCommit(t *testing.T) {
 }
 
 func TestSaveEmptyNameNoEvent(t *testing.T) {
-	svc, hub := newSvc(t)
+	svc, hub, tenantID := newSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
-	if err := svc.Save(context.Background(), repository.BusinessProfileInput{Name: ""}); err == nil {
+	if err := svc.Save(tctx(tenantID), repository.BusinessProfileInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {

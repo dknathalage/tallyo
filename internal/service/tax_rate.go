@@ -6,6 +6,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // TaxRateService orchestrates tax-rate reads/writes and publishes change
@@ -23,20 +24,24 @@ func NewTaxRateService(db *sql.DB, hub *realtime.Hub) *TaxRateService {
 }
 
 func (s *TaxRateService) List(ctx context.Context) ([]*repository.TaxRate, error) {
-	return s.repo.List(ctx)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.List(ctx, tenantID)
 }
 
 func (s *TaxRateService) Get(ctx context.Context, id int64) (*repository.TaxRate, error) {
-	return s.repo.Get(ctx, id)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.Get(ctx, tenantID, id)
 }
 
 func (s *TaxRateService) GetDefault(ctx context.Context) (*repository.TaxRate, error) {
-	return s.repo.GetDefault(ctx)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.GetDefault(ctx, tenantID)
 }
 
 // Create inserts a tax rate, then broadcasts AFTER the commit succeeds.
 func (s *TaxRateService) Create(ctx context.Context, in repository.TaxRateInput) (*repository.TaxRate, error) {
-	t, err := s.repo.Create(ctx, in)
+	tenantID := reqctx.MustTenant(ctx)
+	t, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +52,8 @@ func (s *TaxRateService) Create(ctx context.Context, in repository.TaxRateInput)
 // Update mutates a tax rate, then broadcasts on success. A nil result means the
 // row was not found, in which case no event is published.
 func (s *TaxRateService) Update(ctx context.Context, id int64, in repository.TaxRateInput) (*repository.TaxRate, error) {
-	t, err := s.repo.Update(ctx, id, in)
+	tenantID := reqctx.MustTenant(ctx)
+	t, err := s.repo.Update(ctx, tenantID, id, in)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +66,8 @@ func (s *TaxRateService) Update(ctx context.Context, id int64, in repository.Tax
 
 // Delete removes a tax rate, then broadcasts on success.
 func (s *TaxRateService) Delete(ctx context.Context, id int64) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "tax_rate", ID: id, Action: "delete"})

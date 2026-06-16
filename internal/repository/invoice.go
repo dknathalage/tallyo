@@ -48,8 +48,8 @@ type Invoice struct {
 	Total            float64     `json:"total"`
 	Notes            string      `json:"notes"`
 	BusinessSnapshot string      `json:"businessSnapshot"`
-	ClientSnapshot   string      `json:"clientSnapshot"`
-	PayerSnapshot    string      `json:"payerSnapshot"`
+	ClientSnapshot   string      `json:"participantSnapshot"`
+	PayerSnapshot    string      `json:"planManagerSnapshot"`
 	CreatedAt        string      `json:"createdAt"`
 	UpdatedAt        string      `json:"updatedAt"`
 	TotalPaid        float64     `json:"totalPaid"`
@@ -87,8 +87,8 @@ type InvoiceInput struct {
 	Tax              float64 `json:"tax"`
 	Notes            string  `json:"notes"`
 	BusinessSnapshot string  `json:"businessSnapshot"`
-	ClientSnapshot   string  `json:"clientSnapshot"`
-	PayerSnapshot    string  `json:"payerSnapshot"`
+	ClientSnapshot   string  `json:"participantSnapshot"`
+	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
 // LineItemInput is the writable subset of a line item. LineTotal is computed

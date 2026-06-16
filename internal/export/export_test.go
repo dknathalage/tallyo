@@ -8,24 +8,24 @@ import (
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func sampleItems() []*repository.CatalogItem {
-	return []*repository.CatalogItem{
-		{ID: 1, Name: "Consulting", Rate: 150.5, Unit: "hour", Category: "Services", Sku: "CON-1"},
-		{ID: 2, Name: "Design", Rate: 90, Unit: "hour", Category: "Services", Sku: "DES-2"},
+func sampleItems() []*repository.CustomItem {
+	return []*repository.CustomItem{
+		{ID: 1, Name: "Consulting", Rate: 150.5, Unit: "hour"},
+		{ID: 2, Name: "Design", Rate: 90, Unit: "hour", GstFree: true},
 	}
 }
 
 func sampleInvoices() []*repository.Invoice {
 	return []*repository.Invoice{
-		{InvoiceNumber: "INV-001", ClientName: "Acme", Date: "2026-01-01", DueDate: "2026-01-31", Status: "sent", Subtotal: 100, TaxAmount: 10, Total: 110, CurrencyCode: "USD"},
-		{InvoiceNumber: "INV-002", ClientName: "Globex", Date: "2026-02-01", DueDate: "2026-02-28", Status: "paid", Subtotal: 200, TaxAmount: 20, Total: 220, CurrencyCode: "EUR"},
+		{Number: "INV-001", ParticipantName: "Acme", IssueDate: "2026-01-01", DueDate: "2026-01-31", Status: "sent", Subtotal: 100, Tax: 10, Total: 110},
+		{Number: "INV-002", ParticipantName: "Globex", IssueDate: "2026-02-01", DueDate: "2026-02-28", Status: "paid", Subtotal: 200, Tax: 20, Total: 220},
 	}
 }
 
 func sampleEstimates() []*repository.Estimate {
 	return []*repository.Estimate{
-		{EstimateNumber: "EST-001", ClientName: "Acme", Date: "2026-01-01", ValidUntil: "2026-01-31", Status: "draft", Subtotal: 100, TaxAmount: 10, Total: 110, CurrencyCode: "USD"},
-		{EstimateNumber: "EST-002", ClientName: "Globex", Date: "2026-02-01", ValidUntil: "2026-02-28", Status: "accepted", Subtotal: 200, TaxAmount: 20, Total: 220, CurrencyCode: "EUR"},
+		{Number: "EST-001", ParticipantName: "Acme", IssueDate: "2026-01-01", ValidUntil: "2026-01-31", Status: "draft", Subtotal: 100, Tax: 10, Total: 110},
+		{Number: "EST-002", ParticipantName: "Globex", IssueDate: "2026-02-01", ValidUntil: "2026-02-28", Status: "accepted", Subtotal: 200, Tax: 20, Total: 220},
 	}
 }
 
@@ -43,7 +43,7 @@ func TestCatalogCSV(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("want 3 lines (header + 2), got %d: %q", len(got), got)
 	}
-	if strings.TrimRight(got[0], "\r") != "name,sku,rate,unit,category" {
+	if strings.TrimRight(got[0], "\r") != "name,rate,unit,gstFree" {
 		t.Fatalf("header mismatch: %q", got[0])
 	}
 	if !strings.Contains(got[1], "Consulting") || !strings.Contains(got[1], "150.50") {
@@ -63,7 +63,7 @@ func TestInvoicesCSV(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("want 3 lines, got %d: %q", len(got), got)
 	}
-	if strings.TrimRight(got[0], "\r") != "invoiceNumber,clientName,date,dueDate,status,subtotal,taxAmount,total,currency" {
+	if strings.TrimRight(got[0], "\r") != "number,participantName,issueDate,dueDate,status,subtotal,tax,total" {
 		t.Fatalf("header mismatch: %q", got[0])
 	}
 	if !strings.Contains(got[1], "INV-001") || !strings.Contains(got[1], "110.00") {
@@ -80,7 +80,7 @@ func TestEstimatesCSV(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("want 3 lines, got %d: %q", len(got), got)
 	}
-	if strings.TrimRight(got[0], "\r") != "estimateNumber,clientName,date,validUntil,status,subtotal,taxAmount,total,currency" {
+	if strings.TrimRight(got[0], "\r") != "number,participantName,issueDate,validUntil,status,subtotal,tax,total" {
 		t.Fatalf("header mismatch: %q", got[0])
 	}
 	if !strings.Contains(got[1], "EST-001") {

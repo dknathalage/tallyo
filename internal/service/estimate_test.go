@@ -1,40 +1,31 @@
 package service
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newEstimateSvc(t *testing.T) (*EstimateService, *realtime.Hub, *repository.ClientsRepo) {
+func newEstimateSvc(t *testing.T) (*EstimateService, *realtime.Hub, int64, int64) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "est.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn)
+	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewEstimateService(conn, hub), hub, repository.NewClients(conn)
+	return NewEstimateService(conn, hub), hub, tenantID, participantID
 }
 
 func TestEstimateCreateBroadcasts(t *testing.T) {
-	svc, hub, clients := newEstimateSvc(t)
-	clientID := seedClient(t, clients)
+	svc, hub, tenantID, participantID := newEstimateSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
-	ctx := context.Background()
+	ctx := tctx(tenantID)
 
 	est, err := svc.Create(ctx, repository.EstimateInput{
-		ClientID: clientID, Date: "2026-01-01", ValidUntil: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 2, Rate: 10}})
+		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
+	}, []repository.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -52,13 +43,12 @@ func TestEstimateCreateBroadcasts(t *testing.T) {
 }
 
 func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
-	svc, hub, clients := newEstimateSvc(t)
-	clientID := seedClient(t, clients)
-	ctx := context.Background()
+	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	ctx := tctx(tenantID)
 
 	est, err := svc.Create(ctx, repository.EstimateInput{
-		ClientID: clientID, Date: "2026-01-01", ValidUntil: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, Rate: 5}})
+		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
+	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -94,5 +84,36 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 	}
 	if !sawEstimate || !sawInvoice {
 		t.Fatalf("missing event: sawEstimate=%v sawInvoice=%v", sawEstimate, sawInvoice)
+	}
+}
+
+func TestEstimateDuplicateBroadcasts(t *testing.T) {
+	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	ctx := tctx(tenantID)
+
+	est, err := svc.Create(ctx, repository.EstimateInput{
+		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
+	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	ch, unsub := hub.Subscribe()
+	defer unsub()
+
+	dup, err := svc.Duplicate(ctx, est.ID)
+	if err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if dup == nil {
+		t.Fatal("Duplicate returned nil estimate")
+	}
+	select {
+	case e := <-ch:
+		if e.Entity != "estimate" || e.ID != dup.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want estimate/%d/create", e, dup.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no broadcast after Duplicate")
 	}
 }

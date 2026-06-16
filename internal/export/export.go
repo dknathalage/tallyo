@@ -1,6 +1,6 @@
-// Package export renders catalog, invoice, and estimate collections to CSV
+// Package export renders custom-item, invoice, and estimate collections to CSV
 // (encoding/csv) and Excel (.xlsx via excelize). All renderers are pure-Go and
-// cgo-free so the desktop binary stays statically linkable.
+// cgo-free so the single binary stays statically linkable.
 package export
 
 import (
@@ -18,19 +18,27 @@ func money(v float64) string {
 	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
-// CatalogCSV renders catalog items to CSV with a fixed header. A nil slice
-// yields a header-only document.
-func CatalogCSV(items []*repository.CatalogItem) ([]byte, error) {
+// boolStr renders a bool as "true"/"false" for CSV/XLSX cells.
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+// CatalogCSV renders the tenant's custom items to CSV with a fixed header. A nil
+// slice yields a header-only document.
+func CatalogCSV(items []*repository.CustomItem) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	if err := w.Write([]string{"name", "sku", "rate", "unit", "category"}); err != nil {
+	if err := w.Write([]string{"name", "rate", "unit", "gstFree"}); err != nil {
 		return nil, fmt.Errorf("write header: %w", err)
 	}
 	for _, it := range items {
 		if it == nil {
 			continue
 		}
-		rec := []string{it.Name, it.Sku, money(it.Rate), it.Unit, it.Category}
+		rec := []string{it.Name, money(it.Rate), it.Unit, boolStr(it.GstFree)}
 		if err := w.Write(rec); err != nil {
 			return nil, fmt.Errorf("write row: %w", err)
 		}
@@ -46,7 +54,7 @@ func CatalogCSV(items []*repository.CatalogItem) ([]byte, error) {
 func InvoicesCSV(invoices []*repository.Invoice) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	header := []string{"invoiceNumber", "clientName", "date", "dueDate", "status", "subtotal", "taxAmount", "total", "currency"}
+	header := []string{"number", "participantName", "issueDate", "dueDate", "status", "subtotal", "tax", "total"}
 	if err := w.Write(header); err != nil {
 		return nil, fmt.Errorf("write header: %w", err)
 	}
@@ -55,8 +63,8 @@ func InvoicesCSV(invoices []*repository.Invoice) ([]byte, error) {
 			continue
 		}
 		rec := []string{
-			inv.InvoiceNumber, inv.ClientName, inv.Date, inv.DueDate, inv.Status,
-			money(inv.Subtotal), money(inv.TaxAmount), money(inv.Total), inv.CurrencyCode,
+			inv.Number, inv.ParticipantName, inv.IssueDate, inv.DueDate, inv.Status,
+			money(inv.Subtotal), money(inv.Tax), money(inv.Total),
 		}
 		if err := w.Write(rec); err != nil {
 			return nil, fmt.Errorf("write row: %w", err)
@@ -73,7 +81,7 @@ func InvoicesCSV(invoices []*repository.Invoice) ([]byte, error) {
 func EstimatesCSV(estimates []*repository.Estimate) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	header := []string{"estimateNumber", "clientName", "date", "validUntil", "status", "subtotal", "taxAmount", "total", "currency"}
+	header := []string{"number", "participantName", "issueDate", "validUntil", "status", "subtotal", "tax", "total"}
 	if err := w.Write(header); err != nil {
 		return nil, fmt.Errorf("write header: %w", err)
 	}
@@ -82,8 +90,8 @@ func EstimatesCSV(estimates []*repository.Estimate) ([]byte, error) {
 			continue
 		}
 		rec := []string{
-			est.EstimateNumber, est.ClientName, est.Date, est.ValidUntil, est.Status,
-			money(est.Subtotal), money(est.TaxAmount), money(est.Total), est.CurrencyCode,
+			est.Number, est.ParticipantName, est.IssueDate, est.ValidUntil, est.Status,
+			money(est.Subtotal), money(est.Tax), money(est.Total),
 		}
 		if err := w.Write(rec); err != nil {
 			return nil, fmt.Errorf("write row: %w", err)
@@ -96,14 +104,14 @@ func EstimatesCSV(estimates []*repository.Estimate) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// CatalogXLSX renders catalog items to an .xlsx workbook. The default sheet
-// holds a header row followed by one row per item.
-func CatalogXLSX(items []*repository.CatalogItem) ([]byte, error) {
+// CatalogXLSX renders the tenant's custom items to an .xlsx workbook. The default
+// sheet holds a header row followed by one row per item.
+func CatalogXLSX(items []*repository.CustomItem) ([]byte, error) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
 
 	const sheet = "Sheet1"
-	header := []interface{}{"name", "sku", "rate", "unit", "category"}
+	header := []interface{}{"name", "rate", "unit", "gstFree"}
 	if err := f.SetSheetRow(sheet, "A1", &header); err != nil {
 		return nil, fmt.Errorf("write header: %w", err)
 	}
@@ -115,7 +123,7 @@ func CatalogXLSX(items []*repository.CatalogItem) ([]byte, error) {
 		if it == nil {
 			continue
 		}
-		rec := []interface{}{it.Name, it.Sku, it.Rate, it.Unit, it.Category}
+		rec := []interface{}{it.Name, it.Rate, it.Unit, it.GstFree}
 		cell := fmt.Sprintf("A%d", row)
 		if err := f.SetSheetRow(sheet, cell, &rec); err != nil {
 			return nil, fmt.Errorf("write row %d: %w", row, err)

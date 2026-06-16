@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -18,23 +16,8 @@ import (
 // production does, plus a login route so tests can authenticate.
 func newTaxRateServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "tax.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "tax.db")
+	users, _, _ := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)

@@ -47,8 +47,8 @@ type Estimate struct {
 	Notes              string      `json:"notes"`
 	ConvertedInvoiceID *int64      `json:"convertedInvoiceId"`
 	BusinessSnapshot   string      `json:"businessSnapshot"`
-	ClientSnapshot     string      `json:"clientSnapshot"`
-	PayerSnapshot      string      `json:"payerSnapshot"`
+	ClientSnapshot     string      `json:"participantSnapshot"`
+	PayerSnapshot      string      `json:"planManagerSnapshot"`
 	CreatedAt          string      `json:"createdAt"`
 	UpdatedAt          string      `json:"updatedAt"`
 	LineItems          []*LineItem `json:"lineItems"`
@@ -64,8 +64,8 @@ type EstimateInput struct {
 	Tax              float64 `json:"tax"`
 	Notes            string  `json:"notes"`
 	BusinessSnapshot string  `json:"businessSnapshot"`
-	ClientSnapshot   string  `json:"clientSnapshot"`
-	PayerSnapshot    string  `json:"payerSnapshot"`
+	ClientSnapshot   string  `json:"participantSnapshot"`
+	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
 // ConvertResult identifies the invoice produced by Convert.

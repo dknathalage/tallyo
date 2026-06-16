@@ -5,50 +5,33 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// newRecurringServer wires the recurring routes behind RequireAuth, plus client
-// creation so templates can reference a valid client FK.
+// newRecurringServer wires the recurring routes behind RequireAuth, plus
+// participant creation so templates can reference a valid participant FK.
 func newRecurringServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "recurring.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "recurring.db")
+	users, _, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)
 	recH := NewRecurringHandler(service.NewRecurringService(conn, hub))
-	cH := NewClientHandler(service.NewClientService(conn, hub))
+	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users))
-			pr.Post("/clients", cH.Create)
+			pr.Post("/participants", pH.Create)
 			pr.Get("/recurring", recH.List)
 			pr.Post("/recurring", recH.Create)
 			pr.Get("/recurring/{id}", recH.Get)
@@ -63,26 +46,26 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// recurringBody builds a JSON template payload for the given client.
-func recurringBody(clientID int64, nextDue string) string {
+// recurringBody builds a JSON template payload for the given participant.
+func recurringBody(participantID int64, nextDue string) string {
 	return fmt.Sprintf(`{
-		"clientId": %d,
+		"participantId": %d,
 		"name": "Monthly",
 		"frequency": "monthly",
 		"nextDue": %q,
 		"lineItems": [
-			{"description": "A", "quantity": 2, "rate": 10, "sortOrder": 0},
-			{"description": "B", "quantity": 1, "rate": 5, "sortOrder": 1}
+			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
+			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1}
 		],
 		"taxRate": 10,
 		"isActive": true
-	}`, clientID, nextDue)
+	}`, participantID, nextDue)
 }
 
 // createRecurring posts a template and returns its id.
-func createRecurring(t *testing.T, c *http.Client, base string, clientID int64, nextDue string) int64 {
+func createRecurring(t *testing.T, c *http.Client, base string, participantID int64, nextDue string) int64 {
 	t.Helper()
-	resp := postJSON(t, c, base+"/api/recurring", recurringBody(clientID, nextDue))
+	resp := postJSON(t, c, base+"/api/recurring", recurringBody(participantID, nextDue))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create recurring: want 201 got %d", resp.StatusCode)
@@ -102,9 +85,9 @@ func createRecurring(t *testing.T, c *http.Client, base string, clientID int64, 
 func TestRecurringCRUD(t *testing.T) {
 	srv := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, "Acme")
 
-	id := createRecurring(t, c, srv.URL, clientID, "2026-06-01")
+	id := createRecurring(t, c, srv.URL, participantID, "2026-06-01")
 
 	// List (all).
 	resp := get(t, c, srv.URL+"/api/recurring")
@@ -135,7 +118,7 @@ func TestRecurringCRUD(t *testing.T) {
 	_ = resp.Body.Close()
 
 	// Update.
-	upd := fmt.Sprintf(`{"clientId":%d,"name":"Renamed","frequency":"monthly","nextDue":"2026-06-01","lineItems":[{"description":"A","quantity":1,"rate":10,"sortOrder":0}],"taxRate":0,"isActive":true}`, clientID)
+	upd := fmt.Sprintf(`{"participantId":%d,"name":"Renamed","frequency":"monthly","nextDue":"2026-06-01","lineItems":[{"description":"A","quantity":1,"unitPrice":10,"sortOrder":0}],"taxRate":0,"isActive":true}`, participantID)
 	resp = putJSON(t, c, fmt.Sprintf("%s/api/recurring/%d", srv.URL, id), upd)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update: want 200 got %d", resp.StatusCode)
@@ -162,17 +145,17 @@ func TestRecurringCRUD(t *testing.T) {
 func TestRecurringGenerateAdvancesNextDue(t *testing.T) {
 	srv := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createRecurring(t, c, srv.URL, clientID, "2026-06-01")
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createRecurring(t, c, srv.URL, participantID, "2026-06-01")
 
 	resp := postJSON(t, c, fmt.Sprintf("%s/api/recurring/%d/generate", srv.URL, id), "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("generate: want 200 got %d", resp.StatusCode)
 	}
 	var inv struct {
-		InvoiceNumber string  `json:"invoiceNumber"`
-		Total         float64 `json:"total"`
-		LineItems     []struct {
+		Number    string  `json:"number"`
+		Total     float64 `json:"total"`
+		LineItems []struct {
 			Description string `json:"description"`
 		} `json:"lineItems"`
 	}
@@ -180,7 +163,7 @@ func TestRecurringGenerateAdvancesNextDue(t *testing.T) {
 		t.Fatalf("decode invoice: %v", err)
 	}
 	_ = resp.Body.Close()
-	if inv.InvoiceNumber == "" {
+	if inv.Number == "" {
 		t.Fatal("generate: empty invoice number")
 	}
 	if len(inv.LineItems) != 2 {
@@ -211,13 +194,13 @@ func TestRecurringGenerateAdvancesNextDue(t *testing.T) {
 func TestRecurringCreateValidation(t *testing.T) {
 	srv := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	createClient(t, c, srv.URL, "Acme")
+	createParticipant(t, c, srv.URL, "Acme")
 
 	cases := []string{
-		`{"clientId":1,"name":"","frequency":"monthly","nextDue":"2026-06-01"}`,  // empty name
-		`{"clientId":0,"name":"X","frequency":"monthly","nextDue":"2026-06-01"}`, // missing client
-		`{"name":"X","frequency":"monthly","nextDue":"2026-06-01"}`,              // nil client
-		`{"clientId":1,"name":"X","frequency":"","nextDue":"2026-06-01"}`,        // empty frequency
+		`{"participantId":1,"name":"","frequency":"monthly","nextDue":"2026-06-01"}`,  // empty name
+		`{"participantId":0,"name":"X","frequency":"monthly","nextDue":"2026-06-01"}`, // missing participant
+		`{"name":"X","frequency":"monthly","nextDue":"2026-06-01"}`,                   // nil participant
+		`{"participantId":1,"name":"X","frequency":"","nextDue":"2026-06-01"}`,        // empty frequency
 	}
 	for i, body := range cases {
 		resp := postJSON(t, c, srv.URL+"/api/recurring", body)

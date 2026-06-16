@@ -4,52 +4,33 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// newInvoiceServer wires the invoice routes behind RequireAuth, plus client and
-// tax-rate creation so invoices can reference valid FKs.
+// newInvoiceServer wires the invoice routes behind RequireAuth, plus participant
+// creation so invoices can reference a valid participant FK.
 func newInvoiceServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "invoice.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "invoice.db")
+	users, _, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)
 	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
-	cH := NewClientHandler(service.NewClientService(conn, hub))
-	trH := NewTaxRateHandler(service.NewTaxRateService(conn, hub))
+	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users))
-			pr.Post("/clients", cH.Create)
-			pr.Post("/tax-rates", trH.Create)
+			pr.Post("/participants", pH.Create)
 			pr.Get("/invoices", invH.List)
 			pr.Post("/invoices", invH.Create)
 			pr.Post("/invoices/bulk-delete", invH.BulkDelete)
@@ -58,9 +39,8 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 			pr.Put("/invoices/{id}", invH.Update)
 			pr.Delete("/invoices/{id}", invH.Delete)
 			pr.Post("/invoices/{id}/status", invH.Status)
-			pr.Post("/invoices/{id}/duplicate", invH.Duplicate)
 			pr.Get("/invoices/{id}/pdf", invH.Pdf)
-			pr.Get("/clients/{id}/stats", invH.ClientStats)
+			pr.Get("/participants/{id}/stats", invH.ParticipantStats)
 		})
 	})
 
@@ -69,14 +49,15 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// createInvoice posts a two-line invoice for the given client and returns the id.
-func createInvoice(t *testing.T, c *http.Client, base string, clientID int64) int64 {
+// createInvoice posts a two-line invoice for the given participant and returns
+// the id. Lines total 2*10 + 1*5 = 25; with tax 2.5 the total is 27.5.
+func createInvoice(t *testing.T, c *http.Client, base string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-01-01", "dueDate": "2026-02-01", "taxRate": 10,
+		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01", "tax": 2.5,
 		"lineItems": []map[string]any{
-			{"description": "A", "quantity": 2, "rate": 10, "sortOrder": 0},
-			{"description": "B", "quantity": 1, "rate": 5, "sortOrder": 1},
+			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
+			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
 		},
 	})
 	if err != nil {
@@ -102,13 +83,13 @@ func createInvoice(t *testing.T, c *http.Client, base string, clientID int64) in
 func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, "Acme")
 
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-01-01", "dueDate": "2026-02-01", "taxRate": 10,
+		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01", "tax": 2.5,
 		"lineItems": []map[string]any{
-			{"description": "A", "quantity": 2, "rate": 10, "sortOrder": 0},
-			{"description": "B", "quantity": 1, "rate": 5, "sortOrder": 1},
+			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
+			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
 		},
 	})
 	if err != nil {
@@ -120,21 +101,21 @@ func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 		t.Fatalf("create: want 201 got %d", resp.StatusCode)
 	}
 	var inv struct {
-		InvoiceNumber    string  `json:"invoiceNumber"`
+		Number           string  `json:"number"`
 		Total            float64 `json:"total"`
 		Subtotal         float64 `json:"subtotal"`
 		BusinessSnapshot string  `json:"businessSnapshot"`
-		ClientSnapshot   string  `json:"clientSnapshot"`
+		ParticipantSnap  string  `json:"participantSnapshot"`
 		LineItems        []struct {
 			Description string  `json:"description"`
-			Amount      float64 `json:"amount"`
+			LineTotal   float64 `json:"lineTotal"`
 		} `json:"lineItems"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&inv); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if inv.InvoiceNumber != "INV-0001" {
-		t.Fatalf("invoiceNumber: want INV-0001 got %q", inv.InvoiceNumber)
+	if inv.Number != "INV-0001" {
+		t.Fatalf("number: want INV-0001 got %q", inv.Number)
 	}
 	if inv.Subtotal != 25 {
 		t.Fatalf("subtotal: want 25 got %v", inv.Subtotal)
@@ -145,16 +126,16 @@ func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 	if len(inv.LineItems) != 2 {
 		t.Fatalf("lineItems: want 2 got %d", len(inv.LineItems))
 	}
-	if inv.ClientSnapshot == "" || inv.BusinessSnapshot == "" {
-		t.Fatalf("snapshots must be populated: business=%q client=%q", inv.BusinessSnapshot, inv.ClientSnapshot)
+	if inv.ParticipantSnap == "" || inv.BusinessSnapshot == "" {
+		t.Fatalf("snapshots must be populated: business=%q participant=%q", inv.BusinessSnapshot, inv.ParticipantSnap)
 	}
 }
 
 func TestInvoiceGetReturnsLineItems(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createInvoice(t, c, srv.URL, participantID)
 
 	resp := get(t, c, srv.URL+"/api/invoices/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
@@ -177,8 +158,8 @@ func TestInvoiceGetReturnsLineItems(t *testing.T) {
 func TestInvoiceListReturnsArray(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	_ = createInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	_ = createInvoice(t, c, srv.URL, participantID)
 
 	resp := get(t, c, srv.URL+"/api/invoices")
 	defer func() { _ = resp.Body.Close() }()
@@ -199,8 +180,8 @@ func TestInvoiceListReturnsArray(t *testing.T) {
 func TestInvoiceStatusFlip(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createInvoice(t, c, srv.URL, participantID)
 
 	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(id)+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -209,34 +190,12 @@ func TestInvoiceStatusFlip(t *testing.T) {
 	}
 }
 
-func TestInvoiceDuplicate(t *testing.T) {
-	srv := newInvoiceServer(t)
-	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, clientID)
-
-	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(id)+"/duplicate", `{}`)
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("duplicate: want 201 got %d", resp.StatusCode)
-	}
-	var inv struct {
-		InvoiceNumber string `json:"invoiceNumber"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&inv); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if inv.InvoiceNumber != "INV-0002" {
-		t.Fatalf("duplicate number: want INV-0002 got %q", inv.InvoiceNumber)
-	}
-}
-
 func TestInvoiceBulkStatusAndDelete(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	a := createInvoice(t, c, srv.URL, clientID)
-	b := createInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	a := createInvoice(t, c, srv.URL, participantID)
+	b := createInvoice(t, c, srv.URL, participantID)
 
 	sr := postJSON(t, c, srv.URL+"/api/invoices/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
 	_ = sr.Body.Close()
@@ -251,13 +210,13 @@ func TestInvoiceBulkStatusAndDelete(t *testing.T) {
 	}
 }
 
-func TestInvoiceClientStats(t *testing.T) {
+func TestInvoiceParticipantStats(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	_ = createInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	_ = createInvoice(t, c, srv.URL, participantID)
 
-	resp := get(t, c, srv.URL+"/api/clients/"+itoa(clientID)+"/stats")
+	resp := get(t, c, srv.URL+"/api/participants/"+itoa(participantID)+"/stats")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("stats: want 200 got %d", resp.StatusCode)
@@ -280,9 +239,9 @@ func TestInvoiceClientStats(t *testing.T) {
 func TestInvoiceCreateNoItems400(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, "Acme")
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-01-01", "dueDate": "2026-02-01", "lineItems": []any{},
+		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01", "lineItems": []any{},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -317,8 +276,8 @@ func TestInvoiceListUnauthenticated401(t *testing.T) {
 func TestInvoicePdf(t *testing.T) {
 	srv := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createInvoice(t, c, srv.URL, participantID)
 
 	resp := get(t, c, srv.URL+"/api/invoices/"+itoa(id)+"/pdf")
 	defer func() { _ = resp.Body.Close() }()

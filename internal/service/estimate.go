@@ -6,6 +6,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // EstimateService orchestrates estimate reads/writes and publishes change events
@@ -24,24 +25,29 @@ func NewEstimateService(db *sql.DB, hub *realtime.Hub) *EstimateService {
 }
 
 func (s *EstimateService) List(ctx context.Context) ([]*repository.Estimate, error) {
-	return s.repo.List(ctx)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.List(ctx, tenantID)
 }
 
 func (s *EstimateService) ListByStatus(ctx context.Context, status string) ([]*repository.Estimate, error) {
-	return s.repo.ListByStatus(ctx, status)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *EstimateService) ListClientEstimates(ctx context.Context, clientID int64) ([]*repository.Estimate, error) {
-	return s.repo.ListClientEstimates(ctx, clientID)
+func (s *EstimateService) ListParticipantEstimates(ctx context.Context, participantID int64) ([]*repository.Estimate, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ListParticipantEstimates(ctx, tenantID, participantID)
 }
 
 func (s *EstimateService) Get(ctx context.Context, id int64) (*repository.Estimate, error) {
-	return s.repo.Get(ctx, id)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.Get(ctx, tenantID, id)
 }
 
 // Create inserts an estimate + line items, then broadcasts on success.
 func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInput, items []repository.LineItemInput) (*repository.Estimate, error) {
-	est, err := s.repo.Create(ctx, in, items)
+	tenantID := reqctx.MustTenant(ctx)
+	est, err := s.repo.Create(ctx, tenantID, in, items)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +58,8 @@ func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInpu
 // Update rewrites an estimate. A nil result means the row was not found, in which
 // case no event is published.
 func (s *EstimateService) Update(ctx context.Context, id int64, in repository.EstimateInput, items []repository.LineItemInput) (*repository.Estimate, error) {
-	est, err := s.repo.Update(ctx, id, in, items)
+	tenantID := reqctx.MustTenant(ctx)
+	est, err := s.repo.Update(ctx, tenantID, id, in, items)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +72,8 @@ func (s *EstimateService) Update(ctx context.Context, id int64, in repository.Es
 
 // UpdateStatus sets the estimate status, then broadcasts on success.
 func (s *EstimateService) UpdateStatus(ctx context.Context, id int64, status string) error {
-	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: id, Action: "status"})
@@ -74,7 +82,8 @@ func (s *EstimateService) UpdateStatus(ctx context.Context, id int64, status str
 
 // Delete removes an estimate, then broadcasts on success.
 func (s *EstimateService) Delete(ctx context.Context, id int64) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: id, Action: "delete"})
@@ -83,7 +92,8 @@ func (s *EstimateService) Delete(ctx context.Context, id int64) error {
 
 // Duplicate copies an estimate, then broadcasts a create for the new id.
 func (s *EstimateService) Duplicate(ctx context.Context, id int64) (*repository.Estimate, error) {
-	est, err := s.repo.Duplicate(ctx, id)
+	tenantID := reqctx.MustTenant(ctx)
+	est, err := s.repo.Duplicate(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +103,8 @@ func (s *EstimateService) Duplicate(ctx context.Context, id int64) (*repository.
 
 // BulkDelete removes several estimates, then broadcasts a single bulk event.
 func (s *EstimateService) BulkDelete(ctx context.Context, ids []int64) error {
-	if err := s.repo.BulkDelete(ctx, ids); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: 0, Action: "bulk_delete"})
@@ -102,7 +113,8 @@ func (s *EstimateService) BulkDelete(ctx context.Context, ids []int64) error {
 
 // BulkUpdateStatus sets several estimates' status, then broadcasts a bulk event.
 func (s *EstimateService) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
-	if err := s.repo.BulkUpdateStatus(ctx, ids, status); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{Entity: "estimate", ID: 0, Action: "bulk_status"})
@@ -113,7 +125,8 @@ func (s *EstimateService) BulkUpdateStatus(ctx context.Context, ids []int64, sta
 // estimate "convert" event and an invoice "create" event for the new invoice, then
 // returns the result. ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
 func (s *EstimateService) Convert(ctx context.Context, id int64) (*repository.ConvertResult, error) {
-	res, err := s.repo.Convert(ctx, id)
+	tenantID := reqctx.MustTenant(ctx)
+	res, err := s.repo.Convert(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
@@ -14,11 +15,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newAuthServer spins up a real httptest.Server wrapping the session middleware
-// so cookies round-trip. It returns the server, the users repo, and the owner id.
-func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64) {
+// openMigratedDB opens a fresh migrated SQLite database in a temp dir.
+func openMigratedDB(t *testing.T, name string) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "a.db"))
+	conn, err := appdb.Open(filepath.Join(t.TempDir(), name))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -26,16 +26,39 @@ func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
 
+// seedTenantOwner provisions a tenant plus its platform-admin owner
+// ("o@x.com" / "password1"). It returns the users repo, the tenant id, and the
+// owner user id. End-to-end login + RequireAuth wire the tenant into context, so
+// callers only need the owner to exist in a tenant.
+func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64) {
+	t.Helper()
 	users := auth.NewUsers(conn)
+	tenants := auth.NewTenants(conn)
 	hash, err := auth.HashPassword("password1")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
-	owner, err := users.Create(t.Context(), "o@x.com", hash, "owner")
+	tn, err := tenants.Create(t.Context(), "Acme")
+	if err != nil {
+		t.Fatalf("Create tenant: %v", err)
+	}
+	owner, err := users.Create(t.Context(), tn.ID, "o@x.com", hash, "", "owner", true)
 	if err != nil {
 		t.Fatalf("Create owner: %v", err)
 	}
+	return users, tn.ID, owner.ID
+}
+
+// newAuthServer spins up a real httptest.Server wrapping the session middleware
+// so cookies round-trip. It returns the server, the users repo, the owner id and
+// the tenant id (the latter for tenant-scoped deletes).
+func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int64) {
+	t.Helper()
+	conn := openMigratedDB(t, "a.db")
+	users, tenantID, ownerID := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)
@@ -53,7 +76,7 @@ func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64) {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, users, owner.ID
+	return srv, users, ownerID, tenantID
 }
 
 func probe200(w http.ResponseWriter, _ *http.Request) {
@@ -117,7 +140,7 @@ func get(t *testing.T, c *http.Client, url string) *http.Response {
 }
 
 func TestAuthLoginWrongPassword(t *testing.T) {
-	srv, _, _ := newAuthServer(t)
+	srv, _, _, _ := newAuthServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "o@x.com", "wrong")
 	defer func() { _ = resp.Body.Close() }()
@@ -127,7 +150,7 @@ func TestAuthLoginWrongPassword(t *testing.T) {
 }
 
 func TestAuthLoginCorrectReturnsUser(t *testing.T) {
-	srv, _, _ := newAuthServer(t)
+	srv, _, _, _ := newAuthServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "o@x.com", "password1")
 	defer func() { _ = resp.Body.Close() }()
@@ -148,7 +171,7 @@ func TestAuthLoginCorrectReturnsUser(t *testing.T) {
 }
 
 func TestAuthMeWithCookie(t *testing.T) {
-	srv, _, _ := newAuthServer(t)
+	srv, _, _, _ := newAuthServer(t)
 	c := loggedInClient(t, srv.URL)
 	resp := get(t, c, srv.URL+"/api/auth/me")
 	defer func() { _ = resp.Body.Close() }()
@@ -162,7 +185,7 @@ func TestAuthMeWithCookie(t *testing.T) {
 }
 
 func TestAuthMeWithoutCookie(t *testing.T) {
-	srv, _, _ := newAuthServer(t)
+	srv, _, _, _ := newAuthServer(t)
 	c := jarClient(t) // fresh, no login
 	resp := get(t, c, srv.URL+"/api/auth/me")
 	defer func() { _ = resp.Body.Close() }()
@@ -172,7 +195,7 @@ func TestAuthMeWithoutCookie(t *testing.T) {
 }
 
 func TestAuthProbeGuard(t *testing.T) {
-	srv, _, _ := newAuthServer(t)
+	srv, _, _, _ := newAuthServer(t)
 
 	anon := jarClient(t)
 	respAnon := get(t, anon, srv.URL+"/api/probe")
@@ -190,7 +213,7 @@ func TestAuthProbeGuard(t *testing.T) {
 }
 
 func TestAuthDeletedUserSessionRejected(t *testing.T) {
-	srv, users, id := newAuthServer(t)
+	srv, users, id, tenantID := newAuthServer(t)
 	c := loggedInClient(t, srv.URL)
 
 	// Confirm the session works first.
@@ -200,7 +223,7 @@ func TestAuthDeletedUserSessionRejected(t *testing.T) {
 		t.Fatalf("pre-delete me: want 200 got %d", resp.StatusCode)
 	}
 
-	if err := users.Delete(t.Context(), id); err != nil {
+	if err := users.Delete(t.Context(), tenantID, id); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
@@ -213,7 +236,7 @@ func TestAuthDeletedUserSessionRejected(t *testing.T) {
 }
 
 func TestAuthLogoutInvalidatesSession(t *testing.T) {
-	srv, _, _ := newAuthServer(t)
+	srv, _, _, _ := newAuthServer(t)
 	c := loggedInClient(t, srv.URL)
 
 	req, err := http.NewRequest("POST", srv.URL+"/api/auth/logout", nil)

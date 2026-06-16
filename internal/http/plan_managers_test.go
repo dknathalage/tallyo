@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -32,43 +30,28 @@ func delete_(t *testing.T, c *http.Client, url string) *http.Response {
 	return resp
 }
 
-// newPayerServer wires the payer routes behind RequireAuth the same way
-// production does, plus a login route so tests can authenticate.
-func newPayerServer(t *testing.T) *httptest.Server {
+// newPlanManagerServer wires the plan-manager routes behind RequireAuth the same
+// way production does, plus a login route so tests can authenticate.
+func newPlanManagerServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "payer.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "plan_manager.db")
+	users, _, _ := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)
-	pH := NewPayerHandler(service.NewPayerService(conn, realtime.NewHub()))
+	pH := NewPlanManagerHandler(service.NewPlanManagerService(conn, realtime.NewHub()))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users))
-			pr.Get("/payers", pH.List)
-			pr.Post("/payers", pH.Create)
-			pr.Post("/payers/bulk-delete", pH.BulkDelete)
-			pr.Get("/payers/{id}", pH.Get)
-			pr.Put("/payers/{id}", pH.Update)
-			pr.Delete("/payers/{id}", pH.Delete)
+			pr.Get("/plan-managers", pH.List)
+			pr.Post("/plan-managers", pH.Create)
+			pr.Post("/plan-managers/bulk-delete", pH.BulkDelete)
+			pr.Get("/plan-managers/{id}", pH.Get)
+			pr.Put("/plan-managers/{id}", pH.Update)
+			pr.Delete("/plan-managers/{id}", pH.Delete)
 		})
 	})
 
@@ -77,30 +60,30 @@ func newPayerServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// createPayer posts a payer with the given name and returns its id.
-func createPayer(t *testing.T, c *http.Client, base, name string) int64 {
+// createPlanManager posts a plan manager with the given name and returns its id.
+func createPlanManager(t *testing.T, c *http.Client, base, name string) int64 {
 	t.Helper()
-	resp := postJSON(t, c, base+"/api/payers", `{"name":"`+name+`"}`)
+	resp := postJSON(t, c, base+"/api/plan-managers", `{"name":"`+name+`"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create payer %q: want 201 got %d", name, resp.StatusCode)
+		t.Fatalf("create plan manager %q: want 201 got %d", name, resp.StatusCode)
 	}
 	var out struct {
 		ID int64 `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode payer: %v", err)
+		t.Fatalf("decode plan manager: %v", err)
 	}
 	if out.ID <= 0 {
-		t.Fatalf("create payer: want id>0 got %d", out.ID)
+		t.Fatalf("create plan manager: want id>0 got %d", out.ID)
 	}
 	return out.ID
 }
 
-func TestPayerListEmptyReturnsArray(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerListEmptyReturnsArray(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/payers")
+	resp := get(t, c, srv.URL+"/api/plan-managers")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
@@ -112,98 +95,98 @@ func TestPayerListEmptyReturnsArray(t *testing.T) {
 	}
 }
 
-func TestPayerCreateAndGet(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerCreateAndGet(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createPayer(t, c, srv.URL, "Acme")
-	resp := get(t, c, srv.URL+"/api/payers/"+itoa(id))
+	id := createPlanManager(t, c, srv.URL, "Acme")
+	resp := get(t, c, srv.URL+"/api/plan-managers/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerGetNotFound404(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerGetNotFound404(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/payers/99999")
+	resp := get(t, c, srv.URL+"/api/plan-managers/99999")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("missing payer: want 404 got %d", resp.StatusCode)
+		t.Fatalf("missing plan manager: want 404 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerGetBadID400(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerGetBadID400(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/payers/abc")
+	resp := get(t, c, srv.URL+"/api/plan-managers/abc")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad id: want 400 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerCreateEmptyName400(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerCreateEmptyName400(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := postJSON(t, c, srv.URL+"/api/payers", `{"name":""}`)
+	resp := postJSON(t, c, srv.URL+"/api/plan-managers", `{"name":""}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty name: want 400 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerUpdateOK(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerUpdateOK(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createPayer(t, c, srv.URL, "Acme")
-	resp := putJSON(t, c, srv.URL+"/api/payers/"+itoa(id), `{"name":"Acme Corp"}`)
+	id := createPlanManager(t, c, srv.URL, "Acme")
+	resp := putJSON(t, c, srv.URL+"/api/plan-managers/"+itoa(id), `{"name":"Acme Corp"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update: want 200 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerUpdateMissing404(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerUpdateMissing404(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := putJSON(t, c, srv.URL+"/api/payers/99999", `{"name":"Nope"}`)
+	resp := putJSON(t, c, srv.URL+"/api/plan-managers/99999", `{"name":"Nope"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("update missing: want 404 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerDelete204(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerDelete204(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createPayer(t, c, srv.URL, "Acme")
-	resp := delete_(t, c, srv.URL+"/api/payers/"+itoa(id))
+	id := createPlanManager(t, c, srv.URL, "Acme")
+	resp := delete_(t, c, srv.URL+"/api/plan-managers/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerBulkDelete204(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerBulkDelete204(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	a := createPayer(t, c, srv.URL, "A")
-	b := createPayer(t, c, srv.URL, "B")
-	resp := postJSON(t, c, srv.URL+"/api/payers/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
+	a := createPlanManager(t, c, srv.URL, "A")
+	b := createPlanManager(t, c, srv.URL, "B")
+	resp := postJSON(t, c, srv.URL+"/api/plan-managers/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", resp.StatusCode)
 	}
 }
 
-func TestPayerListSearchFilters(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerListSearchFilters(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	_ = createPayer(t, c, srv.URL, "Acme")
-	_ = createPayer(t, c, srv.URL, "Globex")
+	_ = createPlanManager(t, c, srv.URL, "Acme")
+	_ = createPlanManager(t, c, srv.URL, "Globex")
 
-	resp := get(t, c, srv.URL+"/api/payers?search=acm")
+	resp := get(t, c, srv.URL+"/api/plan-managers?search=acm")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("search: want 200 got %d", resp.StatusCode)
@@ -219,10 +202,10 @@ func TestPayerListSearchFilters(t *testing.T) {
 	}
 }
 
-func TestPayerListUnauthenticated401(t *testing.T) {
-	srv := newPayerServer(t)
+func TestPlanManagerListUnauthenticated401(t *testing.T) {
+	srv := newPlanManagerServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/payers")
+	resp := get(t, c, srv.URL+"/api/plan-managers")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)

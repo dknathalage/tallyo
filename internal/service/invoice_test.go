@@ -1,50 +1,31 @@
 package service
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newInvoiceSvc(t *testing.T) (*InvoiceService, *realtime.Hub, *repository.ClientsRepo) {
+func newInvoiceSvc(t *testing.T) (*InvoiceService, *realtime.Hub, int64, int64) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "inv.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn)
+	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewInvoiceService(conn, hub), hub, repository.NewClients(conn)
-}
-
-// seedClient inserts a client so invoices have a valid FK.
-func seedClient(t *testing.T, clients *repository.ClientsRepo) int64 {
-	t.Helper()
-	c, err := clients.Create(context.Background(), repository.ClientInput{Name: "Acme"})
-	if err != nil {
-		t.Fatalf("seed client: %v", err)
-	}
-	return c.ID
+	return NewInvoiceService(conn, hub), hub, tenantID, participantID
 }
 
 func TestInvoiceCreateBroadcasts(t *testing.T) {
-	svc, hub, clients := newInvoiceSvc(t)
-	clientID := seedClient(t, clients)
+	svc, hub, tenantID, participantID := newInvoiceSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
-	ctx := context.Background()
+	ctx := tctx(tenantID)
 
 	inv, err := svc.Create(ctx, repository.InvoiceInput{
-		ClientID: clientID, Date: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 2, Rate: 10}})
+		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+	}, []repository.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -62,13 +43,12 @@ func TestInvoiceCreateBroadcasts(t *testing.T) {
 }
 
 func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, clients := newInvoiceSvc(t)
-	clientID := seedClient(t, clients)
-	ctx := context.Background()
+	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	ctx := tctx(tenantID)
 
 	inv, err := svc.Create(ctx, repository.InvoiceInput{
-		ClientID: clientID, Date: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, Rate: 5}})
+		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -90,13 +70,12 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 }
 
 func TestInvoiceCreateEmptyItemsNoEvent(t *testing.T) {
-	svc, hub, clients := newInvoiceSvc(t)
-	clientID := seedClient(t, clients)
+	svc, hub, tenantID, participantID := newInvoiceSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
 
-	if _, err := svc.Create(context.Background(), repository.InvoiceInput{
-		ClientID: clientID, Date: "2026-01-01", DueDate: "2026-02-01",
+	if _, err := svc.Create(tctx(tenantID), repository.InvoiceInput{
+		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, nil); err == nil {
 		t.Fatal("empty items must error")
 	}

@@ -4,42 +4,25 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// newPaymentServer wires the payment routes behind RequireAuth, plus client and
-// invoice creation so payments can reference a real invoice.
+// newPaymentServer wires the payment routes behind RequireAuth, plus participant
+// and invoice creation so payments can reference a real invoice.
 func newPaymentServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "payment.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "payment.db")
+	users, _, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users)
-	cH := NewClientHandler(service.NewClientService(conn, hub))
+	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
 	payH := NewPaymentHandler(service.NewPaymentService(conn, hub))
 
@@ -48,7 +31,7 @@ func newPaymentServer(t *testing.T) *httptest.Server {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users))
-			pr.Post("/clients", cH.Create)
+			pr.Post("/participants", pH.Create)
 			pr.Post("/invoices", invH.Create)
 			pr.Get("/invoices/{id}", invH.Get)
 			pr.Get("/invoices/{id}/payments", payH.ListForInvoice)
@@ -62,14 +45,14 @@ func newPaymentServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// createPaymentInvoice posts a single-line invoice (rate 25, qty 1, no tax → 25)
-// and returns its id.
-func createPaymentInvoice(t *testing.T, c *http.Client, base string, clientID int64) int64 {
+// createPaymentInvoice posts a single-line invoice (unitPrice 25, qty 1, no tax →
+// 25) and returns its id.
+func createPaymentInvoice(t *testing.T, c *http.Client, base string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-06-01", "dueDate": "2026-07-01",
+		"participantId": participantID, "issueDate": "2026-06-01", "dueDate": "2026-07-01",
 		"lineItems": []map[string]any{
-			{"description": "Work", "quantity": 1, "rate": 25, "sortOrder": 0},
+			{"description": "Work", "quantity": 1, "unitPrice": 25, "sortOrder": 0},
 		},
 	})
 	if err != nil {
@@ -92,8 +75,8 @@ func createPaymentInvoice(t *testing.T, c *http.Client, base string, clientID in
 func TestPaymentRecordAndList(t *testing.T) {
 	srv := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, participantID)
 
 	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -132,8 +115,8 @@ func TestPaymentRecordAndList(t *testing.T) {
 func TestPaymentDeleteFlow(t *testing.T) {
 	srv := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, participantID)
 
 	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
 	var p struct {
@@ -164,8 +147,8 @@ func TestPaymentDeleteMissing404(t *testing.T) {
 func TestPaymentZeroAmount400(t *testing.T) {
 	srv := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, participantID)
 
 	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(invID)+"/payments", `{"amount":0,"paymentDate":"2026-06-05"}`)
 	defer func() { _ = resp.Body.Close() }()

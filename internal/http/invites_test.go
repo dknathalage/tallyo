@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -19,24 +17,13 @@ import (
 // users repo so tests can assert on created members.
 func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "i.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
+	conn := openMigratedDB(t, "i.db")
+	users, tenantID, _ := seedTenantOwner(t, conn)
 	hash, err := auth.HashPassword("password1")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "m@x.com", hash, "member"); err != nil {
+	if _, err := users.Create(t.Context(), tenantID, "m@x.com", hash, "", "member", false); err != nil {
 		t.Fatalf("Create member: %v", err)
 	}
 
@@ -173,9 +160,9 @@ func TestInviteAcceptCreatesMemberThenLogin(t *testing.T) {
 	}
 
 	// A member user must now exist.
-	_, _, found, err := users.GetCredentials(t.Context(), "new@x.com")
+	_, _, _, found, err := users.GetCredentialsGlobal(t.Context(), "new@x.com")
 	if err != nil {
-		t.Fatalf("GetCredentials: %v", err)
+		t.Fatalf("GetCredentialsGlobal: %v", err)
 	}
 	if !found {
 		t.Fatalf("accept: member user not created")

@@ -56,8 +56,8 @@ func validateRecurring(in repository.RecurringInput) (string, bool) {
 	if in.Name == "" {
 		return "name required", false
 	}
-	if in.ClientID == nil || *in.ClientID == 0 {
-		return "client required", false
+	if in.ParticipantID == nil || *in.ParticipantID == 0 {
+		return "participant required", false
 	}
 	if in.Frequency == "" {
 		return "frequency required", false

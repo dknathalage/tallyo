@@ -97,18 +97,20 @@ func run() error {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, *secureCookie)
 	users := auth.NewUsers(conn)
+	tenants := auth.NewTenants(conn)
 	invites := auth.NewInvites(conn)
 	bpSvc := service.NewBusinessProfileService(conn, hub)
-	payerSvc := service.NewPayerService(conn, hub)
+	planManagerSvc := service.NewPlanManagerService(conn, hub)
 	taxRateSvc := service.NewTaxRateService(conn, hub)
-	clientSvc := service.NewClientService(conn, hub)
-	catalogSvc := service.NewCatalogService(conn, hub)
+	participantSvc := service.NewParticipantService(conn, hub)
+	customItemSvc := service.NewCustomItemService(conn, hub)
+	supportCatalogSvc := service.NewSupportCatalogService(conn)
 	invoiceSvc := service.NewInvoiceService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
 
-	setup, err := httpapi.NewSetupHandler(users)
+	setup, err := httpapi.NewSetupHandler(users, tenants)
 	if err != nil {
 		return fmt.Errorf("setup handler: %w", err)
 	}
@@ -131,15 +133,16 @@ func run() error {
 		Invites:         httpapi.NewInviteHandler(invites, users),
 		Events:          httpapi.NewEventsHandler(hub),
 		BusinessProfile: httpapi.NewBusinessProfileHandler(bpSvc),
-		Payers:          httpapi.NewPayerHandler(payerSvc),
+		PlanManagers:    httpapi.NewPlanManagerHandler(planManagerSvc),
 		TaxRates:        httpapi.NewTaxRateHandler(taxRateSvc),
-		Clients:         httpapi.NewClientHandler(clientSvc),
-		Catalog:         httpapi.NewCatalogHandler(catalogSvc),
+		Participants:    httpapi.NewParticipantHandler(participantSvc),
+		CustomItems:     httpapi.NewCustomItemHandler(customItemSvc),
+		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
-		Export:          httpapi.NewExportHandler(catalogSvc, invoiceSvc, estimateSvc),
+		Export:          httpapi.NewExportHandler(customItemSvc, invoiceSvc, estimateSvc),
 	}
 
 	server := httpapi.NewServer(deps)

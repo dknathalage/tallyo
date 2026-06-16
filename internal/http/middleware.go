@@ -8,6 +8,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 type ctxKey int
@@ -65,23 +66,27 @@ func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo) func(http.Handle
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := sm.GetInt(r.Context(), "userID")
-			if id == 0 {
+			tenantID := sm.GetInt(r.Context(), "tenantID")
+			if id == 0 || tenantID == 0 {
 				WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-			u, err := users.GetByID(r.Context(), int64(id))
+			// Attach the tenant to the context BEFORE the user re-check so the
+			// tenant-scoped GetByID is filtered to the session's tenant.
+			ctx := reqctx.WithTenant(r.Context(), int64(tenantID))
+			u, err := users.GetByID(ctx, int64(tenantID), int64(id))
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
 			if u == nil { // user deleted → invalidate session
-				if derr := sm.Destroy(r.Context()); derr != nil {
+				if derr := sm.Destroy(ctx); derr != nil {
 					log.Printf("RequireAuth: destroy session: %v", derr)
 				}
 				WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-			ctx := context.WithValue(r.Context(), userCtxKey, u)
+			ctx = context.WithValue(ctx, userCtxKey, u)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

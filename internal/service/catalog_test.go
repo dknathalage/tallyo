@@ -1,36 +1,27 @@
 package service
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newCatalogSvc(t *testing.T) (*CatalogService, *realtime.Hub, *repository.RateTiersRepo) {
+func newCustomItemSvc(t *testing.T) (*CustomItemService, *realtime.Hub, int64) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "catalog.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn)
 	hub := realtime.NewHub()
-	return NewCatalogService(conn, hub), hub, repository.NewRateTiers(conn)
+	return NewCustomItemService(conn, hub), hub, tenantID
 }
 
-func TestCatalogCreateBroadcasts(t *testing.T) {
-	svc, hub, _ := newCatalogSvc(t)
+func TestCustomItemCreateBroadcasts(t *testing.T) {
+	svc, hub, tenantID := newCustomItemSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
 
-	item, err := svc.Create(context.Background(), repository.CatalogItemInput{Name: "Widget", Rate: 5})
+	item, err := svc.Create(tctx(tenantID), repository.CustomItemInput{Name: "Widget", Rate: 5})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -40,20 +31,20 @@ func TestCatalogCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "catalog_item" || e.ID != item.ID || e.Action != "create" {
-			t.Fatalf("event=%+v want catalog_item/%d/create", e, item.ID)
+		if e.Entity != "custom_item" || e.ID != item.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want custom_item/%d/create", e, item.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
 	}
 }
 
-func TestCatalogCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub, _ := newCatalogSvc(t)
+func TestCustomItemCreateEmptyNameNoEvent(t *testing.T) {
+	svc, hub, tenantID := newCustomItemSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
 
-	if _, err := svc.Create(context.Background(), repository.CatalogItemInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), repository.CustomItemInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {
@@ -64,31 +55,42 @@ func TestCatalogCreateEmptyNameNoEvent(t *testing.T) {
 	}
 }
 
-func TestCatalogSetRateBroadcasts(t *testing.T) {
-	svc, hub, tiers := newCatalogSvc(t)
-	ctx := context.Background()
+func TestCustomItemBulkDeleteBroadcasts(t *testing.T) {
+	svc, hub, tenantID := newCustomItemSvc(t)
+	ctx := tctx(tenantID)
 
-	item, err := svc.Create(ctx, repository.CatalogItemInput{Name: "Widget", Rate: 5})
+	item, err := svc.Create(ctx, repository.CustomItemInput{Name: "Widget", Rate: 5})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
-	}
-	tier, err := tiers.Create(ctx, repository.RateTierInput{Name: "Standard", SortOrder: 1})
-	if err != nil {
-		t.Fatalf("Create tier: %v", err)
 	}
 
 	ch, unsub := hub.Subscribe()
 	defer unsub()
 
-	if err := svc.SetRate(ctx, item.ID, tier.ID, 7.5); err != nil {
-		t.Fatalf("SetRate: %v", err)
+	if err := svc.BulkDelete(ctx, []int64{item.ID}); err != nil {
+		t.Fatalf("BulkDelete: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "catalog_item" || e.ID != item.ID || e.Action != "set_rate" {
-			t.Fatalf("event=%+v want catalog_item/%d/set_rate", e, item.ID)
+		if e.Entity != "custom_item" || e.ID != 0 || e.Action != "bulk_delete" {
+			t.Fatalf("event=%+v want custom_item/0/bulk_delete", e)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("no broadcast after SetRate")
+		t.Fatal("no broadcast after BulkDelete")
+	}
+}
+
+// SupportCatalogService is global, read-only reference data. With no catalogue
+// ingested, ListVersions returns an empty (non-nil) slice.
+func TestSupportCatalogListVersionsEmpty(t *testing.T) {
+	conn := newTestDB(t)
+	svc := NewSupportCatalogService(conn)
+
+	versions, err := svc.ListVersions(tctx(seedTenant(t, conn)))
+	if err != nil {
+		t.Fatalf("ListVersions: %v", err)
+	}
+	if len(versions) != 0 {
+		t.Fatalf("ListVersions = %d, want 0", len(versions))
 	}
 }

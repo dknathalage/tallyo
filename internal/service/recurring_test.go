@@ -1,42 +1,34 @@
 package service
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newRecurringSvc(t *testing.T) (*RecurringService, *realtime.Hub, *repository.ClientsRepo) {
+func newRecurringSvc(t *testing.T) (*RecurringService, *realtime.Hub, int64, int64) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "recurring.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn)
+	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewRecurringService(conn, hub), hub, repository.NewClients(conn)
+	return NewRecurringService(conn, hub), hub, tenantID, participantID
 }
 
-// seedRecurringInput builds a valid monthly template input for the given client,
-// due in the past so GenerateDue/GenerateOne will produce an invoice.
-func seedRecurringInput(clientID int64) repository.RecurringInput {
-	cid := clientID
+// seedRecurringInput builds a valid monthly template input for the given
+// participant, due in the past so GenerateOne will produce an invoice.
+func seedRecurringInput(participantID int64) repository.RecurringInput {
+	pid := participantID
 	return repository.RecurringInput{
-		ClientID:  &cid,
-		Name:      "Monthly",
-		Frequency: "monthly",
-		NextDue:   "2026-01-01",
+		ParticipantID: &pid,
+		Name:          "Monthly",
+		Frequency:     "monthly",
+		NextDue:       "2026-01-01",
 		LineItems: []repository.RecurringLine{
-			{Description: "A", Quantity: 2, Rate: 10, SortOrder: 0},
-			{Description: "B", Quantity: 1, Rate: 5, SortOrder: 1},
+			{Description: "A", Quantity: 2, UnitPrice: 10, SortOrder: 0},
+			{Description: "B", Quantity: 1, UnitPrice: 5, SortOrder: 1},
 		},
 		TaxRate:  10,
 		IsActive: true,
@@ -44,13 +36,12 @@ func seedRecurringInput(clientID int64) repository.RecurringInput {
 }
 
 func TestRecurringCreateBroadcasts(t *testing.T) {
-	svc, hub, clients := newRecurringSvc(t)
-	clientID := seedClient(t, clients)
+	svc, hub, tenantID, participantID := newRecurringSvc(t)
 	ch, unsub := hub.Subscribe()
 	defer unsub()
-	ctx := context.Background()
+	ctx := tctx(tenantID)
 
-	tpl, err := svc.Create(ctx, seedRecurringInput(clientID))
+	tpl, err := svc.Create(ctx, seedRecurringInput(participantID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -68,11 +59,10 @@ func TestRecurringCreateBroadcasts(t *testing.T) {
 }
 
 func TestRecurringGenerateOneBroadcasts(t *testing.T) {
-	svc, hub, clients := newRecurringSvc(t)
-	clientID := seedClient(t, clients)
-	ctx := context.Background()
+	svc, hub, tenantID, participantID := newRecurringSvc(t)
+	ctx := tctx(tenantID)
 
-	tpl, err := svc.Create(ctx, seedRecurringInput(clientID))
+	tpl, err := svc.Create(ctx, seedRecurringInput(participantID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -111,8 +101,8 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 }
 
 func TestRecurringGenerateOneMissingTemplate(t *testing.T) {
-	svc, _, _ := newRecurringSvc(t)
-	inv, err := svc.GenerateOne(context.Background(), 999)
+	svc, _, tenantID, _ := newRecurringSvc(t)
+	inv, err := svc.GenerateOne(tctx(tenantID), 999)
 	if err != nil {
 		t.Fatalf("GenerateOne missing: %v", err)
 	}

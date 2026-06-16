@@ -40,24 +40,28 @@ type Deps struct {
 	// business profile at /api/business-profile.
 	BusinessProfile *BusinessProfileHandler
 
-	// Payers, when non-nil, serves the auth-gated payer CRUD plus bulk-delete
-	// routes under /api/payers.
-	Payers *PayerHandler
+	// PlanManagers, when non-nil, serves the auth-gated plan-manager CRUD plus
+	// bulk-delete routes under /api/plan-managers.
+	PlanManagers *PlanManagerHandler
 
 	// TaxRates, when non-nil, serves the auth-gated tax-rate CRUD routes under
 	// /api/tax-rates.
 	TaxRates *TaxRateHandler
 
-	// Clients, when non-nil, serves the auth-gated client CRUD plus bulk-delete
-	// routes under /api/clients.
-	Clients *ClientHandler
+	// Participants, when non-nil, serves the auth-gated participant CRUD plus
+	// bulk-delete routes under /api/participants.
+	Participants *ParticipantHandler
 
-	// Catalog, when non-nil, serves the auth-gated catalog CRUD, categories,
-	// bulk-delete, and per-item tier-rate sub-routes under /api/catalog.
-	Catalog *CatalogHandler
+	// CustomItems, when non-nil, serves the auth-gated per-tenant custom-item
+	// CRUD plus bulk-delete routes under /api/custom-items.
+	CustomItems *CustomItemHandler
+
+	// SupportCatalog, when non-nil, serves the auth-gated read-only GLOBAL NDIS
+	// Support Catalogue routes under /api/support-catalog.
+	SupportCatalog *SupportCatalogHandler
 
 	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
-	// duplicate, bulk routes, plus the per-client stats route under /api.
+	// bulk routes, plus the per-participant stats route under /api.
 	Invoices *InvoiceHandler
 
 	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
@@ -123,7 +127,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users))
 				if deps.Auth != nil {
@@ -139,13 +143,13 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/business-profile", deps.BusinessProfile.Get)
 					pr.Put("/business-profile", deps.BusinessProfile.Put)
 				}
-				if deps.Payers != nil {
-					pr.Get("/payers", deps.Payers.List)
-					pr.Post("/payers", deps.Payers.Create)
-					pr.Post("/payers/bulk-delete", deps.Payers.BulkDelete)
-					pr.Get("/payers/{id}", deps.Payers.Get)
-					pr.Put("/payers/{id}", deps.Payers.Update)
-					pr.Delete("/payers/{id}", deps.Payers.Delete)
+				if deps.PlanManagers != nil {
+					pr.Get("/plan-managers", deps.PlanManagers.List)
+					pr.Post("/plan-managers", deps.PlanManagers.Create)
+					pr.Post("/plan-managers/bulk-delete", deps.PlanManagers.BulkDelete)
+					pr.Get("/plan-managers/{id}", deps.PlanManagers.Get)
+					pr.Put("/plan-managers/{id}", deps.PlanManagers.Update)
+					pr.Delete("/plan-managers/{id}", deps.PlanManagers.Delete)
 				}
 				if deps.TaxRates != nil {
 					pr.Get("/tax-rates", deps.TaxRates.List)
@@ -154,24 +158,28 @@ func NewServer(deps Deps) *Server {
 					pr.Put("/tax-rates/{id}", deps.TaxRates.Update)
 					pr.Delete("/tax-rates/{id}", deps.TaxRates.Delete)
 				}
-				if deps.Clients != nil {
-					pr.Get("/clients", deps.Clients.List)
-					pr.Post("/clients", deps.Clients.Create)
-					pr.Post("/clients/bulk-delete", deps.Clients.BulkDelete)
-					pr.Get("/clients/{id}", deps.Clients.Get)
-					pr.Put("/clients/{id}", deps.Clients.Update)
-					pr.Delete("/clients/{id}", deps.Clients.Delete)
+				if deps.Participants != nil {
+					pr.Get("/participants", deps.Participants.List)
+					pr.Post("/participants", deps.Participants.Create)
+					pr.Post("/participants/bulk-delete", deps.Participants.BulkDelete)
+					pr.Get("/participants/{id}", deps.Participants.Get)
+					pr.Put("/participants/{id}", deps.Participants.Update)
+					pr.Delete("/participants/{id}", deps.Participants.Delete)
 				}
-				if deps.Catalog != nil {
-					pr.Get("/catalog", deps.Catalog.List)
-					pr.Post("/catalog", deps.Catalog.Create)
-					pr.Get("/catalog/categories", deps.Catalog.Categories)
-					pr.Post("/catalog/bulk-delete", deps.Catalog.BulkDelete)
-					pr.Get("/catalog/{id}", deps.Catalog.Get)
-					pr.Put("/catalog/{id}", deps.Catalog.Update)
-					pr.Delete("/catalog/{id}", deps.Catalog.Delete)
-					pr.Get("/catalog/{id}/rates", deps.Catalog.GetRates)
-					pr.Put("/catalog/{id}/rates/{tierId}", deps.Catalog.SetRate)
+				if deps.CustomItems != nil {
+					pr.Get("/custom-items", deps.CustomItems.List)
+					pr.Post("/custom-items", deps.CustomItems.Create)
+					pr.Post("/custom-items/bulk-delete", deps.CustomItems.BulkDelete)
+					pr.Get("/custom-items/{id}", deps.CustomItems.Get)
+					pr.Put("/custom-items/{id}", deps.CustomItems.Update)
+					pr.Delete("/custom-items/{id}", deps.CustomItems.Delete)
+				}
+				// SupportCatalog is the GLOBAL NDIS catalogue (read-only here).
+				// TODO(J7): platform-admin ingest (XLSX upload) endpoint is J7.
+				if deps.SupportCatalog != nil {
+					pr.Get("/support-catalog/versions", deps.SupportCatalog.ListVersions)
+					pr.Get("/support-catalog/versions/{id}/items", deps.SupportCatalog.ListItems)
+					pr.Get("/support-catalog/items/{itemId}/prices", deps.SupportCatalog.ListPrices)
 				}
 				if deps.Invoices != nil {
 					pr.Get("/invoices", deps.Invoices.List)
@@ -182,9 +190,8 @@ func NewServer(deps Deps) *Server {
 					pr.Put("/invoices/{id}", deps.Invoices.Update)
 					pr.Delete("/invoices/{id}", deps.Invoices.Delete)
 					pr.Post("/invoices/{id}/status", deps.Invoices.Status)
-					pr.Post("/invoices/{id}/duplicate", deps.Invoices.Duplicate)
 					pr.Get("/invoices/{id}/pdf", deps.Invoices.Pdf)
-					pr.Get("/clients/{id}/stats", deps.Invoices.ClientStats)
+					pr.Get("/participants/{id}/stats", deps.Invoices.ParticipantStats)
 				}
 				if deps.Estimates != nil {
 					pr.Get("/estimates", deps.Estimates.List)

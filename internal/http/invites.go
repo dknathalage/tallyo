@@ -55,7 +55,7 @@ func (h *InviteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if role == "" {
 		role = "member"
 	}
-	inv, err := h.invites.Create(r.Context(), in.Email, role, u.ID, inviteTTL)
+	inv, err := h.invites.Create(r.Context(), u.TenantID, in.Email, role, u.ID, inviteTTL)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -103,7 +103,9 @@ func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if _, err := h.invites.Accept(r.Context(), token, hash); err != nil {
+	// TODO(J5): the invitee's display name should come from the accept form;
+	// passed empty for now.
+	if _, err := h.invites.Accept(r.Context(), token, "", hash); err != nil {
 		if errors.Is(err, auth.ErrInviteInvalid) {
 			WriteError(w, http.StatusConflict, "invite invalid or already used")
 			return

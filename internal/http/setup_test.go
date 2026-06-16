@@ -24,7 +24,8 @@ func newSetupRouter(t *testing.T) (http.Handler, *sql.DB) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	users := auth.NewUsers(conn)
-	h, err := NewSetupHandler(users)
+	tenants := auth.NewTenants(conn)
+	h, err := NewSetupHandler(users, tenants)
 	if err != nil {
 		t.Fatalf("NewSetupHandler: %v", err)
 	}
