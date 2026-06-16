@@ -27,9 +27,14 @@ VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListAgentMessages :many
-SELECT * FROM agent_message
-WHERE tenant_id = ? AND conversation_id = ?
-ORDER BY id ASC;
+SELECT
+    m.id, m.conversation_id, m.tenant_id, m.role, m.content, m.token_usage, m.created_at,
+    ck.id AS checkpoint_id,
+    ck.status AS checkpoint_status
+FROM agent_message m
+LEFT JOIN agent_checkpoint ck ON ck.message_id = m.id AND ck.tenant_id = m.tenant_id
+WHERE m.tenant_id = ? AND m.conversation_id = ?
+ORDER BY m.id ASC;
 
 -- name: CreateAgentStep :one
 INSERT INTO agent_step (

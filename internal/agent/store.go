@@ -39,6 +39,12 @@ type Message struct {
 	Content        []llm.Block `json:"content"`
 	TokenUsage     string      `json:"tokenUsage"`
 	CreatedAt      string      `json:"createdAt"`
+	// CheckpointID is the id of the checkpoint opened against this message (the
+	// plan/assistant message that owns a turn's revertable changes), or nil when
+	// the message has no checkpoint. CheckpointStatus is the checkpoint's status
+	// ('open' | 'committed' | 'reverted') and is empty when CheckpointID is nil.
+	CheckpointID     *int64 `json:"checkpointId"`
+	CheckpointStatus string `json:"checkpointStatus,omitempty"`
 }
 
 // Store is the tenant-scoped persistence layer for the agent domain. It wraps
@@ -209,7 +215,7 @@ func (s *Store) ListMessages(ctx context.Context, conversationID int64) ([]*Mess
 	}
 	out := make([]*Message, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		m, e := toMessage(rows[i])
+		m, e := toListMessage(rows[i])
 		if e != nil {
 			return nil, fmt.Errorf("list messages: %w", e)
 		}
@@ -535,4 +541,30 @@ func toMessage(r gen.AgentMessage) (*Message, error) {
 		TokenUsage:     r.TokenUsage,
 		CreatedAt:      r.CreatedAt,
 	}, nil
+}
+
+// toListMessage maps a ListAgentMessages row (message joined with its optional
+// checkpoint) to the domain shape, decoding content and surfacing the nullable
+// checkpoint id + status. A NULL checkpoint id leaves CheckpointID nil and
+// CheckpointStatus empty (most messages have no checkpoint).
+func toListMessage(r gen.ListAgentMessagesRow) (*Message, error) {
+	blocks, err := decodeBlocks(r.Content)
+	if err != nil {
+		return nil, err
+	}
+	m := &Message{
+		ID:             r.ID,
+		ConversationID: r.ConversationID,
+		TenantID:       r.TenantID,
+		Role:           r.Role,
+		Content:        blocks,
+		TokenUsage:     r.TokenUsage,
+		CreatedAt:      r.CreatedAt,
+	}
+	if r.CheckpointID.Valid {
+		id := r.CheckpointID.Int64
+		m.CheckpointID = &id
+		m.CheckpointStatus = r.CheckpointStatus.String
+	}
+	return m, nil
 }

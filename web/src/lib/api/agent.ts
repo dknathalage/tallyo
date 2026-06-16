@@ -23,6 +23,10 @@ export interface AgentMessageDTO {
 	role: 'user' | 'assistant';
 	content: AgentBlock[];
 	createdAt: string;
+	/** Id of the checkpoint opened against this message, or null/undefined when none. */
+	checkpointId?: number | null;
+	/** Checkpoint status: 'open' | 'committed' | 'reverted'. Empty when no checkpoint. */
+	checkpointStatus?: string;
 }
 
 export interface PlanStepDTO {
