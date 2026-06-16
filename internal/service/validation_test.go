@@ -301,6 +301,31 @@ func TestValidateZoneSelectsDifferentCap(t *testing.T) {
 	}
 }
 
+// TestValidateDefaultsToNationalZoneWhenNoProfile asserts the tenantZone
+// fallback (validation.go): a tenant with NO business_profile (zone unset) is
+// treated as "national", so caps resolve against the national price.
+func TestValidateDefaultsToNationalZoneWhenNoProfile(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn) // deliberately NO setTenantZone → no business profile
+	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	// national cap 100; a remote price also exists at 150 to prove the fallback
+	// picks national (not remote, and not "any zone").
+	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true,
+		map[string]*float64{"national": fptr(100), "remote": fptr(150)})
+	v := NewLineValidator(conn)
+	ctx := context.Background()
+
+	// 120 is over the national cap (100) but under the remote cap (150). With the
+	// national fallback this must be REJECTED.
+	if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 120)}); err == nil {
+		t.Fatal("no-profile tenant: 120 > national cap 100 must reject (national fallback)")
+	}
+	// 100 is exactly the national cap → must pass.
+	if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 100)}); err != nil {
+		t.Fatalf("no-profile tenant: 100 == national cap must pass: %v", err)
+	}
+}
+
 // --- gst_free defaulting (spec §6 step 6) ---------------------------------
 
 func TestValidateGstFreeDefaultedFromItem(t *testing.T) {
