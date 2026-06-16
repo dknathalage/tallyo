@@ -27,7 +27,7 @@ primary surface, data-entry copilot parsing, cross-tenant or admin operations, d
 | Tool scope (v1) | Focused: all-domain reads + invoice/estimate/payment/participant writes + sweeps. No deletes. |
 | Memory | Per-conversation (full history persisted; compacted window sent to model). No cross-session memory. |
 | Context mgmt | Server-side compaction + context editing + prompt caching |
-| Revert | Per agent turn, atomic, via audit-derived inverse changes |
+| Revert | Per agent turn (= a git-like commit); DB-level, trigger-driven `row_change` journal; reverse-diff (column-level, `git revert`-style) replay; append-only + re-revertible |
 | Budget cap | Hard stop + clear notice when tenant hits daily token ceiling |
 
 ## 3. Why this architecture
@@ -161,11 +161,12 @@ return `[]` non-nil. sqlc source in `internal/db/queries/agent.sql`.
 **DB-level reversibility (not agent-specific; lives in `internal/db`):**
 
 - `row_change` — the generic, DB-wide change journal, populated by triggers (§10), **not**
-  by application code: `seq (monotonic), table_name, pk, tenant_id, op (insert|update|delete),
-  old_row (json — null for insert), new_row (json — null for delete), txn_tag (nullable — the
-  agent_checkpoint id when the write happened inside a tagged span, else null), actor_user_id,
-  created_at`. This is the single source of truth for revert and replaces the previous
-  per-entity `agent_checkpoint_change` table. The independent `audit` log is unchanged.
+  by application code: `seq (single INTEGER PRIMARY KEY AUTOINCREMENT — globally monotonic
+  across all tables; revert orders by this), table_name, pk, tenant_id (nullable), op
+  (insert|update|delete), old_row (json — null for insert), new_row (json — null for delete),
+  txn_tag (nullable — the agent_checkpoint id when the write happened inside a tagged span,
+  else null), actor_user_id, created_at`. Single source of truth for revert; replaces the
+  previous per-entity `agent_checkpoint_change` table. Exempt from the audit invariant (§10).
 
 ## 8. Context management
 
@@ -217,39 +218,56 @@ blocks that remain are replayed verbatim, never reconstructed.
 ## 10. Revert / versioning
 
 Reversibility is a property of the **data layer**, not reconstructed in services/handlers.
+The model is **git-like**: checkpoints are commits on a per-conversation timeline, history is
+append-only, and revert is a forward operation (like `git revert`, not `git reset`) that is
+itself journaled and therefore re-revertible ("un-revert" = revert the revert span).
 
 **Capture (triggers).** Every mutable domain table gets `AFTER INSERT/UPDATE/DELETE`
 triggers that write a `row_change` row: `op`, the full `old_row`/`new_row` as
-`json_object(...)` of all columns, the table's `tenant_id`, the actor, and the current
-`txn_tag`. Triggers are **generated from the schema** and shipped as goose migrations
-(regenerated whenever a table's columns change — a generation step + a test asserting every
-mutable table has current triggers). This catches every write — including cascade and
-side-effect writes (e.g. a payment also bumping an invoice's stored balance) — regardless of
-which Go code issued it.
+`json_object(...)` of all columns, the table's `tenant_id` (null for tenant-less tables, see
+§14), the actor, and the current `txn_tag`. Triggers are **generated from the schema** and
+shipped as goose migrations (regenerated when columns change — a generator + a test asserting
+every mutable table has current triggers). This catches every write — including FK cascade
+and side-effect writes (e.g. a payment also bumping an invoice's stored balance) — regardless
+of which Go code issued it. `row_change` is itself written only by triggers and is **exempt
+from the "every mutation audited" invariant** by design (it's infrastructure, not a domain
+mutation); the independent `audit_log` is untouched.
 
-**Tagging.** The agent's `checkpoint.go` opens an `agent_checkpoint` and, inside each risky
-tool's `audit.WithTx` tx, stamps a connection-local temp row `_txn_context(checkpoint_id)`;
-triggers read it for `txn_tag`. `database/sql` pins one connection per `*sql.Tx` and
-`_txlock=immediate` serializes writers, so the tag is isolated to that tx. Writes outside any
-agent span leave `txn_tag` null (still journaled — DB-wide reversibility).
+**Tagging (lifecycle-safe across the pool).** Tagging is folded into the shared
+`audit.WithTx` wrapper so the stamp and the domain mutation always ride the **same** pinned
+`*sql.Tx` connection (no separate tx, no layering break): as its **first** statement every
+write tx does `DELETE FROM _txn_context` (clearing any stale tag left on a pooled connection),
+then, if a checkpoint id is present on the `context.Context`, `INSERT INTO _txn_context`. The
+agent sets that context value when running a risky tool; all other callers leave it unset →
+`txn_tag` null. Triggers read `(SELECT checkpoint_id FROM _txn_context)`. Because the table is
+cleared at the start of *every* write tx, pooled-connection reuse can never carry a stale tag.
+`database/sql` pins one connection per `*sql.Tx` and `_txlock=immediate` serializes writers,
+so the stamp is isolated to its tx.
 
 **Revert** (`POST /api/agent/checkpoints/{id}/revert`): one generic operation, identical for
-every table — no per-entity logic. In a single tx, for each `row_change` with
-`txn_tag = checkpoint_id` in **reverse `seq`**:
-- `insert → DELETE` by pk
-- `update → UPDATE` the row back to `old_row`
-- `delete → INSERT` `old_row`
+every table — no per-entity logic. In a single tx that first sets `PRAGMA defer_foreign_keys
+= ON` (so intra-tx FK ordering doesn't matter — restored child/parent rows are checked only at
+commit; required because reverse-`seq` order does not respect referential ordering against the
+`ON DELETE CASCADE` FKs in the schema). For each `row_change` with `txn_tag = checkpoint_id`
+in **reverse `seq`**, apply a **reverse-diff** (column-level, git-style), not a snapshot reset:
+- `insert →` `DELETE` by pk.
+- `delete →` `INSERT old_row`.
+- `update →` compute the columns this change altered (`old_row` vs `new_row`); set **only
+  those columns** back to their `old_row` values on the **current** row. Later edits to
+  *other* columns of the same row survive — exactly like `git revert`'s 3-way merge.
 
-Because side-effect writes were journaled too, reverting the span restores payments **and**
-the balances they touched, atomically — the prior "compensating reversal" special-case is
-gone. The revert runs through `audit.WithTx` (so it's logged) and, being itself a set of
-writes, is journaled as well; it marks the checkpoint `reverted`.
+Cascade/side-effect writes were journaled too, so reverting the span restores payments **and**
+the balances they touched atomically — the prior "compensating reversal" special-case is gone.
+The revert runs through `audit.WithTx` (logged) and is itself journaled (re-revertible); it
+marks the checkpoint `reverted`.
 
-**Conflict detection (journal-based).** Before reverting a row, check the journal for any
-later entry (`seq` greater than this checkpoint's entries) touching the same
-`(table_name, pk)`. If found, that row was changed after the agent's write (by a human or a
-later agent turn) — surface the conflict and let the user confirm-overwrite or skip that
-specific row rather than clobbering newer data.
+**Conflict detection (per-column, git-like).** For an `update` change, conflict iff a journal
+entry on the same `(table_name, pk)` with `seq` greater than this checkpoint's max seq for that
+pk **and** `txn_tag != checkpoint_id` (excludes the checkpoint's own multi-write spans and the
+in-progress revert) altered **one of the same columns** this revert would touch. Same-column
+later edit → surface the conflict (overwrite/skip per row, like git's ours/theirs); edits to
+other columns are not conflicts and revert cleanly. For `insert→delete` and `delete→insert`,
+conflict iff the row's existence changed again afterward.
 
 **UI** lists exactly what a revert will undo (and any conflicts) before the user confirms.
 
@@ -298,13 +316,17 @@ outbound acknowledgement is `step_start`/`tool_result` for the resumed step.
   unavailable in the pinned SDK version (this is why the window builder treats context
   editing as a prune of replayed blocks, not an SDK-only feature).
 - **Trigger generation** (§10): build the schema→trigger generator and the test that asserts
-  every mutable table has up-to-date INSERT/UPDATE/DELETE triggers; decide whether generation
-  runs at build time (committed migrations) or is hand-maintained per table. (Payment-vs-
-  balance is no longer an open question — the journal captures both writes, so revert restores
-  them together.)
-- **Journal retention** (§7): `row_change` grows with every mutation. Decide a retention/prune
-  policy (e.g. keep N days, or until the owning checkpoint ages out) so the journal doesn't
-  grow unbounded; the per-tenant hourly sweep is the natural place to prune.
+  every mutable table has up-to-date INSERT/UPDATE/DELETE triggers; decide build-time vs
+  hand-maintained. Generator must handle **tenant-less tables** (catalog tables keyed by
+  `catalog_version_id`, `business_profile`, etc.) by writing `tenant_id = null` rather than
+  referencing a missing column. All v1 gated tables (invoices, line_items, estimates,
+  estimate_line_items, payments, participants) carry `tenant_id`. (Payment-vs-balance is no
+  longer open — the journal captures both writes, so revert restores them together.)
+- **Journal retention** (§7): `row_change` grows with every mutation. Prune in the hourly
+  sweep, keyed to **checkpoint lifecycle, not age** — never prune rows whose `txn_tag` points
+  at a still-`committed` (revertible) checkpoint, or the turn's Revert affordance silently
+  breaks. Null-`txn_tag` rows (non-agent writes) have no owning checkpoint → separate
+  age-based retention (e.g. keep N days).
 - Interrupt (`Esc`) semantics mid-tool-call: cancel before the next tool starts; a tool
   already committed stays committed (revert is the undo path); an `awaiting` step is denied.
 - `maxIterations` (25) vs. long plans with many gated steps: confirm the cap counts model
