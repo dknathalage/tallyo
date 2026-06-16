@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
+
+	"github.com/dknathalage/tallyo/internal/service"
 )
 
 // maxRequestBody caps decoded request bodies to guard against unbounded input.
@@ -18,19 +20,39 @@ const maxRequestBody = 1 << 20 // 1 MiB
 // cannot change the already-written status, so it is logged.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	if w == nil {
-		log.Printf("httpapi.WriteJSON: nil ResponseWriter")
+		slog.Error("httpapi.WriteJSON: nil ResponseWriter")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("httpapi.WriteJSON: encode: %v", err)
+		slog.Error("httpapi.WriteJSON: encode failed", slog.Any("error", err))
 	}
 }
 
 // WriteError writes a JSON error envelope {"error": msg} with the given status.
 func WriteError(w http.ResponseWriter, status int, msg string) {
 	WriteJSON(w, status, map[string]string{"error": msg})
+}
+
+// WriteValidationError, when err is (or wraps) a *service.ValidationError, writes
+// a 422 envelope {"error": "...", "details": [{line, field, message}, ...]} and
+// returns true. Otherwise it writes nothing and returns false, so callers can
+// fall through to their generic error handling. J12 reads "details" to surface
+// per-line, per-field messages inline in the invoice/estimate editor.
+func WriteValidationError(w http.ResponseWriter, err error) bool {
+	if w == nil {
+		return false
+	}
+	ve, ok := service.AsValidationError(err)
+	if !ok || ve == nil {
+		return false
+	}
+	WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+		"error":   "validation failed",
+		"details": ve.Errors,
+	})
+	return true
 }
 
 // DecodeJSON reads the request body into dst, capping size and rejecting

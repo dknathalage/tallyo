@@ -5,53 +5,39 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
 // newExportServer wires the export routes behind RequireAuth and seeds two
-// catalog items so the catalog exports are non-empty.
+// custom items so the catalog exports are non-empty. Seeding goes through the
+// authenticated owner's tenant context so the items belong to the tenant.
 func newExportServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "export.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "export.db")
+	users, tenantID, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
-	catalogSvc := service.NewCatalogService(conn, hub)
-	if _, err := catalogSvc.Create(t.Context(), repository.CatalogItemInput{Name: "Consulting", Rate: 150.5, Unit: "hour", Category: "Services", Sku: "CON-1"}); err != nil {
+	customItemSvc := service.NewCustomItemService(conn, hub)
+	seedCtx := reqctx.WithTenant(t.Context(), tenantID)
+	if _, err := customItemSvc.Create(seedCtx, repository.CustomItemInput{Name: "Consulting", Rate: 150.5, Unit: "hour"}); err != nil {
 		t.Fatalf("seed item 1: %v", err)
 	}
-	if _, err := catalogSvc.Create(t.Context(), repository.CatalogItemInput{Name: "Design", Rate: 90, Unit: "hour", Category: "Services", Sku: "DES-2"}); err != nil {
+	if _, err := customItemSvc.Create(seedCtx, repository.CustomItemInput{Name: "Design", Rate: 90, Unit: "hour"}); err != nil {
 		t.Fatalf("seed item 2: %v", err)
 	}
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	expH := NewExportHandler(
-		catalogSvc,
+		customItemSvc,
 		service.NewInvoiceService(conn, hub),
 		service.NewEstimateService(conn, hub),
 	)
@@ -60,7 +46,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/export/catalog", expH.Catalog)
 			pr.Get("/export/invoices", expH.Invoices)
 			pr.Get("/export/estimates", expH.Estimates)
@@ -93,7 +79,7 @@ func TestExportCatalogCSV(t *testing.T) {
 		t.Fatalf("content-type: want text/csv got %q", ct)
 	}
 	b := readBody(t, resp)
-	if !strings.HasPrefix(string(b), "name,sku,rate,unit,category") {
+	if !strings.HasPrefix(string(b), "name,rate,unit,gstFree") {
 		t.Fatalf("missing CSV header: %q", b)
 	}
 	if !strings.Contains(string(b), "Consulting") {
@@ -131,7 +117,7 @@ func TestExportInvoicesCSV(t *testing.T) {
 		t.Fatalf("content-type: want text/csv got %q", ct)
 	}
 	b := readBody(t, resp)
-	if !strings.HasPrefix(string(b), "invoiceNumber,clientName,date,dueDate,status,subtotal,taxAmount,total,currency") {
+	if !strings.HasPrefix(string(b), "number,participantName,issueDate,dueDate,status,subtotal,tax,total") {
 		t.Fatalf("missing CSV header: %q", b)
 	}
 }
@@ -144,7 +130,7 @@ func TestExportEstimatesCSV(t *testing.T) {
 		t.Fatalf("want 200 got %d", resp.StatusCode)
 	}
 	b := readBody(t, resp)
-	if !strings.HasPrefix(string(b), "estimateNumber,clientName,date,validUntil,status,subtotal,taxAmount,total,currency") {
+	if !strings.HasPrefix(string(b), "number,participantName,issueDate,validUntil,status,subtotal,tax,total") {
 		t.Fatalf("missing CSV header: %q", b)
 	}
 }

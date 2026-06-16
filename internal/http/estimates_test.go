@@ -4,54 +4,35 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// newEstimateServer wires the estimate routes behind RequireAuth, plus client and
-// tax-rate creation so estimates can reference valid FKs, and the invoice list so
-// converted invoices can be observed.
+// newEstimateServer wires the estimate routes behind RequireAuth, plus
+// participant creation so estimates can reference a valid participant FK, and the
+// invoice list so converted invoices can be observed.
 func newEstimateServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "estimate.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-
-	users := auth.NewUsers(conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), "o@x.com", hash, "owner"); err != nil {
-		t.Fatalf("Create owner: %v", err)
-	}
+	conn := openMigratedDB(t, "estimate.db")
+	users, _, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users)
+	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	estH := NewEstimateHandler(service.NewEstimateService(conn, hub))
 	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
-	cH := NewClientHandler(service.NewClientService(conn, hub))
-	trH := NewTaxRateHandler(service.NewTaxRateService(conn, hub))
+	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users))
-			pr.Post("/clients", cH.Create)
-			pr.Post("/tax-rates", trH.Create)
+			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Post("/participants", pH.Create)
 			pr.Get("/invoices", invH.List)
 			pr.Get("/estimates", estH.List)
 			pr.Post("/estimates", estH.Create)
@@ -72,14 +53,16 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// createEstimate posts a two-line estimate for the given client and returns the id.
-func createEstimate(t *testing.T, c *http.Client, base string, clientID int64) int64 {
+// createEstimate posts a two-line estimate for the given participant and returns
+// the id. Lines total 25. The J10 validation engine computes tax from the lines
+// (no tenant default tax rate → tax 0), so the total equals the subtotal (25).
+func createEstimate(t *testing.T, c *http.Client, base string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-01-01", "validUntil": "2026-02-01", "taxRate": 10,
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
-			{"description": "A", "quantity": 2, "rate": 10, "sortOrder": 0},
-			{"description": "B", "quantity": 1, "rate": 5, "sortOrder": 1},
+			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
+			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
 		},
 	})
 	if err != nil {
@@ -105,13 +88,13 @@ func createEstimate(t *testing.T, c *http.Client, base string, clientID int64) i
 func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, "Acme")
 
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-01-01", "validUntil": "2026-02-01", "taxRate": 10,
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
-			{"description": "A", "quantity": 2, "rate": 10, "sortOrder": 0},
-			{"description": "B", "quantity": 1, "rate": 5, "sortOrder": 1},
+			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
+			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
 		},
 	})
 	if err != nil {
@@ -123,24 +106,24 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 		t.Fatalf("create: want 201 got %d", resp.StatusCode)
 	}
 	var est struct {
-		EstimateNumber string  `json:"estimateNumber"`
-		Total          float64 `json:"total"`
-		Subtotal       float64 `json:"subtotal"`
-		LineItems      []struct {
+		Number    string  `json:"number"`
+		Total     float64 `json:"total"`
+		Subtotal  float64 `json:"subtotal"`
+		LineItems []struct {
 			Description string `json:"description"`
 		} `json:"lineItems"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&est); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if est.EstimateNumber != "EST-0001" {
-		t.Fatalf("estimateNumber: want EST-0001 got %q", est.EstimateNumber)
+	if est.Number != "EST-0001" {
+		t.Fatalf("number: want EST-0001 got %q", est.Number)
 	}
 	if est.Subtotal != 25 {
 		t.Fatalf("subtotal: want 25 got %v", est.Subtotal)
 	}
-	if est.Total != 27.5 {
-		t.Fatalf("total: want 27.5 got %v", est.Total)
+	if est.Total != 25 {
+		t.Fatalf("total: want 25 got %v", est.Total)
 	}
 	if len(est.LineItems) != 2 {
 		t.Fatalf("lineItems: want 2 got %d", len(est.LineItems))
@@ -150,8 +133,8 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 func TestEstimateGetReturnsLineItems(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createEstimate(t, c, srv.URL, participantID)
 
 	resp := get(t, c, srv.URL+"/api/estimates/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
@@ -174,8 +157,8 @@ func TestEstimateGetReturnsLineItems(t *testing.T) {
 func TestEstimateStatusFlip(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createEstimate(t, c, srv.URL, participantID)
 
 	resp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -187,8 +170,8 @@ func TestEstimateStatusFlip(t *testing.T) {
 func TestEstimateDuplicate(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createEstimate(t, c, srv.URL, participantID)
 
 	resp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/duplicate", `{}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -196,22 +179,22 @@ func TestEstimateDuplicate(t *testing.T) {
 		t.Fatalf("duplicate: want 201 got %d", resp.StatusCode)
 	}
 	var est struct {
-		EstimateNumber string `json:"estimateNumber"`
+		Number string `json:"number"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&est); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if est.EstimateNumber != "EST-0002" {
-		t.Fatalf("duplicate number: want EST-0002 got %q", est.EstimateNumber)
+	if est.Number != "EST-0002" {
+		t.Fatalf("duplicate number: want EST-0002 got %q", est.Number)
 	}
 }
 
 func TestEstimateBulkStatusAndDelete(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	a := createEstimate(t, c, srv.URL, clientID)
-	b := createEstimate(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	a := createEstimate(t, c, srv.URL, participantID)
+	b := createEstimate(t, c, srv.URL, participantID)
 
 	sr := postJSON(t, c, srv.URL+"/api/estimates/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
 	_ = sr.Body.Close()
@@ -229,8 +212,8 @@ func TestEstimateBulkStatusAndDelete(t *testing.T) {
 func TestEstimateConvert(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createEstimate(t, c, srv.URL, participantID)
 
 	// A draft estimate cannot be converted.
 	draftResp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/convert", `{}`)
@@ -296,9 +279,9 @@ func TestEstimateConvert(t *testing.T) {
 func TestEstimateCreateNoItems400(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, "Acme")
 	body, err := json.Marshal(map[string]any{
-		"clientId": clientID, "date": "2026-01-01", "validUntil": "2026-02-01", "lineItems": []any{},
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01", "lineItems": []any{},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -343,8 +326,8 @@ func TestEstimateListUnauthenticated401(t *testing.T) {
 func TestEstimatePdf(t *testing.T) {
 	srv := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	clientID := createClient(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, clientID)
+	participantID := createParticipant(t, c, srv.URL, "Acme")
+	id := createEstimate(t, c, srv.URL, participantID)
 
 	resp := get(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/pdf")
 	defer func() { _ = resp.Body.Close() }()

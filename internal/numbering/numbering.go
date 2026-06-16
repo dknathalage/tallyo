@@ -1,44 +1,39 @@
+// Package numbering provides the single, tenant-scoped source of truth for
+// document-number allocation (invoices, estimates) plus the retry wrapper that
+// makes concurrent allocation safe under WAL.
+//
+// # One implementation
+//
+// Numbering is per tenant: uniqueness is (tenant_id, number) and sequences
+// restart at 0001 for each tenant (spec §8). Allocation has two halves:
+//
+//  1. The tenant-scoped MAX query (sqlc-generated, e.g. MaxInvoiceNumberLike)
+//     filters WHERE tenant_id = ? and returns the highest numeric suffix used.
+//  2. Format turns (prefix, max) into the next padded number.
+//
+// Repositories call Format inside their create transaction and wrap the whole
+// transaction in WithRetry, so a UNIQUE(tenant_id, number) collision from a
+// concurrent creator is retried (re-reading MAX) until it succeeds. There is no
+// other numbering path: the former schema-coupled Config/Next helper (which
+// referenced columns that no longer exist) was removed.
 package numbering
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 )
 
-// Config names a document-number sequence. Table/Column come ONLY from
-// predefined package configs (Invoice/Estimate), never from request input, so
-// building the query from them is safe.
-type Config struct {
-	Table  string
-	Column string
-	Prefix string // e.g. "INV-"
-	Pad    int    // zero-pad width, e.g. 4
-}
+// pad is the zero-pad width for every document number (e.g. INV-0001).
+const pad = 4
 
-// Predefined configs used by the invoice/estimate domains.
-var (
-	Invoice  = Config{Table: "invoices", Column: "invoice_number", Prefix: "INV-", Pad: 4}
-	Estimate = Config{Table: "estimates", Column: "estimate_number", Prefix: "EST-", Pad: 4}
-)
-
-// Next computes the next number for cfg WITHIN the given tx. The caller must
-// INSERT a row using the returned number in the SAME tx, and wrap the whole tx
-// in WithRetry to survive concurrent races under WAL.
-func Next(ctx context.Context, tx *sql.Tx, cfg Config) (string, error) {
-	if tx == nil {
-		return "", fmt.Errorf("numbering: nil tx")
-	}
-	q := fmt.Sprintf(
-		`SELECT COALESCE(MAX(CAST(substr(%s, %d) AS INTEGER)), 0) FROM %s WHERE %s LIKE ?`,
-		cfg.Column, len(cfg.Prefix)+1, cfg.Table, cfg.Column,
-	)
-	var max int
-	if err := tx.QueryRowContext(ctx, q, cfg.Prefix+"%").Scan(&max); err != nil {
-		return "", fmt.Errorf("numbering next: %w", err)
-	}
-	return fmt.Sprintf("%s%0*d", cfg.Prefix, cfg.Pad, max+1), nil
+// Format builds the next document number from a prefix and the current maximum
+// numeric suffix in use for the tenant. max is the value returned by the
+// tenant-scoped MAX query; the next number is max+1, zero-padded. Callers must
+// run this inside a transaction wrapped by WithRetry so a concurrent collision
+// on UNIQUE(tenant_id, number) re-reads max and retries.
+func Format(prefix string, max int64) string {
+	return fmt.Sprintf("%s%0*d", prefix, pad, max+1)
 }
 
 // WithRetry runs fn up to attempts times, retrying on the transient errors that
@@ -46,11 +41,12 @@ func Next(ctx context.Context, tx *sql.Tx, cfg Config) (string, error) {
 // busy/locked/snapshot conflicts (SQLITE_BUSY_SNAPSHOT=517, not covered by
 // busy_timeout for a deferred-tx upgrade). Non-retryable errors return at once.
 func WithRetry(ctx context.Context, attempts int, fn func() error) error {
+	_ = ctx // reserved for future cancellation-aware retry; kept for call-site stability
 	if attempts < 1 {
 		attempts = 1
 	}
 	var err error
-	for i := 0; i < attempts; i++ {
+	for i := 0; i < attempts; i++ { // bounded by attempts
 		err = fn()
 		if err == nil {
 			return nil

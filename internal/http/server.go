@@ -16,8 +16,8 @@ type Deps struct {
 	// Assets is the file system serving the built SPA (index/200.html, _app/...).
 	Assets fs.FS
 
-	// Setup, when non-nil, serves the first-run setup routes under /api.
-	Setup *SetupHandler
+	// Signup, when non-nil, serves the public self-serve tenant signup route.
+	Signup *SignupHandler
 
 	// Session, when non-nil, wraps the router so sessions load and save per
 	// request. Required for the authenticated routes below to function.
@@ -25,6 +25,10 @@ type Deps struct {
 
 	// Users backs the auth-guard's user-exists recheck. Required when Auth is set.
 	Users *auth.UsersRepo
+
+	// Tenants backs the auth-guard's suspended-tenant recheck. Required when
+	// any authenticated route is registered.
+	Tenants *auth.TenantsRepo
 
 	// Auth, when non-nil, serves login/logout/me under /api.
 	Auth *AuthHandler
@@ -40,28 +44,28 @@ type Deps struct {
 	// business profile at /api/business-profile.
 	BusinessProfile *BusinessProfileHandler
 
-	// RateTiers, when non-nil, serves the auth-gated rate-tier CRUD routes
-	// under /api/rate-tiers.
-	RateTiers *RateTierHandler
-
-	// Payers, when non-nil, serves the auth-gated payer CRUD plus bulk-delete
-	// routes under /api/payers.
-	Payers *PayerHandler
+	// PlanManagers, when non-nil, serves the auth-gated plan-manager CRUD plus
+	// bulk-delete routes under /api/plan-managers.
+	PlanManagers *PlanManagerHandler
 
 	// TaxRates, when non-nil, serves the auth-gated tax-rate CRUD routes under
 	// /api/tax-rates.
 	TaxRates *TaxRateHandler
 
-	// Clients, when non-nil, serves the auth-gated client CRUD plus bulk-delete
-	// routes under /api/clients.
-	Clients *ClientHandler
+	// Participants, when non-nil, serves the auth-gated participant CRUD plus
+	// bulk-delete routes under /api/participants.
+	Participants *ParticipantHandler
 
-	// Catalog, when non-nil, serves the auth-gated catalog CRUD, categories,
-	// bulk-delete, and per-item tier-rate sub-routes under /api/catalog.
-	Catalog *CatalogHandler
+	// CustomItems, when non-nil, serves the auth-gated per-tenant custom-item
+	// CRUD plus bulk-delete routes under /api/custom-items.
+	CustomItems *CustomItemHandler
+
+	// SupportCatalog, when non-nil, serves the auth-gated read-only GLOBAL NDIS
+	// Support Catalogue routes under /api/support-catalog.
+	SupportCatalog *SupportCatalogHandler
 
 	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
-	// duplicate, bulk routes, plus the per-client stats route under /api.
+	// bulk routes, plus the per-participant stats route under /api.
 	Invoices *InvoiceHandler
 
 	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
@@ -79,10 +83,6 @@ type Deps struct {
 	// Export, when non-nil, serves the auth-gated CSV/Excel export routes under
 	// /api/export.
 	Export *ExportHandler
-
-	// Import, when non-nil, serves the auth-gated catalog import parse, preview,
-	// and commit routes under /api/catalog/import.
-	Import *ImportHandler
 }
 
 // Server wraps the configured chi router.
@@ -115,9 +115,8 @@ func NewServer(deps Deps) *Server {
 
 	// /api subrouter, mounted before the SPA catch-all so it takes precedence.
 	r.Route("/api", func(api chi.Router) {
-		if deps.Setup != nil {
-			api.Get("/setup/status", deps.Setup.Status)
-			api.Post("/setup", deps.Setup.CreateOwner)
+		if deps.Signup != nil {
+			api.Post("/signup", deps.Signup.Signup)
 		}
 		if deps.Auth != nil {
 			api.Post("/auth/login", deps.Auth.Login)
@@ -131,36 +130,31 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.RateTiers != nil || deps.Payers != nil || deps.TaxRates != nil || deps.Clients != nil || deps.Catalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Import != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil {
 			api.Group(func(pr chi.Router) {
-				pr.Use(RequireAuth(deps.Session, deps.Users))
+				pr.Use(RequireAuth(deps.Session, deps.Users, deps.Tenants))
 				if deps.Auth != nil {
 					pr.Get("/auth/me", deps.Auth.Me)
 				}
 				if deps.Invites != nil {
-					pr.Post("/invites", deps.Invites.Create)
+					// User management is owner/admin only (spec §3.2).
+					pr.With(RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
 				}
 				if deps.Events != nil {
 					pr.Get("/events", deps.Events.Stream)
 				}
 				if deps.BusinessProfile != nil {
+					// Business settings: all roles may read; owner/admin may edit.
 					pr.Get("/business-profile", deps.BusinessProfile.Get)
-					pr.Put("/business-profile", deps.BusinessProfile.Put)
+					pr.With(RequireRole("owner", "admin")).Put("/business-profile", deps.BusinessProfile.Put)
 				}
-				if deps.RateTiers != nil {
-					pr.Get("/rate-tiers", deps.RateTiers.List)
-					pr.Post("/rate-tiers", deps.RateTiers.Create)
-					pr.Get("/rate-tiers/{id}", deps.RateTiers.Get)
-					pr.Put("/rate-tiers/{id}", deps.RateTiers.Update)
-					pr.Delete("/rate-tiers/{id}", deps.RateTiers.Delete)
-				}
-				if deps.Payers != nil {
-					pr.Get("/payers", deps.Payers.List)
-					pr.Post("/payers", deps.Payers.Create)
-					pr.Post("/payers/bulk-delete", deps.Payers.BulkDelete)
-					pr.Get("/payers/{id}", deps.Payers.Get)
-					pr.Put("/payers/{id}", deps.Payers.Update)
-					pr.Delete("/payers/{id}", deps.Payers.Delete)
+				if deps.PlanManagers != nil {
+					pr.Get("/plan-managers", deps.PlanManagers.List)
+					pr.Post("/plan-managers", deps.PlanManagers.Create)
+					pr.Post("/plan-managers/bulk-delete", deps.PlanManagers.BulkDelete)
+					pr.Get("/plan-managers/{id}", deps.PlanManagers.Get)
+					pr.Put("/plan-managers/{id}", deps.PlanManagers.Update)
+					pr.Delete("/plan-managers/{id}", deps.PlanManagers.Delete)
 				}
 				if deps.TaxRates != nil {
 					pr.Get("/tax-rates", deps.TaxRates.List)
@@ -169,24 +163,30 @@ func NewServer(deps Deps) *Server {
 					pr.Put("/tax-rates/{id}", deps.TaxRates.Update)
 					pr.Delete("/tax-rates/{id}", deps.TaxRates.Delete)
 				}
-				if deps.Clients != nil {
-					pr.Get("/clients", deps.Clients.List)
-					pr.Post("/clients", deps.Clients.Create)
-					pr.Post("/clients/bulk-delete", deps.Clients.BulkDelete)
-					pr.Get("/clients/{id}", deps.Clients.Get)
-					pr.Put("/clients/{id}", deps.Clients.Update)
-					pr.Delete("/clients/{id}", deps.Clients.Delete)
+				if deps.Participants != nil {
+					pr.Get("/participants", deps.Participants.List)
+					pr.Post("/participants", deps.Participants.Create)
+					pr.Post("/participants/bulk-delete", deps.Participants.BulkDelete)
+					pr.Get("/participants/{id}", deps.Participants.Get)
+					pr.Put("/participants/{id}", deps.Participants.Update)
+					pr.Delete("/participants/{id}", deps.Participants.Delete)
 				}
-				if deps.Catalog != nil {
-					pr.Get("/catalog", deps.Catalog.List)
-					pr.Post("/catalog", deps.Catalog.Create)
-					pr.Get("/catalog/categories", deps.Catalog.Categories)
-					pr.Post("/catalog/bulk-delete", deps.Catalog.BulkDelete)
-					pr.Get("/catalog/{id}", deps.Catalog.Get)
-					pr.Put("/catalog/{id}", deps.Catalog.Update)
-					pr.Delete("/catalog/{id}", deps.Catalog.Delete)
-					pr.Get("/catalog/{id}/rates", deps.Catalog.GetRates)
-					pr.Put("/catalog/{id}/rates/{tierId}", deps.Catalog.SetRate)
+				if deps.CustomItems != nil {
+					pr.Get("/custom-items", deps.CustomItems.List)
+					pr.Post("/custom-items", deps.CustomItems.Create)
+					pr.Post("/custom-items/bulk-delete", deps.CustomItems.BulkDelete)
+					pr.Get("/custom-items/{id}", deps.CustomItems.Get)
+					pr.Put("/custom-items/{id}", deps.CustomItems.Update)
+					pr.Delete("/custom-items/{id}", deps.CustomItems.Delete)
+				}
+				// SupportCatalog is the GLOBAL NDIS catalogue. Reads are open to
+				// any authenticated tenant user; the XLSX ingest (write) is gated
+				// to platform admins (spec §5).
+				if deps.SupportCatalog != nil {
+					pr.Get("/support-catalog/versions", deps.SupportCatalog.ListVersions)
+					pr.Get("/support-catalog/versions/{id}/items", deps.SupportCatalog.ListItems)
+					pr.Get("/support-catalog/items/{itemId}/prices", deps.SupportCatalog.ListPrices)
+					pr.With(RequirePlatformAdmin).Post("/support-catalog/versions", deps.SupportCatalog.Ingest)
 				}
 				if deps.Invoices != nil {
 					pr.Get("/invoices", deps.Invoices.List)
@@ -197,9 +197,8 @@ func NewServer(deps Deps) *Server {
 					pr.Put("/invoices/{id}", deps.Invoices.Update)
 					pr.Delete("/invoices/{id}", deps.Invoices.Delete)
 					pr.Post("/invoices/{id}/status", deps.Invoices.Status)
-					pr.Post("/invoices/{id}/duplicate", deps.Invoices.Duplicate)
 					pr.Get("/invoices/{id}/pdf", deps.Invoices.Pdf)
-					pr.Get("/clients/{id}/stats", deps.Invoices.ClientStats)
+					pr.Get("/participants/{id}/stats", deps.Invoices.ParticipantStats)
 				}
 				if deps.Estimates != nil {
 					pr.Get("/estimates", deps.Estimates.List)
@@ -231,11 +230,6 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/export/catalog", deps.Export.Catalog)
 					pr.Get("/export/invoices", deps.Export.Invoices)
 					pr.Get("/export/estimates", deps.Export.Estimates)
-				}
-				if deps.Import != nil {
-					pr.Post("/catalog/import/parse", deps.Import.Parse)
-					pr.Post("/catalog/import/preview", deps.Import.Preview)
-					pr.Post("/catalog/import/commit", deps.Import.Commit)
 				}
 			})
 		}

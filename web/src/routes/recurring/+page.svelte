@@ -1,17 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { recurring } from '$lib/stores/recurring.svelte';
-	import { clients } from '$lib/stores/clients.svelte';
+	import { participants } from '$lib/stores/participants.svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
 	import { apiPost } from '$lib/api/client';
-	import type { RecurringTemplate, RecurringFrequency, Invoice } from '$lib/api/types';
+	import type { RecurringTemplate, RecurringFrequency, RecurringLine, Invoice } from '$lib/api/types';
 
 	// A draft line-item row used by the editor.
 	interface LineRow {
+		code: string;
 		description: string;
+		unit: string;
 		quantity: number;
-		rate: number;
-		notes: string;
+		unitPrice: number;
+		gstFree: boolean;
 	}
 
 	const FREQUENCIES: RecurringFrequency[] = ['weekly', 'monthly', 'quarterly'];
@@ -21,13 +23,13 @@
 		return v.toFixed(2);
 	}
 
-	// Client-side search (generic store has no query support).
+	// Client-side search.
 	let search = $state('');
 	const filtered = $derived.by<RecurringTemplate[]>(() => {
 		const q = search.trim().toLowerCase();
 		if (q === '') return recurring.items;
 		return recurring.items.filter(
-			(t) => t.name.toLowerCase().includes(q) || t.clientName.toLowerCase().includes(q)
+			(t) => t.name.toLowerCase().includes(q) || t.participantName.toLowerCase().includes(q)
 		);
 	});
 
@@ -35,7 +37,7 @@
 	let showForm = $state(false);
 	let editId = $state<number | null>(null);
 	let formName = $state('');
-	let formClientId = $state('');
+	let formParticipantId = $state('');
 	let formFrequency = $state<RecurringFrequency>('monthly');
 	let formNextDue = $state('');
 	let formTaxRateId = $state('');
@@ -59,18 +61,22 @@
 	onMount(() => {
 		recurring.ensureSubscribed();
 		void recurring.load();
-		clients.ensureSubscribed();
-		void clients.load();
+		participants.ensureSubscribed();
+		void participants.load();
 		taxRates.ensureSubscribed();
 		void taxRates.load();
 	});
 
 	function lineAmount(row: LineRow): number {
-		return (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+		return (Number(row.quantity) || 0) * (Number(row.unitPrice) || 0);
+	}
+
+	function newLine(): LineRow {
+		return { code: '', description: '', unit: '', quantity: 1, unitPrice: 0, gstFree: true };
 	}
 
 	function addLine(): void {
-		lines.push({ description: '', quantity: 1, rate: 0, notes: '' });
+		lines.push(newLine());
 	}
 
 	function removeLine(index: number): void {
@@ -81,7 +87,7 @@
 		showForm = false;
 		editId = null;
 		formName = '';
-		formClientId = '';
+		formParticipantId = '';
 		formFrequency = 'monthly';
 		formNextDue = '';
 		formTaxRateId = '';
@@ -94,20 +100,25 @@
 	function openCreate(): void {
 		resetForm();
 		formNextDue = new Date().toISOString().slice(0, 10);
-		lines = [{ description: '', quantity: 1, rate: 0, notes: '' }];
+		lines = [newLine()];
 		showForm = true;
 	}
 
 	function buildPayload() {
-		const items = lines.map((row, i) => ({
+		const items: RecurringLine[] = lines.map((row, i) => ({
+			supportItemId: null,
+			customItemId: null,
+			code: row.code,
 			description: row.description,
+			unit: row.unit,
 			quantity: Number(row.quantity),
-			rate: Number(row.rate),
-			notes: '',
+			unitPrice: Number(row.unitPrice),
+			gstFree: row.gstFree,
 			sortOrder: i
 		}));
 		return {
-			clientId: Number(formClientId),
+			participantId: formParticipantId === '' ? null : Number(formParticipantId),
+			planManagerId: null,
 			name: formName,
 			frequency: formFrequency,
 			nextDue: formNextDue,
@@ -121,8 +132,8 @@
 	async function submitForm(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		formError = null;
-		if (formClientId === '') {
-			formError = 'Please select a client.';
+		if (formParticipantId === '') {
+			formError = 'Please select a participant.';
 			return;
 		}
 		saving = true;
@@ -149,10 +160,9 @@
 			const full = await recurring.crud.get(id);
 			editId = full.id;
 			formName = full.name;
-			formClientId = full.clientId === null ? '' : String(full.clientId);
+			formParticipantId = full.participantId === null ? '' : String(full.participantId);
 			formFrequency = full.frequency;
 			formNextDue = full.nextDue ? full.nextDue.slice(0, 10) : '';
-			// Match the percent back to a tax-rate select option, if one exists.
 			const matched = taxRates.items.find((t) => t.rate === full.taxRate);
 			formTaxRateId = matched ? String(matched.id) : '';
 			formNotes = full.notes;
@@ -161,13 +171,15 @@
 				.slice()
 				.sort((a, b) => a.sortOrder - b.sortOrder)
 				.map((li) => ({
+					code: li.code,
 					description: li.description,
+					unit: li.unit,
 					quantity: li.quantity,
-					rate: li.rate,
-					notes: li.notes
+					unitPrice: li.unitPrice,
+					gstFree: li.gstFree
 				}));
 			if (lines.length === 0) {
-				lines = [{ description: '', quantity: 1, rate: 0, notes: '' }];
+				lines = [newLine()];
 			}
 			formError = null;
 			showForm = true;
@@ -197,8 +209,7 @@
 		busy = true;
 		try {
 			const inv = await apiPost<Invoice>('/api/recurring/' + id + '/generate', {});
-			message =
-				inv !== null ? 'Generated invoice ' + inv.invoiceNumber : 'Generated invoice.';
+			message = inv !== null ? 'Generated invoice ' + inv.number : 'Generated invoice.';
 			await recurring.load();
 		} catch (err) {
 			rowError = err instanceof Error ? err.message : 'Failed to generate invoice.';
@@ -213,9 +224,7 @@
 		<div class="mb-6 flex items-center justify-between">
 			<div>
 				<h1 class="mb-1 text-xl font-semibold">Recurring templates</h1>
-				<p class="text-sm text-gray-500">
-					Schedule invoices that generate on a recurring cadence.
-				</p>
+				<p class="text-sm text-gray-500">Schedule invoices that generate on a recurring cadence.</p>
 			</div>
 			<button
 				type="button"
@@ -227,10 +236,7 @@
 		</div>
 
 		{#if showForm}
-			<form
-				class="mb-8 space-y-4 rounded border border-gray-200 bg-white p-4"
-				onsubmit={submitForm}
-			>
+			<form class="mb-8 space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitForm}>
 				<h2 class="text-base font-semibold">
 					{editId === null ? 'New template' : 'Edit template'}
 				</h2>
@@ -246,15 +252,15 @@
 						/>
 					</label>
 					<label class="col-span-1">
-						<span class="mb-1 block text-sm font-medium">Client</span>
+						<span class="mb-1 block text-sm font-medium">Participant</span>
 						<select
-							bind:value={formClientId}
+							bind:value={formParticipantId}
 							required
 							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 						>
 							<option value="">— select —</option>
-							{#each clients.items as client (client.id)}
-								<option value={String(client.id)}>{client.name}</option>
+							{#each participants.items as p (p.id)}
+								<option value={String(p.id)}>{p.name}</option>
 							{/each}
 						</select>
 					</label>
@@ -320,16 +326,26 @@
 						<table class="w-full text-sm">
 							<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 								<tr>
+									<th class="w-40 px-3 py-2 font-medium">Code</th>
 									<th class="px-3 py-2 font-medium">Description</th>
-									<th class="w-24 px-3 py-2 font-medium">Qty</th>
-									<th class="w-28 px-3 py-2 font-medium">Rate</th>
-									<th class="w-28 px-3 py-2 font-medium text-right">Amount</th>
+									<th class="w-20 px-3 py-2 font-medium">Qty</th>
+									<th class="w-28 px-3 py-2 font-medium">Unit price</th>
+									<th class="w-16 px-3 py-2 font-medium">GST-free</th>
+									<th class="w-24 px-3 py-2 font-medium text-right">Amount</th>
 									<th class="w-12 px-3 py-2"></th>
 								</tr>
 							</thead>
 							<tbody>
 								{#each lines as line, i (i)}
 									<tr class="border-b border-gray-100 last:border-0">
+										<td class="px-3 py-2">
+											<input
+												type="text"
+												bind:value={line.code}
+												placeholder="NDIS code"
+												class="w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+											/>
+										</td>
 										<td class="px-3 py-2">
 											<input
 												type="text"
@@ -349,9 +365,12 @@
 											<input
 												type="number"
 												step="any"
-												bind:value={line.rate}
+												bind:value={line.unitPrice}
 												class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
 											/>
+										</td>
+										<td class="px-3 py-2 text-center">
+											<input type="checkbox" bind:checked={line.gstFree} class="h-4 w-4" />
 										</td>
 										<td class="px-3 py-2 text-right whitespace-nowrap">
 											{money(lineAmount(line))}
@@ -369,9 +388,7 @@
 									</tr>
 								{:else}
 									<tr>
-										<td colspan="5" class="px-3 py-4 text-center text-gray-500">
-											No line items.
-										</td>
+										<td colspan="7" class="px-3 py-4 text-center text-gray-500"> No line items. </td>
 									</tr>
 								{/each}
 							</tbody>
@@ -409,7 +426,7 @@
 			<input
 				type="text"
 				bind:value={search}
-				placeholder="Filter by name or client"
+				placeholder="Filter by name or participant"
 				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 			/>
 		</label>
@@ -432,7 +449,7 @@
 				<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 					<tr>
 						<th class="px-3 py-2 font-medium">Name</th>
-						<th class="px-3 py-2 font-medium">Client</th>
+						<th class="px-3 py-2 font-medium">Participant</th>
 						<th class="px-3 py-2 font-medium">Frequency</th>
 						<th class="px-3 py-2 font-medium">Next due</th>
 						<th class="px-3 py-2 font-medium">Status</th>
@@ -443,7 +460,7 @@
 					{#each filtered as t (t.id)}
 						<tr class="border-b border-gray-100 last:border-0">
 							<td class="px-3 py-2 font-medium">{t.name}</td>
-							<td class="px-3 py-2 text-gray-600">{t.clientName || '—'}</td>
+							<td class="px-3 py-2 text-gray-600">{t.participantName || '—'}</td>
 							<td class="px-3 py-2 text-gray-600 capitalize">{t.frequency}</td>
 							<td class="px-3 py-2 text-gray-600">
 								{t.nextDue ? t.nextDue.slice(0, 10) : '—'}

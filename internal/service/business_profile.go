@@ -6,6 +6,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // BusinessProfileService orchestrates business-profile reads/writes and
@@ -24,14 +25,16 @@ func NewBusinessProfileService(db *sql.DB, hub *realtime.Hub) *BusinessProfileSe
 
 // Get returns the business profile, or nil if unset.
 func (s *BusinessProfileService) Get(ctx context.Context) (*repository.BusinessProfile, error) {
-	return s.repo.Get(ctx)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.Get(ctx, tenantID)
 }
 
 // Save upserts the profile, then broadcasts AFTER the commit succeeds.
 func (s *BusinessProfileService) Save(ctx context.Context, in repository.BusinessProfileInput) error {
-	if err := s.repo.Save(ctx, in); err != nil {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.Save(ctx, tenantID, in); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "business_profile", ID: 1, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "business_profile", ID: 1, Action: "update"})
 	return nil
 }

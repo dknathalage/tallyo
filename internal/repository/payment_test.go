@@ -4,237 +4,105 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
-
-	appdb "github.com/dknathalage/tallyo/internal/db"
 )
 
-// paymentFixture spins up a migrated DB with a clients repo, an invoices repo
-// and a payments repo, plus a seeded client so invoices can be created.
-type paymentFixture struct {
-	conn     *sql.DB
-	clients  *ClientsRepo
-	invoices *InvoicesRepo
-	payments *PaymentsRepo
-	clientID int64
-}
-
-func newPaymentFixture(t *testing.T) paymentFixture {
+// seedInvoice creates a minimal one-line invoice and returns its id.
+func seedInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64, unitPrice float64) int64 {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "payment.db"))
+	inv, err := NewInvoices(conn).Create(context.Background(), tenantID, InvoiceInput{
+		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
+	}, []LineItemInput{{Description: "Service", Quantity: 1, UnitPrice: unitPrice}})
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("seedInvoice: %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	ctx := context.Background()
-	client, err := NewClients(conn).Create(ctx, ClientInput{Name: "Acme", Email: "a@x.com"})
-	if err != nil {
-		t.Fatalf("Create client: %v", err)
-	}
-	return paymentFixture{
-		conn:     conn,
-		clients:  NewClients(conn),
-		invoices: NewInvoices(conn),
-		payments: NewPayments(conn),
-		clientID: client.ID,
-	}
+	return inv.ID
 }
 
-// newInvoice creates an invoice with a single line item (rate 25, qty 1, no tax)
-// so the total is a clean 25.
-func (f paymentFixture) newInvoice(t *testing.T) *Invoice {
-	t.Helper()
-	inv, err := f.invoices.Create(context.Background(), InvoiceInput{
-		ClientID: f.clientID, Date: "2026-06-01", DueDate: "2026-07-01",
-	}, []LineItemInput{{Description: "Work", Quantity: 1, Rate: 25}})
-	if err != nil {
-		t.Fatalf("Create invoice: %v", err)
-	}
-	if inv.Total != 25 {
-		t.Fatalf("invoice total = %v, want 25", inv.Total)
-	}
-	return inv
-}
-
-func TestPaymentCreate(t *testing.T) {
-	f := newPaymentFixture(t)
+func TestPaymentCreateAndTotals(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	pid := seedParticipant(t, conn, tid, "Jane")
+	invID := seedInvoice(t, conn, tid, pid, 100)
+	repo := NewPayments(conn)
 	ctx := context.Background()
-	inv := f.newInvoice(t)
 
-	p, err := f.payments.Create(ctx, PaymentInput{
-		InvoiceID: inv.ID, Amount: 10, PaymentDate: "2026-06-05", Method: "cash", Notes: "deposit",
-	})
+	p, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 40, PaidAt: "2026-01-05", Method: "bank"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p.ID <= 0 {
-		t.Fatalf("ID = %d, want > 0", p.ID)
+	if p.ID == 0 || p.Amount != 40 || p.Method != "bank" {
+		t.Fatalf("Create = %+v", p)
 	}
-	if p.InvoiceID != inv.ID || p.Amount != 10 || p.PaymentDate != "2026-06-05" {
-		t.Fatalf("payment = %+v", p)
-	}
-	if p.Method != "cash" || p.Notes != "deposit" {
-		t.Fatalf("method/notes = %q/%q", p.Method, p.Notes)
-	}
-	if p.UUID == "" || p.CreatedAt == "" || p.UpdatedAt == "" {
-		t.Fatalf("missing uuid/timestamps: %+v", p)
-	}
-
-	var n int
-	if err := f.conn.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='payment' AND action='create' AND entity_id=?",
-		p.ID,
-	).Scan(&n); err != nil {
-		t.Fatalf("count audit: %v", err)
-	}
-	if n != 1 {
-		t.Fatalf("audit create rows = %d, want 1", n)
-	}
-}
-
-func TestPaymentCreateValidation(t *testing.T) {
-	f := newPaymentFixture(t)
-	ctx := context.Background()
-	inv := f.newInvoice(t)
-
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: 0, Amount: 10, PaymentDate: "2026-06-05"}); err == nil {
-		t.Fatal("expected error for missing invoice id")
-	}
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 0, PaymentDate: "2026-06-05"}); err == nil {
-		t.Fatal("expected error for zero amount")
-	}
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: -5, PaymentDate: "2026-06-05"}); err == nil {
-		t.Fatal("expected error for negative amount")
-	}
-}
-
-func TestPaymentListForInvoiceAndTotal(t *testing.T) {
-	f := newPaymentFixture(t)
-	ctx := context.Background()
-	inv := f.newInvoice(t)
-
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaymentDate: "2026-06-05"}); err != nil {
-		t.Fatalf("Create 1: %v", err)
-	}
-	list, err := f.payments.ListForInvoice(ctx, inv.ID)
-	if err != nil {
-		t.Fatalf("ListForInvoice: %v", err)
-	}
-	if len(list) != 1 {
-		t.Fatalf("list = %d, want 1", len(list))
-	}
-
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 5, PaymentDate: "2026-06-06"}); err != nil {
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 25, PaidAt: "2026-01-06"}); err != nil {
 		t.Fatalf("Create 2: %v", err)
 	}
-	list, err = f.payments.ListForInvoice(ctx, inv.ID)
-	if err != nil {
-		t.Fatalf("ListForInvoice 2: %v", err)
+	total, err := repo.TotalPaid(ctx, tid, invID)
+	if err != nil || total != 65 {
+		t.Fatalf("TotalPaid = %v err=%v, want 65", total, err)
 	}
-	if len(list) != 2 {
-		t.Fatalf("list = %d, want 2", len(list))
-	}
-	// ordered by payment_date.
-	if list[0].PaymentDate != "2026-06-05" || list[1].PaymentDate != "2026-06-06" {
-		t.Fatalf("order = %q,%q", list[0].PaymentDate, list[1].PaymentDate)
-	}
-
-	tp, err := f.payments.TotalPaid(ctx, inv.ID)
-	if err != nil {
-		t.Fatalf("TotalPaid: %v", err)
-	}
-	if tp != 15 {
-		t.Fatalf("TotalPaid = %v, want 15", tp)
+	list, err := repo.ListForInvoice(ctx, tid, invID)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("ListForInvoice len=%d err=%v", len(list), err)
 	}
 }
 
-func TestInvoiceGetReflectsPayments(t *testing.T) {
-	f := newPaymentFixture(t)
+func TestPaymentRejectsBadInput(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	repo := NewPayments(conn)
 	ctx := context.Background()
-	inv := f.newInvoice(t)
-
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaymentDate: "2026-06-05"}); err != nil {
-		t.Fatalf("Create: %v", err)
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: 0, Amount: 1}); err == nil {
+		t.Fatal("missing invoice: want error")
 	}
-	got, err := f.invoices.Get(ctx, inv.ID)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got.TotalPaid != 10 {
-		t.Fatalf("TotalPaid = %v, want 10", got.TotalPaid)
-	}
-	if got.Balance != 15 {
-		t.Fatalf("Balance = %v, want 15", got.Balance)
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: 1, Amount: 0}); err == nil {
+		t.Fatal("non-positive amount: want error")
 	}
 }
 
-func TestClientStatsTotalPaid(t *testing.T) {
-	f := newPaymentFixture(t)
+func TestPaymentDeleteReturnsInvoiceID(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	pid := seedParticipant(t, conn, tid, "Jane")
+	invID := seedInvoice(t, conn, tid, pid, 100)
+	repo := NewPayments(conn)
 	ctx := context.Background()
-	inv1 := f.newInvoice(t)
-	inv2 := f.newInvoice(t)
 
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv1.ID, Amount: 10, PaymentDate: "2026-06-05"}); err != nil {
-		t.Fatalf("Create 1: %v", err)
-	}
-	if _, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv2.ID, Amount: 5, PaymentDate: "2026-06-06"}); err != nil {
-		t.Fatalf("Create 2: %v", err)
-	}
-
-	stats, err := f.invoices.ClientStats(ctx, f.clientID)
-	if err != nil {
-		t.Fatalf("ClientStats: %v", err)
-	}
-	if stats.InvoiceCount != 2 {
-		t.Fatalf("InvoiceCount = %d, want 2", stats.InvoiceCount)
-	}
-	if stats.TotalInvoiced != 50 {
-		t.Fatalf("TotalInvoiced = %v, want 50", stats.TotalInvoiced)
-	}
-	if stats.TotalPaid != 15 {
-		t.Fatalf("TotalPaid = %v, want 15", stats.TotalPaid)
-	}
-}
-
-func TestPaymentDelete(t *testing.T) {
-	f := newPaymentFixture(t)
-	ctx := context.Background()
-	inv := f.newInvoice(t)
-
-	p, err := f.payments.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaymentDate: "2026-06-05"})
+	p, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 10, PaidAt: "2026-01-05"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	gotInv, err := repo.Delete(ctx, tid, p.ID)
+	if err != nil || gotInv != invID {
+		t.Fatalf("Delete = %d err=%v, want %d", gotInv, err, invID)
+	}
+	if _, err := repo.Delete(ctx, tid, 99999); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("Delete missing err = %v, want sql.ErrNoRows", err)
+	}
+}
 
-	invoiceID, err := f.payments.Delete(ctx, p.ID)
-	if err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if invoiceID != inv.ID {
-		t.Fatalf("Delete returned invoice id %d, want %d", invoiceID, inv.ID)
-	}
+func TestPaymentTenantIsolation(t *testing.T) {
+	conn := newTestDB(t)
+	a := seedTenant(t, conn, "A")
+	b := seedTenant(t, conn, "B")
+	pid := seedParticipant(t, conn, a, "Jane")
+	invID := seedInvoice(t, conn, a, pid, 100)
+	repo := NewPayments(conn)
+	ctx := context.Background()
 
-	list, err := f.payments.ListForInvoice(ctx, inv.ID)
+	p, err := repo.Create(ctx, a, PaymentInput{InvoiceID: invID, Amount: 50, PaidAt: "2026-01-05"})
 	if err != nil {
-		t.Fatalf("ListForInvoice: %v", err)
+		t.Fatalf("Create A: %v", err)
 	}
-	if len(list) != 0 {
-		t.Fatalf("payments remaining = %d, want 0", len(list))
+	// Tenant B sees neither the payments nor the total.
+	if list, _ := repo.ListForInvoice(ctx, b, invID); len(list) != 0 {
+		t.Fatalf("tenant B saw tenant A's payments: %d", len(list))
 	}
-	tp, err := f.payments.TotalPaid(ctx, inv.ID)
-	if err != nil {
-		t.Fatalf("TotalPaid: %v", err)
+	if total, _ := repo.TotalPaid(ctx, b, invID); total != 0 {
+		t.Fatalf("tenant B TotalPaid = %v, want 0", total)
 	}
-	if tp != 0 {
-		t.Fatalf("TotalPaid = %v, want 0", tp)
-	}
-
-	// deleting a non-existent payment surfaces sql.ErrNoRows.
-	if _, err := f.payments.Delete(ctx, 99999); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("Delete missing = %v, want sql.ErrNoRows", err)
+	// Tenant B cannot delete tenant A's payment.
+	if _, err := repo.Delete(ctx, b, p.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("tenant B Delete A's payment err = %v, want sql.ErrNoRows", err)
 	}
 }

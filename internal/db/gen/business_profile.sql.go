@@ -11,19 +11,22 @@ import (
 )
 
 const getBusinessProfile = `-- name: GetBusinessProfile :one
-SELECT id, uuid, name, email, phone, address, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE id = 1
+SELECT id, uuid, tenant_id, name, abn, email, phone, address, zone, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = ?
 `
 
-func (q *Queries) GetBusinessProfile(ctx context.Context) (BusinessProfile, error) {
-	row := q.db.QueryRowContext(ctx, getBusinessProfile)
+func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID int64) (BusinessProfile, error) {
+	row := q.db.QueryRowContext(ctx, getBusinessProfile, tenantID)
 	var i BusinessProfile
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Name,
+		&i.Abn,
 		&i.Email,
 		&i.Phone,
 		&i.Address,
+		&i.Zone,
 		&i.Logo,
 		&i.Metadata,
 		&i.DefaultCurrency,
@@ -33,15 +36,32 @@ func (q *Queries) GetBusinessProfile(ctx context.Context) (BusinessProfile, erro
 	return i, err
 }
 
+const updateBusinessZone = `-- name: UpdateBusinessZone :exec
+UPDATE business_profile SET zone = ?, updated_at = ? WHERE tenant_id = ?
+`
+
+type UpdateBusinessZoneParams struct {
+	Zone      string `json:"zone"`
+	UpdatedAt string `json:"updated_at"`
+	TenantID  int64  `json:"tenant_id"`
+}
+
+func (q *Queries) UpdateBusinessZone(ctx context.Context, arg UpdateBusinessZoneParams) error {
+	_, err := q.db.ExecContext(ctx, updateBusinessZone, arg.Zone, arg.UpdatedAt, arg.TenantID)
+	return err
+}
+
 const upsertBusinessProfile = `-- name: UpsertBusinessProfile :exec
 INSERT INTO business_profile (
-    id, uuid, name, email, phone, address, logo, metadata, default_currency, created_at, updated_at
-) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
+    tenant_id, uuid, name, abn, email, phone, address, zone, logo, metadata, default_currency, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(tenant_id) DO UPDATE SET
     name = excluded.name,
+    abn = excluded.abn,
     email = excluded.email,
     phone = excluded.phone,
     address = excluded.address,
+    zone = excluded.zone,
     logo = excluded.logo,
     metadata = excluded.metadata,
     default_currency = excluded.default_currency,
@@ -49,25 +69,31 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertBusinessProfileParams struct {
+	TenantID        int64          `json:"tenant_id"`
 	Uuid            string         `json:"uuid"`
 	Name            string         `json:"name"`
+	Abn             sql.NullString `json:"abn"`
 	Email           sql.NullString `json:"email"`
 	Phone           sql.NullString `json:"phone"`
 	Address         sql.NullString `json:"address"`
+	Zone            string         `json:"zone"`
 	Logo            sql.NullString `json:"logo"`
 	Metadata        sql.NullString `json:"metadata"`
 	DefaultCurrency sql.NullString `json:"default_currency"`
-	CreatedAt       sql.NullString `json:"created_at"`
-	UpdatedAt       sql.NullString `json:"updated_at"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
 }
 
 func (q *Queries) UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error {
 	_, err := q.db.ExecContext(ctx, upsertBusinessProfile,
+		arg.TenantID,
 		arg.Uuid,
 		arg.Name,
+		arg.Abn,
 		arg.Email,
 		arg.Phone,
 		arg.Address,
+		arg.Zone,
 		arg.Logo,
 		arg.Metadata,
 		arg.DefaultCurrency,

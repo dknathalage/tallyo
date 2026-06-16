@@ -10,21 +10,22 @@ import (
 )
 
 const clearDefaultTaxRates = `-- name: ClearDefaultTaxRates :exec
-UPDATE tax_rates SET is_default = 0
+UPDATE tax_rates SET is_default = 0 WHERE tenant_id = ?
 `
 
-func (q *Queries) ClearDefaultTaxRates(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, clearDefaultTaxRates)
+func (q *Queries) ClearDefaultTaxRates(ctx context.Context, tenantID int64) error {
+	_, err := q.db.ExecContext(ctx, clearDefaultTaxRates, tenantID)
 	return err
 }
 
 const createTaxRate = `-- name: CreateTaxRate :one
-INSERT INTO tax_rates (uuid, name, rate, is_default, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING id, uuid, name, rate, is_default, created_at, updated_at
+INSERT INTO tax_rates (uuid, tenant_id, name, rate, is_default, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, uuid, tenant_id, name, rate, is_default, created_at, updated_at
 `
 
 type CreateTaxRateParams struct {
 	Uuid      string  `json:"uuid"`
+	TenantID  int64   `json:"tenant_id"`
 	Name      string  `json:"name"`
 	Rate      float64 `json:"rate"`
 	IsDefault int64   `json:"is_default"`
@@ -35,6 +36,7 @@ type CreateTaxRateParams struct {
 func (q *Queries) CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error) {
 	row := q.db.QueryRowContext(ctx, createTaxRate,
 		arg.Uuid,
+		arg.TenantID,
 		arg.Name,
 		arg.Rate,
 		arg.IsDefault,
@@ -45,6 +47,7 @@ func (q *Queries) CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (T
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Name,
 		&i.Rate,
 		&i.IsDefault,
@@ -55,24 +58,30 @@ func (q *Queries) CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (T
 }
 
 const deleteTaxRate = `-- name: DeleteTaxRate :exec
-DELETE FROM tax_rates WHERE id = ?
+DELETE FROM tax_rates WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) DeleteTaxRate(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deleteTaxRate, id)
+type DeleteTaxRateParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) DeleteTaxRate(ctx context.Context, arg DeleteTaxRateParams) error {
+	_, err := q.db.ExecContext(ctx, deleteTaxRate, arg.TenantID, arg.ID)
 	return err
 }
 
 const getDefaultTaxRate = `-- name: GetDefaultTaxRate :one
-SELECT id, uuid, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE is_default = 1 LIMIT 1
+SELECT id, uuid, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = ? AND is_default = 1 LIMIT 1
 `
 
-func (q *Queries) GetDefaultTaxRate(ctx context.Context) (TaxRate, error) {
-	row := q.db.QueryRowContext(ctx, getDefaultTaxRate)
+func (q *Queries) GetDefaultTaxRate(ctx context.Context, tenantID int64) (TaxRate, error) {
+	row := q.db.QueryRowContext(ctx, getDefaultTaxRate, tenantID)
 	var i TaxRate
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Name,
 		&i.Rate,
 		&i.IsDefault,
@@ -83,15 +92,21 @@ func (q *Queries) GetDefaultTaxRate(ctx context.Context) (TaxRate, error) {
 }
 
 const getTaxRate = `-- name: GetTaxRate :one
-SELECT id, uuid, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE id = ?
+SELECT id, uuid, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) GetTaxRate(ctx context.Context, id int64) (TaxRate, error) {
-	row := q.db.QueryRowContext(ctx, getTaxRate, id)
+type GetTaxRateParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) GetTaxRate(ctx context.Context, arg GetTaxRateParams) (TaxRate, error) {
+	row := q.db.QueryRowContext(ctx, getTaxRate, arg.TenantID, arg.ID)
 	var i TaxRate
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Name,
 		&i.Rate,
 		&i.IsDefault,
@@ -102,11 +117,11 @@ func (q *Queries) GetTaxRate(ctx context.Context, id int64) (TaxRate, error) {
 }
 
 const listTaxRates = `-- name: ListTaxRates :many
-SELECT id, uuid, name, rate, is_default, created_at, updated_at FROM tax_rates ORDER BY is_default DESC, name
+SELECT id, uuid, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = ? ORDER BY is_default DESC, name
 `
 
-func (q *Queries) ListTaxRates(ctx context.Context) ([]TaxRate, error) {
-	rows, err := q.db.QueryContext(ctx, listTaxRates)
+func (q *Queries) ListTaxRates(ctx context.Context, tenantID int64) ([]TaxRate, error) {
+	rows, err := q.db.QueryContext(ctx, listTaxRates, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +132,7 @@ func (q *Queries) ListTaxRates(ctx context.Context) ([]TaxRate, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uuid,
+			&i.TenantID,
 			&i.Name,
 			&i.Rate,
 			&i.IsDefault,
@@ -137,7 +153,8 @@ func (q *Queries) ListTaxRates(ctx context.Context) ([]TaxRate, error) {
 }
 
 const updateTaxRate = `-- name: UpdateTaxRate :one
-UPDATE tax_rates SET name = ?, rate = ?, is_default = ?, updated_at = ? WHERE id = ? RETURNING id, uuid, name, rate, is_default, created_at, updated_at
+UPDATE tax_rates SET name = ?, rate = ?, is_default = ?, updated_at = ?
+WHERE tenant_id = ? AND id = ? RETURNING id, uuid, tenant_id, name, rate, is_default, created_at, updated_at
 `
 
 type UpdateTaxRateParams struct {
@@ -145,6 +162,7 @@ type UpdateTaxRateParams struct {
 	Rate      float64 `json:"rate"`
 	IsDefault int64   `json:"is_default"`
 	UpdatedAt string  `json:"updated_at"`
+	TenantID  int64   `json:"tenant_id"`
 	ID        int64   `json:"id"`
 }
 
@@ -154,12 +172,14 @@ func (q *Queries) UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (T
 		arg.Rate,
 		arg.IsDefault,
 		arg.UpdatedAt,
+		arg.TenantID,
 		arg.ID,
 	)
 	var i TaxRate
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.Name,
 		&i.Rate,
 		&i.IsDefault,

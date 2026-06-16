@@ -1,12 +1,13 @@
 package httpapi
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
@@ -32,19 +33,19 @@ type invoiceRequest struct {
 }
 
 // List performs a read-time overdue sweep, then returns invoices filtered by the
-// optional ?clientId= or ?status= query params.
+// optional ?participantId= or ?status= query params.
 func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.svc.MarkOverdue(r.Context()); err != nil {
-		log.Printf("httpapi: overdue sweep on list: %v", err)
+	if _, err := h.svc.MarkOverdueForTenant(r.Context(), reqctx.MustTenant(r.Context())); err != nil {
+		LoggerFrom(r.Context()).Error("overdue sweep on list failed", slog.Any("error", err))
 	}
 	q := r.URL.Query()
-	if cid := q.Get("clientId"); cid != "" {
-		clientID, err := strconv.ParseInt(cid, 10, 64)
-		if err != nil || clientID <= 0 {
-			WriteError(w, http.StatusBadRequest, "invalid clientId")
+	if pid := q.Get("participantId"); pid != "" {
+		participantID, err := strconv.ParseInt(pid, 10, 64)
+		if err != nil || participantID <= 0 {
+			WriteError(w, http.StatusBadRequest, "invalid participantId")
 			return
 		}
-		invs, err := h.svc.ListClientInvoices(r.Context(), clientID)
+		invs, err := h.svc.ListParticipantInvoices(r.Context(), participantID)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -88,26 +89,29 @@ func (h *InvoiceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, inv)
 }
 
-// Create inserts an invoice. A missing client or empty line items → 400.
+// Create inserts an invoice. A missing participant or empty line items → 400.
 func (h *InvoiceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req invoiceRequest
 	if err := DecodeJSON(r, &req); err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ClientID == 0 || len(req.LineItems) == 0 {
-		WriteError(w, http.StatusBadRequest, "client and at least one line item are required")
+	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
+		WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
 		return
 	}
 	inv, err := h.svc.Create(r.Context(), req.InvoiceInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	WriteJSON(w, http.StatusCreated, inv)
 }
 
-// Update rewrites an invoice. Missing client/items → 400; unknown id → 404.
+// Update rewrites an invoice. Missing participant/items → 400; unknown id → 404.
 func (h *InvoiceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r)
 	if !ok {
@@ -119,12 +123,15 @@ func (h *InvoiceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ClientID == 0 || len(req.LineItems) == 0 {
-		WriteError(w, http.StatusBadRequest, "client and at least one line item are required")
+	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
+		WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
 		return
 	}
 	inv, err := h.svc.Update(r.Context(), id, req.InvoiceInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -174,21 +181,6 @@ func (h *InvoiceHandler) Status(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]string{"status": body.Status})
 }
 
-// Duplicate copies an invoice into a new draft and returns it.
-func (h *InvoiceHandler) Duplicate(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(r)
-	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
-		return
-	}
-	inv, err := h.svc.Duplicate(r.Context(), id)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	WriteJSON(w, http.StatusCreated, inv)
-}
-
 // BulkDelete removes every invoice whose id is in the request body.
 func (h *InvoiceHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -222,15 +214,15 @@ func (h *InvoiceHandler) BulkStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ClientStats returns the count and summed total of one client's invoices. The
-// {id} path param is the client id.
-func (h *InvoiceHandler) ClientStats(w http.ResponseWriter, r *http.Request) {
+// ParticipantStats returns the count and summed total of one participant's
+// invoices. The {id} path param is the participant id.
+func (h *InvoiceHandler) ParticipantStats(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r)
 	if !ok {
 		WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	stats, err := h.svc.ClientStats(r.Context(), id)
+	stats, err := h.svc.ParticipantStats(r.Context(), id)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -260,7 +252,7 @@ func (h *InvoiceHandler) Pdf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+inv.InvoiceNumber+`.pdf"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+inv.Number+`.pdf"`)
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(b); err != nil {
 		// client gone; nothing to do

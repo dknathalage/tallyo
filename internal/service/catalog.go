@@ -3,97 +3,306 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 
+	"github.com/dknathalage/tallyo/internal/importer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// CatalogService orchestrates catalog-item reads/writes and publishes change
-// events after a successful commit.
-type CatalogService struct {
-	repo *repository.CatalogRepo
+// CustomItemService orchestrates per-tenant custom line-item reads/writes and
+// publishes change events after a successful commit. These are the tenant-scoped
+// successor to the old generic catalog items.
+type CustomItemService struct {
+	repo *repository.CustomItemsRepo
 	hub  *realtime.Hub
 }
 
-func NewCatalogService(db *sql.DB, hub *realtime.Hub) *CatalogService {
+func NewCustomItemService(db *sql.DB, hub *realtime.Hub) *CustomItemService {
 	if hub == nil {
-		panic("NewCatalogService: nil hub")
+		panic("NewCustomItemService: nil hub")
 	}
-	return &CatalogService{repo: repository.NewCatalog(db), hub: hub}
+	return &CustomItemService{repo: repository.NewCustomItems(db), hub: hub}
 }
 
-func (s *CatalogService) List(ctx context.Context) ([]*repository.CatalogItem, error) {
-	return s.repo.List(ctx)
+func (s *CustomItemService) List(ctx context.Context) ([]*repository.CustomItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.List(ctx, tenantID)
 }
 
-func (s *CatalogService) Search(ctx context.Context, q string) ([]*repository.CatalogItem, error) {
-	return s.repo.Search(ctx, q)
+func (s *CustomItemService) Search(ctx context.Context, q string) ([]*repository.CustomItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.Search(ctx, tenantID, q)
 }
 
-func (s *CatalogService) Get(ctx context.Context, id int64) (*repository.CatalogItem, error) {
-	return s.repo.Get(ctx, id)
+func (s *CustomItemService) Get(ctx context.Context, id int64) (*repository.CustomItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.Get(ctx, tenantID, id)
 }
 
-func (s *CatalogService) Categories(ctx context.Context) ([]string, error) {
-	return s.repo.Categories(ctx)
-}
-
-func (s *CatalogService) GetRates(ctx context.Context, itemID int64) ([]*repository.CatalogItemRate, error) {
-	return s.repo.GetRates(ctx, itemID)
-}
-
-func (s *CatalogService) EffectiveRate(ctx context.Context, itemID int64, tierID *int64) (float64, error) {
-	return s.repo.EffectiveRate(ctx, itemID, tierID)
-}
-
-// Create inserts a catalog item, then broadcasts AFTER the commit succeeds.
-func (s *CatalogService) Create(ctx context.Context, in repository.CatalogItemInput) (*repository.CatalogItem, error) {
-	item, err := s.repo.Create(ctx, in)
+// Create inserts a custom item, then broadcasts AFTER the commit succeeds.
+func (s *CustomItemService) Create(ctx context.Context, in repository.CustomItemInput) (*repository.CustomItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	item, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "catalog_item", ID: item.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: item.ID, Action: "create"})
 	return item, nil
 }
 
-// Update mutates a catalog item, then broadcasts on success. A nil result means
+// Update mutates a custom item, then broadcasts on success. A nil result means
 // the row was not found, in which case no event is published.
-func (s *CatalogService) Update(ctx context.Context, id int64, in repository.CatalogItemInput) (*repository.CatalogItem, error) {
-	item, err := s.repo.Update(ctx, id, in)
+func (s *CustomItemService) Update(ctx context.Context, id int64, in repository.CustomItemInput) (*repository.CustomItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	item, err := s.repo.Update(ctx, tenantID, id, in)
 	if err != nil {
 		return nil, err
 	}
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "catalog_item", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: id, Action: "update"})
 	return item, nil
 }
 
-// Delete removes a catalog item, then broadcasts on success.
-func (s *CatalogService) Delete(ctx context.Context, id int64) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
+// Delete removes a custom item, then broadcasts on success.
+func (s *CustomItemService) Delete(ctx context.Context, id int64) error {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "catalog_item", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: id, Action: "delete"})
 	return nil
 }
 
-// BulkDelete removes multiple catalog items, then broadcasts a single
-// bulk_delete event on success.
-func (s *CatalogService) BulkDelete(ctx context.Context, ids []int64) error {
-	if err := s.repo.BulkDelete(ctx, ids); err != nil {
+// BulkDelete removes multiple custom items, then broadcasts a single bulk_delete
+// event on success.
+func (s *CustomItemService) BulkDelete(ctx context.Context, ids []int64) error {
+	tenantID := reqctx.MustTenant(ctx)
+	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "catalog_item", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: 0, Action: "bulk_delete"})
 	return nil
 }
 
-// SetRate upserts a per-tier rate for an item, then broadcasts on success.
-func (s *CatalogService) SetRate(ctx context.Context, itemID, tierID int64, rate float64) error {
-	if err := s.repo.SetRate(ctx, itemID, tierID, rate); err != nil {
-		return err
+// SupportCatalogService exposes read access to the GLOBAL NDIS Support
+// Catalogue (catalog_versions / support_items / support_item_prices). It is NOT
+// tenant-scoped: the catalogue is shared reference data (spec §3.1/§4.3).
+//
+// Platform-admin write access (XLSX ingest) lives in CatalogIngestService below.
+type SupportCatalogService struct {
+	repo *repository.CatalogRepo
+}
+
+func NewSupportCatalogService(db *sql.DB) *SupportCatalogService {
+	return &SupportCatalogService{repo: repository.NewCatalog(db)}
+}
+
+// ListVersions returns all catalogue versions.
+func (s *SupportCatalogService) ListVersions(ctx context.Context) ([]*repository.CatalogVersion, error) {
+	return s.repo.ListVersions(ctx)
+}
+
+// GetVersion returns a catalogue version by id, or (nil, nil) when absent.
+func (s *SupportCatalogService) GetVersion(ctx context.Context, id int64) (*repository.CatalogVersion, error) {
+	return s.repo.GetVersion(ctx, id)
+}
+
+// ListSupportItems returns the support items in a catalogue version.
+func (s *SupportCatalogService) ListSupportItems(ctx context.Context, versionID int64) ([]*repository.SupportItem, error) {
+	return s.repo.ListSupportItems(ctx, versionID)
+}
+
+// ListPrices returns the zone prices for a support item.
+func (s *SupportCatalogService) ListPrices(ctx context.Context, supportItemID int64) ([]*repository.SupportItemPrice, error) {
+	return s.repo.ListPrices(ctx, supportItemID)
+}
+
+// CatalogIngestService is the platform-admin WRITE path for the GLOBAL NDIS
+// Support Catalogue: it parses an official Support Catalogue XLSX (fixed-format,
+// keyed to known NDIA headers — no column-mapping wizard) and bulk-loads a new
+// catalog_version + support_items + per-zone prices in one transaction (spec §5).
+// It is NOT tenant-scoped.
+type CatalogIngestService struct {
+	repo *repository.CatalogRepo
+	hub  *realtime.Hub
+}
+
+// NewCatalogIngestService constructs the ingest service. A nil hub is a
+// programmer error (the ingest must broadcast after commit).
+func NewCatalogIngestService(db *sql.DB, hub *realtime.Hub) *CatalogIngestService {
+	if hub == nil {
+		panic("NewCatalogIngestService: nil hub")
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "catalog_item", ID: itemID, Action: "set_rate"})
-	return nil
+	return &CatalogIngestService{repo: repository.NewCatalog(db), hub: hub}
+}
+
+// IngestSummary is the JSON-friendly result of a catalogue ingest.
+type IngestSummary struct {
+	VersionID     int64  `json:"versionId"`
+	VersionUUID   string `json:"versionUuid"`
+	Label         string `json:"label"`
+	EffectiveFrom string `json:"effectiveFrom"`
+	ItemCount     int    `json:"itemCount"`
+	PriceCount    int    `json:"priceCount"`
+}
+
+// Canonical NDIS Support Catalogue column headers (normalised: lower-cased,
+// internal whitespace collapsed). The official export uses these exact labels;
+// adjust here if NDIA renames a column. The geographic price-limit columns map
+// to our three zones.
+const (
+	colCode       = "support item number"
+	colName       = "support item name"
+	colUnit       = "unit"
+	colCategory   = "support category"
+	colRegGroup   = "registration group name"
+	colNational   = "national"
+	colRemote     = "remote"
+	colVeryRemote = "very remote"
+)
+
+// IngestXLSX parses fixed-format NDIS Support Catalogue XLSX bytes and loads a
+// new catalogue version. The WHOLE upload is rejected (no partial state) when a
+// required column is missing or zero data rows parse. Broadcasts an SSE event
+// AFTER the commit succeeds (spec §5). Catalogue is GLOBAL so the event is
+// broadcast to all subscribers.
+func (s *CatalogIngestService) IngestXLSX(ctx context.Context, data []byte, label, effectiveFrom, sourceFilename string) (*IngestSummary, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("ingest: empty file")
+	}
+	if label == "" {
+		return nil, fmt.Errorf("ingest: label required")
+	}
+	if effectiveFrom == "" {
+		return nil, fmt.Errorf("ingest: effective_from required")
+	}
+
+	headers, rows, err := importer.ParseRows(data, "xlsx", "", 1)
+	if err != nil {
+		return nil, fmt.Errorf("ingest: parse: %w", err)
+	}
+
+	// Build a normalised header→original-key index so cell lookups tolerate
+	// case/whitespace differences in the source file.
+	norm := make(map[string]string, len(headers))
+	for i := range headers { // bounded by len(headers)
+		norm[normaliseHeader(headers[i])] = headers[i]
+	}
+
+	required := []string{colCode, colName}
+	for i := range required { // bounded by len(required)
+		if _, ok := norm[required[i]]; !ok {
+			return nil, fmt.Errorf("ingest: missing required column %q", required[i])
+		}
+	}
+
+	items, err := buildIngestItems(rows, norm)
+	if err != nil {
+		return nil, fmt.Errorf("ingest: %w", err)
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("ingest: no data rows parsed")
+	}
+
+	res, err := s.repo.Ingest(ctx, label, effectiveFrom, sourceFilename, items)
+	if err != nil {
+		return nil, err
+	}
+
+	// The NDIS Support Catalogue is GLOBAL shared reference data (spec §4.3) with
+	// no owning tenant: broadcast with the GlobalTenantID sentinel so the event
+	// reaches every tenant's open SSE stream, not just one tenant's.
+	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "catalog_version", ID: res.Version.ID, Action: "ingest"})
+	return &IngestSummary{
+		VersionID:     res.Version.ID,
+		VersionUUID:   res.Version.UUID,
+		Label:         res.Version.Label,
+		EffectiveFrom: res.Version.EffectiveFrom,
+		ItemCount:     res.ItemCount,
+		PriceCount:    res.PriceCount,
+	}, nil
+}
+
+// buildIngestItems maps parsed rows to IngestItem values, skipping rows with a
+// blank support-item code. Bounded by len(rows).
+func buildIngestItems(rows []map[string]string, norm map[string]string) ([]repository.IngestItem, error) {
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("file has no data rows")
+	}
+	cell := func(row map[string]string, canonical string) string {
+		key, ok := norm[canonical]
+		if !ok {
+			return ""
+		}
+		return strings.TrimSpace(row[key])
+	}
+	out := make([]repository.IngestItem, 0, len(rows))
+	for i := range rows { // bounded by len(rows)
+		row := rows[i]
+		code := cell(row, colCode)
+		if code == "" {
+			continue // skip blank/spacer rows
+		}
+		it := repository.IngestItem{
+			Code:              code,
+			Name:              cell(row, colName),
+			Unit:              cell(row, colUnit),
+			SupportCategory:   cell(row, colCategory),
+			RegistrationGroup: cell(row, colRegGroup),
+			Prices:            zonePrices(row, norm),
+		}
+		out = append(out, it)
+	}
+	return out, nil
+}
+
+// zonePrices reads the three geographic price-limit columns into a zone→cap map.
+// A blank / non-numeric / "Quote" cell yields a nil cap (quotable item); a zone
+// column absent from the sheet yields no entry for that zone.
+func zonePrices(row map[string]string, norm map[string]string) map[string]*float64 {
+	zones := [3]struct {
+		zone   string
+		header string
+	}{
+		{"national", colNational},
+		{"remote", colRemote},
+		{"very_remote", colVeryRemote},
+	}
+	out := make(map[string]*float64, 3)
+	for i := range zones { // bounded: exactly 3 zones
+		key, ok := norm[zones[i].header]
+		if !ok {
+			continue
+		}
+		raw := strings.TrimSpace(row[key])
+		out[zones[i].zone] = parseCap(raw)
+	}
+	return out
+}
+
+// parseCap returns a fixed cap, or nil for a quotable item. A blank cell, a
+// non-numeric cell, or one containing "quote" is treated as quotable (nil).
+func parseCap(raw string) *float64 {
+	if raw == "" {
+		return nil
+	}
+	if strings.Contains(strings.ToLower(raw), "quote") {
+		return nil
+	}
+	v := importer.ParseFloat(raw)
+	if v <= 0 {
+		return nil // unparseable/zero → quotable
+	}
+	return &v
+}
+
+// normaliseHeader lower-cases a header and collapses internal whitespace so the
+// fixed parser tolerates spacing/case noise in the source spreadsheet.
+func normaliseHeader(h string) string {
+	return strings.Join(strings.Fields(strings.ToLower(h)), " ")
 }

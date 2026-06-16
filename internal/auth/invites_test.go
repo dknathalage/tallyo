@@ -11,9 +11,9 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 )
 
-// mustInviteDB returns a migrated DB plus the id of a pre-created owner user,
-// which is required to satisfy the invites.created_by foreign key.
-func mustInviteDB(t *testing.T) (*sql.DB, int64) {
+// mustInviteDB returns a migrated DB, a tenant id, and the id of a pre-created
+// owner user, which is required to satisfy the invites.created_by foreign key.
+func mustInviteDB(t *testing.T) (*sql.DB, int64, int64) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "i.db"))
 	if err != nil {
@@ -22,81 +22,82 @@ func mustInviteDB(t *testing.T) (*sql.DB, int64) {
 	if err := appdb.Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
+	tid := seedTenant(t, conn, "T")
 	hash, err := HashPassword("pw123456")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
-	owner, err := NewUsers(conn).Create(context.Background(), "owner@x.com", hash, "owner")
+	owner, err := NewUsers(conn).Create(context.Background(), tid, "owner@x.com", hash, "Owner", "owner", false)
 	if err != nil {
 		t.Fatalf("create owner: %v", err)
 	}
-	return conn, owner.ID
+	return conn, tid, owner.ID
 }
 
 func TestAcceptInviteAtomic(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	ctx := context.Background()
 	invRepo := NewInvites(conn)
 	usersRepo := NewUsers(conn)
-	inv, err := invRepo.Create(ctx, "new@x.com", "member", owner, time.Hour)
+	inv, err := invRepo.Create(ctx, tid, "new@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create invite: %v", err)
 	}
 
 	hash, _ := HashPassword("password1")
-	u, err := invRepo.Accept(ctx, inv.Token, hash)
+	u, err := invRepo.Accept(ctx, inv.Token, "New User", hash)
 	if err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
-	if u == nil || u.Email != "new@x.com" || u.Role != "member" {
+	if u == nil || u.Email != "new@x.com" || u.Role != "member" || u.TenantID != tid || u.Name != "New User" {
 		t.Fatalf("bad user %+v", u)
 	}
 
-	// invite now used → second accept fails
-	if _, err := invRepo.Accept(ctx, inv.Token, hash); !errors.Is(err, ErrInviteInvalid) {
+	// invite now accepted → second accept fails
+	if _, err := invRepo.Accept(ctx, inv.Token, "X", hash); !errors.Is(err, ErrInviteInvalid) {
 		t.Fatalf("second accept: want ErrInviteInvalid, got %v", err)
 	}
-	// user actually created
-	got, _ := usersRepo.GetByEmail(ctx, "new@x.com")
+	// user actually created in the invite's tenant
+	got, _ := usersRepo.GetByEmail(ctx, tid, "new@x.com")
 	if got == nil {
 		t.Fatal("user not created")
 	}
 }
 
 func TestAcceptInviteDuplicateEmail(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	ctx := context.Background()
 	invRepo := NewInvites(conn)
 	usersRepo := NewUsers(conn)
-	// pre-existing user with the invited email
-	if _, err := usersRepo.Create(ctx, "dup@x.com", "h", "member"); err != nil {
+	// pre-existing user with the invited email in the same tenant
+	if _, err := usersRepo.Create(ctx, tid, "dup@x.com", "h", "Dup", "member", false); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	inv, _ := invRepo.Create(ctx, "dup@x.com", "member", owner, time.Hour)
+	inv, _ := invRepo.Create(ctx, tid, "dup@x.com", "member", owner, time.Hour)
 
 	hash, _ := HashPassword("password1")
-	_, err := invRepo.Accept(ctx, inv.Token, hash)
+	_, err := invRepo.Accept(ctx, inv.Token, "Dup2", hash)
 	if !errors.Is(err, ErrEmailTaken) {
 		t.Fatalf("want ErrEmailTaken, got %v", err)
 	}
 }
 
 func TestInviteCreateAndGet(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, "staff@x.com", "staff", owner, time.Hour)
+	inv, err := repo.Create(ctx, tid, "staff@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if inv.Token == "" {
 		t.Fatal("token must be non-empty")
 	}
-	if inv.Email != "staff@x.com" || inv.Role != "staff" || inv.ID == 0 {
+	if inv.Email != "staff@x.com" || inv.Role != "member" || inv.ID == 0 || inv.TenantID != tid {
 		t.Fatalf("bad invite %+v", inv)
 	}
 	exp, err := time.Parse(time.RFC3339, inv.ExpiresAt)
@@ -122,12 +123,12 @@ func TestInviteCreateAndGet(t *testing.T) {
 }
 
 func TestInviteValidateFresh(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, "staff@x.com", "staff", owner, time.Hour)
+	inv, err := repo.Create(ctx, tid, "staff@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestInviteValidateFresh(t *testing.T) {
 }
 
 func TestInviteValidateUnknownToken(t *testing.T) {
-	conn, _ := mustInviteDB(t)
+	conn, _, _ := mustInviteDB(t)
 	defer conn.Close()
 	_, err := NewInvites(conn).Validate(context.Background(), "nope")
 	if !errors.Is(err, ErrInviteInvalid) {
@@ -150,12 +151,12 @@ func TestInviteValidateUnknownToken(t *testing.T) {
 }
 
 func TestInviteValidateExpired(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, "staff@x.com", "staff", owner, -1*time.Minute)
+	inv, err := repo.Create(ctx, tid, "staff@x.com", "member", owner, -1*time.Minute)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -165,43 +166,43 @@ func TestInviteValidateExpired(t *testing.T) {
 	}
 }
 
-func TestInviteMarkUsedThenValidateFails(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+func TestInviteMarkAcceptedThenValidateFails(t *testing.T) {
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, "staff@x.com", "staff", owner, time.Hour)
+	inv, err := repo.Create(ctx, tid, "staff@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.MarkUsed(ctx, inv.Token); err != nil {
-		t.Fatalf("MarkUsed: %v", err)
+	if err := repo.MarkAccepted(ctx, inv.Token); err != nil {
+		t.Fatalf("MarkAccepted: %v", err)
 	}
 	got, err := repo.GetByToken(ctx, inv.Token)
 	if err != nil || got == nil {
-		t.Fatalf("GetByToken after used: %+v err=%v", got, err)
+		t.Fatalf("GetByToken after accepted: %+v err=%v", got, err)
 	}
-	if !got.Used {
-		t.Fatal("invite should be marked Used")
+	if !got.Accepted {
+		t.Fatal("invite should be marked Accepted")
 	}
 	_, err = repo.Validate(ctx, inv.Token)
 	if !errors.Is(err, ErrInviteInvalid) {
-		t.Fatalf("want ErrInviteInvalid for used, got %v", err)
+		t.Fatalf("want ErrInviteInvalid for accepted, got %v", err)
 	}
 }
 
 func TestInviteTokensDiffer(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
-	a, err := repo.Create(ctx, "a@x.com", "staff", owner, time.Hour)
+	a, err := repo.Create(ctx, tid, "a@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create a: %v", err)
 	}
-	b, err := repo.Create(ctx, "b@x.com", "staff", owner, time.Hour)
+	b, err := repo.Create(ctx, tid, "b@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create b: %v", err)
 	}
@@ -211,40 +212,40 @@ func TestInviteTokensDiffer(t *testing.T) {
 }
 
 func TestInviteCreateRejectsEmptyEmail(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
-	if _, err := NewInvites(conn).Create(context.Background(), "", "staff", owner, time.Hour); err == nil {
+	if _, err := NewInvites(conn).Create(context.Background(), tid, "", "member", owner, time.Hour); err == nil {
 		t.Fatal("empty email must error")
 	}
 }
 
 func TestInviteAuditRows(t *testing.T) {
-	conn, owner := mustInviteDB(t)
+	conn, tid, owner := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, "staff@x.com", "staff", owner, time.Hour)
+	inv, err := repo.Create(ctx, tid, "staff@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.MarkUsed(ctx, inv.Token); err != nil {
-		t.Fatalf("MarkUsed: %v", err)
+	if err := repo.MarkAccepted(ctx, inv.Token); err != nil {
+		t.Fatalf("MarkAccepted: %v", err)
 	}
 
-	var created, used int
+	var created, accepted int
 	if err := conn.QueryRow(
 		"SELECT COUNT(*) FROM audit_log WHERE entity_type='invite' AND action='create'").Scan(&created); err != nil {
 		t.Fatalf("audit create count: %v", err)
 	}
 	if err := conn.QueryRow(
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='invite' AND action='used'").Scan(&used); err != nil {
-		t.Fatalf("audit used count: %v", err)
+		"SELECT COUNT(*) FROM audit_log WHERE entity_type='invite' AND action='accepted'").Scan(&accepted); err != nil {
+		t.Fatalf("audit accepted count: %v", err)
 	}
 	if created != 1 {
 		t.Fatalf("invite create audit rows=%d want 1", created)
 	}
-	if used != 1 {
-		t.Fatalf("invite used audit rows=%d want 1", used)
+	if accepted != 1 {
+		t.Fatalf("invite accepted audit rows=%d want 1", accepted)
 	}
 }

@@ -42,31 +42,27 @@ func parseSnapshot(s string) party {
 	return p
 }
 
-// docData is the document-type-agnostic view consumed by render.
+// docData is the document-type-agnostic view consumed by render. NDIS amounts
+// are in AUD; tax is a precomputed amount (no rate is carried on the header).
 type docData struct {
-	Title     string
-	Number    string
-	Date      string
-	DueLabel  string
-	DueValue  string
-	Status    string
-	Business  party
-	Client    party
-	Rows      [][4]string // {desc, qty, rate, amount}
-	Subtotal  float64
-	TaxRate   float64
-	TaxAmount float64
-	Total     float64
-	Currency  string
-	Notes     string
+	Title    string
+	Number   string
+	Date     string
+	DueLabel string
+	DueValue string
+	Status   string
+	Business party
+	Client   party
+	Rows     [][4]string // {desc, qty, unitPrice, lineTotal}
+	Subtotal float64
+	Tax      float64
+	Total    float64
+	Notes    string
 }
 
-// money formats an amount with its currency code, e.g. "USD 27.50".
-func money(v float64, code string) string {
-	if code == "" {
-		code = "USD"
-	}
-	return fmt.Sprintf("%s %.2f", code, v)
+// money formats an AUD amount, e.g. "AUD 27.50".
+func money(v float64) string {
+	return fmt.Sprintf("AUD %.2f", v)
 }
 
 // RenderInvoice renders an invoice to PDF bytes from its snapshots.
@@ -76,16 +72,16 @@ func RenderInvoice(inv *repository.Invoice) ([]byte, error) {
 	}
 	d := docData{
 		Title:    "INVOICE",
-		Number:   inv.InvoiceNumber,
-		Date:     inv.Date,
+		Number:   inv.Number,
+		Date:     inv.IssueDate,
 		DueLabel: "Due",
 		DueValue: inv.DueDate,
 		Status:   inv.Status,
 		Business: parseSnapshot(inv.BusinessSnapshot),
 		Client:   parseSnapshot(inv.ClientSnapshot),
-		Rows:     invoiceRows(inv.LineItems),
-		Subtotal: inv.Subtotal, TaxRate: inv.TaxRate, TaxAmount: inv.TaxAmount,
-		Total: inv.Total, Currency: inv.CurrencyCode, Notes: inv.Notes,
+		Rows:     lineItemRows(inv.LineItems),
+		Subtotal: inv.Subtotal, Tax: inv.Tax,
+		Total: inv.Total, Notes: inv.Notes,
 	}
 	return render(d)
 }
@@ -97,22 +93,23 @@ func RenderEstimate(est *repository.Estimate) ([]byte, error) {
 	}
 	d := docData{
 		Title:    "ESTIMATE",
-		Number:   est.EstimateNumber,
-		Date:     est.Date,
+		Number:   est.Number,
+		Date:     est.IssueDate,
 		DueLabel: "Valid Until",
 		DueValue: est.ValidUntil,
 		Status:   est.Status,
 		Business: parseSnapshot(est.BusinessSnapshot),
 		Client:   parseSnapshot(est.ClientSnapshot),
-		Rows:     estimateRows(est.LineItems),
-		Subtotal: est.Subtotal, TaxRate: est.TaxRate, TaxAmount: est.TaxAmount,
-		Total: est.Total, Currency: est.CurrencyCode, Notes: est.Notes,
+		Rows:     lineItemRows(est.LineItems),
+		Subtotal: est.Subtotal, Tax: est.Tax,
+		Total: est.Total, Notes: est.Notes,
 	}
 	return render(d)
 }
 
-// invoiceRows projects invoice line items into renderable string rows.
-func invoiceRows(items []*repository.LineItem) [][4]string {
+// lineItemRows projects line items into renderable string rows. Invoices and
+// estimates share the repository.LineItem domain type.
+func lineItemRows(items []*repository.LineItem) [][4]string {
 	rows := make([][4]string, 0, len(items))
 	for _, it := range items {
 		if it == nil {
@@ -121,25 +118,8 @@ func invoiceRows(items []*repository.LineItem) [][4]string {
 		rows = append(rows, [4]string{
 			it.Description,
 			fmt.Sprintf("%g", it.Quantity),
-			fmt.Sprintf("%.2f", it.Rate),
-			fmt.Sprintf("%.2f", it.Amount),
-		})
-	}
-	return rows
-}
-
-// estimateRows projects estimate line items into renderable string rows.
-func estimateRows(items []*repository.EstimateLineItem) [][4]string {
-	rows := make([][4]string, 0, len(items))
-	for _, it := range items {
-		if it == nil {
-			continue
-		}
-		rows = append(rows, [4]string{
-			it.Description,
-			fmt.Sprintf("%g", it.Quantity),
-			fmt.Sprintf("%.2f", it.Rate),
-			fmt.Sprintf("%.2f", it.Amount),
+			money(it.UnitPrice),
+			money(it.LineTotal),
 		})
 	}
 	return rows
@@ -204,8 +184,8 @@ func addTable(m core.Maroto, d docData) {
 	m.AddRow(7,
 		col.New(6).Add(text.New("Description", props.Text{Style: fontstyle.Bold, Size: 9, Top: 2})),
 		col.New(2).Add(text.New("Qty", hdr)),
-		col.New(2).Add(text.New("Rate", hdrR)),
-		col.New(2).Add(text.New("Amount", hdrR)),
+		col.New(2).Add(text.New("Unit Price", hdrR)),
+		col.New(2).Add(text.New("Total", hdrR)),
 	)
 	cellR := props.Text{Size: 9, Align: align.Right}
 	for _, r := range d.Rows {
@@ -225,17 +205,17 @@ func addTotals(m core.Maroto, d docData) {
 	m.AddRow(6,
 		col.New(8),
 		col.New(2).Add(text.New("Subtotal", right)),
-		col.New(2).Add(text.New(money(d.Subtotal, d.Currency), right)),
+		col.New(2).Add(text.New(money(d.Subtotal), right)),
 	)
 	m.AddRow(6,
 		col.New(8),
-		col.New(2).Add(text.New(fmt.Sprintf("Tax (%g%%)", d.TaxRate), right)),
-		col.New(2).Add(text.New(money(d.TaxAmount, d.Currency), right)),
+		col.New(2).Add(text.New("GST", right)),
+		col.New(2).Add(text.New(money(d.Tax), right)),
 	)
 	m.AddRow(7,
 		col.New(8),
 		col.New(2).Add(text.New("Total", boldR)),
-		col.New(2).Add(text.New(money(d.Total, d.Currency), boldR)),
+		col.New(2).Add(text.New(money(d.Total), boldR)),
 	)
 }
 

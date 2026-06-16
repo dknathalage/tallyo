@@ -11,28 +11,32 @@ import (
 )
 
 const createPayment = `-- name: CreatePayment :one
-INSERT INTO payments (uuid, invoice_id, amount, payment_date, method, notes, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, uuid, invoice_id, amount, payment_date, method, notes, created_at, updated_at
+INSERT INTO payments (uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at
 `
 
 type CreatePaymentParams struct {
-	Uuid        string         `json:"uuid"`
-	InvoiceID   int64          `json:"invoice_id"`
-	Amount      float64        `json:"amount"`
-	PaymentDate string         `json:"payment_date"`
-	Method      sql.NullString `json:"method"`
-	Notes       sql.NullString `json:"notes"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
+	Uuid      string         `json:"uuid"`
+	TenantID  int64          `json:"tenant_id"`
+	InvoiceID int64          `json:"invoice_id"`
+	Amount    float64        `json:"amount"`
+	PaidAt    string         `json:"paid_at"`
+	Method    sql.NullString `json:"method"`
+	Reference sql.NullString `json:"reference"`
+	Notes     sql.NullString `json:"notes"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
 func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error) {
 	row := q.db.QueryRowContext(ctx, createPayment,
 		arg.Uuid,
+		arg.TenantID,
 		arg.InvoiceID,
 		arg.Amount,
-		arg.PaymentDate,
+		arg.PaidAt,
 		arg.Method,
+		arg.Reference,
 		arg.Notes,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -41,10 +45,12 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.InvoiceID,
 		&i.Amount,
-		&i.PaymentDate,
+		&i.PaidAt,
 		&i.Method,
+		&i.Reference,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -53,28 +59,40 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 }
 
 const deletePayment = `-- name: DeletePayment :exec
-DELETE FROM payments WHERE id = ?
+DELETE FROM payments WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) DeletePayment(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deletePayment, id)
+type DeletePaymentParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) DeletePayment(ctx context.Context, arg DeletePaymentParams) error {
+	_, err := q.db.ExecContext(ctx, deletePayment, arg.TenantID, arg.ID)
 	return err
 }
 
 const getPayment = `-- name: GetPayment :one
-SELECT id, uuid, invoice_id, amount, payment_date, method, notes, created_at, updated_at FROM payments WHERE id = ?
+SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND id = ?
 `
 
-func (q *Queries) GetPayment(ctx context.Context, id int64) (Payment, error) {
-	row := q.db.QueryRowContext(ctx, getPayment, id)
+type GetPaymentParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error) {
+	row := q.db.QueryRowContext(ctx, getPayment, arg.TenantID, arg.ID)
 	var i Payment
 	err := row.Scan(
 		&i.ID,
 		&i.Uuid,
+		&i.TenantID,
 		&i.InvoiceID,
 		&i.Amount,
-		&i.PaymentDate,
+		&i.PaidAt,
 		&i.Method,
+		&i.Reference,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -83,22 +101,33 @@ func (q *Queries) GetPayment(ctx context.Context, id int64) (Payment, error) {
 }
 
 const invoiceTotalPaid = `-- name: InvoiceTotalPaid :one
-SELECT CAST(COALESCE(SUM(amount), 0) AS REAL) AS total_paid FROM payments WHERE invoice_id = ?
+SELECT CAST(COALESCE(SUM(amount), 0) AS REAL) AS total_paid
+FROM payments WHERE tenant_id = ? AND invoice_id = ?
 `
 
-func (q *Queries) InvoiceTotalPaid(ctx context.Context, invoiceID int64) (float64, error) {
-	row := q.db.QueryRowContext(ctx, invoiceTotalPaid, invoiceID)
+type InvoiceTotalPaidParams struct {
+	TenantID  int64 `json:"tenant_id"`
+	InvoiceID int64 `json:"invoice_id"`
+}
+
+func (q *Queries) InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error) {
+	row := q.db.QueryRowContext(ctx, invoiceTotalPaid, arg.TenantID, arg.InvoiceID)
 	var total_paid float64
 	err := row.Scan(&total_paid)
 	return total_paid, err
 }
 
 const listInvoicePayments = `-- name: ListInvoicePayments :many
-SELECT id, uuid, invoice_id, amount, payment_date, method, notes, created_at, updated_at FROM payments WHERE invoice_id = ? ORDER BY payment_date, id
+SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? ORDER BY paid_at, id
 `
 
-func (q *Queries) ListInvoicePayments(ctx context.Context, invoiceID int64) ([]Payment, error) {
-	rows, err := q.db.QueryContext(ctx, listInvoicePayments, invoiceID)
+type ListInvoicePaymentsParams struct {
+	TenantID  int64 `json:"tenant_id"`
+	InvoiceID int64 `json:"invoice_id"`
+}
+
+func (q *Queries) ListInvoicePayments(ctx context.Context, arg ListInvoicePaymentsParams) ([]Payment, error) {
+	rows, err := q.db.QueryContext(ctx, listInvoicePayments, arg.TenantID, arg.InvoiceID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +138,12 @@ func (q *Queries) ListInvoicePayments(ctx context.Context, invoiceID int64) ([]P
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uuid,
+			&i.TenantID,
 			&i.InvoiceID,
 			&i.Amount,
-			&i.PaymentDate,
+			&i.PaidAt,
 			&i.Method,
+			&i.Reference,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,

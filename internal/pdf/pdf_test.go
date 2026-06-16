@@ -9,14 +9,14 @@ import (
 
 func TestRenderInvoiceProducesPDF(t *testing.T) {
 	inv := &repository.Invoice{
-		InvoiceNumber: "INV-0001", Date: "2026-06-05", DueDate: "2026-07-05",
+		Number: "INV-0001", IssueDate: "2026-06-05", DueDate: "2026-07-05",
 		BusinessSnapshot: `{"name":"Acme LLC","email":"acme@x.com","address":"1 St"}`,
 		ClientSnapshot:   `{"name":"Client Co","email":"c@x.com"}`,
-		Subtotal:         25, TaxRate: 10, TaxAmount: 2.5, Total: 27.5, CurrencyCode: "USD",
+		Subtotal:         25, Tax: 2.5, Total: 27.5,
 		Status: "draft", Notes: "thanks",
 		LineItems: []*repository.LineItem{
-			{Description: "Widget", Quantity: 2, Rate: 10, Amount: 20},
-			{Description: "Gadget", Quantity: 1, Rate: 5, Amount: 5},
+			{Description: "Widget", Quantity: 2, UnitPrice: 10, LineTotal: 20},
+			{Description: "Gadget", Quantity: 1, UnitPrice: 5, LineTotal: 5},
 		},
 	}
 	b, err := RenderInvoice(inv)
@@ -33,10 +33,10 @@ func TestRenderInvoiceProducesPDF(t *testing.T) {
 
 func TestRenderEstimateProducesPDF(t *testing.T) {
 	est := &repository.Estimate{
-		EstimateNumber: "EST-0001", Date: "2026-06-05", ValidUntil: "2026-07-05",
+		Number: "EST-0001", IssueDate: "2026-06-05", ValidUntil: "2026-07-05",
 		BusinessSnapshot: `{"name":"Acme LLC"}`, ClientSnapshot: `{"name":"Client Co"}`,
-		Subtotal: 25, TaxRate: 10, TaxAmount: 2.5, Total: 27.5, CurrencyCode: "USD", Status: "draft",
-		LineItems: []*repository.EstimateLineItem{{Description: "Widget", Quantity: 2, Rate: 10, Amount: 20}},
+		Subtotal: 25, Tax: 2.5, Total: 27.5, Status: "draft",
+		LineItems: []*repository.LineItem{{Description: "Widget", Quantity: 2, UnitPrice: 10, LineTotal: 20}},
 	}
 	b, err := RenderEstimate(est)
 	if err != nil {
@@ -50,5 +50,22 @@ func TestRenderEstimateProducesPDF(t *testing.T) {
 func TestRenderNilErrors(t *testing.T) {
 	if _, err := RenderInvoice(nil); err == nil {
 		t.Fatal("nil invoice must error")
+	}
+}
+
+// TestMoneyConsistentCurrency locks the single currency presentation used across
+// the whole document: line-item amounts and the totals block must all render via
+// money() so they share one "AUD <amount>" format.
+func TestMoneyConsistentCurrency(t *testing.T) {
+	cases := map[float64]string{
+		10:   "AUD 10.00",
+		2.5:  "AUD 2.50",
+		27.5: "AUD 27.50",
+		0:    "AUD 0.00",
+	}
+	for v, want := range cases {
+		if got := money(v); got != want {
+			t.Fatalf("money(%g)=%q want %q", v, got, want)
+		}
 	}
 }

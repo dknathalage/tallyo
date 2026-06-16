@@ -1,5 +1,22 @@
 package repository
 
+// NOTE (J4): rewritten to the NDIS invoice/line-item domain (spec §4.2). The
+// header no longer carries payment_terms / currency / tax_rate / tax_rate_id;
+// it carries participant_id, optional plan_manager_id, and subtotal/tax/total.
+// Line items carry NDIS fields: code, service_date, unit, unit_price, gst_free,
+// line_total, and optional support_item_id / custom_item_id / catalog_version_id.
+//
+// Design decisions (deferred concerns belong to J8/J10):
+//   - `tax` is supplied on the header input (computed upstream by the J10
+//     validation engine). This repo only sums line totals → subtotal and
+//     subtotal+tax → total, rounding to the cent at each boundary (spec §6 money
+//     note). It does NOT perform price-cap / plan-window validation (J10).
+//   - Per-tenant document numbering: the tenant-scoped gen.MaxInvoiceNumberLike
+//     query (WHERE tenant_id = ?) reads the current max suffix inside the create
+//     tx; numbering.Format builds the next number; numbering.WithRetry wraps the
+//     tx so a UNIQUE(tenant_id, number) collision from a concurrent creator is
+//     retried. This is the single numbering implementation (J11 consolidation).
+
 import (
 	"context"
 	"database/sql"
@@ -15,29 +32,25 @@ import (
 	"github.com/google/uuid"
 )
 
-// Invoice is the domain view of an invoice with its resolved client name and
-// embedded line items. Nullable columns are unwrapped to plain values; nullable
-// FKs to *int64 (nil when absent). Totals are recomputed server-side on write.
+// Invoice is the domain view of an invoice with its resolved participant name
+// and embedded line items.
 type Invoice struct {
 	ID               int64       `json:"id"`
 	UUID             string      `json:"uuid"`
-	InvoiceNumber    string      `json:"invoiceNumber"`
-	ClientID         int64       `json:"clientId"`
-	ClientName       string      `json:"clientName"`
-	Date             string      `json:"date"`
+	Number           string      `json:"number"`
+	ParticipantID    int64       `json:"participantId"`
+	ParticipantName  string      `json:"participantName"`
+	PlanManagerID    *int64      `json:"planManagerId"`
+	Status           string      `json:"status"`
+	IssueDate        string      `json:"issueDate"`
 	DueDate          string      `json:"dueDate"`
-	PaymentTerms     string      `json:"paymentTerms"`
 	Subtotal         float64     `json:"subtotal"`
-	TaxRate          float64     `json:"taxRate"`
-	TaxRateID        *int64      `json:"taxRateId"`
-	TaxAmount        float64     `json:"taxAmount"`
+	Tax              float64     `json:"tax"`
 	Total            float64     `json:"total"`
 	Notes            string      `json:"notes"`
-	Status           string      `json:"status"`
-	CurrencyCode     string      `json:"currencyCode"`
 	BusinessSnapshot string      `json:"businessSnapshot"`
-	ClientSnapshot   string      `json:"clientSnapshot"`
-	PayerSnapshot    string      `json:"payerSnapshot"`
+	ClientSnapshot   string      `json:"participantSnapshot"`
+	PayerSnapshot    string      `json:"planManagerSnapshot"`
 	CreatedAt        string      `json:"createdAt"`
 	UpdatedAt        string      `json:"updatedAt"`
 	TotalPaid        float64     `json:"totalPaid"`
@@ -47,63 +60,69 @@ type Invoice struct {
 
 // LineItem is the domain view of a row in the line_items table.
 type LineItem struct {
-	ID            int64   `json:"id"`
-	UUID          string  `json:"uuid"`
-	Description   string  `json:"description"`
-	Quantity      float64 `json:"quantity"`
-	Rate          float64 `json:"rate"`
-	Amount        float64 `json:"amount"`
-	Notes         string  `json:"notes"`
-	SortOrder     int64   `json:"sortOrder"`
-	CatalogItemID *int64  `json:"catalogItemId"`
-	RateTierID    *int64  `json:"rateTierId"`
+	ID               int64   `json:"id"`
+	UUID             string  `json:"uuid"`
+	SupportItemID    *int64  `json:"supportItemId"`
+	CustomItemID     *int64  `json:"customItemId"`
+	CatalogVersionID *int64  `json:"catalogVersionId"`
+	Code             string  `json:"code"`
+	Description      string  `json:"description"`
+	ServiceDate      string  `json:"serviceDate"`
+	Unit             string  `json:"unit"`
+	Quantity         float64 `json:"quantity"`
+	UnitPrice        float64 `json:"unitPrice"`
+	GstFree          bool    `json:"gstFree"`
+	LineTotal        float64 `json:"lineTotal"`
+	SortOrder        int64   `json:"sortOrder"`
 }
 
 // InvoiceInput is the writable subset of an invoice header. Snapshot fields,
 // when non-empty, are stored verbatim; when empty, defaults are built from the
-// business profile, client and payer.
+// business profile, participant and plan manager.
 type InvoiceInput struct {
-	ClientID         int64   `json:"clientId"`
-	Date             string  `json:"date"`
-	DueDate          string  `json:"dueDate"`
-	PaymentTerms     string  `json:"paymentTerms"`
-	TaxRate          float64 `json:"taxRate"`
-	TaxRateID        *int64  `json:"taxRateId"`
-	Notes            string  `json:"notes"`
+	ParticipantID    int64   `json:"participantId"`
+	PlanManagerID    *int64  `json:"planManagerId"`
 	Status           string  `json:"status"`
-	CurrencyCode     string  `json:"currencyCode"`
+	IssueDate        string  `json:"issueDate"`
+	DueDate          string  `json:"dueDate"`
+	Tax              float64 `json:"tax"`
+	Notes            string  `json:"notes"`
 	BusinessSnapshot string  `json:"businessSnapshot"`
-	ClientSnapshot   string  `json:"clientSnapshot"`
-	PayerSnapshot    string  `json:"payerSnapshot"`
+	ClientSnapshot   string  `json:"participantSnapshot"`
+	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
-// LineItemInput is the writable subset of a line item; amount is computed.
+// LineItemInput is the writable subset of a line item. LineTotal is computed
+// (round2(quantity*unitPrice)) when not explicitly supplied.
 type LineItemInput struct {
-	Description   string  `json:"description"`
-	Quantity      float64 `json:"quantity"`
-	Rate          float64 `json:"rate"`
-	Notes         string  `json:"notes"`
-	SortOrder     int64   `json:"sortOrder"`
-	CatalogItemID *int64  `json:"catalogItemId"`
-	RateTierID    *int64  `json:"rateTierId"`
+	SupportItemID    *int64  `json:"supportItemId"`
+	CustomItemID     *int64  `json:"customItemId"`
+	CatalogVersionID *int64  `json:"catalogVersionId"`
+	Code             string  `json:"code"`
+	Description      string  `json:"description"`
+	ServiceDate      string  `json:"serviceDate"`
+	Unit             string  `json:"unit"`
+	Quantity         float64 `json:"quantity"`
+	UnitPrice        float64 `json:"unitPrice"`
+	GstFree          bool    `json:"gstFree"`
+	SortOrder        int64   `json:"sortOrder"`
 }
 
 // OverdueInvoice identifies an invoice flipped to overdue by MarkOverdue.
 type OverdueInvoice struct {
-	ID            int64  `json:"id"`
-	InvoiceNumber string `json:"invoiceNumber"`
+	ID       int64  `json:"id"`
+	TenantID int64  `json:"tenantId"`
+	Number   string `json:"number"`
 }
 
-// ClientStats aggregates an individual client's invoice activity.
-type ClientStats struct {
+// ParticipantStats aggregates a participant's invoice activity.
+type ParticipantStats struct {
 	InvoiceCount  int64   `json:"invoiceCount"`
 	TotalInvoiced float64 `json:"totalInvoiced"`
 	TotalPaid     float64 `json:"totalPaid"`
 }
 
-// InvoicesRepo reads and writes the invoices + line_items tables. Creates and
-// duplicates allocate an invoice number via the numbering package inside a
-// retried transaction; all mutations are audited.
+// InvoicesRepo reads and writes the invoices + line_items tables (tenant-scoped).
 type InvoicesRepo struct {
 	db *sql.DB
 }
@@ -118,21 +137,21 @@ func NewInvoices(db *sql.DB) *InvoicesRepo {
 
 // totals holds the server-computed money fields derived from line items.
 type totals struct {
-	subtotal  float64
-	taxAmount float64
-	total     float64
+	subtotal float64
+	tax      float64
+	total    float64
 }
 
-// computeTotals sums line amounts and applies the percentage tax rate (e.g. 10
-// means 10%). amount = quantity*rate; subtotal = Σ amounts.
-func computeTotals(items []LineItemInput, taxRate float64) totals {
+// computeTotals sums line totals into the subtotal and applies the (already
+// computed) tax amount. Each boundary is rounded to the cent (spec §6).
+func computeTotals(items []LineItemInput, tax float64) totals {
 	var subtotal float64
 	for i := range items { // bounded by len(items)
-		subtotal += items[i].Quantity * items[i].Rate
+		subtotal += round2(items[i].Quantity * items[i].UnitPrice)
 	}
 	subtotal = round2(subtotal)
-	taxAmount := round2(subtotal * (taxRate / 100))
-	return totals{subtotal: subtotal, taxAmount: taxAmount, total: round2(subtotal + taxAmount)}
+	tax = round2(tax)
+	return totals{subtotal: subtotal, tax: tax, total: round2(subtotal + tax)}
 }
 
 // round2 rounds to two decimal places (cents).
@@ -140,75 +159,64 @@ func round2(x float64) float64 {
 	return math.Round(x*100) / 100
 }
 
-// resolveTaxRate returns the effective tax-rate percentage: in.TaxRate when set,
-// else the referenced tax_rates.rate when in.TaxRateID is present and readable.
-func (r *InvoicesRepo) resolveTaxRate(ctx context.Context, in InvoiceInput) float64 {
-	if in.TaxRate != 0 || in.TaxRateID == nil {
-		return in.TaxRate
-	}
-	tr, err := gen.New(r.db).GetTaxRate(ctx, *in.TaxRateID)
-	if err != nil {
-		return in.TaxRate
-	}
-	return tr.Rate
-}
-
 // fillSnapshots fills any empty snapshot field on in with a default built from
-// the business profile, client and payer.
-func (r *InvoicesRepo) fillSnapshots(ctx context.Context, in *InvoiceInput) {
+// the business profile, participant and plan manager.
+func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *InvoiceInput) {
 	if in.BusinessSnapshot == "" {
-		in.BusinessSnapshot = r.buildBusinessSnapshot(ctx)
+		in.BusinessSnapshot = r.buildBusinessSnapshot(ctx, tenantID)
 	}
 	if in.ClientSnapshot == "" {
-		in.ClientSnapshot = r.buildClientSnapshot(ctx, in.ClientID)
+		in.ClientSnapshot = r.buildParticipantSnapshot(ctx, tenantID, in.ParticipantID)
 	}
 	if in.PayerSnapshot == "" {
-		in.PayerSnapshot = r.buildPayerSnapshot(ctx, in.ClientID)
+		in.PayerSnapshot = r.buildPlanManagerSnapshot(ctx, tenantID, in.PlanManagerID)
 	}
 }
 
 // Create inserts an invoice plus its line items inside one numbering-retried
-// transaction, audits the create, and re-reads the row. ClientID and at least
-// one line item are required.
-func (r *InvoicesRepo) Create(ctx context.Context, in InvoiceInput, items []LineItemInput) (*Invoice, error) {
-	if in.ClientID == 0 {
-		return nil, errors.New("create invoice: client is required")
+// transaction, audits the create, and re-reads the row. ParticipantID and at
+// least one line item are required.
+func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInput, items []LineItemInput) (*Invoice, error) {
+	if tenantID == 0 {
+		return nil, errors.New("create invoice: tenant id required")
+	}
+	if in.ParticipantID == 0 {
+		return nil, errors.New("create invoice: participant is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("create invoice: at least one line item is required")
 	}
-	taxRate := r.resolveTaxRate(ctx, in)
-	r.fillSnapshots(ctx, &in)
+	r.fillSnapshots(ctx, tenantID, &in)
 
 	var newID int64
 	err := numbering.WithRetry(ctx, 10, func() error {
-		return r.createTx(ctx, in, items, taxRate, &newID)
+		return r.createTx(ctx, tenantID, in, items, &newID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create invoice: %w", err)
 	}
-	return r.Get(ctx, newID)
+	return r.Get(ctx, tenantID, newID)
 }
 
-// createTx runs a single create attempt: it generates the number, inserts the
-// header + items, and logs the audit row, all in one transaction.
-func (r *InvoicesRepo) createTx(ctx context.Context, in InvoiceInput, items []LineItemInput, taxRate float64, newID *int64) error {
+// createTx runs a single create attempt: it allocates the per-tenant number,
+// inserts the header + items, and logs the audit row, all in one transaction.
+func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceInput, items []LineItemInput, newID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	num, err := numbering.Next(ctx, tx, numbering.Invoice)
-	if err != nil {
-		return err
-	}
 	q := gen.New(tx)
-	inv, err := q.CreateInvoice(ctx, createParams(in, items, taxRate, num))
+	num, err := nextInvoiceNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}
-	if err := insertItems(ctx, q, inv.ID, items); err != nil {
+	inv, err := q.CreateInvoice(ctx, createInvoiceParams(tenantID, in, items, num))
+	if err != nil {
+		return err
+	}
+	if err := insertItems(ctx, q, tenantID, inv.ID, items); err != nil {
 		return err
 	}
 	if err := audit.Log(ctx, tx, audit.Entry{
@@ -224,49 +232,66 @@ func (r *InvoicesRepo) createTx(ctx context.Context, in InvoiceInput, items []Li
 	return nil
 }
 
-// createParams builds the insert params, applying defaults (draft / USD / custom)
-// and computing totals from the line items at the given percentage tax rate.
-func createParams(in InvoiceInput, items []LineItemInput, taxRate float64, num string) gen.CreateInvoiceParams {
-	t := computeTotals(items, taxRate)
+// nextInvoiceNumber allocates the next per-tenant invoice number ("INV-NNNN").
+func nextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (string, error) {
+	const prefix = "INV-"
+	max, err := q.MaxInvoiceNumberLike(ctx, gen.MaxInvoiceNumberLikeParams{
+		PrefixLen: int64(len(prefix)),
+		TenantID:  tenantID,
+		Pattern:   prefix + "%",
+	})
+	if err != nil {
+		return "", fmt.Errorf("next invoice number: %w", err)
+	}
+	return numbering.Format(prefix, max), nil
+}
+
+// createInvoiceParams builds the insert params, applying defaults (draft) and
+// computing totals from the line items.
+func createInvoiceParams(tenantID int64, in InvoiceInput, items []LineItemInput, num string) gen.CreateInvoiceParams {
+	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
 		Uuid:             uuid.NewString(),
-		InvoiceNumber:    num,
-		ClientID:         in.ClientID,
-		Date:             in.Date,
+		TenantID:         tenantID,
+		Number:           num,
+		ParticipantID:    in.ParticipantID,
+		PlanManagerID:    nullID(in.PlanManagerID),
+		Status:           orDefault(in.Status, "draft"),
+		IssueDate:        in.IssueDate,
 		DueDate:          in.DueDate,
-		PaymentTerms:     nz(orDefault(in.PaymentTerms, "custom")),
-		Subtotal:         sql.NullFloat64{Float64: t.subtotal, Valid: true},
-		TaxRate:          sql.NullFloat64{Float64: taxRate, Valid: true},
-		TaxRateID:        nullID(in.TaxRateID),
-		TaxAmount:        sql.NullFloat64{Float64: t.taxAmount, Valid: true},
-		Total:            sql.NullFloat64{Float64: t.total, Valid: true},
-		Notes:            nz(in.Notes),
-		Status:           nz(orDefault(in.Status, "draft")),
-		CurrencyCode:     nz(orDefault(in.CurrencyCode, "USD")),
-		BusinessSnapshot: nz(in.BusinessSnapshot),
-		ClientSnapshot:   nz(in.ClientSnapshot),
-		PayerSnapshot:    nz(in.PayerSnapshot),
+		Subtotal:         t.subtotal,
+		Tax:              t.tax,
+		Total:            t.total,
+		Notes:            nzMaybe(in.Notes),
+		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
+		ClientSnapshot:   nzMaybe(in.ClientSnapshot),
+		PayerSnapshot:    nzMaybe(in.PayerSnapshot),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 }
 
-// insertItems writes each line item with its computed amount. Bounded by len.
-func insertItems(ctx context.Context, q *gen.Queries, invoiceID int64, items []LineItemInput) error {
+// insertItems writes each line item with its computed total. Bounded by len.
+func insertItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:          uuid.NewString(),
-			InvoiceID:     invoiceID,
-			Description:   it.Description,
-			Quantity:      it.Quantity,
-			Rate:          it.Rate,
-			Amount:        round2(it.Quantity * it.Rate),
-			Notes:         nz(it.Notes),
-			SortOrder:     nzInt(it.SortOrder),
-			CatalogItemID: nullID(it.CatalogItemID),
-			RateTierID:    nullID(it.RateTierID),
+			Uuid:             uuid.NewString(),
+			TenantID:         tenantID,
+			InvoiceID:        invoiceID,
+			SupportItemID:    nullID(it.SupportItemID),
+			CustomItemID:     nullID(it.CustomItemID),
+			CatalogVersionID: nullID(it.CatalogVersionID),
+			Code:             nzMaybe(it.Code),
+			Description:      it.Description,
+			ServiceDate:      nzMaybe(it.ServiceDate),
+			Unit:             nzMaybe(it.Unit),
+			Quantity:         it.Quantity,
+			UnitPrice:        it.UnitPrice,
+			GstFree:          b2i(it.GstFree),
+			LineTotal:        round2(it.Quantity * it.UnitPrice),
+			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("insert line item %d: %w", i, err)
@@ -275,11 +300,11 @@ func insertItems(ctx context.Context, q *gen.Queries, invoiceID int64, items []L
 	return nil
 }
 
-// Get returns the invoice (with client name and line items), or (nil, nil) when
-// absent.
-func (r *InvoicesRepo) Get(ctx context.Context, id int64) (*Invoice, error) {
+// Get returns the invoice (with participant name and line items), or (nil, nil)
+// when absent.
+func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, error) {
 	q := gen.New(r.db)
-	row, err := q.GetInvoice(ctx, id)
+	row, err := q.GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -287,12 +312,12 @@ func (r *InvoicesRepo) Get(ctx context.Context, id int64) (*Invoice, error) {
 		return nil, fmt.Errorf("get invoice: %w", err)
 	}
 	inv := toInvoiceFromRow(invoiceFieldsFromGet(row))
-	rows, err := q.ListLineItems(ctx, id)
+	rows, err := q.ListLineItems(ctx, gen.ListLineItemsParams{TenantID: tenantID, InvoiceID: id})
 	if err != nil {
 		return nil, fmt.Errorf("list line items: %w", err)
 	}
 	inv.LineItems = mapLineItems(rows)
-	tp, err := q.InvoiceTotalPaid(ctx, id)
+	tp, err := q.InvoiceTotalPaid(ctx, gen.InvoiceTotalPaidParams{TenantID: tenantID, InvoiceID: id})
 	if err != nil {
 		return nil, fmt.Errorf("invoice total paid: %w", err)
 	}
@@ -301,9 +326,9 @@ func (r *InvoicesRepo) Get(ctx context.Context, id int64) (*Invoice, error) {
 	return inv, nil
 }
 
-// List returns every invoice (header only, no line items), ordered newest first.
-func (r *InvoicesRepo) List(ctx context.Context) ([]*Invoice, error) {
-	rows, err := gen.New(r.db).ListInvoices(ctx)
+// List returns every invoice for the tenant (header only), newest first.
+func (r *InvoicesRepo) List(ctx context.Context, tenantID int64) ([]*Invoice, error) {
+	rows, err := gen.New(r.db).ListInvoices(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list invoices: %w", err)
 	}
@@ -314,9 +339,12 @@ func (r *InvoicesRepo) List(ctx context.Context) ([]*Invoice, error) {
 	return out, nil
 }
 
-// ListByStatus returns invoices with the given status (header only).
-func (r *InvoicesRepo) ListByStatus(ctx context.Context, status string) ([]*Invoice, error) {
-	rows, err := gen.New(r.db).ListInvoicesByStatus(ctx, nz(status))
+// ListByStatus returns the tenant's invoices with the given status.
+func (r *InvoicesRepo) ListByStatus(ctx context.Context, tenantID int64, status string) ([]*Invoice, error) {
+	rows, err := gen.New(r.db).ListInvoicesByStatus(ctx, gen.ListInvoicesByStatusParams{
+		TenantID: tenantID,
+		Status:   status,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list invoices by status: %w", err)
 	}
@@ -327,30 +355,33 @@ func (r *InvoicesRepo) ListByStatus(ctx context.Context, status string) ([]*Invo
 	return out, nil
 }
 
-// ListClientInvoices returns one client's invoices (header only).
-func (r *InvoicesRepo) ListClientInvoices(ctx context.Context, clientID int64) ([]*Invoice, error) {
-	rows, err := gen.New(r.db).ListClientInvoices(ctx, clientID)
+// ListParticipantInvoices returns one participant's invoices (header only).
+func (r *InvoicesRepo) ListParticipantInvoices(ctx context.Context, tenantID, participantID int64) ([]*Invoice, error) {
+	rows, err := gen.New(r.db).ListParticipantInvoices(ctx, gen.ListParticipantInvoicesParams{
+		TenantID:      tenantID,
+		ParticipantID: participantID,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("list client invoices: %w", err)
+		return nil, fmt.Errorf("list participant invoices: %w", err)
 	}
 	out := make([]*Invoice, 0, len(rows))
 	for i := range rows {
-		out = append(out, toInvoiceFromRow(invoiceFieldsFromClient(rows[i])))
+		out = append(out, toInvoiceFromRow(invoiceFieldsFromParticipant(rows[i])))
 	}
 	return out, nil
 }
 
-// Update rewrites the header (recomputing totals/tax) and replaces all line
-// items, atomically with one audit row. Empty snapshot inputs keep the existing
-// stored snapshots. Returns (nil, nil) when the invoice does not exist.
-func (r *InvoicesRepo) Update(ctx context.Context, id int64, in InvoiceInput, items []LineItemInput) (*Invoice, error) {
-	if in.ClientID == 0 {
-		return nil, errors.New("update invoice: client is required")
+// Update rewrites the header (recomputing totals) and replaces all line items,
+// atomically with one audit row. Empty snapshot inputs keep the existing stored
+// snapshots. Returns (nil, nil) when the invoice does not exist.
+func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in InvoiceInput, items []LineItemInput) (*Invoice, error) {
+	if in.ParticipantID == 0 {
+		return nil, errors.New("update invoice: participant is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("update invoice: at least one line item is required")
 	}
-	existing, err := gen.New(r.db).GetInvoice(ctx, id)
+	existing, err := gen.New(r.db).GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -358,24 +389,23 @@ func (r *InvoicesRepo) Update(ctx context.Context, id int64, in InvoiceInput, it
 		return nil, fmt.Errorf("update invoice: load existing: %w", err)
 	}
 	keepSnapshots(&in, existing)
-	taxRate := r.resolveTaxRate(ctx, in)
 
 	err = audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "update",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		if _, e := q.UpdateInvoice(ctx, updateParams(in, items, taxRate, id)); e != nil {
+		if _, e := q.UpdateInvoice(ctx, updateInvoiceParams(tenantID, in, items, existing.Number, id)); e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		if e := q.DeleteLineItemsForInvoice(ctx, id); e != nil {
+		if e := q.DeleteLineItemsForInvoice(ctx, gen.DeleteLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: id}); e != nil {
 			return fmt.Errorf("clear items: %w", e)
 		}
-		return insertItems(ctx, q, id, items)
+		return insertItems(ctx, q, tenantID, id, items)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("update invoice: %w", err)
 	}
-	return r.Get(ctx, id)
+	return r.Get(ctx, tenantID, id)
 }
 
 // keepSnapshots preserves the stored snapshots for any snapshot input left empty.
@@ -391,40 +421,40 @@ func keepSnapshots(in *InvoiceInput, existing gen.GetInvoiceRow) {
 	}
 }
 
-// updateParams builds the update params, recomputing totals from items.
-func updateParams(in InvoiceInput, items []LineItemInput, taxRate float64, id int64) gen.UpdateInvoiceParams {
-	t := computeTotals(items, taxRate)
+// updateInvoiceParams builds the update params, recomputing totals from items.
+// The document number is immutable, so the existing number is preserved.
+func updateInvoiceParams(tenantID int64, in InvoiceInput, items []LineItemInput, number string, id int64) gen.UpdateInvoiceParams {
+	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateInvoiceParams{
-		ClientID:         in.ClientID,
-		Date:             in.Date,
+		Number:           number,
+		ParticipantID:    in.ParticipantID,
+		PlanManagerID:    nullID(in.PlanManagerID),
+		Status:           orDefault(in.Status, "draft"),
+		IssueDate:        in.IssueDate,
 		DueDate:          in.DueDate,
-		PaymentTerms:     nz(orDefault(in.PaymentTerms, "custom")),
-		Subtotal:         sql.NullFloat64{Float64: t.subtotal, Valid: true},
-		TaxRate:          sql.NullFloat64{Float64: taxRate, Valid: true},
-		TaxRateID:        nullID(in.TaxRateID),
-		TaxAmount:        sql.NullFloat64{Float64: t.taxAmount, Valid: true},
-		Total:            sql.NullFloat64{Float64: t.total, Valid: true},
-		Notes:            nz(in.Notes),
-		Status:           nz(orDefault(in.Status, "draft")),
-		CurrencyCode:     nz(orDefault(in.CurrencyCode, "USD")),
-		BusinessSnapshot: nz(in.BusinessSnapshot),
-		ClientSnapshot:   nz(in.ClientSnapshot),
-		PayerSnapshot:    nz(in.PayerSnapshot),
+		Subtotal:         t.subtotal,
+		Tax:              t.tax,
+		Total:            t.total,
+		Notes:            nzMaybe(in.Notes),
+		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
+		ClientSnapshot:   nzMaybe(in.ClientSnapshot),
+		PayerSnapshot:    nzMaybe(in.PayerSnapshot),
 		UpdatedAt:        now,
+		TenantID:         tenantID,
 		ID:               id,
 	}
 }
 
 // UpdateStatus sets just the status column, atomically with one audit row.
-func (r *InvoicesRepo) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (r *InvoicesRepo) UpdateStatus(ctx context.Context, tenantID, id int64, status string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "status",
 		Changes: audit.Changes(map[string]any{"status": status}),
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		if e := gen.New(tx).UpdateInvoiceStatus(ctx, gen.UpdateInvoiceStatusParams{
-			Status: nz(status), UpdatedAt: now, ID: id,
+			Status: status, UpdatedAt: now, TenantID: tenantID, ID: id,
 		}); e != nil {
 			return fmt.Errorf("update status: %w", e)
 		}
@@ -433,11 +463,11 @@ func (r *InvoicesRepo) UpdateStatus(ctx context.Context, id int64, status string
 }
 
 // Delete removes an invoice (line items cascade) and writes one audit row.
-func (r *InvoicesRepo) Delete(ctx context.Context, id int64) error {
+func (r *InvoicesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
-		if e := gen.New(tx).DeleteInvoice(ctx, id); e != nil {
+		if e := gen.New(tx).DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return nil
@@ -445,14 +475,14 @@ func (r *InvoicesRepo) Delete(ctx context.Context, id int64) error {
 }
 
 // BulkDelete removes several invoices and writes one audit row. Empty is a no-op.
-func (r *InvoicesRepo) BulkDelete(ctx context.Context, ids []int64) error {
+func (r *InvoicesRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
-			if e := q.DeleteInvoice(ctx, id); e != nil {
+			if e := q.DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
 				return fmt.Errorf("delete %d: %w", id, e)
 			}
 		}
@@ -464,7 +494,7 @@ func (r *InvoicesRepo) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 // BulkUpdateStatus sets the status of several invoices and writes one audit row.
-func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, ids []int64, status string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -473,7 +503,7 @@ func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, ids []int64, status
 		now := time.Now().UTC().Format(time.RFC3339)
 		for _, id := range ids { // bounded by len(ids)
 			if e := q.UpdateInvoiceStatus(ctx, gen.UpdateInvoiceStatusParams{
-				Status: nz(status), UpdatedAt: now, ID: id,
+				Status: status, UpdatedAt: now, TenantID: tenantID, ID: id,
 			}); e != nil {
 				return fmt.Errorf("status %d: %w", id, e)
 			}
@@ -485,64 +515,14 @@ func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, ids []int64, status
 	})
 }
 
-// Duplicate creates a new draft invoice copying the source's client, tax rate,
-// notes, currency, snapshots and line items, but resetting the date to today,
-// clearing the due date and tax-rate id, and assigning a fresh invoice number.
-func (r *InvoicesRepo) Duplicate(ctx context.Context, id int64) (*Invoice, error) {
-	src, err := r.Get(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("duplicate invoice: %w", err)
+// MarkOverdueForTenant flips every 'sent' invoice of one tenant whose due date
+// has passed to 'overdue', auditing each, atomically. Returns the affected
+// invoices. This is the per-tenant sweep path (spec §8): the caller iterates
+// active tenants and skips suspended ones.
+func (r *InvoicesRepo) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]OverdueInvoice, error) {
+	if tenantID == 0 {
+		return nil, errors.New("mark overdue: tenant id required")
 	}
-	if src == nil {
-		return nil, errors.New("duplicate invoice: source not found")
-	}
-	in := InvoiceInput{
-		ClientID:         src.ClientID,
-		Date:             time.Now().UTC().Format("2006-01-02"),
-		DueDate:          "",
-		PaymentTerms:     "custom",
-		TaxRate:          src.TaxRate,
-		TaxRateID:        nil,
-		Notes:            src.Notes,
-		Status:           "draft",
-		CurrencyCode:     src.CurrencyCode,
-		BusinessSnapshot: src.BusinessSnapshot,
-		ClientSnapshot:   src.ClientSnapshot,
-		PayerSnapshot:    src.PayerSnapshot,
-	}
-	items := lineItemsToInput(src.LineItems)
-
-	var newID int64
-	err = numbering.WithRetry(ctx, 10, func() error {
-		return r.createTx(ctx, in, items, src.TaxRate, &newID)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("duplicate invoice: %w", err)
-	}
-	return r.Get(ctx, newID)
-}
-
-// lineItemsToInput converts stored line items back into writable inputs.
-func lineItemsToInput(items []*LineItem) []LineItemInput {
-	out := make([]LineItemInput, 0, len(items))
-	for i := range items { // bounded by len(items)
-		it := items[i]
-		out = append(out, LineItemInput{
-			Description:   it.Description,
-			Quantity:      it.Quantity,
-			Rate:          it.Rate,
-			Notes:         it.Notes,
-			SortOrder:     it.SortOrder,
-			CatalogItemID: it.CatalogItemID,
-			RateTierID:    it.RateTierID,
-		})
-	}
-	return out
-}
-
-// MarkOverdue flips every 'sent' invoice whose due date has passed to 'overdue',
-// auditing each, atomically. Returns the affected invoices (empty when none).
-func (r *InvoicesRepo) MarkOverdue(ctx context.Context) ([]OverdueInvoice, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mark overdue: begin: %w", err)
@@ -550,17 +530,17 @@ func (r *InvoicesRepo) MarkOverdue(ctx context.Context) ([]OverdueInvoice, error
 	defer func() { _ = tx.Rollback() }()
 
 	q := gen.New(tx)
-	rows, err := q.SelectOverdueInvoices(ctx)
+	rows, err := q.SelectOverdueInvoicesForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("mark overdue: select: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	out := make([]OverdueInvoice, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		if e := flipOverdue(ctx, tx, q, rows[i].ID, now); e != nil {
+		if e := flipOverdue(ctx, tx, q, rows[i].TenantID, rows[i].ID, now); e != nil {
 			return nil, fmt.Errorf("mark overdue: %w", e)
 		}
-		out = append(out, OverdueInvoice{ID: rows[i].ID, InvoiceNumber: rows[i].InvoiceNumber})
+		out = append(out, OverdueInvoice{ID: rows[i].ID, TenantID: rows[i].TenantID, Number: rows[i].Number})
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("mark overdue: commit: %w", err)
@@ -568,10 +548,20 @@ func (r *InvoicesRepo) MarkOverdue(ctx context.Context) ([]OverdueInvoice, error
 	return out, nil
 }
 
+// ActiveTenantIDs returns the ids of tenants whose status is 'active' (suspended
+// tenants are excluded), used by the per-tenant sweeps.
+func (r *InvoicesRepo) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("active tenant ids: %w", err)
+	}
+	return ids, nil
+}
+
 // flipOverdue sets one invoice to overdue and logs the transition.
-func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, id int64, now string) error {
+func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, tenantID, id int64, now string) error {
 	if e := q.UpdateInvoiceStatus(ctx, gen.UpdateInvoiceStatusParams{
-		Status: nz("overdue"), UpdatedAt: now, ID: id,
+		Status: "overdue", UpdatedAt: now, TenantID: tenantID, ID: id,
 	}); e != nil {
 		return e
 	}
@@ -581,16 +571,20 @@ func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, id int64, now 
 	})
 }
 
-// ClientStats returns the count and summed total of a client's invoices.
-func (r *InvoicesRepo) ClientStats(ctx context.Context, clientID int64) (*ClientStats, error) {
-	row, err := gen.New(r.db).ClientInvoiceStats(ctx, clientID)
+// ParticipantStats returns the count and summed totals of a participant's
+// invoices.
+func (r *InvoicesRepo) ParticipantStats(ctx context.Context, tenantID, participantID int64) (*ParticipantStats, error) {
+	row, err := gen.New(r.db).ParticipantInvoiceStats(ctx, gen.ParticipantInvoiceStatsParams{
+		TenantID:      tenantID,
+		ParticipantID: participantID,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("client stats: %w", err)
+		return nil, fmt.Errorf("participant stats: %w", err)
 	}
-	return &ClientStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced, TotalPaid: row.TotalPaid}, nil
+	return &ParticipantStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced, TotalPaid: row.TotalPaid}, nil
 }
 
-// snapshot builds the default snapshot JSON for an entity. metadata is parsed
+// snapshotJSON builds the default snapshot JSON for an entity. metadata is parsed
 // into an object (or {} on failure) so the stored shape is uniform.
 func snapshotJSON(name, email, phone, address, metadata string) string {
 	var meta any
@@ -606,55 +600,52 @@ func snapshotJSON(name, email, phone, address, metadata string) string {
 	return string(b)
 }
 
-// buildBusinessSnapshot reads the business profile and renders a default snapshot.
-func (r *InvoicesRepo) buildBusinessSnapshot(ctx context.Context) string {
-	bp, err := gen.New(r.db).GetBusinessProfile(ctx)
+// buildBusinessSnapshot reads the tenant's business profile and renders a default
+// snapshot.
+func (r *InvoicesRepo) buildBusinessSnapshot(ctx context.Context, tenantID int64) string {
+	bp, err := gen.New(r.db).GetBusinessProfile(ctx, tenantID)
 	if err != nil {
 		return "{}"
 	}
 	return snapshotJSON(bp.Name, bp.Email.String, bp.Phone.String, bp.Address.String, bp.Metadata.String)
 }
 
-// buildClientSnapshot reads the client and renders a default snapshot.
-func (r *InvoicesRepo) buildClientSnapshot(ctx context.Context, clientID int64) string {
-	c, err := gen.New(r.db).GetClient(ctx, clientID)
-	if err != nil {
-		return "{}"
-	}
-	return snapshotJSON(c.Name, c.Email.String, c.Phone.String, c.Address.String, c.Metadata.String)
-}
-
-// buildPayerSnapshot resolves the client's payer (if any) and renders a default
-// snapshot. Returns "{}" when the client has no payer.
-func (r *InvoicesRepo) buildPayerSnapshot(ctx context.Context, clientID int64) string {
-	q := gen.New(r.db)
-	c, err := q.GetClient(ctx, clientID)
-	if err != nil || !c.PayerID.Valid {
-		return "{}"
-	}
-	p, err := q.GetPayer(ctx, c.PayerID.Int64)
+// buildParticipantSnapshot reads the participant and renders a default snapshot.
+func (r *InvoicesRepo) buildParticipantSnapshot(ctx context.Context, tenantID, participantID int64) string {
+	p, err := gen.New(r.db).GetParticipant(ctx, gen.GetParticipantParams{TenantID: tenantID, ID: participantID})
 	if err != nil {
 		return "{}"
 	}
 	return snapshotJSON(p.Name, p.Email.String, p.Phone.String, p.Address.String, p.Metadata.String)
 }
 
+// buildPlanManagerSnapshot renders a default snapshot for the given plan manager,
+// or "{}" when none is set.
+func (r *InvoicesRepo) buildPlanManagerSnapshot(ctx context.Context, tenantID int64, planManagerID *int64) string {
+	if planManagerID == nil {
+		return "{}"
+	}
+	pm, err := gen.New(r.db).GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, ID: *planManagerID})
+	if err != nil {
+		return "{}"
+	}
+	return snapshotJSON(pm.Name, pm.Email.String, pm.Phone.String, pm.Address.String, pm.Metadata.String)
+}
+
 // invoiceFields is the shared, flat shape of every invoices join row (List,
-// ListByStatus, ListClientInvoices and Get all produce identical structs under
-// distinct gen type names, each adding ClientName).
+// ListByStatus, ListParticipantInvoices and Get all produce identical structs
+// under distinct gen type names, each adding ParticipantName).
 type invoiceFields struct {
 	id                                  int64
-	uuid, invoiceNumber                 string
-	clientID                            int64
-	date, dueDate                       string
-	paymentTerms                        sql.NullString
-	subtotal, taxRate                   sql.NullFloat64
-	taxRateID                           sql.NullInt64
-	taxAmount, total                    sql.NullFloat64
-	notes, status, currencyCode         sql.NullString
+	uuid, number                        string
+	participantID                       int64
+	planManagerID                       sql.NullInt64
+	status, issueDate, dueDate          string
+	subtotal, tax, total                float64
+	notes                               sql.NullString
 	businessSnap, clientSnap, payerSnap sql.NullString
 	createdAt, updatedAt                string
-	clientName                          sql.NullString
+	participantName                     sql.NullString
 }
 
 // toInvoiceFromRow builds a domain Invoice (without line items) from the
@@ -663,20 +654,17 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 	return &Invoice{
 		ID:               f.id,
 		UUID:             f.uuid,
-		InvoiceNumber:    f.invoiceNumber,
-		ClientID:         f.clientID,
-		ClientName:       f.clientName.String,
-		Date:             f.date,
+		Number:           f.number,
+		ParticipantID:    f.participantID,
+		ParticipantName:  f.participantName.String,
+		PlanManagerID:    ptrID(f.planManagerID),
+		Status:           f.status,
+		IssueDate:        f.issueDate,
 		DueDate:          f.dueDate,
-		PaymentTerms:     f.paymentTerms.String,
-		Subtotal:         f.subtotal.Float64,
-		TaxRate:          f.taxRate.Float64,
-		TaxRateID:        ptrID(f.taxRateID),
-		TaxAmount:        f.taxAmount.Float64,
-		Total:            f.total.Float64,
+		Subtotal:         f.subtotal,
+		Tax:              f.tax,
+		Total:            f.total,
 		Notes:            f.notes.String,
-		Status:           f.status.String,
-		CurrencyCode:     f.currencyCode.String,
 		BusinessSnapshot: f.businessSnap.String,
 		ClientSnapshot:   f.clientSnap.String,
 		PayerSnapshot:    f.payerSnap.String,
@@ -688,49 +676,45 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 
 func invoiceFieldsFromGet(r gen.GetInvoiceRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, invoiceNumber: r.InvoiceNumber, clientID: r.ClientID,
-		date: r.Date, dueDate: r.DueDate, paymentTerms: r.PaymentTerms,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
 func invoiceFieldsFromList(r gen.ListInvoicesRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, invoiceNumber: r.InvoiceNumber, clientID: r.ClientID,
-		date: r.Date, dueDate: r.DueDate, paymentTerms: r.PaymentTerms,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
 func invoiceFieldsFromStatus(r gen.ListInvoicesByStatusRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, invoiceNumber: r.InvoiceNumber, clientID: r.ClientID,
-		date: r.Date, dueDate: r.DueDate, paymentTerms: r.PaymentTerms,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
-func invoiceFieldsFromClient(r gen.ListClientInvoicesRow) invoiceFields {
+func invoiceFieldsFromParticipant(r gen.ListParticipantInvoicesRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, invoiceNumber: r.InvoiceNumber, clientID: r.ClientID,
-		date: r.Date, dueDate: r.DueDate, paymentTerms: r.PaymentTerms,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
@@ -746,16 +730,20 @@ func mapLineItems(rows []gen.LineItem) []*LineItem {
 // toLineItem maps one generated line item to the domain shape.
 func toLineItem(row gen.LineItem) *LineItem {
 	return &LineItem{
-		ID:            row.ID,
-		UUID:          row.Uuid,
-		Description:   row.Description,
-		Quantity:      row.Quantity,
-		Rate:          row.Rate,
-		Amount:        row.Amount,
-		Notes:         row.Notes.String,
-		SortOrder:     row.SortOrder.Int64,
-		CatalogItemID: ptrID(row.CatalogItemID),
-		RateTierID:    ptrID(row.RateTierID),
+		ID:               row.ID,
+		UUID:             row.Uuid,
+		SupportItemID:    ptrID(row.SupportItemID),
+		CustomItemID:     ptrID(row.CustomItemID),
+		CatalogVersionID: ptrID(row.CatalogVersionID),
+		Code:             row.Code.String,
+		Description:      row.Description,
+		ServiceDate:      row.ServiceDate.String,
+		Unit:             row.Unit.String,
+		Quantity:         row.Quantity,
+		UnitPrice:        row.UnitPrice,
+		GstFree:          row.GstFree == 1,
+		LineTotal:        row.LineTotal,
+		SortOrder:        row.SortOrder.Int64,
 	}
 }
 

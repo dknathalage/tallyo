@@ -7,20 +7,21 @@ import (
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
-// ExportHandler serves CSV and Excel exports of the catalog, invoices, and
-// estimates. All routes are auth-gated by the server's RequireAuth group.
+// ExportHandler serves CSV and Excel exports of the tenant's custom items,
+// invoices, and estimates. All routes are auth-gated by the server's RequireAuth
+// group.
 type ExportHandler struct {
-	catalog   *service.CatalogService
-	invoices  *service.InvoiceService
-	estimates *service.EstimateService
+	customItems *service.CustomItemService
+	invoices    *service.InvoiceService
+	estimates   *service.EstimateService
 }
 
 // NewExportHandler constructs the handler. A nil service is a programmer error.
-func NewExportHandler(catalog *service.CatalogService, invoices *service.InvoiceService, estimates *service.EstimateService) *ExportHandler {
-	if catalog == nil || invoices == nil || estimates == nil {
+func NewExportHandler(customItems *service.CustomItemService, invoices *service.InvoiceService, estimates *service.EstimateService) *ExportHandler {
+	if customItems == nil || invoices == nil || estimates == nil {
 		panic("NewExportHandler: nil service")
 	}
-	return &ExportHandler{catalog: catalog, invoices: invoices, estimates: estimates}
+	return &ExportHandler{customItems: customItems, invoices: invoices, estimates: estimates}
 }
 
 // writeDownload sets download headers and writes the body. A write error after
@@ -32,9 +33,10 @@ func writeDownload(w http.ResponseWriter, contentType, filename string, body []b
 	_, _ = w.Write(body)
 }
 
-// Catalog exports the catalog as CSV (default) or XLSX when ?format=xlsx.
+// Catalog exports the tenant's custom items as CSV (default) or XLSX when
+// ?format=xlsx.
 func (h *ExportHandler) Catalog(w http.ResponseWriter, r *http.Request) {
-	items, err := h.catalog.List(r.Context())
+	items, err := h.customItems.List(r.Context())
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return

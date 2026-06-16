@@ -1,5 +1,11 @@
 package repository
 
+// NOTE (J4): rewritten to the NDIS estimate domain (spec §4.2), parallel to the
+// invoice rewrite. Same design decisions apply: `tax` is supplied on the header
+// (computed upstream by J10); this repo only sums line totals and rounds at each
+// boundary; no NDIS price-cap / plan-window validation here (J10). Per-tenant
+// numbering is allocated inline via gen.MaxEstimateNumberLike inside the tx.
+
 import (
 	"context"
 	"database/sql"
@@ -21,65 +27,45 @@ var ErrNotAccepted = errors.New("only accepted estimates can be converted")
 // a linked invoice.
 var ErrAlreadyConverted = errors.New("estimate already converted")
 
-// Estimate is the domain view of an estimate with its resolved client name and
-// embedded line items. Mirrors Invoice with estimate-specific deltas:
-// valid_until replaces due_date, there is no payment_terms, and an optional
-// converted_invoice_id records the invoice produced by Convert.
+// Estimate is the domain view of an estimate with its resolved participant name
+// and embedded line items. Mirrors Invoice with estimate-specific deltas:
+// valid_until replaces due_date, and an optional converted_invoice_id records
+// the invoice produced by Convert.
 type Estimate struct {
-	ID                 int64               `json:"id"`
-	UUID               string              `json:"uuid"`
-	EstimateNumber     string              `json:"estimateNumber"`
-	ClientID           int64               `json:"clientId"`
-	ClientName         string              `json:"clientName"`
-	Date               string              `json:"date"`
-	ValidUntil         string              `json:"validUntil"`
-	Subtotal           float64             `json:"subtotal"`
-	TaxRate            float64             `json:"taxRate"`
-	TaxRateID          *int64              `json:"taxRateId"`
-	TaxAmount          float64             `json:"taxAmount"`
-	Total              float64             `json:"total"`
-	Notes              string              `json:"notes"`
-	Status             string              `json:"status"`
-	CurrencyCode       string              `json:"currencyCode"`
-	ConvertedInvoiceID *int64              `json:"convertedInvoiceId"`
-	BusinessSnapshot   string              `json:"businessSnapshot"`
-	ClientSnapshot     string              `json:"clientSnapshot"`
-	PayerSnapshot      string              `json:"payerSnapshot"`
-	CreatedAt          string              `json:"createdAt"`
-	UpdatedAt          string              `json:"updatedAt"`
-	LineItems          []*EstimateLineItem `json:"lineItems"`
+	ID                 int64       `json:"id"`
+	UUID               string      `json:"uuid"`
+	Number             string      `json:"number"`
+	ParticipantID      *int64      `json:"participantId"`
+	ParticipantName    string      `json:"participantName"`
+	PlanManagerID      *int64      `json:"planManagerId"`
+	Status             string      `json:"status"`
+	IssueDate          string      `json:"issueDate"`
+	ValidUntil         string      `json:"validUntil"`
+	Subtotal           float64     `json:"subtotal"`
+	Tax                float64     `json:"tax"`
+	Total              float64     `json:"total"`
+	Notes              string      `json:"notes"`
+	ConvertedInvoiceID *int64      `json:"convertedInvoiceId"`
+	BusinessSnapshot   string      `json:"businessSnapshot"`
+	ClientSnapshot     string      `json:"participantSnapshot"`
+	PayerSnapshot      string      `json:"planManagerSnapshot"`
+	CreatedAt          string      `json:"createdAt"`
+	UpdatedAt          string      `json:"updatedAt"`
+	LineItems          []*LineItem `json:"lineItems"`
 }
 
-// EstimateLineItem is the domain view of a row in estimate_line_items; it has
-// the same shape as LineItem.
-type EstimateLineItem struct {
-	ID            int64   `json:"id"`
-	UUID          string  `json:"uuid"`
-	Description   string  `json:"description"`
-	Quantity      float64 `json:"quantity"`
-	Rate          float64 `json:"rate"`
-	Amount        float64 `json:"amount"`
-	Notes         string  `json:"notes"`
-	SortOrder     int64   `json:"sortOrder"`
-	CatalogItemID *int64  `json:"catalogItemId"`
-	RateTierID    *int64  `json:"rateTierId"`
-}
-
-// EstimateInput is the writable subset of an estimate header. Snapshot fields,
-// when non-empty, are stored verbatim; when empty, defaults are built from the
-// business profile, client and payer.
+// EstimateInput is the writable subset of an estimate header.
 type EstimateInput struct {
-	ClientID         int64   `json:"clientId"`
-	Date             string  `json:"date"`
-	ValidUntil       string  `json:"validUntil"`
-	TaxRate          float64 `json:"taxRate"`
-	TaxRateID        *int64  `json:"taxRateId"`
-	Notes            string  `json:"notes"`
+	ParticipantID    int64   `json:"participantId"`
+	PlanManagerID    *int64  `json:"planManagerId"`
 	Status           string  `json:"status"`
-	CurrencyCode     string  `json:"currencyCode"`
+	IssueDate        string  `json:"issueDate"`
+	ValidUntil       string  `json:"validUntil"`
+	Tax              float64 `json:"tax"`
+	Notes            string  `json:"notes"`
 	BusinessSnapshot string  `json:"businessSnapshot"`
-	ClientSnapshot   string  `json:"clientSnapshot"`
-	PayerSnapshot    string  `json:"payerSnapshot"`
+	ClientSnapshot   string  `json:"participantSnapshot"`
+	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
 // ConvertResult identifies the invoice produced by Convert.
@@ -89,13 +75,11 @@ type ConvertResult struct {
 	EstimateNumber string `json:"estimateNumber"`
 }
 
-// EstimatesRepo reads and writes the estimates + estimate_line_items tables.
-// Creates and duplicates allocate an estimate number, and Convert allocates an
-// invoice number, all via the numbering package inside retried transactions;
-// every mutation is audited.
+// EstimatesRepo reads and writes the estimates + estimate_line_items tables
+// (tenant-scoped). It reuses InvoicesRepo for the shared snapshot builders.
 type EstimatesRepo struct {
 	db   *sql.DB
-	snap *InvoicesRepo // reused for the shared snapshot builders
+	snap *InvoicesRepo
 }
 
 // NewEstimates constructs a repository. A nil db is a programmer error.
@@ -106,75 +90,63 @@ func NewEstimates(db *sql.DB) *EstimatesRepo {
 	return &EstimatesRepo{db: db, snap: NewInvoices(db)}
 }
 
-// resolveTaxRate returns the effective tax-rate percentage: in.TaxRate when set,
-// else the referenced tax_rates.rate when in.TaxRateID is present and readable.
-func (r *EstimatesRepo) resolveTaxRate(ctx context.Context, in EstimateInput) float64 {
-	if in.TaxRate != 0 || in.TaxRateID == nil {
-		return in.TaxRate
-	}
-	tr, err := gen.New(r.db).GetTaxRate(ctx, *in.TaxRateID)
-	if err != nil {
-		return in.TaxRate
-	}
-	return tr.Rate
-}
-
 // fillSnapshots fills any empty snapshot field on in with a default built from
-// the business profile, client and payer.
-func (r *EstimatesRepo) fillSnapshots(ctx context.Context, in *EstimateInput) {
+// the business profile, participant and plan manager.
+func (r *EstimatesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *EstimateInput) {
 	if in.BusinessSnapshot == "" {
-		in.BusinessSnapshot = r.snap.buildBusinessSnapshot(ctx)
+		in.BusinessSnapshot = r.snap.buildBusinessSnapshot(ctx, tenantID)
 	}
 	if in.ClientSnapshot == "" {
-		in.ClientSnapshot = r.snap.buildClientSnapshot(ctx, in.ClientID)
+		in.ClientSnapshot = r.snap.buildParticipantSnapshot(ctx, tenantID, in.ParticipantID)
 	}
 	if in.PayerSnapshot == "" {
-		in.PayerSnapshot = r.snap.buildPayerSnapshot(ctx, in.ClientID)
+		in.PayerSnapshot = r.snap.buildPlanManagerSnapshot(ctx, tenantID, in.PlanManagerID)
 	}
 }
 
 // Create inserts an estimate plus its line items inside one numbering-retried
-// transaction, audits the create, and re-reads the row. ClientID and at least
-// one line item are required.
-func (r *EstimatesRepo) Create(ctx context.Context, in EstimateInput, items []LineItemInput) (*Estimate, error) {
-	if in.ClientID == 0 {
-		return nil, errors.New("create estimate: client is required")
+// transaction, audits the create, and re-reads the row. ParticipantID and at
+// least one line item are required.
+func (r *EstimatesRepo) Create(ctx context.Context, tenantID int64, in EstimateInput, items []LineItemInput) (*Estimate, error) {
+	if tenantID == 0 {
+		return nil, errors.New("create estimate: tenant id required")
+	}
+	if in.ParticipantID == 0 {
+		return nil, errors.New("create estimate: participant is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("create estimate: at least one line item is required")
 	}
-	taxRate := r.resolveTaxRate(ctx, in)
-	r.fillSnapshots(ctx, &in)
+	r.fillSnapshots(ctx, tenantID, &in)
 
 	var newID int64
 	err := numbering.WithRetry(ctx, 10, func() error {
-		return r.createTx(ctx, in, items, taxRate, &newID)
+		return r.createTx(ctx, tenantID, in, items, &newID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create estimate: %w", err)
 	}
-	return r.Get(ctx, newID)
+	return r.Get(ctx, tenantID, newID)
 }
 
-// createTx runs a single create attempt: it generates the number, inserts the
-// header + items, and logs the audit row, all in one transaction.
-func (r *EstimatesRepo) createTx(ctx context.Context, in EstimateInput, items []LineItemInput, taxRate float64, newID *int64) error {
+// createTx runs a single create attempt in one transaction.
+func (r *EstimatesRepo) createTx(ctx context.Context, tenantID int64, in EstimateInput, items []LineItemInput, newID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	num, err := numbering.Next(ctx, tx, numbering.Estimate)
-	if err != nil {
-		return err
-	}
 	q := gen.New(tx)
-	est, err := q.CreateEstimate(ctx, estimateCreateParams(in, items, taxRate, num))
+	num, err := nextEstimateNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}
-	if err := insertEstimateItems(ctx, q, est.ID, items); err != nil {
+	est, err := q.CreateEstimate(ctx, createEstimateParams(tenantID, in, items, num))
+	if err != nil {
+		return err
+	}
+	if err := insertEstimateItems(ctx, q, tenantID, est.ID, items); err != nil {
 		return err
 	}
 	if err := audit.Log(ctx, tx, audit.Entry{
@@ -190,48 +162,66 @@ func (r *EstimatesRepo) createTx(ctx context.Context, in EstimateInput, items []
 	return nil
 }
 
-// estimateCreateParams builds the insert params, applying defaults (draft / USD)
-// and computing totals from the line items at the given percentage tax rate.
-func estimateCreateParams(in EstimateInput, items []LineItemInput, taxRate float64, num string) gen.CreateEstimateParams {
-	t := computeTotals(items, taxRate)
+// nextEstimateNumber allocates the next per-tenant estimate number ("EST-NNNN").
+func nextEstimateNumber(ctx context.Context, q *gen.Queries, tenantID int64) (string, error) {
+	const prefix = "EST-"
+	max, err := q.MaxEstimateNumberLike(ctx, gen.MaxEstimateNumberLikeParams{
+		PrefixLen: int64(len(prefix)),
+		TenantID:  tenantID,
+		Pattern:   prefix + "%",
+	})
+	if err != nil {
+		return "", fmt.Errorf("next estimate number: %w", err)
+	}
+	return numbering.Format(prefix, max), nil
+}
+
+// createEstimateParams builds the insert params, applying defaults and totals.
+func createEstimateParams(tenantID int64, in EstimateInput, items []LineItemInput, num string) gen.CreateEstimateParams {
+	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateEstimateParams{
-		Uuid:             uuid.NewString(),
-		EstimateNumber:   num,
-		ClientID:         nzInt(in.ClientID),
-		Date:             in.Date,
-		ValidUntil:       in.ValidUntil,
-		Subtotal:         sql.NullFloat64{Float64: t.subtotal, Valid: true},
-		TaxRate:          sql.NullFloat64{Float64: taxRate, Valid: true},
-		TaxRateID:        nullID(in.TaxRateID),
-		TaxAmount:        sql.NullFloat64{Float64: t.taxAmount, Valid: true},
-		Total:            sql.NullFloat64{Float64: t.total, Valid: true},
-		Notes:            nz(in.Notes),
-		Status:           nz(orDefault(in.Status, "draft")),
-		CurrencyCode:     nz(orDefault(in.CurrencyCode, "USD")),
-		BusinessSnapshot: nz(in.BusinessSnapshot),
-		ClientSnapshot:   nz(in.ClientSnapshot),
-		PayerSnapshot:    nz(in.PayerSnapshot),
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		Uuid:               uuid.NewString(),
+		TenantID:           tenantID,
+		Number:             num,
+		ParticipantID:      nullID(&in.ParticipantID),
+		PlanManagerID:      nullID(in.PlanManagerID),
+		Status:             orDefault(in.Status, "draft"),
+		IssueDate:          in.IssueDate,
+		ValidUntil:         in.ValidUntil,
+		Subtotal:           t.subtotal,
+		Tax:                t.tax,
+		Total:              t.total,
+		Notes:              nzMaybe(in.Notes),
+		ConvertedInvoiceID: sql.NullInt64{},
+		BusinessSnapshot:   nzMaybe(in.BusinessSnapshot),
+		ClientSnapshot:     nzMaybe(in.ClientSnapshot),
+		PayerSnapshot:      nzMaybe(in.PayerSnapshot),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 }
 
-// insertEstimateItems writes each line item with its computed amount.
-func insertEstimateItems(ctx context.Context, q *gen.Queries, estimateID int64, items []LineItemInput) error {
+// insertEstimateItems writes each line item with its computed total.
+func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimateID int64, items []LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
-			Uuid:          uuid.NewString(),
-			EstimateID:    estimateID,
-			Description:   it.Description,
-			Quantity:      it.Quantity,
-			Rate:          it.Rate,
-			Amount:        round2(it.Quantity * it.Rate),
-			Notes:         nz(it.Notes),
-			SortOrder:     nzInt(it.SortOrder),
-			CatalogItemID: nullID(it.CatalogItemID),
-			RateTierID:    nullID(it.RateTierID),
+			Uuid:             uuid.NewString(),
+			TenantID:         tenantID,
+			EstimateID:       estimateID,
+			SupportItemID:    nullID(it.SupportItemID),
+			CustomItemID:     nullID(it.CustomItemID),
+			CatalogVersionID: nullID(it.CatalogVersionID),
+			Code:             nzMaybe(it.Code),
+			Description:      it.Description,
+			ServiceDate:      nzMaybe(it.ServiceDate),
+			Unit:             nzMaybe(it.Unit),
+			Quantity:         it.Quantity,
+			UnitPrice:        it.UnitPrice,
+			GstFree:          b2i(it.GstFree),
+			LineTotal:        round2(it.Quantity * it.UnitPrice),
+			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("insert estimate line item %d: %w", i, err)
@@ -240,11 +230,11 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, estimateID int64, 
 	return nil
 }
 
-// Get returns the estimate (with client name and line items), or (nil, nil)
+// Get returns the estimate (with participant name and line items), or (nil, nil)
 // when absent.
-func (r *EstimatesRepo) Get(ctx context.Context, id int64) (*Estimate, error) {
+func (r *EstimatesRepo) Get(ctx context.Context, tenantID, id int64) (*Estimate, error) {
 	q := gen.New(r.db)
-	row, err := q.GetEstimate(ctx, id)
+	row, err := q.GetEstimate(ctx, gen.GetEstimateParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -252,7 +242,7 @@ func (r *EstimatesRepo) Get(ctx context.Context, id int64) (*Estimate, error) {
 		return nil, fmt.Errorf("get estimate: %w", err)
 	}
 	est := toEstimateFromRow(estimateFieldsFromGet(row))
-	rows, err := q.ListEstimateLineItems(ctx, id)
+	rows, err := q.ListEstimateLineItems(ctx, gen.ListEstimateLineItemsParams{TenantID: tenantID, EstimateID: id})
 	if err != nil {
 		return nil, fmt.Errorf("list estimate line items: %w", err)
 	}
@@ -260,9 +250,9 @@ func (r *EstimatesRepo) Get(ctx context.Context, id int64) (*Estimate, error) {
 	return est, nil
 }
 
-// List returns every estimate (header only, no line items), newest first.
-func (r *EstimatesRepo) List(ctx context.Context) ([]*Estimate, error) {
-	rows, err := gen.New(r.db).ListEstimates(ctx)
+// List returns every estimate for the tenant (header only), newest first.
+func (r *EstimatesRepo) List(ctx context.Context, tenantID int64) ([]*Estimate, error) {
+	rows, err := gen.New(r.db).ListEstimates(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list estimates: %w", err)
 	}
@@ -273,9 +263,12 @@ func (r *EstimatesRepo) List(ctx context.Context) ([]*Estimate, error) {
 	return out, nil
 }
 
-// ListByStatus returns estimates with the given status (header only).
-func (r *EstimatesRepo) ListByStatus(ctx context.Context, status string) ([]*Estimate, error) {
-	rows, err := gen.New(r.db).ListEstimatesByStatus(ctx, nz(status))
+// ListByStatus returns the tenant's estimates with the given status.
+func (r *EstimatesRepo) ListByStatus(ctx context.Context, tenantID int64, status string) ([]*Estimate, error) {
+	rows, err := gen.New(r.db).ListEstimatesByStatus(ctx, gen.ListEstimatesByStatusParams{
+		TenantID: tenantID,
+		Status:   status,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list estimates by status: %w", err)
 	}
@@ -286,30 +279,33 @@ func (r *EstimatesRepo) ListByStatus(ctx context.Context, status string) ([]*Est
 	return out, nil
 }
 
-// ListClientEstimates returns one client's estimates (header only).
-func (r *EstimatesRepo) ListClientEstimates(ctx context.Context, clientID int64) ([]*Estimate, error) {
-	rows, err := gen.New(r.db).ListClientEstimates(ctx, nzInt(clientID))
+// ListParticipantEstimates returns one participant's estimates (header only).
+func (r *EstimatesRepo) ListParticipantEstimates(ctx context.Context, tenantID, participantID int64) ([]*Estimate, error) {
+	rows, err := gen.New(r.db).ListParticipantEstimates(ctx, gen.ListParticipantEstimatesParams{
+		TenantID:      tenantID,
+		ParticipantID: sql.NullInt64{Int64: participantID, Valid: true},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("list client estimates: %w", err)
+		return nil, fmt.Errorf("list participant estimates: %w", err)
 	}
 	out := make([]*Estimate, 0, len(rows))
 	for i := range rows {
-		out = append(out, toEstimateFromRow(estimateFieldsFromClient(rows[i])))
+		out = append(out, toEstimateFromRow(estimateFieldsFromParticipant(rows[i])))
 	}
 	return out, nil
 }
 
-// Update rewrites the header (recomputing totals/tax) and replaces all line
-// items, atomically with one audit row. Empty snapshot inputs keep the existing
-// stored snapshots. Returns (nil, nil) when the estimate does not exist.
-func (r *EstimatesRepo) Update(ctx context.Context, id int64, in EstimateInput, items []LineItemInput) (*Estimate, error) {
-	if in.ClientID == 0 {
-		return nil, errors.New("update estimate: client is required")
+// Update rewrites the header (recomputing totals) and replaces all line items,
+// atomically with one audit row. Empty snapshot inputs keep the existing stored
+// snapshots. Returns (nil, nil) when the estimate does not exist.
+func (r *EstimatesRepo) Update(ctx context.Context, tenantID, id int64, in EstimateInput, items []LineItemInput) (*Estimate, error) {
+	if in.ParticipantID == 0 {
+		return nil, errors.New("update estimate: participant is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("update estimate: at least one line item is required")
 	}
-	existing, err := gen.New(r.db).GetEstimate(ctx, id)
+	existing, err := gen.New(r.db).GetEstimate(ctx, gen.GetEstimateParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -317,24 +313,23 @@ func (r *EstimatesRepo) Update(ctx context.Context, id int64, in EstimateInput, 
 		return nil, fmt.Errorf("update estimate: load existing: %w", err)
 	}
 	keepEstimateSnapshots(&in, existing)
-	taxRate := r.resolveTaxRate(ctx, in)
 
 	err = audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "estimate", EntityID: id, Action: "update",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		if _, e := q.UpdateEstimate(ctx, estimateUpdateParams(in, items, taxRate, id)); e != nil {
+		if _, e := q.UpdateEstimate(ctx, updateEstimateParams(tenantID, in, items, existing.Number, id)); e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		if e := q.DeleteEstimateLineItemsForEstimate(ctx, id); e != nil {
+		if e := q.DeleteEstimateLineItemsForEstimate(ctx, gen.DeleteEstimateLineItemsForEstimateParams{TenantID: tenantID, EstimateID: id}); e != nil {
 			return fmt.Errorf("clear items: %w", e)
 		}
-		return insertEstimateItems(ctx, q, id, items)
+		return insertEstimateItems(ctx, q, tenantID, id, items)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("update estimate: %w", err)
 	}
-	return r.Get(ctx, id)
+	return r.Get(ctx, tenantID, id)
 }
 
 // keepEstimateSnapshots preserves stored snapshots for any input left empty.
@@ -350,39 +345,39 @@ func keepEstimateSnapshots(in *EstimateInput, existing gen.GetEstimateRow) {
 	}
 }
 
-// estimateUpdateParams builds the update params, recomputing totals from items.
-func estimateUpdateParams(in EstimateInput, items []LineItemInput, taxRate float64, id int64) gen.UpdateEstimateParams {
-	t := computeTotals(items, taxRate)
+// updateEstimateParams builds the update params; the number is immutable.
+func updateEstimateParams(tenantID int64, in EstimateInput, items []LineItemInput, number string, id int64) gen.UpdateEstimateParams {
+	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateEstimateParams{
-		ClientID:         nzInt(in.ClientID),
-		Date:             in.Date,
+		Number:           number,
+		ParticipantID:    nullID(&in.ParticipantID),
+		PlanManagerID:    nullID(in.PlanManagerID),
+		Status:           orDefault(in.Status, "draft"),
+		IssueDate:        in.IssueDate,
 		ValidUntil:       in.ValidUntil,
-		Subtotal:         sql.NullFloat64{Float64: t.subtotal, Valid: true},
-		TaxRate:          sql.NullFloat64{Float64: taxRate, Valid: true},
-		TaxRateID:        nullID(in.TaxRateID),
-		TaxAmount:        sql.NullFloat64{Float64: t.taxAmount, Valid: true},
-		Total:            sql.NullFloat64{Float64: t.total, Valid: true},
-		Notes:            nz(in.Notes),
-		Status:           nz(orDefault(in.Status, "draft")),
-		CurrencyCode:     nz(orDefault(in.CurrencyCode, "USD")),
-		BusinessSnapshot: nz(in.BusinessSnapshot),
-		ClientSnapshot:   nz(in.ClientSnapshot),
-		PayerSnapshot:    nz(in.PayerSnapshot),
+		Subtotal:         t.subtotal,
+		Tax:              t.tax,
+		Total:            t.total,
+		Notes:            nzMaybe(in.Notes),
+		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
+		ClientSnapshot:   nzMaybe(in.ClientSnapshot),
+		PayerSnapshot:    nzMaybe(in.PayerSnapshot),
 		UpdatedAt:        now,
+		TenantID:         tenantID,
 		ID:               id,
 	}
 }
 
 // UpdateStatus sets just the status column, atomically with one audit row.
-func (r *EstimatesRepo) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (r *EstimatesRepo) UpdateStatus(ctx context.Context, tenantID, id int64, status string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "estimate", EntityID: id, Action: "status",
 		Changes: audit.Changes(map[string]any{"status": status}),
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		if e := gen.New(tx).UpdateEstimateStatus(ctx, gen.UpdateEstimateStatusParams{
-			Status: nz(status), UpdatedAt: now, ID: id,
+			Status: status, UpdatedAt: now, TenantID: tenantID, ID: id,
 		}); e != nil {
 			return fmt.Errorf("update status: %w", e)
 		}
@@ -391,11 +386,11 @@ func (r *EstimatesRepo) UpdateStatus(ctx context.Context, id int64, status strin
 }
 
 // Delete removes an estimate (line items cascade) and writes one audit row.
-func (r *EstimatesRepo) Delete(ctx context.Context, id int64) error {
+func (r *EstimatesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "estimate", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
-		if e := gen.New(tx).DeleteEstimate(ctx, id); e != nil {
+		if e := gen.New(tx).DeleteEstimate(ctx, gen.DeleteEstimateParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return nil
@@ -403,14 +398,14 @@ func (r *EstimatesRepo) Delete(ctx context.Context, id int64) error {
 }
 
 // BulkDelete removes several estimates and writes one audit row. Empty is a no-op.
-func (r *EstimatesRepo) BulkDelete(ctx context.Context, ids []int64) error {
+func (r *EstimatesRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
-			if e := q.DeleteEstimate(ctx, id); e != nil {
+			if e := q.DeleteEstimate(ctx, gen.DeleteEstimateParams{TenantID: tenantID, ID: id}); e != nil {
 				return fmt.Errorf("delete %d: %w", id, e)
 			}
 		}
@@ -422,7 +417,7 @@ func (r *EstimatesRepo) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 // BulkUpdateStatus sets the status of several estimates and writes one audit row.
-func (r *EstimatesRepo) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+func (r *EstimatesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, ids []int64, status string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -431,7 +426,7 @@ func (r *EstimatesRepo) BulkUpdateStatus(ctx context.Context, ids []int64, statu
 		now := time.Now().UTC().Format(time.RFC3339)
 		for _, id := range ids { // bounded by len(ids)
 			if e := q.UpdateEstimateStatus(ctx, gen.UpdateEstimateStatusParams{
-				Status: nz(status), UpdatedAt: now, ID: id,
+				Status: status, UpdatedAt: now, TenantID: tenantID, ID: id,
 			}); e != nil {
 				return fmt.Errorf("status %d: %w", id, e)
 			}
@@ -443,58 +438,43 @@ func (r *EstimatesRepo) BulkUpdateStatus(ctx context.Context, ids []int64, statu
 	})
 }
 
-// Duplicate creates a new draft estimate copying the source's client, tax rate,
-// notes, currency, snapshots and line items, but resetting the date to today,
-// clearing the valid-until and tax-rate id, and assigning a fresh number.
-func (r *EstimatesRepo) Duplicate(ctx context.Context, id int64) (*Estimate, error) {
-	src, err := r.Get(ctx, id)
+// Duplicate creates a new draft estimate copying the source's participant, plan
+// manager, tax, notes, snapshots and line items, resetting the date to today,
+// clearing valid-until, and assigning a fresh number.
+func (r *EstimatesRepo) Duplicate(ctx context.Context, tenantID, id int64) (*Estimate, error) {
+	src, err := r.Get(ctx, tenantID, id)
 	if err != nil {
 		return nil, fmt.Errorf("duplicate estimate: %w", err)
 	}
 	if src == nil {
 		return nil, errors.New("duplicate estimate: source not found")
 	}
+	var participantID int64
+	if src.ParticipantID != nil {
+		participantID = *src.ParticipantID
+	}
 	in := EstimateInput{
-		ClientID:         src.ClientID,
-		Date:             time.Now().UTC().Format("2006-01-02"),
-		ValidUntil:       "",
-		TaxRate:          src.TaxRate,
-		TaxRateID:        nil,
-		Notes:            src.Notes,
+		ParticipantID:    participantID,
+		PlanManagerID:    src.PlanManagerID,
 		Status:           "draft",
-		CurrencyCode:     src.CurrencyCode,
+		IssueDate:        time.Now().UTC().Format("2006-01-02"),
+		ValidUntil:       "",
+		Tax:              src.Tax,
+		Notes:            src.Notes,
 		BusinessSnapshot: src.BusinessSnapshot,
 		ClientSnapshot:   src.ClientSnapshot,
 		PayerSnapshot:    src.PayerSnapshot,
 	}
-	items := estimateLineItemsToInput(src.LineItems)
+	items := lineItemsToInput(src.LineItems)
 
 	var newID int64
 	err = numbering.WithRetry(ctx, 10, func() error {
-		return r.createTx(ctx, in, items, src.TaxRate, &newID)
+		return r.createTx(ctx, tenantID, in, items, &newID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("duplicate estimate: %w", err)
 	}
-	return r.Get(ctx, newID)
-}
-
-// estimateLineItemsToInput converts stored line items back into writable inputs.
-func estimateLineItemsToInput(items []*EstimateLineItem) []LineItemInput {
-	out := make([]LineItemInput, 0, len(items))
-	for i := range items { // bounded by len(items)
-		it := items[i]
-		out = append(out, LineItemInput{
-			Description:   it.Description,
-			Quantity:      it.Quantity,
-			Rate:          it.Rate,
-			Notes:         it.Notes,
-			SortOrder:     it.SortOrder,
-			CatalogItemID: it.CatalogItemID,
-			RateTierID:    it.RateTierID,
-		})
-	}
-	return out
+	return r.Get(ctx, tenantID, newID)
 }
 
 // Convert turns an accepted estimate into a draft invoice (copying header and
@@ -502,8 +482,8 @@ func estimateLineItemsToInput(items []*EstimateLineItem) []LineItemInput {
 // the new invoice and flips it to 'converted'. Returns (nil, nil) when the
 // estimate is missing, ErrNotAccepted unless status is 'accepted', and
 // ErrAlreadyConverted when a linked invoice already exists.
-func (r *EstimatesRepo) Convert(ctx context.Context, estimateID int64) (*ConvertResult, error) {
-	est, err := r.Get(ctx, estimateID)
+func (r *EstimatesRepo) Convert(ctx context.Context, tenantID, estimateID int64) (*ConvertResult, error) {
+	est, err := r.Get(ctx, tenantID, estimateID)
 	if err != nil {
 		return nil, fmt.Errorf("convert estimate: %w", err)
 	}
@@ -520,38 +500,37 @@ func (r *EstimatesRepo) Convert(ctx context.Context, estimateID int64) (*Convert
 	var invID int64
 	var invNum string
 	err = numbering.WithRetry(ctx, 10, func() error {
-		return r.convertTx(ctx, est, &invID, &invNum)
+		return r.convertTx(ctx, tenantID, est, &invID, &invNum)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("convert estimate: %w", err)
 	}
-	return &ConvertResult{InvoiceID: invID, InvoiceNumber: invNum, EstimateNumber: est.EstimateNumber}, nil
+	return &ConvertResult{InvoiceID: invID, InvoiceNumber: invNum, EstimateNumber: est.Number}, nil
 }
 
-// convertTx runs a single convert attempt inside one transaction: number the
-// invoice, insert header + items, link the estimate, and audit.
-func (r *EstimatesRepo) convertTx(ctx context.Context, est *Estimate, invID *int64, invNum *string) error {
+// convertTx runs a single convert attempt inside one transaction.
+func (r *EstimatesRepo) convertTx(ctx context.Context, tenantID int64, est *Estimate, invID *int64, invNum *string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	num, err := numbering.Next(ctx, tx, numbering.Invoice)
-	if err != nil {
-		return err
-	}
 	q := gen.New(tx)
-	inv, err := q.CreateInvoice(ctx, buildInvoiceFromEstimate(est, num))
+	num, err := nextInvoiceNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}
-	if err := copyEstimateItemsToInvoice(ctx, q, inv.ID, est.LineItems); err != nil {
+	inv, err := q.CreateInvoice(ctx, buildInvoiceFromEstimate(tenantID, est, num))
+	if err != nil {
+		return err
+	}
+	if err := copyEstimateItemsToInvoice(ctx, q, tenantID, inv.ID, est.LineItems); err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := q.SetEstimateConverted(ctx, gen.SetEstimateConvertedParams{
-		ConvertedInvoiceID: nzInt(inv.ID), UpdatedAt: now, ID: est.ID,
+		ConvertedInvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true}, UpdatedAt: now, TenantID: tenantID, ID: est.ID,
 	}); err != nil {
 		return err
 	}
@@ -569,49 +548,54 @@ func (r *EstimatesRepo) convertTx(ctx context.Context, est *Estimate, invID *int
 	return nil
 }
 
-// buildInvoiceFromEstimate maps an estimate header onto invoice create params:
-// valid_until becomes the due date, status resets to draft, payment terms to
-// custom; totals and snapshots carry over verbatim.
-func buildInvoiceFromEstimate(est *Estimate, num string) gen.CreateInvoiceParams {
+// buildInvoiceFromEstimate maps an estimate header onto invoice create params.
+func buildInvoiceFromEstimate(tenantID int64, est *Estimate, num string) gen.CreateInvoiceParams {
+	var participantID int64
+	if est.ParticipantID != nil {
+		participantID = *est.ParticipantID
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
 		Uuid:             uuid.NewString(),
-		InvoiceNumber:    num,
-		ClientID:         est.ClientID,
-		Date:             est.Date,
+		TenantID:         tenantID,
+		Number:           num,
+		ParticipantID:    participantID,
+		PlanManagerID:    nullID(est.PlanManagerID),
+		Status:           "draft",
+		IssueDate:        est.IssueDate,
 		DueDate:          est.ValidUntil,
-		PaymentTerms:     nz("custom"),
-		Subtotal:         sql.NullFloat64{Float64: est.Subtotal, Valid: true},
-		TaxRate:          sql.NullFloat64{Float64: est.TaxRate, Valid: true},
-		TaxRateID:        nullID(est.TaxRateID),
-		TaxAmount:        sql.NullFloat64{Float64: est.TaxAmount, Valid: true},
-		Total:            sql.NullFloat64{Float64: est.Total, Valid: true},
-		Notes:            nz(est.Notes),
-		Status:           nz("draft"),
-		CurrencyCode:     nz(orDefault(est.CurrencyCode, "USD")),
-		BusinessSnapshot: nz(est.BusinessSnapshot),
-		ClientSnapshot:   nz(est.ClientSnapshot),
-		PayerSnapshot:    nz(est.PayerSnapshot),
+		Subtotal:         est.Subtotal,
+		Tax:              est.Tax,
+		Total:            est.Total,
+		Notes:            nzMaybe(est.Notes),
+		BusinessSnapshot: nzMaybe(est.BusinessSnapshot),
+		ClientSnapshot:   nzMaybe(est.ClientSnapshot),
+		PayerSnapshot:    nzMaybe(est.PayerSnapshot),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 }
 
 // copyEstimateItemsToInvoice writes each estimate line item as an invoice line.
-func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, invoiceID int64, items []*EstimateLineItem) error {
+func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []*LineItem) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:          uuid.NewString(),
-			InvoiceID:     invoiceID,
-			Description:   it.Description,
-			Quantity:      it.Quantity,
-			Rate:          it.Rate,
-			Amount:        it.Amount,
-			Notes:         nz(it.Notes),
-			SortOrder:     nzInt(it.SortOrder),
-			CatalogItemID: nullID(it.CatalogItemID),
-			RateTierID:    nullID(it.RateTierID),
+			Uuid:             uuid.NewString(),
+			TenantID:         tenantID,
+			InvoiceID:        invoiceID,
+			SupportItemID:    nullID(it.SupportItemID),
+			CustomItemID:     nullID(it.CustomItemID),
+			CatalogVersionID: nullID(it.CatalogVersionID),
+			Code:             nzMaybe(it.Code),
+			Description:      it.Description,
+			ServiceDate:      nzMaybe(it.ServiceDate),
+			Unit:             nzMaybe(it.Unit),
+			Quantity:         it.Quantity,
+			UnitPrice:        it.UnitPrice,
+			GstFree:          b2i(it.GstFree),
+			LineTotal:        it.LineTotal,
+			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("copy estimate item %d: %w", i, err)
@@ -620,124 +604,143 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, invoiceID i
 	return nil
 }
 
+// lineItemsToInput converts stored line items back into writable inputs.
+func lineItemsToInput(items []*LineItem) []LineItemInput {
+	out := make([]LineItemInput, 0, len(items))
+	for i := range items { // bounded by len(items)
+		it := items[i]
+		out = append(out, LineItemInput{
+			SupportItemID:    it.SupportItemID,
+			CustomItemID:     it.CustomItemID,
+			CatalogVersionID: it.CatalogVersionID,
+			Code:             it.Code,
+			Description:      it.Description,
+			ServiceDate:      it.ServiceDate,
+			Unit:             it.Unit,
+			Quantity:         it.Quantity,
+			UnitPrice:        it.UnitPrice,
+			GstFree:          it.GstFree,
+			SortOrder:        it.SortOrder,
+		})
+	}
+	return out
+}
+
 // estimateFields is the shared, flat shape of every estimates join row.
 type estimateFields struct {
 	id                                  int64
-	uuid, estimateNumber                string
-	clientID                            sql.NullInt64
-	date, validUntil                    string
-	subtotal, taxRate                   sql.NullFloat64
-	taxRateID                           sql.NullInt64
-	taxAmount, total                    sql.NullFloat64
-	notes, status, currencyCode         sql.NullString
+	uuid, number                        string
+	participantID                       sql.NullInt64
+	planManagerID                       sql.NullInt64
+	status, issueDate, validUntil       string
+	subtotal, tax, total                float64
+	notes                               sql.NullString
 	convertedInvoiceID                  sql.NullInt64
 	businessSnap, clientSnap, payerSnap sql.NullString
 	createdAt, updatedAt                string
-	clientName                          sql.NullString
+	participantName                     sql.NullString
 }
 
-// toEstimateFromRow builds a domain Estimate (without line items) from the
-// unwrapped join columns. LineItems defaults to a non-nil empty slice.
+// toEstimateFromRow builds a domain Estimate (without line items).
 func toEstimateFromRow(f estimateFields) *Estimate {
 	return &Estimate{
 		ID:                 f.id,
 		UUID:               f.uuid,
-		EstimateNumber:     f.estimateNumber,
-		ClientID:           f.clientID.Int64,
-		ClientName:         f.clientName.String,
-		Date:               f.date,
+		Number:             f.number,
+		ParticipantID:      ptrID(f.participantID),
+		ParticipantName:    f.participantName.String,
+		PlanManagerID:      ptrID(f.planManagerID),
+		Status:             f.status,
+		IssueDate:          f.issueDate,
 		ValidUntil:         f.validUntil,
-		Subtotal:           f.subtotal.Float64,
-		TaxRate:            f.taxRate.Float64,
-		TaxRateID:          ptrID(f.taxRateID),
-		TaxAmount:          f.taxAmount.Float64,
-		Total:              f.total.Float64,
+		Subtotal:           f.subtotal,
+		Tax:                f.tax,
+		Total:              f.total,
 		Notes:              f.notes.String,
-		Status:             f.status.String,
-		CurrencyCode:       f.currencyCode.String,
 		ConvertedInvoiceID: ptrID(f.convertedInvoiceID),
 		BusinessSnapshot:   f.businessSnap.String,
 		ClientSnapshot:     f.clientSnap.String,
 		PayerSnapshot:      f.payerSnap.String,
 		CreatedAt:          f.createdAt,
 		UpdatedAt:          f.updatedAt,
-		LineItems:          []*EstimateLineItem{},
+		LineItems:          []*LineItem{},
 	}
 }
 
 func estimateFieldsFromGet(r gen.GetEstimateRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, estimateNumber: r.EstimateNumber, clientID: r.ClientID,
-		date: r.Date, validUntil: r.ValidUntil,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
 func estimateFieldsFromList(r gen.ListEstimatesRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, estimateNumber: r.EstimateNumber, clientID: r.ClientID,
-		date: r.Date, validUntil: r.ValidUntil,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
 func estimateFieldsFromStatus(r gen.ListEstimatesByStatusRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, estimateNumber: r.EstimateNumber, clientID: r.ClientID,
-		date: r.Date, validUntil: r.ValidUntil,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
-func estimateFieldsFromClient(r gen.ListClientEstimatesRow) estimateFields {
+func estimateFieldsFromParticipant(r gen.ListParticipantEstimatesRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, estimateNumber: r.EstimateNumber, clientID: r.ClientID,
-		date: r.Date, validUntil: r.ValidUntil,
-		subtotal: r.Subtotal, taxRate: r.TaxRate, taxRateID: r.TaxRateID,
-		taxAmount: r.TaxAmount, total: r.Total,
-		notes: r.Notes, status: r.Status, currencyCode: r.CurrencyCode,
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
 
-// mapEstimateLineItems maps generated line item rows to domain line items.
-func mapEstimateLineItems(rows []gen.EstimateLineItem) []*EstimateLineItem {
-	out := make([]*EstimateLineItem, 0, len(rows))
+// mapEstimateLineItems maps generated rows to domain line items (non-nil).
+func mapEstimateLineItems(rows []gen.EstimateLineItem) []*LineItem {
+	out := make([]*LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		out = append(out, toEstimateLineItem(rows[i]))
 	}
 	return out
 }
 
-// toEstimateLineItem maps one generated line item to the domain shape.
-func toEstimateLineItem(row gen.EstimateLineItem) *EstimateLineItem {
-	return &EstimateLineItem{
-		ID:            row.ID,
-		UUID:          row.Uuid,
-		Description:   row.Description,
-		Quantity:      row.Quantity,
-		Rate:          row.Rate,
-		Amount:        row.Amount,
-		Notes:         row.Notes.String,
-		SortOrder:     row.SortOrder.Int64,
-		CatalogItemID: ptrID(row.CatalogItemID),
-		RateTierID:    ptrID(row.RateTierID),
+// toEstimateLineItem maps one generated estimate line item to the shared
+// LineItem domain shape.
+func toEstimateLineItem(row gen.EstimateLineItem) *LineItem {
+	return &LineItem{
+		ID:               row.ID,
+		UUID:             row.Uuid,
+		SupportItemID:    ptrID(row.SupportItemID),
+		CustomItemID:     ptrID(row.CustomItemID),
+		CatalogVersionID: ptrID(row.CatalogVersionID),
+		Code:             row.Code.String,
+		Description:      row.Description,
+		ServiceDate:      row.ServiceDate.String,
+		Unit:             row.Unit.String,
+		Quantity:         row.Quantity,
+		UnitPrice:        row.UnitPrice,
+		GstFree:          row.GstFree == 1,
+		LineTotal:        row.LineTotal,
+		SortOrder:        row.SortOrder.Int64,
 	}
 }

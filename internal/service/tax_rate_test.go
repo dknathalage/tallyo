@@ -1,36 +1,27 @@
 package service
 
 import (
-	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newTaxSvc(t *testing.T) (*TaxRateService, *realtime.Hub) {
+func newTaxSvc(t *testing.T) (*TaxRateService, *realtime.Hub, int64) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "tax.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn)
 	hub := realtime.NewHub()
-	return NewTaxRateService(conn, hub), hub
+	return NewTaxRateService(conn, hub), hub, tenantID
 }
 
 func TestTaxRateCreateBroadcasts(t *testing.T) {
-	svc, hub := newTaxSvc(t)
-	ch, unsub := hub.Subscribe()
+	svc, hub, tenantID := newTaxSvc(t)
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	tr, err := svc.Create(context.Background(), repository.TaxRateInput{Name: "GST", Rate: 10})
+	tr, err := svc.Create(tctx(tenantID), repository.TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -49,11 +40,11 @@ func TestTaxRateCreateBroadcasts(t *testing.T) {
 }
 
 func TestTaxRateCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub := newTaxSvc(t)
-	ch, unsub := hub.Subscribe()
+	svc, hub, tenantID := newTaxSvc(t)
+	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(context.Background(), repository.TaxRateInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), repository.TaxRateInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {

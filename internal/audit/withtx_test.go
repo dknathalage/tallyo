@@ -28,7 +28,10 @@ func TestWithTxCommitsAndAudits(t *testing.T) {
 	ctx := context.Background()
 	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: 1, Action: "update", Changes: Changes(map[string]any{"name": "Acme"})},
 		func(tx *sql.Tx) error {
-			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, name) VALUES (1, 'u', 'Acme')`)
+			if _, e := tx.ExecContext(ctx, `INSERT INTO tenants (id, uuid, name, status, created_at, updated_at) VALUES (1, 't', 'T', 'active', 'now', 'now')`); e != nil {
+				return e
+			}
+			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, tenant_id, name, created_at, updated_at) VALUES (1, 'u', 1, 'Acme', 'now', 'now')`)
 			return e
 		})
 	if err != nil {
@@ -52,7 +55,8 @@ func TestWithTxRollsBackOnFnError(t *testing.T) {
 	boom := errors.New("boom")
 	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: 1, Action: "update"},
 		func(tx *sql.Tx) error {
-			tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, name) VALUES (1, 'u', 'X')`)
+			_, _ = tx.ExecContext(ctx, `INSERT INTO tenants (id, uuid, name, status, created_at, updated_at) VALUES (1, 't', 'T', 'active', 'now', 'now')`)
+			_, _ = tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, tenant_id, name, created_at, updated_at) VALUES (1, 'u', 1, 'X', 'now', 'now')`)
 			return boom
 		})
 	if !errors.Is(err, boom) {
@@ -76,7 +80,10 @@ func TestWithTxSkipsAutoLogWhenActionEmpty(t *testing.T) {
 	// Action == "" → WithTx must NOT auto-log; the fn logs manually if it wants.
 	err := WithTx(ctx, conn, Entry{EntityType: "x", Action: ""},
 		func(tx *sql.Tx) error {
-			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, name) VALUES (1, 'u', 'A')`)
+			if _, e := tx.ExecContext(ctx, `INSERT INTO tenants (id, uuid, name, status, created_at, updated_at) VALUES (1, 't', 'T', 'active', 'now', 'now')`); e != nil {
+				return e
+			}
+			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, tenant_id, name, created_at, updated_at) VALUES (1, 'u', 1, 'A', 'now', 'now')`)
 			return e
 		})
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // EventsHandler serves the Server-Sent-Events stream of change events.
@@ -40,7 +41,11 @@ func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, unsub := h.hub.Subscribe()
+	// RequireAuth runs upstream and attaches the caller's tenant to the context,
+	// so the subscription is scoped to it: this stream only ever receives this
+	// tenant's events plus shared global (catalogue) events.
+	tenantID := reqctx.MustTenant(r.Context())
+	ch, unsub := h.hub.Subscribe(tenantID)
 	defer unsub()
 
 	heartbeat := time.NewTicker(25 * time.Second)

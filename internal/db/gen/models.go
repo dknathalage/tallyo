@@ -11,150 +11,187 @@ import (
 type AuditLog struct {
 	ID         int64          `json:"id"`
 	Uuid       string         `json:"uuid"`
+	TenantID   sql.NullInt64  `json:"tenant_id"`
+	UserID     sql.NullInt64  `json:"user_id"`
 	EntityType string         `json:"entity_type"`
 	EntityID   sql.NullInt64  `json:"entity_id"`
 	Action     string         `json:"action"`
 	Changes    sql.NullString `json:"changes"`
 	Context    sql.NullString `json:"context"`
 	BatchID    sql.NullString `json:"batch_id"`
-	CreatedAt  sql.NullString `json:"created_at"`
+	CreatedAt  string         `json:"created_at"`
 }
 
 type BusinessProfile struct {
 	ID              int64          `json:"id"`
 	Uuid            string         `json:"uuid"`
+	TenantID        int64          `json:"tenant_id"`
 	Name            string         `json:"name"`
+	Abn             sql.NullString `json:"abn"`
 	Email           sql.NullString `json:"email"`
 	Phone           sql.NullString `json:"phone"`
 	Address         sql.NullString `json:"address"`
+	Zone            string         `json:"zone"`
 	Logo            sql.NullString `json:"logo"`
 	Metadata        sql.NullString `json:"metadata"`
 	DefaultCurrency sql.NullString `json:"default_currency"`
-	CreatedAt       sql.NullString `json:"created_at"`
-	UpdatedAt       sql.NullString `json:"updated_at"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
 }
 
-type CatalogItem struct {
+type CatalogVersion struct {
+	ID             int64          `json:"id"`
+	Uuid           string         `json:"uuid"`
+	Label          string         `json:"label"`
+	EffectiveFrom  string         `json:"effective_from"`
+	EffectiveTo    sql.NullString `json:"effective_to"`
+	SourceFilename sql.NullString `json:"source_filename"`
+	CreatedAt      string         `json:"created_at"`
+}
+
+type CustomItem struct {
 	ID        int64          `json:"id"`
 	Uuid      string         `json:"uuid"`
+	TenantID  int64          `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Rate      float64        `json:"rate"`
 	Unit      sql.NullString `json:"unit"`
-	Category  sql.NullString `json:"category"`
-	Sku       sql.NullString `json:"sku"`
+	GstFree   int64          `json:"gst_free"`
 	Metadata  sql.NullString `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
 }
 
-type CatalogItemRate struct {
-	ID            int64   `json:"id"`
-	CatalogItemID int64   `json:"catalog_item_id"`
-	RateTierID    int64   `json:"rate_tier_id"`
-	Rate          float64 `json:"rate"`
+type Estimate struct {
+	ID                 int64          `json:"id"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	Number             string         `json:"number"`
+	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
+	Status             string         `json:"status"`
+	IssueDate          string         `json:"issue_date"`
+	ValidUntil         string         `json:"valid_until"`
+	Subtotal           float64        `json:"subtotal"`
+	Tax                float64        `json:"tax"`
+	Total              float64        `json:"total"`
+	Notes              sql.NullString `json:"notes"`
+	ConvertedInvoiceID sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot   sql.NullString `json:"business_snapshot"`
+	ClientSnapshot     sql.NullString `json:"client_snapshot"`
+	PayerSnapshot      sql.NullString `json:"payer_snapshot"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
 }
 
-type Client struct {
+type EstimateLineItem struct {
+	ID               int64          `json:"id"`
+	Uuid             string         `json:"uuid"`
+	TenantID         int64          `json:"tenant_id"`
+	EstimateID       int64          `json:"estimate_id"`
+	SupportItemID    sql.NullInt64  `json:"support_item_id"`
+	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
+	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
+	Code             sql.NullString `json:"code"`
+	Description      string         `json:"description"`
+	ServiceDate      sql.NullString `json:"service_date"`
+	Unit             sql.NullString `json:"unit"`
+	Quantity         float64        `json:"quantity"`
+	UnitPrice        float64        `json:"unit_price"`
+	GstFree          int64          `json:"gst_free"`
+	LineTotal        float64        `json:"line_total"`
+	SortOrder        sql.NullInt64  `json:"sort_order"`
+}
+
+type Invite struct {
+	ID         int64          `json:"id"`
+	Uuid       string         `json:"uuid"`
+	TenantID   int64          `json:"tenant_id"`
+	Token      string         `json:"token"`
+	Email      string         `json:"email"`
+	Role       string         `json:"role"`
+	CreatedBy  int64          `json:"created_by"`
+	ExpiresAt  string         `json:"expires_at"`
+	AcceptedAt sql.NullString `json:"accepted_at"`
+	CreatedAt  string         `json:"created_at"`
+}
+
+type Invoice struct {
+	ID               int64          `json:"id"`
+	Uuid             string         `json:"uuid"`
+	TenantID         int64          `json:"tenant_id"`
+	Number           string         `json:"number"`
+	ParticipantID    int64          `json:"participant_id"`
+	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
+	Status           string         `json:"status"`
+	IssueDate        string         `json:"issue_date"`
+	DueDate          string         `json:"due_date"`
+	Subtotal         float64        `json:"subtotal"`
+	Tax              float64        `json:"tax"`
+	Total            float64        `json:"total"`
+	Notes            sql.NullString `json:"notes"`
+	BusinessSnapshot sql.NullString `json:"business_snapshot"`
+	ClientSnapshot   sql.NullString `json:"client_snapshot"`
+	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+}
+
+type LineItem struct {
+	ID               int64          `json:"id"`
+	Uuid             string         `json:"uuid"`
+	TenantID         int64          `json:"tenant_id"`
+	InvoiceID        int64          `json:"invoice_id"`
+	SupportItemID    sql.NullInt64  `json:"support_item_id"`
+	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
+	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
+	Code             sql.NullString `json:"code"`
+	Description      string         `json:"description"`
+	ServiceDate      sql.NullString `json:"service_date"`
+	Unit             sql.NullString `json:"unit"`
+	Quantity         float64        `json:"quantity"`
+	UnitPrice        float64        `json:"unit_price"`
+	GstFree          int64          `json:"gst_free"`
+	LineTotal        float64        `json:"line_total"`
+	SortOrder        sql.NullInt64  `json:"sort_order"`
+}
+
+type Participant struct {
 	ID            int64          `json:"id"`
 	Uuid          string         `json:"uuid"`
+	TenantID      int64          `json:"tenant_id"`
 	Name          string         `json:"name"`
+	NdisNumber    sql.NullString `json:"ndis_number"`
+	PlanStart     sql.NullString `json:"plan_start"`
+	PlanEnd       sql.NullString `json:"plan_end"`
+	MgmtType      string         `json:"mgmt_type"`
+	PlanManagerID sql.NullInt64  `json:"plan_manager_id"`
 	Email         sql.NullString `json:"email"`
 	Phone         sql.NullString `json:"phone"`
 	Address       sql.NullString `json:"address"`
-	PricingTierID sql.NullInt64  `json:"pricing_tier_id"`
 	Metadata      sql.NullString `json:"metadata"`
-	PayerID       sql.NullInt64  `json:"payer_id"`
 	CreatedAt     string         `json:"created_at"`
 	UpdatedAt     string         `json:"updated_at"`
 }
 
-type Estimate struct {
-	ID                 int64           `json:"id"`
-	Uuid               string          `json:"uuid"`
-	EstimateNumber     string          `json:"estimate_number"`
-	ClientID           sql.NullInt64   `json:"client_id"`
-	Date               string          `json:"date"`
-	ValidUntil         string          `json:"valid_until"`
-	Subtotal           sql.NullFloat64 `json:"subtotal"`
-	TaxRate            sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID          sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount          sql.NullFloat64 `json:"tax_amount"`
-	Total              sql.NullFloat64 `json:"total"`
-	Notes              sql.NullString  `json:"notes"`
-	Status             sql.NullString  `json:"status"`
-	CurrencyCode       sql.NullString  `json:"currency_code"`
-	ConvertedInvoiceID sql.NullInt64   `json:"converted_invoice_id"`
-	BusinessSnapshot   sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot     sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot      sql.NullString  `json:"payer_snapshot"`
-	CreatedAt          string          `json:"created_at"`
-	UpdatedAt          string          `json:"updated_at"`
-}
-
-type EstimateLineItem struct {
-	ID            int64          `json:"id"`
-	Uuid          string         `json:"uuid"`
-	EstimateID    int64          `json:"estimate_id"`
-	Description   string         `json:"description"`
-	Quantity      float64        `json:"quantity"`
-	Rate          float64        `json:"rate"`
-	Amount        float64        `json:"amount"`
-	Notes         sql.NullString `json:"notes"`
-	SortOrder     sql.NullInt64  `json:"sort_order"`
-	CatalogItemID sql.NullInt64  `json:"catalog_item_id"`
-	RateTierID    sql.NullInt64  `json:"rate_tier_id"`
-}
-
-type Invite struct {
-	ID        int64          `json:"id"`
-	Token     string         `json:"token"`
-	Email     string         `json:"email"`
-	Role      string         `json:"role"`
-	CreatedBy int64          `json:"created_by"`
-	ExpiresAt string         `json:"expires_at"`
-	UsedAt    sql.NullString `json:"used_at"`
-}
-
-type Invoice struct {
-	ID               int64           `json:"id"`
-	Uuid             string          `json:"uuid"`
-	InvoiceNumber    string          `json:"invoice_number"`
-	ClientID         int64           `json:"client_id"`
-	Date             string          `json:"date"`
-	DueDate          string          `json:"due_date"`
-	PaymentTerms     sql.NullString  `json:"payment_terms"`
-	Subtotal         sql.NullFloat64 `json:"subtotal"`
-	TaxRate          sql.NullFloat64 `json:"tax_rate"`
-	TaxRateID        sql.NullInt64   `json:"tax_rate_id"`
-	TaxAmount        sql.NullFloat64 `json:"tax_amount"`
-	Total            sql.NullFloat64 `json:"total"`
-	Notes            sql.NullString  `json:"notes"`
-	Status           sql.NullString  `json:"status"`
-	CurrencyCode     sql.NullString  `json:"currency_code"`
-	BusinessSnapshot sql.NullString  `json:"business_snapshot"`
-	ClientSnapshot   sql.NullString  `json:"client_snapshot"`
-	PayerSnapshot    sql.NullString  `json:"payer_snapshot"`
-	CreatedAt        string          `json:"created_at"`
-	UpdatedAt        string          `json:"updated_at"`
-}
-
-type LineItem struct {
-	ID            int64          `json:"id"`
-	Uuid          string         `json:"uuid"`
-	InvoiceID     int64          `json:"invoice_id"`
-	Description   string         `json:"description"`
-	Quantity      float64        `json:"quantity"`
-	Rate          float64        `json:"rate"`
-	Amount        float64        `json:"amount"`
-	Notes         sql.NullString `json:"notes"`
-	SortOrder     sql.NullInt64  `json:"sort_order"`
-	CatalogItemID sql.NullInt64  `json:"catalog_item_id"`
-	RateTierID    sql.NullInt64  `json:"rate_tier_id"`
-}
-
-type Payer struct {
+type Payment struct {
 	ID        int64          `json:"id"`
 	Uuid      string         `json:"uuid"`
+	TenantID  int64          `json:"tenant_id"`
+	InvoiceID int64          `json:"invoice_id"`
+	Amount    float64        `json:"amount"`
+	PaidAt    string         `json:"paid_at"`
+	Method    sql.NullString `json:"method"`
+	Reference sql.NullString `json:"reference"`
+	Notes     sql.NullString `json:"notes"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+}
+
+type PlanManager struct {
+	ID        int64          `json:"id"`
+	Uuid      string         `json:"uuid"`
+	TenantID  int64          `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
@@ -164,41 +201,21 @@ type Payer struct {
 	UpdatedAt string         `json:"updated_at"`
 }
 
-type Payment struct {
-	ID          int64          `json:"id"`
-	Uuid        string         `json:"uuid"`
-	InvoiceID   int64          `json:"invoice_id"`
-	Amount      float64        `json:"amount"`
-	PaymentDate string         `json:"payment_date"`
-	Method      sql.NullString `json:"method"`
-	Notes       sql.NullString `json:"notes"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
-}
-
-type RateTier struct {
-	ID          int64          `json:"id"`
-	Uuid        string         `json:"uuid"`
-	Name        string         `json:"name"`
-	Description sql.NullString `json:"description"`
-	SortOrder   sql.NullInt64  `json:"sort_order"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
-}
-
 type RecurringTemplate struct {
-	ID        int64         `json:"id"`
-	Uuid      string        `json:"uuid"`
-	ClientID  sql.NullInt64 `json:"client_id"`
-	Name      string        `json:"name"`
-	Frequency string        `json:"frequency"`
-	NextDue   string        `json:"next_due"`
-	LineItems string        `json:"line_items"`
-	TaxRate   float64       `json:"tax_rate"`
-	Notes     string        `json:"notes"`
-	IsActive  int64         `json:"is_active"`
-	CreatedAt string        `json:"created_at"`
-	UpdatedAt string        `json:"updated_at"`
+	ID            int64         `json:"id"`
+	Uuid          string        `json:"uuid"`
+	TenantID      int64         `json:"tenant_id"`
+	ParticipantID sql.NullInt64 `json:"participant_id"`
+	PlanManagerID sql.NullInt64 `json:"plan_manager_id"`
+	Name          string        `json:"name"`
+	Frequency     string        `json:"frequency"`
+	NextDue       string        `json:"next_due"`
+	LineItems     string        `json:"line_items"`
+	TaxRate       float64       `json:"tax_rate"`
+	Notes         string        `json:"notes"`
+	IsActive      int64         `json:"is_active"`
+	CreatedAt     string        `json:"created_at"`
+	UpdatedAt     string        `json:"updated_at"`
 }
 
 type Session struct {
@@ -207,9 +224,31 @@ type Session struct {
 	Expiry float64 `json:"expiry"`
 }
 
+type SupportItem struct {
+	ID                int64          `json:"id"`
+	Uuid              string         `json:"uuid"`
+	CatalogVersionID  int64          `json:"catalog_version_id"`
+	Code              string         `json:"code"`
+	Name              string         `json:"name"`
+	Unit              sql.NullString `json:"unit"`
+	SupportCategory   sql.NullString `json:"support_category"`
+	RegistrationGroup sql.NullString `json:"registration_group"`
+	ClaimType         sql.NullString `json:"claim_type"`
+	GstFree           int64          `json:"gst_free"`
+	Metadata          sql.NullString `json:"metadata"`
+}
+
+type SupportItemPrice struct {
+	ID            int64           `json:"id"`
+	SupportItemID int64           `json:"support_item_id"`
+	Zone          string          `json:"zone"`
+	PriceCap      sql.NullFloat64 `json:"price_cap"`
+}
+
 type TaxRate struct {
 	ID        int64   `json:"id"`
 	Uuid      string  `json:"uuid"`
+	TenantID  int64   `json:"tenant_id"`
 	Name      string  `json:"name"`
 	Rate      float64 `json:"rate"`
 	IsDefault int64   `json:"is_default"`
@@ -217,13 +256,25 @@ type TaxRate struct {
 	UpdatedAt string  `json:"updated_at"`
 }
 
+type Tenant struct {
+	ID        int64  `json:"id"`
+	Uuid      string `json:"uuid"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 type User struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	Email        string         `json:"email"`
-	PasswordHash string         `json:"password_hash"`
-	Role         string         `json:"role"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	LastLoginAt  sql.NullString `json:"last_login_at"`
+	ID              int64          `json:"id"`
+	Uuid            string         `json:"uuid"`
+	TenantID        int64          `json:"tenant_id"`
+	Email           string         `json:"email"`
+	PasswordHash    string         `json:"password_hash"`
+	Name            string         `json:"name"`
+	IsPlatformAdmin int64          `json:"is_platform_admin"`
+	Role            string         `json:"role"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
+	LastLoginAt     sql.NullString `json:"last_login_at"`
 }

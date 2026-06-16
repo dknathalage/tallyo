@@ -31,17 +31,17 @@ type estimateRequest struct {
 	LineItems []repository.LineItemInput `json:"lineItems"`
 }
 
-// List returns estimates filtered by the optional ?clientId= or ?status= query
+// List returns estimates filtered by the optional ?participantId= or ?status= query
 // params. Unlike invoices there is no read-time overdue sweep.
 func (h *EstimateHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if cid := q.Get("clientId"); cid != "" {
-		clientID, err := strconv.ParseInt(cid, 10, 64)
-		if err != nil || clientID <= 0 {
-			WriteError(w, http.StatusBadRequest, "invalid clientId")
+	if pid := q.Get("participantId"); pid != "" {
+		participantID, err := strconv.ParseInt(pid, 10, 64)
+		if err != nil || participantID <= 0 {
+			WriteError(w, http.StatusBadRequest, "invalid participantId")
 			return
 		}
-		ests, err := h.svc.ListClientEstimates(r.Context(), clientID)
+		ests, err := h.svc.ListParticipantEstimates(r.Context(), participantID)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -85,26 +85,29 @@ func (h *EstimateHandler) Get(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, est)
 }
 
-// Create inserts an estimate. A missing client or empty line items → 400.
+// Create inserts an estimate. A missing participant or empty line items → 400.
 func (h *EstimateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req estimateRequest
 	if err := DecodeJSON(r, &req); err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ClientID == 0 || len(req.LineItems) == 0 {
-		WriteError(w, http.StatusBadRequest, "client and at least one line item are required")
+	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
+		WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
 		return
 	}
 	est, err := h.svc.Create(r.Context(), req.EstimateInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	WriteJSON(w, http.StatusCreated, est)
 }
 
-// Update rewrites an estimate. Missing client/items → 400; unknown id → 404.
+// Update rewrites an estimate. Missing participant/items → 400; unknown id → 404.
 func (h *EstimateHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(r)
 	if !ok {
@@ -116,12 +119,15 @@ func (h *EstimateHandler) Update(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ClientID == 0 || len(req.LineItems) == 0 {
-		WriteError(w, http.StatusBadRequest, "client and at least one line item are required")
+	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
+		WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
 		return
 	}
 	est, err := h.svc.Update(r.Context(), id, req.EstimateInput, req.LineItems)
 	if err != nil {
+		if WriteValidationError(w, err) {
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -269,7 +275,7 @@ func (h *EstimateHandler) Pdf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+est.EstimateNumber+`.pdf"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+est.Number+`.pdf"`)
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(b); err != nil {
 		// client gone; nothing to do

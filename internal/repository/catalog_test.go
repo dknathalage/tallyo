@@ -2,320 +2,172 @@ package repository
 
 import (
 	"context"
-	"path/filepath"
+	"database/sql"
 	"testing"
+	"time"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/google/uuid"
 )
 
-func newCatalogRepo(t *testing.T) *CatalogRepo {
-	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "catalog.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	return NewCatalog(conn)
-}
+// --- CustomItemsRepo (tenant-scoped) ---
 
-func newCatalogRepoWithTier(t *testing.T) (*CatalogRepo, *RateTiersRepo) {
-	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "catalog.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	return NewCatalog(conn), NewRateTiers(conn)
-}
-
-func TestCatalogCreate(t *testing.T) {
-	repo := newCatalogRepo(t)
+func TestCustomItemCRUD(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	repo := NewCustomItems(conn)
 	ctx := context.Background()
 
-	item, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 10, Unit: "ea", Category: "Hardware", Sku: "W1", Metadata: ""})
+	ci, err := repo.Create(ctx, tid, CustomItemInput{Name: "Travel", Rate: 1.5, Unit: "km", GstFree: true})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if item == nil {
-		t.Fatal("Create returned nil item")
+	if ci.ID == 0 || ci.Rate != 1.5 || !ci.GstFree || ci.Unit != "km" {
+		t.Fatalf("Create = %+v", ci)
 	}
-	if item.ID <= 0 {
-		t.Fatalf("ID = %d, want > 0", item.ID)
+	got, err := repo.Get(ctx, tid, ci.ID)
+	if err != nil || got == nil || got.Name != "Travel" {
+		t.Fatalf("Get = %+v err=%v", got, err)
 	}
-	if item.Name != "Widget" || item.Rate != 10 || item.Unit != "ea" || item.Category != "Hardware" || item.Sku != "W1" {
-		t.Fatalf("item = %+v, want Widget/10/ea/Hardware/W1", item)
+	up, err := repo.Update(ctx, tid, ci.ID, CustomItemInput{Name: "Travel2", Rate: 2})
+	if err != nil || up == nil || up.Name != "Travel2" || up.Rate != 2 {
+		t.Fatalf("Update = %+v err=%v", up, err)
 	}
-	if item.Metadata != "{}" {
-		t.Fatalf("Metadata = %q, want {}", item.Metadata)
+	if list, _ := repo.List(ctx, tid); len(list) != 1 {
+		t.Fatalf("List len = %d, want 1", len(list))
 	}
-}
-
-func TestCatalogCreateRejectsEmptyName(t *testing.T) {
-	repo := newCatalogRepo(t)
-	if _, err := repo.Create(context.Background(), CatalogItemInput{Name: "", Rate: 1}); err == nil {
-		t.Fatal("Create with empty name: want error, got nil")
-	}
-}
-
-func TestCatalogListOrdered(t *testing.T) {
-	repo := newCatalogRepo(t)
-	ctx := context.Background()
-
-	for _, n := range []string{"Beta", "Alpha", "Gamma"} {
-		if _, err := repo.Create(ctx, CatalogItemInput{Name: n, Rate: 1}); err != nil {
-			t.Fatalf("Create %s: %v", n, err)
-		}
-	}
-	list, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	want := []string{"Alpha", "Beta", "Gamma"}
-	if len(list) != len(want) {
-		t.Fatalf("List len = %d, want %d", len(list), len(want))
-	}
-	for i := range want {
-		if list[i].Name != want[i] {
-			t.Fatalf("list[%d].Name = %q, want %q", i, list[i].Name, want[i])
-		}
-	}
-}
-
-func TestCatalogGet(t *testing.T) {
-	repo := newCatalogRepo(t)
-	ctx := context.Background()
-
-	created, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 10})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	got, err := repo.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got == nil || got.Name != "Widget" {
-		t.Fatalf("Get = %+v, want Name=Widget", got)
-	}
-	missing, err := repo.Get(ctx, 99999)
-	if err != nil {
-		t.Fatalf("Get missing: %v", err)
-	}
-	if missing != nil {
-		t.Fatalf("Get missing = %+v, want nil", missing)
-	}
-}
-
-func TestCatalogUpdate(t *testing.T) {
-	repo := newCatalogRepo(t)
-	ctx := context.Background()
-
-	created, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 10, Unit: "ea"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	updated, err := repo.Update(ctx, created.ID, CatalogItemInput{Name: "Gadget", Rate: 20, Unit: "hr", Category: "C", Sku: "G1"})
-	if err != nil {
-		t.Fatalf("Update: %v", err)
-	}
-	if updated == nil {
-		t.Fatal("Update returned nil")
-	}
-	if updated.Name != "Gadget" || updated.Rate != 20 || updated.Unit != "hr" {
-		t.Fatalf("Update = %+v, want Gadget/20/hr", updated)
-	}
-
-	missing, err := repo.Update(ctx, 99999, CatalogItemInput{Name: "X", Rate: 1})
-	if err != nil {
-		t.Fatalf("Update missing: %v", err)
-	}
-	if missing != nil {
-		t.Fatalf("Update missing = %+v, want nil", missing)
-	}
-}
-
-func TestCatalogDelete(t *testing.T) {
-	repo := newCatalogRepo(t)
-	ctx := context.Background()
-
-	created, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 10})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if err := repo.Delete(ctx, created.ID); err != nil {
+	if err := repo.Delete(ctx, tid, ci.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	got, err := repo.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Get after delete: %v", err)
-	}
-	if got != nil {
-		t.Fatalf("row still present after delete: %+v", got)
+	if got, _ := repo.Get(ctx, tid, ci.ID); got != nil {
+		t.Fatalf("row present after delete: %+v", got)
 	}
 }
 
-func TestCatalogBulkDelete(t *testing.T) {
-	repo := newCatalogRepo(t)
+func TestCustomItemTenantIsolation(t *testing.T) {
+	conn := newTestDB(t)
+	a := seedTenant(t, conn, "A")
+	b := seedTenant(t, conn, "B")
+	repo := NewCustomItems(conn)
 	ctx := context.Background()
 
-	a, err := repo.Create(ctx, CatalogItemInput{Name: "A", Rate: 1})
+	ci, err := repo.Create(ctx, a, CustomItemInput{Name: "A item", Rate: 1})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	b, err := repo.Create(ctx, CatalogItemInput{Name: "B", Rate: 1})
-	if err != nil {
-		t.Fatalf("Create B: %v", err)
+	if got, _ := repo.Get(ctx, b, ci.ID); got != nil {
+		t.Fatalf("tenant B read tenant A's custom item: %+v", got)
 	}
-	if err := repo.BulkDelete(ctx, []int64{a.ID, b.ID}); err != nil {
-		t.Fatalf("BulkDelete: %v", err)
-	}
-	list, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(list) != 0 {
-		t.Fatalf("List len = %d, want 0", len(list))
+	if list, _ := repo.List(ctx, b); len(list) != 0 {
+		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 }
 
-func TestCatalogSearch(t *testing.T) {
-	repo := newCatalogRepo(t)
+// --- CatalogRepo (global NDIS catalogue) ---
+
+// seedCatalog inserts a version with one priced support item and returns ids.
+func seedCatalog(t *testing.T, conn *sql.DB, label, from, to, code string, cap *float64) (versionID, itemID int64) {
+	t.Helper()
 	ctx := context.Background()
-
-	if _, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 1, Sku: "X1", Category: "Cat"}); err != nil {
-		t.Fatalf("Create Widget: %v", err)
+	q := gen.New(conn)
+	now := time.Now().UTC().Format(time.RFC3339)
+	var et sql.NullString
+	if to != "" {
+		et = sql.NullString{String: to, Valid: true}
 	}
-	if _, err := repo.Create(ctx, CatalogItemInput{Name: "Thing", Rate: 1, Sku: "wid-sku", Category: "Other"}); err != nil {
-		t.Fatalf("Create Thing: %v", err)
-	}
-	if _, err := repo.Create(ctx, CatalogItemInput{Name: "Unrelated", Rate: 1, Sku: "Z", Category: "WIDcat"}); err != nil {
-		t.Fatalf("Create Unrelated: %v", err)
-	}
-
-	got, err := repo.Search(ctx, "wid")
+	v, err := q.CreateCatalogVersion(ctx, gen.CreateCatalogVersionParams{
+		Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+	})
 	if err != nil {
-		t.Fatalf("Search: %v", err)
+		t.Fatalf("CreateCatalogVersion: %v", err)
 	}
-	// matches by name (Widget), sku (wid-sku), category (WIDcat) -> 3
-	if len(got) != 3 {
-		t.Fatalf("Search len = %d, want 3 (name/sku/category)", len(got))
+	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
+		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, GstFree: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateSupportItem: %v", err)
+	}
+	var pc sql.NullFloat64
+	if cap != nil {
+		pc = sql.NullFloat64{Float64: *cap, Valid: true}
+	}
+	if _, err := q.CreateSupportItemPrice(ctx, gen.CreateSupportItemPriceParams{
+		SupportItemID: si.ID, Zone: "national", PriceCap: pc,
+	}); err != nil {
+		t.Fatalf("CreateSupportItemPrice: %v", err)
+	}
+	return v.ID, si.ID
+}
+
+func TestCatalogResolveVersionForDate(t *testing.T) {
+	conn := newTestDB(t)
+	repo := NewCatalog(conn)
+	ctx := context.Background()
+	cap := 100.0
+	vID, _ := seedCatalog(t, conn, "2025-26", "2025-07-01", "2026-06-30", "01_011_0107_1_1", &cap)
+
+	// Date inside the window resolves.
+	v, err := repo.ResolveVersionForDate(ctx, "2026-01-15")
+	if err != nil || v == nil || v.ID != vID {
+		t.Fatalf("ResolveVersionForDate inside = %+v err=%v", v, err)
+	}
+	// Date before the window resolves to nil.
+	v, err = repo.ResolveVersionForDate(ctx, "2025-01-01")
+	if err != nil {
+		t.Fatalf("ResolveVersionForDate before: %v", err)
+	}
+	if v != nil {
+		t.Fatalf("ResolveVersionForDate before window = %+v, want nil", v)
 	}
 }
 
-func TestCatalogCategories(t *testing.T) {
-	repo := newCatalogRepo(t)
+func TestCatalogGetByCodeAndZonePrice(t *testing.T) {
+	conn := newTestDB(t)
+	repo := NewCatalog(conn)
 	ctx := context.Background()
+	cap := 193.99
+	vID, itemID := seedCatalog(t, conn, "v", "2025-07-01", "", "01_011_0107_1_1", &cap)
 
-	for _, c := range []string{"A", "A", "B", ""} {
-		if _, err := repo.Create(ctx, CatalogItemInput{Name: "item-" + c, Rate: 1, Category: c}); err != nil {
-			t.Fatalf("Create %q: %v", c, err)
-		}
+	si, err := repo.GetSupportItemByCode(ctx, vID, "01_011_0107_1_1")
+	if err != nil || si == nil || si.ID != itemID {
+		t.Fatalf("GetSupportItemByCode = %+v err=%v", si, err)
 	}
-	cats, err := repo.Categories(ctx)
-	if err != nil {
-		t.Fatalf("Categories: %v", err)
+	if !si.GstFree {
+		t.Fatalf("expected GstFree true")
 	}
-	if cats == nil {
-		t.Fatal("Categories returned nil slice")
-	}
-	want := map[string]bool{"A": true, "B": true}
-	if len(cats) != len(want) {
-		t.Fatalf("Categories = %v, want distinct non-empty [A B]", cats)
-	}
-	for _, c := range cats {
-		if !want[c] {
-			t.Fatalf("unexpected category %q in %v", c, cats)
-		}
+
+	price, err := repo.ResolveZonePrice(ctx, vID, "01_011_0107_1_1", "national")
+	if err != nil || price == nil || price.PriceCap == nil || *price.PriceCap != 193.99 {
+		t.Fatalf("ResolveZonePrice = %+v err=%v", price, err)
 	}
 }
 
-func TestCatalogTierRatesUpsert(t *testing.T) {
-	repo, tiers := newCatalogRepoWithTier(t)
+func TestCatalogQuotablePriceCapNil(t *testing.T) {
+	conn := newTestDB(t)
+	repo := NewCatalog(conn)
 	ctx := context.Background()
+	vID, _ := seedCatalog(t, conn, "v", "2025-07-01", "", "01_011_0107_8_1", nil)
 
-	item, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 10})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	price, err := repo.ResolveZonePrice(ctx, vID, "01_011_0107_8_1", "national")
+	if err != nil || price == nil {
+		t.Fatalf("ResolveZonePrice = %+v err=%v", price, err)
 	}
-	tier, err := tiers.Create(ctx, RateTierInput{Name: "Standard", SortOrder: 1})
-	if err != nil {
-		t.Fatalf("Create tier: %v", err)
-	}
-
-	if err := repo.SetRate(ctx, item.ID, tier.ID, 7.5); err != nil {
-		t.Fatalf("SetRate: %v", err)
-	}
-	rates, err := repo.GetRates(ctx, item.ID)
-	if err != nil {
-		t.Fatalf("GetRates: %v", err)
-	}
-	if len(rates) != 1 || rates[0].RateTierID != tier.ID || rates[0].Rate != 7.5 {
-		t.Fatalf("GetRates = %+v, want [{%d 7.5}]", rates, tier.ID)
-	}
-
-	// upsert: set again, expect one row with the latest rate.
-	if err := repo.SetRate(ctx, item.ID, tier.ID, 9.0); err != nil {
-		t.Fatalf("SetRate upsert: %v", err)
-	}
-	rates, err = repo.GetRates(ctx, item.ID)
-	if err != nil {
-		t.Fatalf("GetRates after upsert: %v", err)
-	}
-	if len(rates) != 1 || rates[0].Rate != 9.0 {
-		t.Fatalf("GetRates after upsert = %+v, want one row rate 9.0", rates)
+	if price.PriceCap != nil {
+		t.Fatalf("quotable item PriceCap = %v, want nil", *price.PriceCap)
 	}
 }
 
-func TestCatalogEffectiveRate(t *testing.T) {
-	repo, tiers := newCatalogRepoWithTier(t)
+func TestCatalogListVersionsAndItems(t *testing.T) {
+	conn := newTestDB(t)
+	repo := NewCatalog(conn)
 	ctx := context.Background()
+	cap := 50.0
+	vID, _ := seedCatalog(t, conn, "v", "2025-07-01", "", "X", &cap)
 
-	item, err := repo.Create(ctx, CatalogItemInput{Name: "Widget", Rate: 10})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	if vs, err := repo.ListVersions(ctx); err != nil || len(vs) != 1 {
+		t.Fatalf("ListVersions len=%d err=%v", len(vs), err)
 	}
-	tier, err := tiers.Create(ctx, RateTierInput{Name: "Standard", SortOrder: 1})
-	if err != nil {
-		t.Fatalf("Create tier: %v", err)
-	}
-	other, err := tiers.Create(ctx, RateTierInput{Name: "Premium", SortOrder: 2})
-	if err != nil {
-		t.Fatalf("Create other tier: %v", err)
-	}
-
-	if err := repo.SetRate(ctx, item.ID, tier.ID, 9.0); err != nil {
-		t.Fatalf("SetRate: %v", err)
-	}
-
-	// tier with a rate -> tier rate
-	got, err := repo.EffectiveRate(ctx, item.ID, &tier.ID)
-	if err != nil {
-		t.Fatalf("EffectiveRate tier: %v", err)
-	}
-	if got != 9.0 {
-		t.Fatalf("EffectiveRate(tier) = %v, want 9.0", got)
-	}
-
-	// tier with no rate -> base rate
-	got, err = repo.EffectiveRate(ctx, item.ID, &other.ID)
-	if err != nil {
-		t.Fatalf("EffectiveRate other: %v", err)
-	}
-	if got != 10 {
-		t.Fatalf("EffectiveRate(other) = %v, want 10 (base)", got)
-	}
-
-	// nil tier -> base rate
-	got, err = repo.EffectiveRate(ctx, item.ID, nil)
-	if err != nil {
-		t.Fatalf("EffectiveRate nil: %v", err)
-	}
-	if got != 10 {
-		t.Fatalf("EffectiveRate(nil) = %v, want 10 (base)", got)
+	if items, err := repo.ListSupportItems(ctx, vID); err != nil || len(items) != 1 {
+		t.Fatalf("ListSupportItems len=%d err=%v", len(items), err)
 	}
 }

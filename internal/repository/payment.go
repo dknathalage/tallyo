@@ -15,27 +15,30 @@ import (
 // Payment is the domain view of a row in the payments table. Nullable columns
 // are unwrapped to plain strings.
 type Payment struct {
-	ID          int64   `json:"id"`
-	UUID        string  `json:"uuid"`
-	InvoiceID   int64   `json:"invoiceId"`
-	Amount      float64 `json:"amount"`
-	PaymentDate string  `json:"paymentDate"`
-	Method      string  `json:"method"`
-	Notes       string  `json:"notes"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID        int64   `json:"id"`
+	UUID      string  `json:"uuid"`
+	InvoiceID int64   `json:"invoiceId"`
+	Amount    float64 `json:"amount"`
+	PaidAt    string  `json:"paidAt"`
+	Method    string  `json:"method"`
+	Reference string  `json:"reference"`
+	Notes     string  `json:"notes"`
+	CreatedAt string  `json:"createdAt"`
+	UpdatedAt string  `json:"updatedAt"`
 }
 
 // PaymentInput is the writable subset of a payment.
 type PaymentInput struct {
-	InvoiceID   int64   `json:"invoiceId"`
-	Amount      float64 `json:"amount"`
-	PaymentDate string  `json:"paymentDate"`
-	Method      string  `json:"method"`
-	Notes       string  `json:"notes"`
+	InvoiceID int64   `json:"invoiceId"`
+	Amount    float64 `json:"amount"`
+	PaidAt    string  `json:"paidAt"`
+	Method    string  `json:"method"`
+	Reference string  `json:"reference"`
+	Notes     string  `json:"notes"`
 }
 
-// PaymentsRepo reads and writes the payments table with audited mutations.
+// PaymentsRepo reads and writes the payments table (tenant-scoped) with audited
+// mutations.
 type PaymentsRepo struct {
 	db *sql.DB
 }
@@ -50,7 +53,10 @@ func NewPayments(db *sql.DB) *PaymentsRepo {
 
 // Create inserts a payment and writes one audit row, atomically. The invoice id
 // is required and the amount must be positive.
-func (r *PaymentsRepo) Create(ctx context.Context, in PaymentInput) (*Payment, error) {
+func (r *PaymentsRepo) Create(ctx context.Context, tenantID int64, in PaymentInput) (*Payment, error) {
+	if tenantID == 0 {
+		return nil, errors.New("create payment: tenant id required")
+	}
 	if in.InvoiceID == 0 {
 		return nil, errors.New("create payment: invoice id required")
 	}
@@ -62,14 +68,16 @@ func (r *PaymentsRepo) Create(ctx context.Context, in PaymentInput) (*Payment, e
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).CreatePayment(ctx, gen.CreatePaymentParams{
-			Uuid:        uuid.NewString(),
-			InvoiceID:   in.InvoiceID,
-			Amount:      in.Amount,
-			PaymentDate: in.PaymentDate,
-			Method:      nz(in.Method),
-			Notes:       nz(in.Notes),
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			Uuid:      uuid.NewString(),
+			TenantID:  tenantID,
+			InvoiceID: in.InvoiceID,
+			Amount:    in.Amount,
+			PaidAt:    in.PaidAt,
+			Method:    nzMaybe(in.Method),
+			Reference: nzMaybe(in.Reference),
+			Notes:     nzMaybe(in.Notes),
+			CreatedAt: now,
+			UpdatedAt: now,
 		})
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
@@ -88,9 +96,12 @@ func (r *PaymentsRepo) Create(ctx context.Context, in PaymentInput) (*Payment, e
 	return toPayment(created), nil
 }
 
-// ListForInvoice returns one invoice's payments ordered by payment date.
-func (r *PaymentsRepo) ListForInvoice(ctx context.Context, invoiceID int64) ([]*Payment, error) {
-	rows, err := gen.New(r.db).ListInvoicePayments(ctx, invoiceID)
+// ListForInvoice returns one invoice's payments ordered by paid date.
+func (r *PaymentsRepo) ListForInvoice(ctx context.Context, tenantID, invoiceID int64) ([]*Payment, error) {
+	rows, err := gen.New(r.db).ListInvoicePayments(ctx, gen.ListInvoicePaymentsParams{
+		TenantID:  tenantID,
+		InvoiceID: invoiceID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list invoice payments: %w", err)
 	}
@@ -102,8 +113,11 @@ func (r *PaymentsRepo) ListForInvoice(ctx context.Context, invoiceID int64) ([]*
 }
 
 // TotalPaid returns the summed amount of an invoice's payments.
-func (r *PaymentsRepo) TotalPaid(ctx context.Context, invoiceID int64) (float64, error) {
-	total, err := gen.New(r.db).InvoiceTotalPaid(ctx, invoiceID)
+func (r *PaymentsRepo) TotalPaid(ctx context.Context, tenantID, invoiceID int64) (float64, error) {
+	total, err := gen.New(r.db).InvoiceTotalPaid(ctx, gen.InvoiceTotalPaidParams{
+		TenantID:  tenantID,
+		InvoiceID: invoiceID,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("invoice total paid: %w", err)
 	}
@@ -113,15 +127,15 @@ func (r *PaymentsRepo) TotalPaid(ctx context.Context, invoiceID int64) (float64,
 // Delete removes a payment and writes one audit row, atomically. It returns the
 // deleted payment's invoice id so the caller can broadcast an invoice update.
 // A missing payment surfaces sql.ErrNoRows so the caller can 404.
-func (r *PaymentsRepo) Delete(ctx context.Context, id int64) (int64, error) {
+func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (int64, error) {
 	var invoiceID int64
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		p, e := q.GetPayment(ctx, id)
+		p, e := q.GetPayment(ctx, gen.GetPaymentParams{TenantID: tenantID, ID: id})
 		if e != nil {
 			return e // sql.ErrNoRows surfaces unwrapped for errors.Is
 		}
-		if e := q.DeletePayment(ctx, id); e != nil {
+		if e := q.DeletePayment(ctx, gen.DeletePaymentParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		invoiceID = p.InvoiceID
@@ -144,14 +158,15 @@ func (r *PaymentsRepo) Delete(ctx context.Context, id int64) (int64, error) {
 // toPayment maps a generated row to the domain Payment.
 func toPayment(row gen.Payment) *Payment {
 	return &Payment{
-		ID:          row.ID,
-		UUID:        row.Uuid,
-		InvoiceID:   row.InvoiceID,
-		Amount:      row.Amount,
-		PaymentDate: row.PaymentDate,
-		Method:      row.Method.String,
-		Notes:       row.Notes.String,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		ID:        row.ID,
+		UUID:      row.Uuid,
+		InvoiceID: row.InvoiceID,
+		Amount:    row.Amount,
+		PaidAt:    row.PaidAt,
+		Method:    row.Method.String,
+		Reference: row.Reference.String,
+		Notes:     row.Notes.String,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}
 }

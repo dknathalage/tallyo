@@ -1,12 +1,8 @@
 package importer
 
 import (
-	"bytes"
-	"path/filepath"
 	"testing"
 
-	appdb "github.com/dknathalage/tallyo/internal/db"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -48,9 +44,9 @@ func TestParseRowsXLSX(t *testing.T) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
 	const sheet = "Sheet1"
-	_ = f.SetSheetRow(sheet, "A1", &[]interface{}{"name", "sku", "rate"})
-	_ = f.SetSheetRow(sheet, "A2", &[]interface{}{"Widget", "W1", 10})
-	_ = f.SetSheetRow(sheet, "A3", &[]interface{}{"Gadget", "W2", 5})
+	_ = f.SetSheetRow(sheet, "A1", &[]any{"name", "sku", "rate"})
+	_ = f.SetSheetRow(sheet, "A2", &[]any{"Widget", "W1", 10})
+	_ = f.SetSheetRow(sheet, "A3", &[]any{"Gadget", "W2", 5})
 	buf, err := f.WriteToBuffer()
 	if err != nil {
 		t.Fatalf("WriteToBuffer: %v", err)
@@ -67,228 +63,49 @@ func TestParseRowsXLSX(t *testing.T) {
 	}
 }
 
-func TestApplyMapping(t *testing.T) {
-	rows := []map[string]string{
-		{"name": "Widget", "sku": "W1", "rate": "10"},
-		{"name": "Gadget", "sku": "W2", "rate": "5"},
-	}
-	m := Mapping{
-		Fields: map[string]string{"name": "name", "sku": "sku", "rate": "rate"},
-	}
-	mapped, errs, err := ApplyMapping(rows, m)
-	if err != nil {
-		t.Fatalf("ApplyMapping: %v", err)
-	}
-	if len(errs) != 0 {
-		t.Fatalf("want no errors got %v", errs)
-	}
-	if len(mapped) != 2 {
-		t.Fatalf("want 2 mapped got %d", len(mapped))
-	}
-	if mapped[0].Name != "Widget" || mapped[0].Sku != "W1" || mapped[0].Rate != 10 {
-		t.Fatalf("mapped[0]: %+v", mapped[0])
+func TestParseRowsEmpty(t *testing.T) {
+	if _, _, err := ParseRows(nil, "csv", "", 1); err == nil {
+		t.Fatal("want error for empty file")
 	}
 }
 
-func TestApplyMappingMissingName(t *testing.T) {
-	rows := []map[string]string{
-		{"name": "", "sku": "W1", "rate": "10"},
-		{"name": "Gadget", "sku": "W2", "rate": "5"},
-	}
-	m := Mapping{
-		Fields: map[string]string{"name": "name", "sku": "sku", "rate": "rate"},
-	}
-	mapped, errs, err := ApplyMapping(rows, m)
+// TestParseRowsRagged covers the padding path: a data row with fewer cells than
+// the header must have its missing trailing columns filled with "" rather than
+// being absent from the map. J7's fixed parser depends on this guarantee.
+func TestParseRowsRagged(t *testing.T) {
+	data := []byte("name,sku,rate\nWidget,W1")
+	headers, rows, err := ParseRows(data, "csv", "", 1)
 	if err != nil {
-		t.Fatalf("ApplyMapping: %v", err)
+		t.Fatalf("ParseRows: %v", err)
 	}
-	if len(mapped) != 1 || mapped[0].Name != "Gadget" {
-		t.Fatalf("want 1 mapped Gadget got %+v", mapped)
+	if len(headers) != 3 || len(rows) != 1 {
+		t.Fatalf("headers=%v rows=%v", headers, rows)
 	}
-	if len(errs) != 1 || errs[0].Row != 1 {
-		t.Fatalf("want 1 error on row 1 got %v", errs)
+	if rows[0]["name"] != "Widget" || rows[0]["sku"] != "W1" {
+		t.Fatalf("row 0 present cells: %v", rows[0])
+	}
+	v, ok := rows[0]["rate"]
+	if !ok {
+		t.Fatal("missing column should be present in the map")
+	}
+	if v != "" {
+		t.Fatalf("missing column should pad to \"\", got %q", v)
 	}
 }
 
-func TestApplyMappingTierCols(t *testing.T) {
-	rows := []map[string]string{
-		{"name": "Widget", "sku": "W1", "rate": "10", "Gold Price": "20"},
+func TestParseFloat(t *testing.T) {
+	cases := map[string]float64{
+		"":           0,
+		"abc":        0,
+		"10":         10,
+		"$1,234.50":  1234.50,
+		" 5.5 ":      5.5,
+		"-12.50":     -12.50,
+		"-$1,200.00": -1200.00,
 	}
-	m := Mapping{
-		Fields:   map[string]string{"name": "name", "sku": "sku", "rate": "rate"},
-		TierCols: map[string]string{"Gold Price": "Gold"},
-	}
-	mapped, errs, err := ApplyMapping(rows, m)
-	if err != nil {
-		t.Fatalf("ApplyMapping: %v", err)
-	}
-	if len(errs) != 0 || len(mapped) != 1 {
-		t.Fatalf("unexpected: errs=%v mapped=%v", errs, mapped)
-	}
-	if mapped[0].TierRates["Gold"] != 20 {
-		t.Fatalf("tier rate by name: %v", mapped[0].TierRates)
-	}
-}
-
-func newCatalogAndTiers(t *testing.T) (*repository.CatalogRepo, *repository.RateTiersRepo) {
-	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "importer.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	return repository.NewCatalog(conn), repository.NewRateTiers(conn)
-}
-
-func TestDiff(t *testing.T) {
-	cat, _ := newCatalogAndTiers(t)
-	if _, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10}); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	mapped := []MappedRow{
-		{Name: "Widget", Sku: "W1", Rate: 99},
-		{Name: "New", Sku: "W3", Rate: 1},
-	}
-	res, err := Diff(t.Context(), cat, mapped, 0)
-	if err != nil {
-		t.Fatalf("Diff: %v", err)
-	}
-	if len(res.New) != 1 || res.New[0].Sku != "W3" {
-		t.Fatalf("new: %+v", res.New)
-	}
-	if len(res.Updated) != 1 || res.Updated[0].Existing.Sku != "W1" {
-		t.Fatalf("updated: %+v", res.Updated)
-	}
-	if res.UnchangedCount != 0 {
-		t.Fatalf("unchanged: %d", res.UnchangedCount)
-	}
-	if res.Summary.Total != 2 || res.Summary.New != 1 || res.Summary.Updated != 1 {
-		t.Fatalf("summary: %+v", res.Summary)
-	}
-}
-
-func TestDiffUnchanged(t *testing.T) {
-	cat, _ := newCatalogAndTiers(t)
-	if _, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10}); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	mapped := []MappedRow{
-		{Name: "Widget", Sku: "w1", Rate: 10},
-	}
-	res, err := Diff(t.Context(), cat, mapped, 2)
-	if err != nil {
-		t.Fatalf("Diff: %v", err)
-	}
-	if res.UnchangedCount != 1 || len(res.New) != 0 || len(res.Updated) != 0 {
-		t.Fatalf("res: %+v", res)
-	}
-	if res.Summary.Unchanged != 1 || res.Summary.Errors != 2 {
-		t.Fatalf("summary: %+v", res.Summary)
-	}
-}
-
-func TestCommit(t *testing.T) {
-	cat, tiers := newCatalogAndTiers(t)
-	existing, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10})
-	if err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	diff := DiffResult{
-		New: []MappedRow{
-			{Name: "New", Sku: "W3", Rate: 1, Metadata: map[string]string{"color": "blue"}, TierRates: map[string]float64{}},
-		},
-		Updated: []UpdatedItem{
-			{Existing: existing, Incoming: MappedRow{Name: "Widget", Sku: "W1", Rate: 99}},
-		},
-	}
-	res, err := Commit(t.Context(), cat, tiers, diff, true)
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-	if res.Inserted != 1 || res.Updated != 1 {
-		t.Fatalf("res: %+v", res)
-	}
-	if res.BatchID == "" {
-		t.Fatal("empty batchID")
-	}
-	items, err := cat.List(t.Context())
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(items) != 2 {
-		t.Fatalf("want 2 items got %d", len(items))
-	}
-}
-
-func TestCommitSkipUpdatesWhenDisabled(t *testing.T) {
-	cat, tiers := newCatalogAndTiers(t)
-	existing, err := cat.Create(t.Context(), repository.CatalogItemInput{Name: "Widget", Sku: "W1", Rate: 10})
-	if err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	diff := DiffResult{
-		Updated: []UpdatedItem{
-			{Existing: existing, Incoming: MappedRow{Name: "Widget", Sku: "W1", Rate: 99}},
-		},
-	}
-	res, err := Commit(t.Context(), cat, tiers, diff, false)
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-	if res.Updated != 0 {
-		t.Fatalf("want 0 updated got %d", res.Updated)
-	}
-	item, err := cat.Get(t.Context(), existing.ID)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if item.Rate != 10 {
-		t.Fatalf("rate should be unchanged, got %v", item.Rate)
-	}
-}
-
-func TestCommitCreatesTierByName(t *testing.T) {
-	cat, tiers := newCatalogAndTiers(t)
-	diff := DiffResult{New: []MappedRow{{
-		Name: "Item", Sku: "S1", Rate: 10,
-		TierRates: map[string]float64{"Remote": 15},
-	}}}
-	res, err := Commit(t.Context(), cat, tiers, diff, false)
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-	if res.Inserted != 1 {
-		t.Fatalf("inserted: %d", res.Inserted)
-	}
-	all, _ := tiers.List(t.Context())
-	found := false
-	for _, tr := range all {
-		if tr.Name == "Remote" {
-			found = true
+	for in, want := range cases {
+		if got := ParseFloat(in); got != want {
+			t.Fatalf("ParseFloat(%q) = %v want %v", in, got, want)
 		}
-	}
-	if !found {
-		t.Errorf("tier 'Remote' should have been created")
-	}
-	items, _ := cat.List(t.Context())
-	rates, err := cat.GetRates(t.Context(), items[0].ID)
-	if err != nil || len(rates) != 1 || rates[0].Rate != 15 {
-		t.Errorf("expected tier rate 15, got %+v (err %v)", rates, err)
-	}
-}
-
-func TestMetadataJSON(t *testing.T) {
-	if got := metadataJSON(nil); got != "{}" {
-		t.Fatalf("nil: %q", got)
-	}
-	if got := metadataJSON(map[string]string{}); got != "{}" {
-		t.Fatalf("empty: %q", got)
-	}
-	got := metadataJSON(map[string]string{"color": "red"})
-	if !bytes.Contains([]byte(got), []byte(`"color":"red"`)) {
-		t.Fatalf("got %q", got)
 	}
 }

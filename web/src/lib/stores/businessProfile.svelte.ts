@@ -1,11 +1,13 @@
 import { apiGet, apiPut } from '$lib/api/client';
 import { onEntity } from '$lib/realtime/events';
+import type { Zone } from '$lib/api/types';
 
 export interface BusinessProfile {
 	name: string;
 	email: string;
 	phone: string;
 	address: string;
+	zone: Zone;
 	logo: string;
 	metadata: string;
 	defaultCurrency: string;
@@ -18,6 +20,7 @@ const EMPTY: BusinessProfile = {
 	email: '',
 	phone: '',
 	address: '',
+	zone: 'national',
 	logo: '',
 	metadata: '',
 	defaultCurrency: ''
@@ -30,6 +33,7 @@ function normalize(raw: Partial<BusinessProfile> | null): BusinessProfile {
 		email: raw.email ?? '',
 		phone: raw.phone ?? '',
 		address: raw.address ?? '',
+		zone: raw.zone ?? 'national',
 		logo: raw.logo ?? '',
 		metadata: raw.metadata ?? '',
 		defaultCurrency: raw.defaultCurrency ?? ''

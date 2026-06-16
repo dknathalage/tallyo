@@ -4,15 +4,13 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { apiGet, apiPost } from '$lib/api/client';
-	import type { SetupStatus, User } from '$lib/api/types';
+	import { session } from '$lib/stores/session.svelte';
 
 	let { children } = $props();
 
 	let ready = $state(false);
-	let user = $state<User | null>(null);
 
-	const PUBLIC_PATHS = ['/login', '/setup', '/accept-invite'];
+	const PUBLIC_PATHS = ['/login', '/signup', '/accept-invite'];
 
 	function isPublic(path: string): boolean {
 		return PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));
@@ -24,17 +22,7 @@
 
 	async function bootstrap(): Promise<void> {
 		try {
-			const status = await apiGet<SetupStatus>('/api/setup/status');
-			if (status !== null && status.ownerExists === false) {
-				if (page.url.pathname !== '/setup') {
-					await goto('/setup');
-				}
-				ready = true;
-				return;
-			}
-
-			const me = await apiGet<User>('/api/auth/me');
-			user = me;
+			const me = await session.refresh();
 			if (me === null && !isPublic(page.url.pathname)) {
 				await goto('/login');
 			}
@@ -46,16 +34,11 @@
 	}
 
 	async function logout(): Promise<void> {
-		try {
-			await apiPost('/api/auth/logout');
-		} catch {
-			// Ignore — clear local state regardless.
-		}
-		user = null;
+		await session.logout();
 		await goto('/login');
 	}
 
-	const showNav = $derived(user !== null && !isPublic(page.url.pathname));
+	const showNav = $derived(session.user !== null && !isPublic(page.url.pathname));
 </script>
 
 <svelte:head>
@@ -72,11 +55,19 @@
 					<a href="/invoices" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Invoices</a>
 					<a href="/estimates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Estimates</a>
 					<a href="/recurring" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Recurring</a>
-					<a href="/rate-tiers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Rate Tiers</a>
-					<a href="/tax-rates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Tax Rates</a>
-					<a href="/payers" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Payers</a>
-					<a href="/clients" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Clients</a>
-					<a href="/catalog" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Catalog</a>
+					<a href="/participants" class="whitespace-nowrap text-gray-600 hover:text-gray-900"
+						>Participants</a
+					>
+					<a href="/plan-managers" class="whitespace-nowrap text-gray-600 hover:text-gray-900"
+						>Plan managers</a
+					>
+					<a href="/custom-items" class="whitespace-nowrap text-gray-600 hover:text-gray-900"
+						>Custom items</a
+					>
+					<a href="/support-catalog" class="whitespace-nowrap text-gray-600 hover:text-gray-900"
+						>Support catalogue</a
+					>
+					<a href="/tax-rates" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Tax rates</a>
 					<a href="/settings" class="whitespace-nowrap text-gray-600 hover:text-gray-900">Settings</a>
 					<button
 						type="button"

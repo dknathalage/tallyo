@@ -7,6 +7,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // PaymentService records and removes invoice payments, publishing both a
@@ -26,18 +27,20 @@ func NewPaymentService(db *sql.DB, hub *realtime.Hub) *PaymentService {
 
 // ListForInvoice returns one invoice's payments.
 func (s *PaymentService) ListForInvoice(ctx context.Context, invoiceID int64) ([]*repository.Payment, error) {
-	return s.repo.ListForInvoice(ctx, invoiceID)
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ListForInvoice(ctx, tenantID, invoiceID)
 }
 
 // Create records a payment, then broadcasts a payment create plus an invoice
 // update so the invoice's balance refreshes.
 func (s *PaymentService) Create(ctx context.Context, in repository.PaymentInput) (*repository.Payment, error) {
-	p, err := s.repo.Create(ctx, in)
+	tenantID := reqctx.MustTenant(ctx)
+	p, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "payment", ID: p.ID, Action: "create"})
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: in.InvoiceID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: p.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: in.InvoiceID, Action: "update"})
 	return p, nil
 }
 
@@ -45,14 +48,15 @@ func (s *PaymentService) Create(ctx context.Context, in repository.PaymentInput)
 // handler can 404; on success it broadcasts a payment delete plus an invoice
 // update so the balance refreshes.
 func (s *PaymentService) Delete(ctx context.Context, id int64) error {
-	invoiceID, err := s.repo.Delete(ctx, id)
+	tenantID := reqctx.MustTenant(ctx)
+	invoiceID, err := s.repo.Delete(ctx, tenantID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{Entity: "payment", ID: id, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{Entity: "invoice", ID: invoiceID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: invoiceID, Action: "update"})
 	return nil
 }

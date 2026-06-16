@@ -66,11 +66,11 @@ func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Create(r.Context(), repository.PaymentInput{
-		InvoiceID:   invoiceID,
-		Amount:      req.Amount,
-		PaymentDate: req.PaymentDate,
-		Method:      req.Method,
-		Notes:       req.Notes,
+		InvoiceID: invoiceID,
+		Amount:    req.Amount,
+		PaidAt:    req.PaymentDate,
+		Method:    req.Method,
+		Notes:     req.Notes,
 	})
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal error")
