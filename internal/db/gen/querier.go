@@ -12,6 +12,7 @@ import (
 type Querier interface {
 	AddTokenUsage(ctx context.Context, arg AddTokenUsageParams) error
 	ClearDefaultTaxRates(ctx context.Context, tenantID int64) error
+	ClearShiftsForInvoice(ctx context.Context, arg ClearShiftsForInvoiceParams) error
 	CloseCatalogVersion(ctx context.Context, arg CloseCatalogVersionParams) error
 	CountSupportItems(ctx context.Context, catalogVersionID int64) (int64, error)
 	CountUsers(ctx context.Context, tenantID int64) (int64, error)
@@ -37,6 +38,7 @@ type Querier interface {
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreatePlanManager(ctx context.Context, arg CreatePlanManagerParams) (PlanManager, error)
 	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
+	CreateShift(ctx context.Context, arg CreateShiftParams) (Shift, error)
 	CreateSupportItem(ctx context.Context, arg CreateSupportItemParams) (SupportItem, error)
 	CreateSupportItemPrice(ctx context.Context, arg CreateSupportItemPriceParams) (SupportItemPrice, error)
 	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
@@ -54,6 +56,7 @@ type Querier interface {
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
+	DeleteShift(ctx context.Context, arg DeleteShiftParams) error
 	DeleteSupportItemsForVersion(ctx context.Context, catalogVersionID int64) error
 	DeleteTaxRate(ctx context.Context, arg DeleteTaxRateParams) error
 	DeleteTenant(ctx context.Context, id int64) error
@@ -76,6 +79,7 @@ type Querier interface {
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
 	GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error)
+	GetShift(ctx context.Context, arg GetShiftParams) (Shift, error)
 	GetSupportItem(ctx context.Context, id int64) (SupportItem, error)
 	GetSupportItemByCode(ctx context.Context, arg GetSupportItemByCodeParams) (SupportItem, error)
 	GetSupportItemPrice(ctx context.Context, arg GetSupportItemPriceParams) (SupportItemPrice, error)
@@ -113,7 +117,14 @@ type Querier interface {
 	ListParticipantNotesRange(ctx context.Context, arg ListParticipantNotesRangeParams) ([]Note, error)
 	ListParticipants(ctx context.Context, tenantID int64) ([]ListParticipantsRow, error)
 	ListPlanManagers(ctx context.Context, tenantID int64) ([]PlanManager, error)
+	ListRecordedUnbilledByParticipant(ctx context.Context, arg ListRecordedUnbilledByParticipantParams) ([]Shift, error)
 	ListRecurringTemplates(ctx context.Context, tenantID int64) ([]ListRecurringTemplatesRow, error)
+	ListScheduledShifts(ctx context.Context, tenantID int64) ([]Shift, error)
+	// Shifts: the delivered-support unit (tenant-scoped). See migration 00004_shifts.sql.
+	ListShifts(ctx context.Context, tenantID int64) ([]Shift, error)
+	ListShiftsByParticipant(ctx context.Context, arg ListShiftsByParticipantParams) ([]Shift, error)
+	ListShiftsByParticipantRange(ctx context.Context, arg ListShiftsByParticipantRangeParams) ([]Shift, error)
+	ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatusParams) ([]Shift, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListSupportItemPrices(ctx context.Context, supportItemID int64) ([]SupportItemPrice, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
@@ -134,6 +145,7 @@ type Querier interface {
 	// (e.g. 4 for 'INV-'); the numeric part begins at prefix_len + 1.
 	MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumberLikeParams) (int64, error)
 	ParticipantInvoiceStats(ctx context.Context, arg ParticipantInvoiceStatsParams) (ParticipantInvoiceStatsRow, error)
+	ParticipantUnbilledAgg(ctx context.Context, tenantID int64) ([]ParticipantUnbilledAggRow, error)
 	PruneAgentSteps(ctx context.Context, createdAt string) error
 	PruneCheckpointChanges(ctx context.Context, createdAt string) error
 	ResolveCatalogVersionForDate(ctx context.Context, serviceDate string) (CatalogVersion, error)
@@ -145,6 +157,8 @@ type Querier interface {
 	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID int64) ([]SelectOverdueInvoicesForTenantRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error
+	SetShiftInvoice(ctx context.Context, arg SetShiftInvoiceParams) error
+	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
 	TouchAgentConversation(ctx context.Context, arg TouchAgentConversationParams) error
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UpdateAgentStepStatus(ctx context.Context, arg UpdateAgentStepStatusParams) error
@@ -159,6 +173,8 @@ type Querier interface {
 	UpdateParticipant(ctx context.Context, arg UpdateParticipantParams) (Participant, error)
 	UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerParams) (PlanManager, error)
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
+	UpdateShift(ctx context.Context, arg UpdateShiftParams) (Shift, error)
+	UpdateShiftStatus(ctx context.Context, arg UpdateShiftStatusParams) error
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
 	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error

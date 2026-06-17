@@ -305,6 +305,26 @@ type Session struct {
 	Expiry float64 `json:"expiry"`
 }
 
+type Shift struct {
+	ID            int64         `json:"id"`
+	Uuid          string        `json:"uuid"`
+	TenantID      int64         `json:"tenant_id"`
+	ParticipantID int64         `json:"participant_id"`
+	ServiceDate   string        `json:"service_date"`
+	StartTime     string        `json:"start_time"`
+	EndTime       string        `json:"end_time"`
+	Hours         float64       `json:"hours"`
+	Km            float64       `json:"km"`
+	Measures      string        `json:"measures"`
+	Note          string        `json:"note"`
+	Tags          string        `json:"tags"`
+	Status        string        `json:"status"`
+	InvoiceID     sql.NullInt64 `json:"invoice_id"`
+	AuthorUserID  sql.NullInt64 `json:"author_user_id"`
+	CreatedAt     string        `json:"created_at"`
+	UpdatedAt     string        `json:"updated_at"`
+}
+
 type SupportItem struct {
 	ID                int64          `json:"id"`
 	Uuid              string         `json:"uuid"`
