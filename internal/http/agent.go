@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -40,6 +41,107 @@ func NewAgentHandler(ag *agent.Agent, budget *agent.Budget, enabled bool) *Agent
 		h.events = ag.Events()
 	}
 	return h
+}
+
+// draftInvoiceRequest is the body of DraftInvoiceFromNotes: the inclusive note
+// service-date range to bill.
+type draftInvoiceRequest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// DraftInvoiceFromNotes runs the AI agent over a participant's notes for a date
+// range and creates the invoice WITHOUT human approval — the server
+// auto-approves the agent's create_invoice. It reuses the full harness
+// (catalogue-authoritative pricing, completeness verification, note billing) and
+// returns the created invoice. Synchronous: it blocks for the agent run, on a
+// detached context (bounded) so a client disconnect does not abort a model call.
+func (h *AgentHandler) DraftInvoiceFromNotes(w http.ResponseWriter, r *http.Request) {
+	tenantID, userID, ok := h.guard(w, r)
+	if !ok {
+		return
+	}
+	pid, ok := parseID(r)
+	if !ok {
+		WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req draftInvoiceRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.From == "" || req.To == "" {
+		WriteError(w, http.StatusBadRequest, "from and to are required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(detach(tenantID, userID), 5*time.Minute)
+	defer cancel()
+
+	conv, err := h.store.CreateConversation(ctx, "Invoice from notes")
+	if err != nil {
+		slog.Error("draft invoice: create conversation", slog.Any("error", err))
+		WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	prompt := fmt.Sprintf("Draft an NDIS invoice for participant id %d for all supports "+
+		"recorded in their notes between %s and %s. Read the notes, map each activity to the "+
+		"correct NDIS support item code (prefer each note's candidates), and create the invoice "+
+		"with notesFrom %s and notesTo %s.", pid, req.From, req.To, req.From, req.To)
+
+	if err := h.agent.Start(ctx, conv.ID, prompt); err != nil {
+		slog.Error("draft invoice: agent start", slog.Int64("conversationId", conv.ID), slog.Any("error", err))
+		WriteError(w, http.StatusBadGateway, "the assistant could not draft the invoice")
+		return
+	}
+
+	inv, err := h.autoApproveInvoice(ctx, conv.ID)
+	if err != nil {
+		slog.Error("draft invoice: auto-approve", slog.Int64("conversationId", conv.ID), slog.Any("error", err))
+		WriteError(w, http.StatusBadGateway, "the assistant did not produce an invoice from these notes")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(inv)
+}
+
+// autoApproveInvoice approves the agent's pending create_invoice for the
+// conversation (no human gate) and returns the created invoice JSON (the
+// approved step stores its result as the step summary). Bounded so a misbehaving
+// model cannot loop. Returns an error when no invoice was produced.
+func (h *AgentHandler) autoApproveInvoice(ctx context.Context, convID int64) (json.RawMessage, error) {
+	const farFuture = "2999-01-01T00:00:00Z"
+	for iter := 0; iter < 6; iter++ { // bounded
+		steps, err := h.store.ListExpiredAwaitingSteps(ctx, farFuture)
+		if err != nil {
+			return nil, fmt.Errorf("list awaiting steps: %w", err)
+		}
+		var stepID int64
+		for i := range steps { // bounded by len(steps)
+			c, e := h.store.GetConversationByMessage(ctx, steps[i].MessageID)
+			if e != nil {
+				continue
+			}
+			if c.ID == convID {
+				stepID = steps[i].ID
+				break
+			}
+		}
+		if stepID == 0 {
+			break // no pending write for this conversation
+		}
+		if err := h.agent.Decide(ctx, stepID, true); err != nil {
+			return nil, fmt.Errorf("approve step %d: %w", stepID, err)
+		}
+		done, err := h.store.GetStep(ctx, stepID)
+		if err == nil && done.ToolName == "create_invoice" && done.Summary != "" && done.Summary != "null" {
+			return json.RawMessage(done.Summary), nil
+		}
+	}
+	return nil, fmt.Errorf("no invoice was produced")
 }
 
 // guard enforces the enabled flag and pulls the authenticated tenant+user from
