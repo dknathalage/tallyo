@@ -157,6 +157,9 @@ func run() error {
 			slog.String("value", e))
 	}
 	agentCfg = agentCfg.WithDefaults()
+	// Skip the forced plan turn by default (cuts a round-trip, restores thinking);
+	// set AGENT_SKIP_PLAN=0 to restore the plan phase + its UX preview.
+	agentCfg.SkipPlan = envOr("AGENT_SKIP_PLAN", "1") != "0"
 	if !agentCfg.Enabled() {
 		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
 	}
@@ -218,11 +221,11 @@ func run() error {
 		agentReg := agent.NewRegistry()
 		agentCP := agent.NewCheckpoint(agentStore, conn)
 		agentReg.Register(agent.NewListInvoicesTool(invoiceSvc))
-		agentReg.Register(agent.NewCreateInvoiceTool(invoiceSvc, agentCP))
-		agentReg.Register(agent.NewListParticipantNotesTool(noteSvc))
+		agentReg.Register(agent.NewCreateInvoiceToolVerified(invoiceSvc, noteSvc, agentCP))
+		agentReg.Register(agent.NewListParticipantNotesToolWithCatalog(noteSvc, supportCatalogSvc))
 		agentReg.Register(agent.NewSearchCatalogueTool(supportCatalogSvc))
 		agentBudget := agent.NewBudgetWallClock(agentStore, agentCfg)
-		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, "high")
+		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
 		agentSvc = agent.NewAgent(agentCfg, llmClient, agentStore, agentReg, agentCP, agentEvents).
 			WithBudget(agentBudget).
 			WithRestore(agent.InvoiceRestoreFunc(invoiceSvc))

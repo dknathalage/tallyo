@@ -41,7 +41,7 @@ func TestSystemPromptContainsGuardrails(t *testing.T) {
 		// 3. Write/mutating ops require explicit approval
 		{
 			name:      "approval: write operations gated",
-			substring: "require explicit user approval",
+			substring: "automatically suspends every write tool call",
 		},
 		{
 			name:      "approval: never claim success without tool result",

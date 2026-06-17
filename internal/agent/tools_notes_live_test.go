@@ -7,11 +7,12 @@ package agent
 // reproduces the reference invoice (Invoice-2638907B.pdf): 8 GST-free lines,
 // total $1905.76, billed from the four nursing-note days.
 //
-// It runs only when an Anthropic key is available (ANTHROPIC_API_KEY in the
-// environment, or in the repo-root .env); otherwise it is skipped, so the normal
-// `go test ./...` gate stays hermetic and offline. To run it:
+// It runs only when explicitly opted in via RUN_LIVE_AGENT (non-empty) AND an
+// Anthropic key is available (ANTHROPIC_API_KEY in the environment, or in the
+// repo-root .env); otherwise it is skipped, so the normal `go test ./...` gate
+// stays hermetic and offline. To run it:
 //
-//	go test ./internal/agent/ -run TestAgentDraftsInvoiceFromNotesLive -v
+//	RUN_LIVE_AGENT=1 go test ./internal/agent/ -run TestAgentDraftsInvoiceFromNotesLive -v
 //
 // It makes real model calls and consumes tokens.
 
@@ -31,6 +32,9 @@ import (
 )
 
 func TestAgentDraftsInvoiceFromNotesLive(t *testing.T) {
+	if os.Getenv("RUN_LIVE_AGENT") == "" {
+		t.Skip("set RUN_LIVE_AGENT=1 to run the live agent test")
+	}
 	env := liveEnv(t)
 	apiKey := env["ANTHROPIC_API_KEY"]
 	if apiKey == "" {
@@ -53,14 +57,15 @@ func TestAgentDraftsInvoiceFromNotesLive(t *testing.T) {
 		Effort: env["ANTHROPIC_EFFORT"],
 	}.WithDefaults()
 	cfg.MaxIterations = 30
+	cfg.SkipPlan = true // measure the efficient path: no forced plan turn
 
 	store := NewStore(conn)
 	cp := NewCheckpoint(store, conn)
 	invoiceSvc := service.NewInvoiceService(conn, realtime.NewHub())
 	reg := NewRegistry()
 	reg.Register(NewListInvoicesTool(invoiceSvc))
-	reg.Register(NewCreateInvoiceTool(invoiceSvc, cp))
-	reg.Register(NewListParticipantNotesTool(notes))
+	reg.Register(NewCreateInvoiceToolVerified(invoiceSvc, notes, cp))
+	reg.Register(NewListParticipantNotesToolWithCatalog(notes, service.NewSupportCatalogService(conn)))
 	reg.Register(NewSearchCatalogueTool(service.NewSupportCatalogService(conn)))
 
 	client := llm.NewAnthropic(cfg.APIKey, cfg.Model, cfg.EffortFor())
