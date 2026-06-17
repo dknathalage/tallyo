@@ -132,20 +132,20 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, created)
 }
 
-// draftInvoiceRequest is the body of DraftInvoiceFromNotes: the inclusive note
-// service-date range to bill.
+// draftInvoiceRequest is the body of DraftInvoiceFromShifts: the inclusive
+// service-date range of recorded shifts to bill.
 type draftInvoiceRequest struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-// DraftInvoiceFromNotes runs the AI agent over a participant's notes for a date
-// range and creates the invoice WITHOUT human approval — the server
+// DraftInvoiceFromShifts runs the AI agent over a participant's recorded shifts
+// for a date range and creates the invoice WITHOUT human approval — the server
 // auto-approves the agent's create_invoice. It reuses the full harness
-// (catalogue-authoritative pricing, completeness verification, note billing) and
+// (catalogue-authoritative pricing, completeness verification, shift billing) and
 // returns the created invoice. Synchronous: it blocks for the agent run, on a
 // detached context (bounded) so a client disconnect does not abort a model call.
-func (h *AgentHandler) DraftInvoiceFromNotes(w http.ResponseWriter, r *http.Request) {
+func (h *AgentHandler) DraftInvoiceFromShifts(w http.ResponseWriter, r *http.Request) {
 	tenantID, userID, ok := h.guard(w, r)
 	if !ok {
 		return
@@ -168,7 +168,7 @@ func (h *AgentHandler) DraftInvoiceFromNotes(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(detach(tenantID, userID), 5*time.Minute)
 	defer cancel()
 
-	conv, err := h.store.CreateConversation(ctx, "Invoice from notes")
+	conv, err := h.store.CreateConversation(ctx, "Invoice from shifts")
 	if err != nil {
 		slog.Error("draft invoice: create conversation", slog.Any("error", err))
 		WriteError(w, http.StatusInternalServerError, "internal error")
@@ -189,7 +189,7 @@ func (h *AgentHandler) DraftInvoiceFromNotes(w http.ResponseWriter, r *http.Requ
 	inv, err := h.autoApproveInvoice(ctx, conv.ID)
 	if err != nil {
 		slog.Error("draft invoice: auto-approve", slog.Int64("conversationId", conv.ID), slog.Any("error", err))
-		WriteError(w, http.StatusBadGateway, "the assistant did not produce an invoice from these notes")
+		WriteError(w, http.StatusBadGateway, "the assistant did not produce an invoice from these shifts")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -108,3 +108,32 @@ func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 	}
 	return p.ID
 }
+
+// seedDraftInvoice inserts a minimal draft invoice and returns its id. Used by
+// the shift-linkage tests that need an existing invoice to mark shifts drafted.
+func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	inv, err := gen.New(conn).CreateInvoice(context.Background(), gen.CreateInvoiceParams{
+		Uuid: uuid.NewString(), TenantID: tenantID, Number: uuid.NewString(), ParticipantID: participantID,
+		Status: "draft", IssueDate: "2026-01-01", DueDate: "2026-02-01", CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("seedDraftInvoice: %v", err)
+	}
+	return inv.ID
+}
+
+// seedUser inserts a member user for the tenant and returns its id.
+func seedUser(t *testing.T, conn *sql.DB, tenantID int64) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	u, err := gen.New(conn).CreateUser(context.Background(), gen.CreateUserParams{
+		Uuid: uuid.NewString(), TenantID: tenantID, Email: uuid.NewString() + "@x.com",
+		PasswordHash: "x", Name: "U", Role: "member", CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("seedUser: %v", err)
+	}
+	return u.ID
+}

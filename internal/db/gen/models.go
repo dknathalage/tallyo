@@ -222,21 +222,6 @@ type LineItem struct {
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 }
 
-type Note struct {
-	ID              int64           `json:"id"`
-	Uuid            string          `json:"uuid"`
-	TenantID        int64           `json:"tenant_id"`
-	ParticipantID   int64           `json:"participant_id"`
-	ServiceDate     string          `json:"service_date"`
-	Body            string          `json:"body"`
-	TransportKm     sql.NullFloat64 `json:"transport_km"`
-	SupportHours    sql.NullFloat64 `json:"support_hours"`
-	AuthorUserID    sql.NullInt64   `json:"author_user_id"`
-	BilledInvoiceID sql.NullInt64   `json:"billed_invoice_id"`
-	CreatedAt       string          `json:"created_at"`
-	UpdatedAt       string          `json:"updated_at"`
-}
-
 type Participant struct {
 	ID            int64          `json:"id"`
 	Uuid          string         `json:"uuid"`

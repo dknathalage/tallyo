@@ -76,10 +76,8 @@ type createInvoiceInput struct {
 	IssueDate     string `json:"issueDate"`
 	DueDate       string `json:"dueDate"`
 	Notes         string `json:"notes"`
-	NotesFrom     string `json:"notesFrom"`
-	NotesTo       string `json:"notesTo"`
-	// From/To are the shift-lifecycle equivalent of NotesFrom/NotesTo: the
-	// inclusive service-date window of recorded shifts this invoice covers.
+	// From/To are the inclusive service-date window of recorded shifts this
+	// invoice covers.
 	// Passed on the shifts→invoice path so the platform can verify completeness
 	// and mark the covered shifts drafted.
 	From  string                     `json:"from"`
@@ -97,8 +95,6 @@ const createInvoiceSchema = `{
     "issueDate": { "type": "string", "description": "Issue date (YYYY-MM-DD)." },
     "dueDate": { "type": "string", "description": "Due date (YYYY-MM-DD)." },
     "notes": { "type": "string", "description": "Optional notes." },
-    "notesFrom": { "type": "string", "description": "When drafting from a participant's journal: the inclusive start (YYYY-MM-DD) of the note range this invoice covers. Pass the same range you read notes for, so the platform can verify every recorded support is billed and link the notes." },
-    "notesTo": { "type": "string", "description": "Inclusive end (YYYY-MM-DD) of the covered note range. Pass alongside notesFrom." },
     "from": { "type": "string", "description": "When drafting from a participant's recorded shifts: the inclusive start (YYYY-MM-DD) of the shift range this invoice covers. Pass the same range you read shifts for, so the platform can verify every recorded shift is billed and link the shifts." },
     "to": { "type": "string", "description": "Inclusive end (YYYY-MM-DD) of the covered shift range. Pass alongside from." },
     "items": {
@@ -131,18 +127,7 @@ const createInvoiceSchema = `{
 // create under the active checkpoint (if any, threaded via context) in a
 // SEPARATE audited transaction, after the service write committed (B1).
 func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
-	return newCreateInvoiceTool(inv, nil, cp)
-}
-
-// NewCreateInvoiceToolVerified is NewCreateInvoiceTool plus a notes-completeness
-// guard (Pillar 4): before persisting, it checks that every support recorded in
-// the participant's notes for the invoice's date range is billed as a
-// catalogue-CODED line with a matching quantity. A gap (a missing line, or one
-// billed as a custom line instead of an NDIS code) is returned as a structured
-// is_error so the model self-corrects and re-submits. Used by the notes→invoice
-// agent path; the plain constructor (notes nil) skips the check.
-func NewCreateInvoiceToolVerified(inv *service.InvoiceService, notes *service.NoteService, cp *Checkpoint) Tool {
-	return newCreateInvoiceTool(inv, notes, cp)
+	return newCreateInvoiceTool(inv, cp)
 }
 
 // NewCreateInvoiceToolForShifts is NewCreateInvoiceTool plus a shift-completeness
@@ -157,7 +142,7 @@ func NewCreateInvoiceToolForShifts(inv *service.InvoiceService, shifts *service.
 	return newCreateInvoiceToolShifts(inv, shifts, cp)
 }
 
-func newCreateInvoiceTool(inv *service.InvoiceService, notes *service.NoteService, cp *Checkpoint) Tool {
+func newCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 	return Tool{
 		Name:        "create_invoice",
 		Description: "Create a new invoice for a participant with line items. This is a write — it requires user approval before running.",
@@ -181,18 +166,6 @@ func newCreateInvoiceTool(inv *service.InvoiceService, notes *service.NoteServic
 				it := in.Items[i]
 				if it.Code != "" && it.Quantity <= 0 {
 					return Result{}, fmt.Errorf("create_invoice: line %d (code %q) needs a quantity greater than 0", i, it.Code)
-				}
-			}
-			// Pillar 4: verify the draft covers the participant's notes (only when
-			// a NoteService is wired — the notes→invoice path). The coverage range
-			// is the model-supplied [notesFrom, notesTo] when present (catches a
-			// whole day the model dropped), else derived from the coded lines.
-			// Pre-persist, so a gap never leaves an orphan invoice; returned as a
-			// tool error the model can act on.
-			coverFrom, coverTo := in.NotesFrom, in.NotesTo
-			if notes != nil {
-				if err := verifyNotesCovered(ctx, notes, in.ParticipantID, in.Items, coverFrom, coverTo); err != nil {
-					return Result{}, err
 				}
 			}
 
@@ -227,15 +200,6 @@ func newCreateInvoiceTool(inv *service.InvoiceService, notes *service.NoteServic
 				}); rErr != nil {
 					return Result{}, fmt.Errorf("create_invoice: record checkpoint: %w", rErr)
 				}
-			}
-
-			// Link the covered notes to the new invoice (the soft billing flag).
-			// Best-effort: a billing-link failure must not undo a committed invoice,
-			// so it is logged into the result rather than failing the tool. On a
-			// later checkpoint revert the invoice delete nulls billed_invoice_id via
-			// FK, so the link is automatically cleared.
-			if notes != nil {
-				billCoveredNotes(ctx, notes, in.ParticipantID, created.ID, coverFrom, coverTo, in.Items)
 			}
 			return Result{JSON: created, Render: "card"}, nil
 		},
@@ -328,7 +292,7 @@ func newCreateInvoiceToolShifts(inv *service.InvoiceService, shifts *service.Shi
 
 // verifyShiftsCovered checks that every quantity recorded on the participant's
 // unbilled shifts for the draft's service-date range is billed as a
-// catalogue-CODED line with a matching quantity (mirrors verifyNotesCovered). A
+// catalogue-CODED line with a matching quantity (Pillar 4). A
 // gap — a missing line, or a quantity billed as a custom line instead of an NDIS
 // code — yields a structured error so the model self-corrects.
 func verifyShiftsCovered(ctx context.Context, shifts *service.ShiftService, participantID int64, items []repository.LineItemInput, from, to string) error {
@@ -387,45 +351,7 @@ func billCoveredShifts(ctx context.Context, shifts *service.ShiftService, partic
 	_ = shifts.MarkDrafted(ctx, invoiceID, ids)
 }
 
-// verifyNotesCovered checks that every support recorded in the participant's
-// unbilled notes for the draft's service-date range is billed as a
-// catalogue-CODED line with a matching quantity (Pillar 4). It returns a
-// structured error naming the gaps — a missing line, or a support billed as a
-// custom line instead of an NDIS code — so the model self-corrects. Notes
-// without quantity tags are not enforced (the model bills those from prose,
-// which cannot be checked deterministically).
-func verifyNotesCovered(ctx context.Context, notes *service.NoteService, participantID int64, items []repository.LineItemInput, from, to string) error {
-	from, to, ok := coverageRange(items, from, to)
-	if !ok {
-		return nil // no coded lines and no explicit range → nothing to verify
-	}
-	recs, err := notes.ListParticipant(ctx, participantID, from, to)
-	if err != nil {
-		return fmt.Errorf("create_invoice: verify notes: %w", err)
-	}
-	gaps := make([]string, 0)
-	for i := range recs { // bounded by len(recs)
-		n := recs[i]
-		if n.BilledID != nil {
-			continue // already billed on another invoice
-		}
-		if n.TransportKm != nil && round2c(*n.TransportKm) > 0 && !hasCodedLine(items, n.ServiceDate, *n.TransportKm) {
-			gaps = append(gaps, fmt.Sprintf("%s: transport %.2f km", n.ServiceDate, *n.TransportKm))
-		}
-		if n.SupportHours != nil && round2c(*n.SupportHours) > 0 && !hasCodedLine(items, n.ServiceDate, *n.SupportHours) {
-			gaps = append(gaps, fmt.Sprintf("%s: support %.2f hours", n.ServiceDate, *n.SupportHours))
-		}
-	}
-	if len(gaps) > 0 {
-		return fmt.Errorf("create_invoice: the draft does not cover every recorded support. "+
-			"For each item below, add a catalogue-CODED line on that date with that quantity "+
-			"(use search_catalogue to find the NDIS code; do NOT bill it as a custom line): %s",
-			strings.Join(gaps, "; "))
-	}
-	return nil
-}
-
-// coverageRange returns the note range to verify/bill against: the explicit
+// coverageRange returns the shift range to verify/bill against: the explicit
 // [from, to] when both are supplied (catches a whole day the model dropped),
 // otherwise the min/max over the coded lines.
 func coverageRange(items []repository.LineItemInput, from, to string) (string, string, bool) {
@@ -433,31 +359,6 @@ func coverageRange(items []repository.LineItemInput, from, to string) (string, s
 		return from, to, true
 	}
 	return codedDateRange(items)
-}
-
-// billCoveredNotes links every unbilled note in the coverage range to the new
-// invoice (the soft billing flag). Best-effort: errors are swallowed (a failed
-// link must not undo a committed invoice); a revert nulls the link via FK.
-// Bounded by the number of notes in range.
-func billCoveredNotes(ctx context.Context, notes *service.NoteService, participantID, invoiceID int64, from, to string, items []repository.LineItemInput) {
-	rf, rt, ok := coverageRange(items, from, to)
-	if !ok {
-		return
-	}
-	recs, err := notes.ListParticipant(ctx, participantID, rf, rt)
-	if err != nil {
-		return
-	}
-	ids := make([]int64, 0, len(recs))
-	for i := range recs { // bounded by len(recs)
-		if recs[i].BilledID == nil {
-			ids = append(ids, recs[i].ID)
-		}
-	}
-	if len(ids) == 0 {
-		return
-	}
-	_ = notes.Bill(ctx, invoiceID, ids)
 }
 
 // codedDateRange returns the min/max service date over the coded lines, and

@@ -506,3 +506,12 @@ func toShifts(rows []gen.Shift) ([]*Shift, error) {
 	}
 	return out, nil
 }
+
+// validISODate reports whether s is a strict YYYY-MM-DD calendar date.
+func validISODate(s string) bool {
+	if len(s) != 10 {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
+}

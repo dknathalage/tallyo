@@ -19,6 +19,41 @@ import (
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
+// verifyLine is the create_invoice line shape used by the completeness tests.
+type verifyLine struct {
+	Code        string  `json:"code,omitempty"`
+	Description string  `json:"description,omitempty"`
+	ServiceDate string  `json:"serviceDate,omitempty"`
+	Quantity    float64 `json:"quantity"`
+	UnitPrice   float64 `json:"unitPrice,omitempty"`
+}
+
+// fullCodedLines is the correct 8-line draft (transport + self-care per day).
+func fullCodedLines() []verifyLine {
+	out := make([]verifyLine, 0, 2*len(referenceWeek))
+	for i := range referenceWeek {
+		d := referenceWeek[i]
+		out = append(out,
+			verifyLine{Code: codeTransport, ServiceDate: d.date, Quantity: d.km},
+			verifyLine{Code: codeSelfCare, ServiceDate: d.date, Quantity: d.hr},
+		)
+	}
+	return out
+}
+
+// assertNoInvoice fails the test when any invoice has been persisted — a rejected
+// draft must leave no orphan.
+func assertNoInvoice(t *testing.T, inv *service.InvoiceService, ctx context.Context) {
+	t.Helper()
+	rows, err := inv.List(ctx)
+	if err != nil {
+		t.Fatalf("list invoices: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("a rejected draft must not persist an invoice; found %d", len(rows))
+	}
+}
+
 // shiftsCreateFixture seeds the nursing-note fixture as recorded shifts (tenant,
 // Tania, catalogue, 4 shifts) and returns the shift-keyed create_invoice tool,
 // the invoice and shift services, and an authed context.

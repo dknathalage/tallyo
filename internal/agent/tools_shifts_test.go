@@ -24,6 +24,16 @@ import (
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
+// findCandidate returns the candidate with the given code, or nil.
+func findCandidate(cands []candidateView, code string) *candidateView {
+	for i := range cands { // bounded by len(cands)
+		if cands[i].Code == code {
+			return &cands[i]
+		}
+	}
+	return nil
+}
+
 // shiftToolsFixture opens a migrated temp DB and seeds the same tenant,
 // participant and catalogue as the invoice-create tests, returning the open
 // connection plus the seeded tenant and participant ids.

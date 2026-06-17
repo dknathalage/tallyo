@@ -54,7 +54,7 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
-	uid := seedNoteUser(t, conn, tenantID)
+	uid := seedUser(t, conn, tenantID)
 	svc := NewShiftService(conn, realtime.NewHub())
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
@@ -207,7 +207,7 @@ func TestShiftMarkDrafted(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
-	invID := seedNoteInvoice(t, conn, tenantID, participantID)
+	invID := seedDraftInvoice(t, conn, tenantID, participantID)
 	hub := realtime.NewHub()
 	svc := NewShiftService(conn, hub)
 	ctx := tctx(tenantID)
@@ -241,7 +241,7 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 
 	tenantA := seedTenant(t, conn)
 	participantA := seedParticipant(t, conn, tenantA)
-	invA := seedNoteInvoice(t, conn, tenantA, participantA)
+	invA := seedDraftInvoice(t, conn, tenantA, participantA)
 
 	tenantB := seedTenant(t, conn)
 	participantB := seedParticipant(t, conn, tenantB)

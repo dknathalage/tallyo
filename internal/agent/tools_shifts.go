@@ -9,6 +9,17 @@ import (
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
+// candidateView is a curated catalogue suggestion attached to a shift, derived
+// from the shift's structured measures and resolved for its service date. The
+// model should prefer picking a code from these over a free-form search.
+type candidateView struct {
+	Code     string   `json:"code"`
+	Name     string   `json:"name"`
+	Unit     string   `json:"unit"`
+	PriceCap *float64 `json:"priceCap"`
+	GstFree  bool     `json:"gstFree"`
+}
+
 // listParticipantShiftsInput is the parsed input for the list_participant_shifts
 // tool. From/To are an optional inclusive service-date window (YYYY-MM-DD); both
 // empty returns every shift for the participant.
@@ -159,4 +170,53 @@ func shiftCandidates(ctx context.Context, cat *service.SupportCatalogService, sh
 		return nil
 	}
 	return out
+}
+
+// searchCatalogueInput is the parsed input for the search_catalogue tool. Zone
+// is optional and defaults to the national zone when empty.
+type searchCatalogueInput struct {
+	Query       string `json:"query"`
+	ServiceDate string `json:"serviceDate"`
+	Zone        string `json:"zone"`
+}
+
+// searchCatalogueSchema is the model-facing JSON schema for the tool.
+const searchCatalogueSchema = `{
+  "type": "object",
+  "properties": {
+    "query": { "type": "string", "description": "Keyword or NDIS support item code to search for." },
+    "serviceDate": { "type": "string", "description": "Service date the catalogue must be effective on (YYYY-MM-DD)." },
+    "zone": { "type": "string", "description": "Optional pricing zone; defaults to national." }
+  },
+  "required": ["query", "serviceDate"],
+  "additionalProperties": false
+}`
+
+// NewSearchCatalogueTool returns a read tool that searches the NDIS support-item
+// catalogue effective on a service date by code or keyword, returning each
+// item's code, name, unit, GST-free flag and the national price cap. Call this
+// to find the correct NDIS code and rate for an activity before creating an
+// invoice.
+func NewSearchCatalogueTool(cat *service.SupportCatalogService) Tool {
+	return Tool{
+		Name:        "search_catalogue",
+		Description: "Search the NDIS support-item catalogue effective on a service date by code or keyword, returning each item's code, name, unit, GST-free flag and the national price cap. Call this to find the correct NDIS code and rate for an activity before creating an invoice.",
+		Risk:        RiskRead,
+		Render:      "table",
+		Schema:      json.RawMessage(searchCatalogueSchema),
+		Handler: func(ctx context.Context, input json.RawMessage) (Result, error) {
+			var in searchCatalogueInput
+			if err := json.Unmarshal(input, &in); err != nil {
+				return Result{}, fmt.Errorf("search_catalogue: invalid input: %w", err)
+			}
+			if in.ServiceDate == "" {
+				return Result{}, fmt.Errorf("search_catalogue: serviceDate is required")
+			}
+			matches, err := cat.SearchForDate(ctx, in.Query, in.ServiceDate, in.Zone, 25)
+			if err != nil {
+				return Result{}, fmt.Errorf("search_catalogue: %w", err)
+			}
+			return Result{JSON: matches, Render: "table"}, nil
+		},
+	}
 }

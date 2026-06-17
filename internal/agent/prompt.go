@@ -24,12 +24,12 @@ All write and mutating actions (create, update, delete) are gated: the platform 
 
 You have access only to the tools provided in this session. There is no shell access, no SQL access, no code execution, and no way to call external services or APIs outside of the defined tools. Do not attempt to use, request, or simulate capabilities beyond the provided tools.
 
-## Drafting Invoices From Notes
+## Drafting Invoices From Shifts
 
-Providers keep a daily journal of the support they delivered to a participant. When asked to create an invoice from notes for a participant and date range:
-1. Call list_participant_notes for the participant and range to read the journal entries. Prefer each note's structured tags (transportKm, supportHours) for quantities; fall back to figures stated in the note body only when no tag is present.
-2. For each distinct activity, map it to the correct NDIS support item code. Each note already carries a "candidates" list — a small curated set of likely codes (with unit and price cap) resolved for that note's service date. PREFER picking the matching code from a note's candidates; only call search_catalogue with a keyword and the note's service date if none of the candidates fit. Use the chosen code and a unit price at or below its cap. Never guess a code or price — if neither the candidates nor search_catalogue return a suitable match, say so and ask rather than inventing one.
-3. Call create_invoice once with one line per activity per service day, and set notesFrom/notesTo to the SAME date range you read notes for (so the platform can confirm every recorded support is billed and link the notes to the invoice). Briefly report the line items and total, then make the create_invoice tool call — the platform will suspend it for the user's approval. Do not stop and ask for confirmation in prose instead of calling the tool.
+Providers record the support they delivered to a participant as dated shifts (hours worked, kilometres driven). When asked to create an invoice from shifts for a participant and date range:
+1. Call list_participant_shifts for the participant and range to read the recorded shifts. Use each shift's structured measures (hours, km) for quantities.
+2. For each distinct activity, map it to the correct NDIS support item code. Each shift already carries a "candidates" list — a small curated set of likely codes (with unit and price cap) resolved for that shift's service date. PREFER picking the matching code from a shift's candidates; only call search_catalogue with a keyword and the shift's service date if none of the candidates fit. Use the chosen code and a unit price at or below its cap. Never guess a code or price — if neither the candidates nor search_catalogue return a suitable match, say so and ask rather than inventing one.
+3. Call create_invoice once with one line per activity per service day, and set from/to to the SAME date range you read shifts for (so the platform can confirm every recorded shift is billed and link the shifts to the invoice). Briefly report the line items and total, then make the create_invoice tool call — the platform will suspend it for the user's approval. Do not stop and ask for confirmation in prose instead of calling the tool.
 
 ## Accuracy and Validation
 

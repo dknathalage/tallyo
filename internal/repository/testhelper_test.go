@@ -54,3 +54,17 @@ func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64, name string) in
 	}
 	return p.ID
 }
+
+// seedUser inserts a member user for the tenant and returns its id.
+func seedUser(t *testing.T, conn *sql.DB, tenantID int64) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	u, err := gen.New(conn).CreateUser(context.Background(), gen.CreateUserParams{
+		Uuid: uuid.NewString(), TenantID: tenantID, Email: uuid.NewString() + "@x.com",
+		PasswordHash: "x", Name: "U", Role: "member", CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("seedUser: %v", err)
+	}
+	return u.ID
+}

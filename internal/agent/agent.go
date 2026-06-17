@@ -136,7 +136,7 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 		return fmt.Errorf("execute: invalid convID=%d checkpointID=%d messageID=%d", convID, checkpointID, messageID)
 	}
 
-	// Stall recovery (Pillar 2, notes→invoice): the write tool the plan declared.
+	// Stall recovery (Pillar 2, shifts→invoice): the write tool the plan declared.
 	// If the model ends a turn in prose without ever calling it, escalate — nudge
 	// first, then force the tool — bounded by maxStalls. Empty when the plan
 	// declared no write, in which case behaviour is unchanged.

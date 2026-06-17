@@ -68,11 +68,6 @@ type Deps struct {
 	// bulk routes, plus the per-participant stats route under /api.
 	Invoices *InvoiceHandler
 
-	// Notes, when non-nil, serves the auth-gated per-participant journal notes:
-	// list under /api/participants/{id}/notes, plus note CRUD and the bill-link
-	// route under /api/notes.
-	Notes *NoteHandler
-
 	// Shifts, when non-nil, serves the auth-gated shift lifecycle routes: the
 	// per-participant shift list under /api/participants/{id}/shifts, the
 	// tenant-wide list, billing suggestions and to-record prompts, plus shift
@@ -147,7 +142,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Notes != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Agent != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Agent != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users, deps.Tenants))
 				if deps.Auth != nil {
@@ -217,14 +212,6 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/invoices/{id}/pdf", deps.Invoices.Pdf)
 					pr.Get("/participants/{id}/stats", deps.Invoices.ParticipantStats)
 				}
-				if deps.Notes != nil {
-					pr.Get("/participants/{id}/notes", deps.Notes.ListForParticipant)
-					pr.Post("/notes", deps.Notes.Create)
-					pr.Post("/notes/bill", deps.Notes.Bill)
-					pr.Get("/notes/{id}", deps.Notes.Get)
-					pr.Put("/notes/{id}", deps.Notes.Update)
-					pr.Delete("/notes/{id}", deps.Notes.Delete)
-				}
 				if deps.Shifts != nil {
 					pr.Get("/participants/{id}/shifts", deps.Shifts.ListForParticipant)
 					pr.Get("/shifts", deps.Shifts.List)
@@ -273,7 +260,7 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/agent/conversations/{id}/messages", deps.Agent.ListMessages)
 					pr.Post("/agent/conversations/{id}/messages", deps.Agent.SendMessage)
 					pr.Get("/agent/conversations/{id}/stream", deps.Agent.Stream)
-					pr.Post("/participants/{id}/draft-invoice", deps.Agent.DraftInvoiceFromNotes)
+					pr.Post("/participants/{id}/draft-invoice", deps.Agent.DraftInvoiceFromShifts)
 					pr.Post("/shifts/import", deps.Agent.ImportShifts)
 					pr.Post("/agent/steps/{id}/decision", deps.Agent.Decide)
 					pr.Post("/agent/checkpoints/{id}/revert", deps.Agent.Revert)

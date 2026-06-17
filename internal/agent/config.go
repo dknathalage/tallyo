@@ -12,7 +12,7 @@ type Config struct {
 	RatePerMinute    int    // per-user message rate limit
 	AwaitTTLMinutes  int    // how long an awaiting risky step stays valid
 	// SkipPlan omits the forced propose_plan turn and enters the execute loop
-	// directly. The plan turn is ceremony for the fixed notes→invoice recipe (a
+	// directly. The plan turn is ceremony for the fixed shifts→invoice recipe (a
 	// full round-trip that also disables thinking); skipping it cuts a round-trip
 	// and restores thinking on the first turn. Default false preserves the plan
 	// phase (and its UX preview) for callers that rely on it.
