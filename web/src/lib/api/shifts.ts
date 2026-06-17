@@ -1,0 +1,125 @@
+import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import type { Shift, ShiftInput, ShiftStatus, ShiftSuggestion, Invoice } from './types';
+
+// NOTE: apiGet/apiPost/apiPut return Promise<T | null> (null on 401-redirect or
+// 204). This module unwraps the contract the way crud.ts does: list calls fall
+// back to [], create/update/import/draft throw on a null result (a 401 already
+// redirected to /login, so a null here is a genuine error). Keeps a non-null
+// surface for callers.
+function must<T>(v: T | null, what: string): T {
+	if (v === null) throw new Error(`${what}: no data`);
+	return v;
+}
+
+/** List every shift for the current tenant (powers the shifts table). Returns []. */
+export async function listAll(): Promise<Shift[]> {
+	return (await apiGet<Shift[]>('/api/shifts')) ?? [];
+}
+
+/**
+ * List one participant's shifts, optionally bounded to a [from, to] inclusive
+ * service-date range (YYYY-MM-DD) and/or a single lifecycle status. Returns [].
+ */
+export async function listForParticipant(
+	participantId: number,
+	from?: string,
+	to?: string,
+	status?: ShiftStatus
+): Promise<Shift[]> {
+	if (!Number.isInteger(participantId) || participantId <= 0) {
+		throw new Error(
+			`shifts.listForParticipant: participantId must be positive, got ${participantId}`
+		);
+	}
+	const params = new URLSearchParams();
+	if (from !== undefined && from.length > 0) params.set('from', from);
+	if (to !== undefined && to.length > 0) params.set('to', to);
+	if (status !== undefined && status.length > 0) params.set('status', status);
+	const qs = params.toString();
+	const base = `/api/participants/${participantId}/shifts`;
+	const path = qs.length > 0 ? `${base}?${qs}` : base;
+	return (await apiGet<Shift[]>(path)) ?? [];
+}
+
+/** Recorded-but-unbilled shift clusters, one per participant. Returns []. */
+export async function suggestions(): Promise<ShiftSuggestion[]> {
+	return (await apiGet<ShiftSuggestion[]>('/api/shifts/suggestions')) ?? [];
+}
+
+/** Scheduled shifts still awaiting a record (overdue / today / upcoming). Returns []. */
+export async function toRecord(): Promise<Shift[]> {
+	return (await apiGet<Shift[]>('/api/shifts/to-record')) ?? [];
+}
+
+/** Create a shift. Returns the persisted Shift (201). */
+export async function create(input: ShiftInput): Promise<Shift> {
+	if (!Number.isInteger(input.participantId) || input.participantId <= 0) {
+		throw new Error('shifts.create: input.participantId must be positive');
+	}
+	if (input.serviceDate.length === 0) {
+		throw new Error('shifts.create: input.serviceDate is required');
+	}
+	return must(await apiPost<Shift>('/api/shifts', input), 'shifts create');
+}
+
+/** Update a shift by id. Returns the updated Shift. */
+export async function update(id: number, input: ShiftInput): Promise<Shift> {
+	if (!Number.isInteger(id) || id <= 0) {
+		throw new Error(`shifts.update: id must be positive, got ${id}`);
+	}
+	return must(await apiPut<Shift>(`/api/shifts/${id}`, input), 'shifts update');
+}
+
+/** Delete a shift by id (204). */
+export async function remove(id: number): Promise<void> {
+	if (!Number.isInteger(id) || id <= 0) {
+		throw new Error(`shifts.remove: id must be positive, got ${id}`);
+	}
+	await apiDelete<void>(`/api/shifts/${id}`);
+}
+
+/** Advance a shift's lifecycle status (204). */
+export async function setStatus(id: number, status: ShiftStatus): Promise<void> {
+	if (!Number.isInteger(id) || id <= 0) {
+		throw new Error(`shifts.setStatus: id must be positive, got ${id}`);
+	}
+	if (status.length === 0) {
+		throw new Error('shifts.setStatus: status is required');
+	}
+	await apiPost<void>(`/api/shifts/${id}/status`, { status });
+}
+
+/**
+ * Extract recorded shifts from a free-text timesheet for one participant (AI).
+ * Returns the created shifts (201).
+ */
+export async function importShifts(participantId: number, text: string): Promise<Shift[]> {
+	if (!Number.isInteger(participantId) || participantId <= 0) {
+		throw new Error(`shifts.import: participantId must be positive, got ${participantId}`);
+	}
+	if (text.trim().length === 0) {
+		throw new Error('shifts.import: text is required');
+	}
+	return (await apiPost<Shift[]>('/api/shifts/import', { participantId, text })) ?? [];
+}
+
+/**
+ * Draft an invoice from a participant's recorded shifts in the [from, to]
+ * inclusive range (AI, auto-approved). Returns the created Invoice (201).
+ */
+export async function draftInvoice(
+	participantId: number,
+	from: string,
+	to: string
+): Promise<Invoice> {
+	if (!Number.isInteger(participantId) || participantId <= 0) {
+		throw new Error(`shifts.draftInvoice: participantId must be positive, got ${participantId}`);
+	}
+	if (from.length === 0 || to.length === 0) {
+		throw new Error('shifts.draftInvoice: from and to are required');
+	}
+	return must(
+		await apiPost<Invoice>(`/api/participants/${participantId}/draft-invoice`, { from, to }),
+		'shifts draftInvoice'
+	);
+}

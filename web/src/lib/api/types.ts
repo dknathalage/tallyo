@@ -376,3 +376,61 @@ export interface ValidationDetail {
 	field: string;
 	message: string;
 }
+
+// ---- Shifts (per-participant service shifts with a billing lifecycle) ----
+
+export type ShiftStatus = 'scheduled' | 'recorded' | 'drafted' | 'sent' | 'paid';
+
+/** One semi-structured measure attached to a shift (maps to a catalogue code). */
+export interface ShiftMeasure {
+	label: string;
+	value: number;
+	unit: string;
+	code: string;
+}
+
+export interface Shift {
+	id: number;
+	uuid: string;
+	participantId: number;
+	serviceDate: string;
+	startTime: string;
+	endTime: string;
+	hours: number;
+	km: number;
+	measures: ShiftMeasure[];
+	note: string;
+	tags: string[];
+	status: ShiftStatus;
+	invoiceId: number | null;
+	authorUserId: number | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ShiftInput {
+	participantId: number;
+	serviceDate: string;
+	startTime: string;
+	endTime: string;
+	hours: number;
+	km: number;
+	measures: ShiftMeasure[];
+	note: string;
+	tags: string[];
+	status: ShiftStatus;
+}
+
+/**
+ * A clustered invoice suggestion: a participant's recorded-but-unbilled shifts,
+ * grouped to draft a single invoice. The backend supplies participantId/ids/
+ * from/to/count; the participant name and an estimated total are derived in the
+ * UI from the loaded participants + shifts.
+ */
+export interface ShiftSuggestion {
+	participantId: number;
+	ids: number[];
+	from: string;
+	to: string;
+	count: number;
+}
