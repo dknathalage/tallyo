@@ -105,18 +105,24 @@ func (a *Agent) Start(ctx context.Context, convID int64, userText string) error 
 		return fmt.Errorf("start: persist user message: %w", err)
 	}
 
-	_, planMsgID, err := a.plan(ctx, convID, userMsg.ID)
-	if err != nil {
-		a.events.Publish(convID, Event{Type: "error", Data: "planning failed"})
-		return fmt.Errorf("start: plan: %w", err)
+	// Anchor message for the checkpoint + execute loop. With the plan phase it is
+	// the assistant plan message; when skipped it is the user message.
+	anchorMsgID := userMsg.ID
+	if !a.cfg.SkipPlan {
+		_, planMsgID, pErr := a.plan(ctx, convID, userMsg.ID)
+		if pErr != nil {
+			a.events.Publish(convID, Event{Type: "error", Data: "planning failed"})
+			return fmt.Errorf("start: plan: %w", pErr)
+		}
+		anchorMsgID = planMsgID
 	}
 
-	checkpointID, err := a.cp.Open(ctx, planMsgID)
+	checkpointID, err := a.cp.Open(ctx, anchorMsgID)
 	if err != nil {
 		return fmt.Errorf("start: open checkpoint: %w", err)
 	}
 
-	if err := a.Execute(ctx, convID, checkpointID, planMsgID); err != nil {
+	if err := a.Execute(ctx, convID, checkpointID, anchorMsgID); err != nil {
 		return fmt.Errorf("start: execute: %w", err)
 	}
 	return nil
@@ -129,6 +135,19 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 	if convID <= 0 || checkpointID <= 0 || messageID <= 0 {
 		return fmt.Errorf("execute: invalid convID=%d checkpointID=%d messageID=%d", convID, checkpointID, messageID)
 	}
+
+	// Stall recovery (Pillar 2, notes→invoice): the write tool the plan declared.
+	// If the model ends a turn in prose without ever calling it, escalate — nudge
+	// first, then force the tool — bounded by maxStalls. Empty when the plan
+	// declared no write, in which case behaviour is unchanged.
+	// Stall recovery is plan-driven: pendingWrite is the write the plan declared.
+	// It is empty for a read-only request (correctly: no write to chase) and when
+	// the plan phase is skipped — so SkipPlan trades away auto stall recovery
+	// rather than risk forcing a write on a request that never wanted one.
+	pendingWrite := a.plannedWriteTool(ctx, messageID)
+	const maxStalls = 2
+	stalls := 0
+	nextForce := ""
 
 	for i := 0; i < a.cfg.MaxIterations; i++ { // bounded by MaxIterations
 		// Budget check (task10): if a daily token cap is configured and the
@@ -159,7 +178,8 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 			}
 			return fmt.Errorf("execute: %w", err)
 		}
-		req := buildRequest(a.cfg, a.reg, SystemPrompt(), history, "")
+		req := buildRequest(a.cfg, a.reg, SystemPrompt(), history, nextForce)
+		nextForce = "" // consumed: a forced retry forces exactly one turn
 		resp, err := a.llm.CreateMessage(ctx, req)
 		if err != nil {
 			return fmt.Errorf("execute: model call: %w", err)
@@ -187,6 +207,24 @@ func (a *Agent) Execute(ctx context.Context, convID, checkpointID, messageID int
 		case llm.StopToolUse:
 			// fall through to tool handling below
 		default:
+			// The model ended its turn. If it planned a write but never called it
+			// (stalled in prose), escalate instead of committing: nudge first,
+			// then force the tool. Bounded by maxStalls.
+			if pendingWrite != "" && stalls < maxStalls && !a.writeAttempted(ctx, convID, pendingWrite) {
+				stalls++
+				if stalls >= maxStalls {
+					nextForce = pendingWrite // final escalation: the API must call it
+					a.events.Publish(convID, Event{Type: "nudge", Data: "forcing " + pendingWrite})
+					continue
+				}
+				if err := a.nudgeWrite(ctx, convID, pendingWrite); err != nil {
+					if cErr := a.commitCheckpoint(ctx, checkpointID); cErr != nil {
+						return fmt.Errorf("execute: nudge: %w (commit: %v)", err, cErr)
+					}
+					return fmt.Errorf("execute: nudge: %w", err)
+				}
+				continue
+			}
 			a.events.Publish(convID, Event{Type: "message_final", Data: finalText(resp)})
 			return a.commitCheckpoint(ctx, checkpointID)
 		}
@@ -252,6 +290,59 @@ func (a *Agent) runTools(ctx context.Context, convID, messageID, checkpointID in
 		}
 	}
 	return false, nil
+}
+
+// plannedWriteTool returns the name of the first risky (write) tool the plan
+// declared under messageID, or "" when the plan declared no write. The plan
+// persists each step's registry-derived risk, so a "risky" step is an
+// authoritative write. Used to drive stall recovery (Pillar 2).
+func (a *Agent) plannedWriteTool(ctx context.Context, messageID int64) string {
+	steps, err := a.store.ListSteps(ctx, messageID)
+	if err != nil {
+		return "" // best-effort: no enforcement rather than failing the turn
+	}
+	for i := range steps { // bounded by len(steps)
+		if steps[i].Risk == string(RiskRisky) {
+			return steps[i].ToolName
+		}
+	}
+	return ""
+}
+
+// writeAttempted reports whether an assistant tool_use for toolName already
+// exists anywhere in the conversation — i.e. the model has called (or had
+// suspended/errored) the write at least once. A suspended write never reaches
+// the end-turn check; a post-approval resume and an errored call both leave a
+// tool_use here, so neither triggers a false stall nudge.
+func (a *Agent) writeAttempted(ctx context.Context, convID int64, toolName string) bool {
+	msgs, err := a.store.ListMessages(ctx, convID)
+	if err != nil {
+		return true // on doubt, do NOT nudge (avoid spurious forced writes)
+	}
+	for i := range msgs { // bounded by len(msgs)
+		for j := range msgs[i].Content { // bounded by len(blocks)
+			b := msgs[i].Content[j]
+			if b.Type == llm.BlockToolUse && b.ToolName == toolName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// nudgeWrite persists a continuation user message telling the model to stop
+// asking in prose and call the planned write tool. The next loop iteration
+// rebuilds history with this nudge appended (auto tool choice).
+func (a *Agent) nudgeWrite(ctx context.Context, convID int64, toolName string) error {
+	text := "You planned to create the invoice but have not called " + toolName +
+		" yet. Call " + toolName + " now with the line items — the platform will" +
+		" gate it for the user's approval. Do not ask for confirmation in prose."
+	if _, err := a.store.CreateMessage(ctx, convID, "user",
+		[]llm.Block{{Type: llm.BlockText, Text: text}}, "{}"); err != nil {
+		return fmt.Errorf("nudge write: %w", err)
+	}
+	a.events.Publish(convID, Event{Type: "nudge", Data: "nudged " + toolName})
+	return nil
 }
 
 // recordToolStep persists an executed-tool step row (status "done" | "error").

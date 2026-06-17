@@ -130,6 +130,20 @@ type ValidationResult struct {
 // least one line must be present; violations are programmer errors surfaced as
 // plain errors (the caller's repository would reject them anyway).
 func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID int64, items []repository.LineItemInput) (*ValidationResult, error) {
+	return v.validate(ctx, tenantID, participantID, items, false)
+}
+
+// ValidateFilling runs the engine in catalogue-authoritative pricing mode: for a
+// support-item line it OVERWRITES unit_price with the resolved zone price cap
+// (a quotable item with no cap keeps the caller's price, or errors when that is
+// ≤ 0). Used by the agent's create path so the model only chooses code, service
+// date and quantity — the platform owns the price. The human UI path uses
+// Validate (caller-supplied price, capped) so providers may bill sub-cap.
+func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, participantID int64, items []repository.LineItemInput) (*ValidationResult, error) {
+	return v.validate(ctx, tenantID, participantID, items, true)
+}
+
+func (v *LineValidator) validate(ctx context.Context, tenantID, participantID int64, items []repository.LineItemInput, fillPrice bool) (*ValidationResult, error) {
 	if tenantID == 0 {
 		return nil, fmt.Errorf("validate lines: tenant id required")
 	}
@@ -157,7 +171,7 @@ func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID in
 	copy(out, items)
 	var ve ValidationError
 	for i := range out { // bounded by len(out)
-		v.validateLine(ctx, i, zone, planStart, planEnd, &out[i], &ve)
+		v.validateLine(ctx, i, zone, planStart, planEnd, &out[i], &ve, fillPrice)
 	}
 	if len(ve.Errors) > 0 {
 		return nil, &ve
@@ -171,7 +185,7 @@ func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID in
 // failures to ve. Support-item lines run the full catalogue flow; custom-item
 // lines run only the non-negativity checks. Errors are accumulated, not thrown,
 // so the caller collects every problem in one pass.
-func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *repository.LineItemInput, ve *ValidationError) {
+func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *repository.LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line == nil {
 		return
 	}
@@ -188,12 +202,12 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planSta
 		return
 	}
 
-	v.validateSupportLine(ctx, idx, zone, planStart, planEnd, line, ve)
+	v.validateSupportLine(ctx, idx, zone, planStart, planEnd, line, ve, fillPrice)
 }
 
 // validateSupportLine runs steps 1-6 for a support-item line, mutating the line
 // (snapshots, pinned version, defaulted gst_free) and appending failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *repository.LineItemInput, ve *ValidationError) {
+func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *repository.LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for an NDIS support item"})
 		return
@@ -222,17 +236,22 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	}
 	snapshotSupportItem(line, ver.ID, item)
 
-	// Step 3 + 4: zone price-cap assertion (skipped when the cap is NULL).
-	v.assertPriceCap(ctx, idx, ver.ID, zone, line, ve)
+	// Step 3 + 4: resolve the zone price, then either assert unit_price ≤ cap
+	// (default) or, in fill mode, OVERWRITE unit_price with the cap.
+	v.applyZonePrice(ctx, idx, ver.ID, zone, line, ve, fillPrice)
 
 	// Step 5: service date within the participant plan window.
 	assertPlanWindow(idx, planStart, planEnd, line.ServiceDate, ve)
 }
 
-// assertPriceCap looks up the tenant-zone price for the line's code and asserts
-// unit_price ≤ price_cap (spec §6 step 4). A nil cap (quotable item) skips the
-// assertion. A missing price row is itself a failure.
-func (v *LineValidator) assertPriceCap(ctx context.Context, idx int, versionID int64, zone string, line *repository.LineItemInput, ve *ValidationError) {
+// applyZonePrice looks up the tenant-zone price for the line's code and, by
+// default, asserts unit_price ≤ price_cap (spec §6 step 4). When fillPrice is
+// true it instead OVERWRITES unit_price with the cap (catalogue-authoritative
+// pricing for the agent path). A nil cap (quotable item) has no fixed price:
+// the cap assertion is skipped, and in fill mode the caller-supplied price is
+// kept — but a quotable line with unit_price ≤ 0 is a failure (no price to
+// apply). A missing price row is itself a failure.
+func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID int64, zone string, line *repository.LineItemInput, ve *ValidationError, fillPrice bool) {
 	price, err := v.catalog.ResolveZonePrice(ctx, versionID, line.Code, zone)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "unitPrice", Message: "could not look up the price cap for your zone"})
@@ -243,9 +262,24 @@ func (v *LineValidator) assertPriceCap(ctx context.Context, idx int, versionID i
 		return
 	}
 	if price.PriceCap == nil {
-		return // quotable item: no fixed cap (spec §6 step 4).
+		// Quotable item: no fixed cap. In fill mode there is no price to apply,
+		// so the caller must supply a positive one.
+		if fillPrice && round2(line.UnitPrice) <= 0 {
+			ve.Errors = append(ve.Errors, FieldError{
+				Line:    idx,
+				Field:   "unitPrice",
+				Message: fmt.Sprintf("code %q is a quotable item with no published price — supply an explicit unit price", line.Code),
+			})
+		}
+		return
 	}
 	priceCap := *price.PriceCap
+	if fillPrice {
+		// Catalogue-authoritative: the platform owns the price. The model's
+		// unit_price (if any) is ignored — it cannot misprice a coded line.
+		line.UnitPrice = round2(priceCap)
+		return
+	}
 	// Compare at cent granularity (round2 both sides) so float representation
 	// noise can't spuriously fail an at-cap price; the cap is a money value.
 	if round2(line.UnitPrice) > round2(priceCap) {

@@ -32,6 +32,7 @@ type Querier interface {
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
+	CreateNote(ctx context.Context, arg CreateNoteParams) (Note, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (Participant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreatePlanManager(ctx context.Context, arg CreatePlanManagerParams) (PlanManager, error)
@@ -48,6 +49,7 @@ type Querier interface {
 	DeleteInvite(ctx context.Context, arg DeleteInviteParams) error
 	DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) error
 	DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error
+	DeleteNote(ctx context.Context, arg DeleteNoteParams) error
 	DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
@@ -69,6 +71,7 @@ type Querier interface {
 	GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEstimateRow, error)
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
 	GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvoiceRow, error)
+	GetNote(ctx context.Context, arg GetNoteParams) (Note, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
@@ -105,6 +108,9 @@ type Querier interface {
 	ListLineItems(ctx context.Context, arg ListLineItemsParams) ([]LineItem, error)
 	ListParticipantEstimates(ctx context.Context, arg ListParticipantEstimatesParams) ([]ListParticipantEstimatesRow, error)
 	ListParticipantInvoices(ctx context.Context, arg ListParticipantInvoicesParams) ([]ListParticipantInvoicesRow, error)
+	// Per-participant daily journal (tenant-scoped). See migration 00003_notes.sql.
+	ListParticipantNotes(ctx context.Context, arg ListParticipantNotesParams) ([]Note, error)
+	ListParticipantNotesRange(ctx context.Context, arg ListParticipantNotesRangeParams) ([]Note, error)
 	ListParticipants(ctx context.Context, tenantID int64) ([]ListParticipantsRow, error)
 	ListPlanManagers(ctx context.Context, tenantID int64) ([]PlanManager, error)
 	ListRecurringTemplates(ctx context.Context, tenantID int64) ([]ListRecurringTemplatesRow, error)
@@ -118,6 +124,7 @@ type Querier interface {
 	ListUsers(ctx context.Context, tenantID int64) ([]User, error)
 	MarkCheckpointReverted(ctx context.Context, arg MarkCheckpointRevertedParams) error
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
+	MarkNoteBilled(ctx context.Context, arg MarkNoteBilledParams) error
 	// Highest numeric sequence (parsed from the suffix after prefix_len chars),
 	// pad-width independent. prefix_len is the length of the non-numeric prefix
 	// (e.g. 4 for 'EST-'); the numeric part begins at prefix_len + 1.
@@ -148,6 +155,7 @@ type Querier interface {
 	UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error
 	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
+	UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, error)
 	UpdateParticipant(ctx context.Context, arg UpdateParticipantParams) (Participant, error)
 	UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerParams) (PlanManager, error)
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
