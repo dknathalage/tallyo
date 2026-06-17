@@ -61,9 +61,9 @@ type ShiftInput struct {
 	Status        string    `json:"status"`
 }
 
-// Agg summarises a participant's recorded-but-unbilled shifts: how many there
+// UnbilledAgg summarises a participant's recorded-but-unbilled shifts: how many there
 // are and the service-date span they cover.
-type Agg struct {
+type UnbilledAgg struct {
 	ParticipantID int64  `json:"participantId"`
 	Count         int64  `json:"count"`
 	From          string `json:"from"`
@@ -376,7 +376,7 @@ func (r *ShiftsRepo) Delete(ctx context.Context, tenantID, id int64) error {
 
 // UnbilledByParticipant aggregates the tenant's recorded-but-unbilled shifts per
 // participant (count and service-date span), ready for billing suggestions.
-func (r *ShiftsRepo) UnbilledByParticipant(ctx context.Context, tenantID int64) ([]Agg, error) {
+func (r *ShiftsRepo) UnbilledByParticipant(ctx context.Context, tenantID int64) ([]UnbilledAgg, error) {
 	if tenantID == 0 {
 		return nil, errors.New("unbilled by participant: tenant id required")
 	}
@@ -384,9 +384,9 @@ func (r *ShiftsRepo) UnbilledByParticipant(ctx context.Context, tenantID int64) 
 	if err != nil {
 		return nil, fmt.Errorf("unbilled by participant: %w", err)
 	}
-	out := make([]Agg, 0, len(rows))
+	out := make([]UnbilledAgg, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		out = append(out, Agg{
+		out = append(out, UnbilledAgg{
 			ParticipantID: rows[i].ParticipantID,
 			Count:         rows[i].Cnt,
 			From:          anyToString(rows[i].FromDate),
