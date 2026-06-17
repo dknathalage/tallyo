@@ -1,24 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { participants } from '$lib/stores/participants.svelte';
 	import { planManagers } from '$lib/stores/planManagers.svelte';
 	import Modal from '$lib/components/Modal.svelte';
-	import NotesJournal from '$lib/components/NotesJournal.svelte';
 	import type { Participant, MgmtType } from '$lib/api/types';
-
-	// Notes-journal modal state (per-participant). `journalOpen` drives the Modal's
-	// bind:open; clearing it (Modal close) drops the selected participant.
-	let journalFor = $state<Participant | null>(null);
-	let journalOpen = $state(false);
-
-	function openJournal(p: Participant): void {
-		journalFor = p;
-		journalOpen = true;
-	}
-
-	$effect(() => {
-		if (!journalOpen) journalFor = null;
-	});
 
 	// Selects bind to a string id ('' means none); convert to number | null.
 	function toId(v: string): number | null {
@@ -419,10 +405,10 @@
 								<td class="px-3 py-2 text-right whitespace-nowrap">
 									<button
 										type="button"
-										onclick={() => openJournal(p)}
+										onclick={() => goto(`/participants/${p.id}`)}
 										class="mr-2 text-gray-900 hover:underline"
 									>
-										Journal
+										Open
 									</button>
 									<button
 										type="button"
@@ -454,9 +440,4 @@
 		</div>
 	</section>
 
-	<Modal bind:open={journalOpen} title={journalFor ? `Journal — ${journalFor.name}` : 'Journal'}>
-		{#if journalFor}
-			<NotesJournal participantId={journalFor.id} participantName={journalFor.name} />
-		{/if}
-	</Modal>
 </div>
