@@ -24,3 +24,5 @@ web/.svelte-kit
 !web/build
 web/build/*
 !web/build/.gitkeep
+
+.superpowers/
