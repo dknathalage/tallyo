@@ -346,30 +346,6 @@ export interface RecurringInput {
 	isActive: boolean;
 }
 
-// ---- Notes journal (per-participant daily service notes) ----
-
-export interface Note {
-	id: number;
-	uuid: string;
-	participantId: number;
-	serviceDate: string;
-	body: string;
-	transportKm: number | null;
-	supportHours: number | null;
-	authorUserId: number | null;
-	billedInvoiceId: number | null;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface NoteInput {
-	participantId: number;
-	serviceDate: string;
-	body: string;
-	transportKm?: number | null;
-	supportHours?: number | null;
-}
-
 /** One field-level validation failure from the 422 response. */
 export interface ValidationDetail {
 	line: number;

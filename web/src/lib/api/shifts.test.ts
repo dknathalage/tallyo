@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the client module before importing shifts.ts (same approach as notes.test.ts).
+// Mock the client module before importing shifts.ts.
 vi.mock('./client', async (importOriginal) => {
 	const mod = await importOriginal<typeof import('./client')>();
 	return {
