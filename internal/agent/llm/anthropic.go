@@ -4,10 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
+
+// supportsThinking reports whether model accepts the adaptive-thinking config.
+// Haiku-tier models reject it (HTTP 400 "adaptive thinking is not supported on
+// this model"), mirroring the effort gate in the agent package.
+func supportsThinking(model string) bool {
+	return !strings.Contains(model, "haiku")
+}
 
 // Anthropic implements Client.
 var _ Client = (*Anthropic)(nil)
@@ -50,14 +58,20 @@ func (a *Anthropic) CreateMessage(ctx context.Context, req Request) (*Response, 
 		Model:     anthropic.Model(model),
 		MaxTokens: int64(req.MaxTokens),
 		Messages:  toSDKMessages(req.Messages),
-		// Adaptive thinking is the only supported on-mode for current Opus/Fable models.
-		Thinking: anthropic.ThinkingConfigParamUnion{
+	}
+
+	// Adaptive thinking is only supported on current Opus/Fable models (Haiku-tier
+	// rejects it with HTTP 400), and the API also rejects thinking + forced tool
+	// use together. So enable it only on models that support it and only when no
+	// tool is forced (e.g. the propose_plan phase forces a tool).
+	if supportsThinking(model) && req.ToolChoice.ForceTool == "" {
+		params.Thinking = anthropic.ThinkingConfigParamUnion{
 			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
-		},
+		}
 	}
 
 	if req.System != "" {
-		params.System = []anthropic.TextBlockParam{{Text: req.System}}
+		params.System = buildSystemBlocks(req.System)
 	}
 
 	effort := a.effort
@@ -82,15 +96,44 @@ func (a *Anthropic) CreateMessage(ctx context.Context, req Request) (*Response, 
 		params.ToolChoice = anthropic.ToolChoiceParamOfTool(req.ToolChoice.ForceTool)
 	}
 
-	resp, err := a.c.Messages.New(ctx, params)
-	if err != nil {
+	// Stream and accumulate. The non-streaming Messages.New is rejected by the
+	// SDK ("streaming is required for operations that may take longer than 10
+	// minutes") once MaxTokens is large enough with adaptive thinking, so we
+	// always stream and rebuild the full Message before mapping it back.
+	stream := a.c.Messages.NewStreaming(ctx, params)
+	var acc anthropic.Message
+	for stream.Next() { // bounded by the response event count
+		event := stream.Current()
+		if err := acc.Accumulate(event); err != nil {
+			return nil, fmt.Errorf("llm: anthropic accumulate stream event: %w", err)
+		}
+	}
+	if err := stream.Err(); err != nil {
 		return nil, fmt.Errorf("llm: anthropic create message: %w", err)
 	}
-	return fromSDK(resp), nil
+	return fromSDK(&acc), nil
+}
+
+// buildSystemBlocks turns the system prompt into a single SDK text block and
+// marks it with an ephemeral cache_control breakpoint. The system prompt is
+// large and byte-identical every turn, so caching it lets turns 2..N re-read it
+// from cache instead of paying full input price. Returns nil for an empty
+// prompt (callers only set params.System when system is non-empty, but guard
+// anyway).
+func buildSystemBlocks(system string) []anthropic.TextBlockParam {
+	if system == "" {
+		return nil
+	}
+	blocks := []anthropic.TextBlockParam{{Text: system}}
+	// Breakpoint on the last (here only) system block caches the whole prefix.
+	blocks[len(blocks)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
+	return blocks
 }
 
 // toSDKTools converts our ToolDef list into SDK tool unions, decoding the JSON
-// Schema input into Properties/Required.
+// Schema input into Properties/Required. The last tool carries an ephemeral
+// cache_control breakpoint so the entire stable tool-definition block (every
+// turn identical) is cached together with the system prefix.
 func toSDKTools(defs []ToolDef) ([]anthropic.ToolUnionParam, error) {
 	if len(defs) == 0 {
 		return nil, nil
@@ -117,6 +160,10 @@ func toSDKTools(defs []ToolDef) ([]anthropic.ToolUnionParam, error) {
 			tool.Description = anthropic.String(d.Description)
 		}
 		out = append(out, anthropic.ToolUnionParam{OfTool: &tool})
+	}
+	// Breakpoint on the last tool caches all tool schemas as one block.
+	if last := out[len(out)-1].OfTool; last != nil {
+		last.CacheControl = anthropic.NewCacheControlEphemeralParam()
 	}
 	return out, nil
 }

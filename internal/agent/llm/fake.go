@@ -29,6 +29,16 @@ func (f *Fake) CreateMessage(_ context.Context, req Request) (*Response, error) 
 	return &r, nil
 }
 
+// SetResponses replaces the scripted responses and resets the cursor. Useful
+// when a test must build responses that depend on values known only after the
+// agent (and its DB fixtures) are constructed.
+func (f *Fake) SetResponses(rs ...Response) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.responses = rs
+	f.i = 0
+}
+
 func (f *Fake) Calls() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
