@@ -511,7 +511,11 @@
 				<tbody>
 					{#each filtered as inv (inv.id)}
 						<tr class="border-b border-gray-100 last:border-0">
-							<td class="px-3 py-2 font-medium">{inv.number}</td>
+							<td class="px-3 py-2 font-medium">
+									<a href={`/invoices/${inv.id}`} class="text-gray-900 hover:underline">
+										{inv.number}
+									</a>
+								</td>
 							<td class="px-3 py-2 text-gray-600">{inv.participantName || '—'}</td>
 							<td class="px-3 py-2 text-gray-600">
 								{inv.issueDate ? inv.issueDate.slice(0, 10) : '—'}
