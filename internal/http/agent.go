@@ -9,10 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/agent"
+	"github.com/dknathalage/tallyo/internal/agent/llm"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -25,6 +29,13 @@ type AgentHandler struct {
 	events  *agent.Events
 	budget  *agent.Budget
 	enabled bool
+
+	// shift import (optional, set via WithShiftImport when the agent is enabled):
+	// the structured-extraction model client + its config, and the shift service
+	// used to persist the recorded shifts ImportShifts produces.
+	shifts        *service.ShiftService
+	extractClient llm.Client
+	extractCfg    agent.Config
 }
 
 // NewAgentHandler constructs the handler. When ag is nil OR enabled is false the
@@ -41,6 +52,84 @@ func NewAgentHandler(ag *agent.Agent, budget *agent.Budget, enabled bool) *Agent
 		h.events = ag.Events()
 	}
 	return h
+}
+
+// WithShiftImport wires the structured-extraction model client (+ its config)
+// and the shift service used by ImportShifts. It is set in main.go when the
+// agent is enabled; ImportShifts 503s when any of these is absent.
+func (h *AgentHandler) WithShiftImport(shifts *service.ShiftService, client llm.Client, cfg agent.Config) *AgentHandler {
+	h.shifts = shifts
+	h.extractClient = client
+	h.extractCfg = cfg
+	return h
+}
+
+// importShiftsRequest is the body of ImportShifts: the participant the shifts
+// are for, and the free-text timesheet to extract per-day rows from.
+type importShiftsRequest struct {
+	ParticipantID int64  `json:"participantId"`
+	Text          string `json:"text"`
+}
+
+// ImportShifts turns a free-text timesheet into recorded shifts for one
+// participant. It forces a single structured-extraction model call
+// (agent.ExtractShifts), then persists one recorded shift per extracted day via
+// the ShiftService. The participant is taken from the body (resolution by name
+// is intentionally out of scope here). Returns the created shifts.
+func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
+	tenantID, userID, ok := h.guard(w, r)
+	if !ok {
+		return
+	}
+	if h.shifts == nil || h.extractClient == nil {
+		WriteError(w, http.StatusServiceUnavailable, "shift import not configured")
+		return
+	}
+	var req importShiftsRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.ParticipantID <= 0 {
+		WriteError(w, http.StatusBadRequest, "participantId is required")
+		return
+	}
+	if strings.TrimSpace(req.Text) == "" {
+		WriteError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(detach(tenantID, userID), 2*time.Minute)
+	defer cancel()
+
+	drafts, err := agent.ExtractShifts(ctx, h.extractClient, h.extractCfg.Model, h.extractCfg.EffortFor(), req.Text)
+	if err != nil {
+		slog.Error("import shifts: extract", slog.Any("error", err))
+		WriteError(w, http.StatusBadGateway, "could not extract shifts from the timesheet")
+		return
+	}
+
+	created := make([]*repository.Shift, 0, len(drafts))
+	for i := range drafts { // bounded by len(drafts)
+		d := drafts[i]
+		sh, e := h.shifts.Create(ctx, repository.ShiftInput{
+			ParticipantID: req.ParticipantID,
+			ServiceDate:   d.ServiceDate,
+			StartTime:     d.StartTime,
+			EndTime:       d.EndTime,
+			Hours:         d.Hours,
+			Km:            d.Km,
+			Note:          d.Note,
+			Status:        "recorded",
+		})
+		if e != nil {
+			slog.Error("import shifts: create", slog.Any("error", e))
+			WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		created = append(created, sh)
+	}
+	WriteJSON(w, http.StatusCreated, created)
 }
 
 // draftInvoiceRequest is the body of DraftInvoiceFromNotes: the inclusive note
@@ -87,9 +176,9 @@ func (h *AgentHandler) DraftInvoiceFromNotes(w http.ResponseWriter, r *http.Requ
 	}
 
 	prompt := fmt.Sprintf("Draft an NDIS invoice for participant id %d for all supports "+
-		"recorded in their notes between %s and %s. Read the notes, map each activity to the "+
-		"correct NDIS support item code (prefer each note's candidates), and create the invoice "+
-		"with notesFrom %s and notesTo %s.", pid, req.From, req.To, req.From, req.To)
+		"recorded in their shifts between %s and %s. Read the shifts, map each activity to the "+
+		"correct NDIS support item code (prefer each shift's candidates), and create the invoice "+
+		"with from %s and to %s.", pid, req.From, req.To, req.From, req.To)
 
 	if err := h.agent.Start(ctx, conv.ID, prompt); err != nil {
 		slog.Error("draft invoice: agent start", slog.Int64("conversationId", conv.ID), slog.Any("error", err))

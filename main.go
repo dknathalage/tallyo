@@ -222,15 +222,18 @@ func run() error {
 		agentReg := agent.NewRegistry()
 		agentCP := agent.NewCheckpoint(agentStore, conn)
 		agentReg.Register(agent.NewListInvoicesTool(invoiceSvc))
-		agentReg.Register(agent.NewCreateInvoiceToolVerified(invoiceSvc, noteSvc, agentCP))
-		agentReg.Register(agent.NewListParticipantNotesToolWithCatalog(noteSvc, supportCatalogSvc))
+		// Shifts lifecycle is the billing source of truth: there is exactly one
+		// create_invoice tool, the shift-completeness-verified variant.
+		agentReg.Register(agent.NewCreateInvoiceToolForShifts(invoiceSvc, shiftSvc, agentCP))
+		agentReg.Register(agent.NewListParticipantShiftsToolWithCatalog(shiftSvc, supportCatalogSvc))
 		agentReg.Register(agent.NewSearchCatalogueTool(supportCatalogSvc))
 		agentBudget := agent.NewBudgetWallClock(agentStore, agentCfg)
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
 		agentSvc = agent.NewAgent(agentCfg, llmClient, agentStore, agentReg, agentCP, agentEvents).
 			WithBudget(agentBudget).
 			WithRestore(agent.InvoiceRestoreFunc(invoiceSvc))
-		agentHandler = httpapi.NewAgentHandler(agentSvc, agentBudget, true)
+		agentHandler = httpapi.NewAgentHandler(agentSvc, agentBudget, true).
+			WithShiftImport(shiftSvc, llmClient, agentCfg)
 	} else {
 		agentHandler = httpapi.NewAgentHandler(nil, nil, false)
 	}

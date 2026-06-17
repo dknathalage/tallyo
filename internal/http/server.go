@@ -274,6 +274,7 @@ func NewServer(deps Deps) *Server {
 					pr.Post("/agent/conversations/{id}/messages", deps.Agent.SendMessage)
 					pr.Get("/agent/conversations/{id}/stream", deps.Agent.Stream)
 					pr.Post("/participants/{id}/draft-invoice", deps.Agent.DraftInvoiceFromNotes)
+					pr.Post("/shifts/import", deps.Agent.ImportShifts)
 					pr.Post("/agent/steps/{id}/decision", deps.Agent.Decide)
 					pr.Post("/agent/checkpoints/{id}/revert", deps.Agent.Revert)
 				}
