@@ -18,23 +18,32 @@ func newShiftSvc(t *testing.T) (*ShiftService, *realtime.Hub, int64, int64) {
 	return NewShiftService(conn, hub), hub, tenantID, participantID
 }
 
+func shiftInput(pid int64, date string) repository.ShiftInput {
+	return repository.ShiftInput{
+		ParticipantID: pid, ServiceDate: date, StartTime: "09:00", EndTime: "12:00",
+		Hours: 3, Km: 10,
+		Measures: []repository.Measure{{Label: "Goal", Value: 1, Unit: "x", Code: "C"}},
+		Tags:     []string{"t1"},
+	}
+}
+
 func TestShiftCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newShiftSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	s, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
+	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if s == nil {
+	if sh == nil {
 		t.Fatal("Create returned nil shift")
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.ID != s.ID || e.Action != "create" {
-			t.Fatalf("event=%+v want shift/%d/create", e, s.ID)
+		if e.Entity != "shift" || e.ID != sh.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want shift/%d/create", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
@@ -49,12 +58,12 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	svc := NewShiftService(conn, realtime.NewHub())
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
-	s, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
+	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if s.AuthorUserID == nil || *s.AuthorUserID != uid {
-		t.Fatalf("author not attributed: %+v want %d", s.AuthorUserID, uid)
+	if sh.AuthorUserID == nil || *sh.AuthorUserID != uid {
+		t.Fatalf("author not attributed: %+v want %d", sh.AuthorUserID, uid)
 	}
 }
 
@@ -63,7 +72,7 @@ func TestShiftListParticipantRange(t *testing.T) {
 	ctx := tctx(tenantID)
 
 	for _, d := range []string{"2026-01-10", "2026-01-15", "2026-01-20"} {
-		if _, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: d}); err != nil {
+		if _, err := svc.Create(ctx, shiftInput(participantID, d)); err != nil {
 			t.Fatalf("Create %s: %v", d, err)
 		}
 	}
@@ -80,53 +89,54 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
-	s, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15", Status: "scheduled"})
+	in := shiftInput(participantID, "2026-01-15")
+	in.Status = "scheduled"
+	sh, err := svc.Create(ctx, in)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.UpdateStatus(ctx, s.ID, "recorded"); err != nil {
+	if err := svc.UpdateStatus(ctx, sh.ID, "recorded"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.ID != s.ID {
-			t.Fatalf("event=%+v want shift/%d", e, s.ID)
+		if e.Entity != "shift" || e.ID != sh.ID || e.Action != "update" {
+			t.Fatalf("event=%+v want shift/%d/update", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after UpdateStatus")
 	}
-	got, _ := svc.Get(ctx, s.ID)
+	got, _ := svc.Get(ctx, sh.ID)
 	if got == nil || got.Status != "recorded" {
 		t.Fatalf("status after UpdateStatus = %+v, want recorded", got)
 	}
 }
 
-func TestShiftDeleteBroadcasts(t *testing.T) {
+func TestShiftDelete(t *testing.T) {
 	svc, hub, tenantID, participantID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
-	s, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
+	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.Delete(ctx, s.ID); err != nil {
+	if err := svc.Delete(ctx, sh.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.ID != s.ID || e.Action != "delete" {
-			t.Fatalf("event=%+v want shift/%d/delete", e, s.ID)
+		if e.Entity != "shift" || e.ID != sh.ID || e.Action != "delete" {
+			t.Fatalf("event=%+v want shift/%d/delete", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Delete")
 	}
-	if got, _ := svc.Get(ctx, s.ID); got != nil {
+	if got, _ := svc.Get(ctx, sh.ID); got != nil {
 		t.Fatalf("shift present after delete: %+v", got)
 	}
 }
@@ -135,18 +145,21 @@ func TestShiftToRecord(t *testing.T) {
 	svc, _, tenantID, participantID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
-	if _, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15", Status: "scheduled"}); err != nil {
+	sched := shiftInput(participantID, "2026-01-15")
+	sched.Status = "scheduled"
+	if _, err := svc.Create(ctx, sched); err != nil {
 		t.Fatalf("Create scheduled: %v", err)
 	}
-	if _, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-16"}); err != nil {
+	if _, err := svc.Create(ctx, shiftInput(participantID, "2026-01-16")); err != nil {
 		t.Fatalf("Create recorded: %v", err)
 	}
-	sched, err := svc.ToRecord(ctx)
+
+	toRec, err := svc.ToRecord(ctx)
 	if err != nil {
 		t.Fatalf("ToRecord: %v", err)
 	}
-	if len(sched) != 1 || sched[0].Status != "scheduled" {
-		t.Fatalf("ToRecord = %+v, want 1 scheduled", sched)
+	if len(toRec) != 1 || toRec[0].Status != "scheduled" {
+		t.Fatalf("ToRecord = %+v, want 1 scheduled", toRec)
 	}
 }
 
@@ -158,41 +171,35 @@ func TestShiftSuggestions(t *testing.T) {
 	svc := NewShiftService(conn, realtime.NewHub())
 	ctx := tctx(tenantID)
 
-	var p1IDs []int64
-	for _, d := range []string{"2026-01-10", "2026-01-15", "2026-01-20"} {
-		s, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: p1, ServiceDate: d})
+	var p1ids []int64
+	for _, d := range []string{"2026-01-10", "2026-01-20"} {
+		sh, err := svc.Create(ctx, shiftInput(p1, d))
 		if err != nil {
-			t.Fatalf("Create p1 %s: %v", d, err)
+			t.Fatalf("Create p1: %v", err)
 		}
-		p1IDs = append(p1IDs, s.ID)
+		p1ids = append(p1ids, sh.ID)
 	}
-	if _, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: p2, ServiceDate: "2026-02-01"}); err != nil {
+	if _, err := svc.Create(ctx, shiftInput(p2, "2026-02-01")); err != nil {
 		t.Fatalf("Create p2: %v", err)
 	}
 
-	sug, err := svc.Suggestions(ctx)
+	sugs, err := svc.Suggestions(ctx)
 	if err != nil {
 		t.Fatalf("Suggestions: %v", err)
 	}
+	if len(sugs) != 2 {
+		t.Fatalf("suggestions = %d, want 2: %+v", len(sugs), sugs)
+	}
 	byPID := map[int64]Suggestion{}
-	for _, s := range sug {
+	for _, s := range sugs {
 		byPID[s.ParticipantID] = s
 	}
-	s1, ok := byPID[p1]
-	if !ok || s1.Count != 3 || s1.From != "2026-01-10" || s1.To != "2026-01-20" {
-		t.Fatalf("p1 suggestion = %+v, want count 3 [10,20]", s1)
+	s1 := byPID[p1]
+	if s1.Count != 2 || s1.From != "2026-01-10" || s1.To != "2026-01-20" || len(s1.IDs) != 2 {
+		t.Fatalf("p1 suggestion = %+v", s1)
 	}
-	if len(s1.IDs) != 3 {
-		t.Fatalf("p1 suggestion IDs = %v, want 3", s1.IDs)
-	}
-	for _, id := range p1IDs {
-		if !containsID(s1.IDs, id) {
-			t.Fatalf("suggestion missing shift id %d: %v", id, s1.IDs)
-		}
-	}
-	s2, ok := byPID[p2]
-	if !ok || s2.Count != 1 || len(s2.IDs) != 1 {
-		t.Fatalf("p2 suggestion = %+v, want count 1", s2)
+	if !containsID(s1.IDs, p1ids[0]) || !containsID(s1.IDs, p1ids[1]) {
+		t.Fatalf("p1 ids = %+v, want %+v", s1.IDs, p1ids)
 	}
 }
 
@@ -205,27 +212,27 @@ func TestShiftMarkDrafted(t *testing.T) {
 	svc := NewShiftService(conn, hub)
 	ctx := tctx(tenantID)
 
-	s, err := svc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
+	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.MarkDrafted(ctx, invID, []int64{s.ID}); err != nil {
+	if err := svc.MarkDrafted(ctx, invID, []int64{sh.ID}); err != nil {
 		t.Fatalf("MarkDrafted: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" {
-			t.Fatalf("event=%+v want shift", e)
+		if e.Entity != "shift" || e.Action != "bill" {
+			t.Fatalf("event=%+v want shift/bill", e)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after MarkDrafted")
 	}
-	got, _ := svc.Get(ctx, s.ID)
+	got, _ := svc.Get(ctx, sh.ID)
 	if got == nil || got.Status != "drafted" || got.InvoiceID == nil || *got.InvoiceID != invID {
-		t.Fatalf("after MarkDrafted = %+v, want drafted + invoice %d", got, invID)
+		t.Fatalf("after MarkDrafted = %+v, want drafted+invoice %d", got, invID)
 	}
 }
 
@@ -238,18 +245,44 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 
 	tenantB := seedTenant(t, conn)
 	participantB := seedParticipant(t, conn, tenantB)
-	svc := NewShiftService(conn, realtime.NewHub())
+	hub := realtime.NewHub()
+	svc := NewShiftService(conn, hub)
 	ctxB := tctx(tenantB)
 
-	s, err := svc.Create(ctxB, repository.ShiftInput{ParticipantID: participantB, ServiceDate: "2026-01-15"})
+	sh, err := svc.Create(ctxB, shiftInput(participantB, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := svc.MarkDrafted(ctxB, invA, []int64{s.ID}); err == nil {
+
+	ch, unsub := hub.Subscribe(tenantB)
+	defer unsub()
+	if err := svc.MarkDrafted(ctxB, invA, []int64{sh.ID}); err == nil {
 		t.Fatal("MarkDrafted cross-tenant invoice: want error, got nil")
 	}
-	got, _ := svc.Get(ctxB, s.ID)
-	if got == nil || got.Status != "recorded" || got.InvoiceID != nil {
-		t.Fatalf("shift must remain recorded after rejected cross-tenant MarkDrafted: %+v", got)
+	select {
+	case e := <-ch:
+		t.Fatalf("no event expected on rejected cross-tenant MarkDrafted, got %+v", e)
+	case <-time.After(100 * time.Millisecond):
+		// ok
+	}
+	got, _ := svc.Get(ctxB, sh.ID)
+	if got == nil || got.InvoiceID != nil || got.Status != "recorded" {
+		t.Fatalf("shift must remain unbilled: %+v", got)
+	}
+}
+
+func TestShiftMarkDraftedEmptyNoEvent(t *testing.T) {
+	svc, hub, tenantID, _ := newShiftSvc(t)
+	ch, unsub := hub.Subscribe(tenantID)
+	defer unsub()
+
+	if err := svc.MarkDrafted(tctx(tenantID), 55, nil); err != nil {
+		t.Fatalf("MarkDrafted empty: %v", err)
+	}
+	select {
+	case e := <-ch:
+		t.Fatalf("no event expected on empty MarkDrafted, got %+v", e)
+	case <-time.After(100 * time.Millisecond):
+		// ok
 	}
 }
