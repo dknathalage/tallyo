@@ -181,6 +181,18 @@ func (r *ShiftsRepo) ListParticipant(ctx context.Context, tenantID, participantI
 	return toShifts(rows)
 }
 
+// List returns all of the tenant's shifts (newest service date first).
+func (r *ShiftsRepo) List(ctx context.Context, tenantID int64) ([]*Shift, error) {
+	if tenantID == 0 {
+		return nil, errors.New("list shifts: tenant id required")
+	}
+	rows, err := gen.New(r.db).ListShifts(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list shifts: %w", err)
+	}
+	return toShifts(rows)
+}
+
 // ListByStatus returns the tenant's shifts in a given lifecycle status.
 func (r *ShiftsRepo) ListByStatus(ctx context.Context, tenantID int64, status string) ([]*Shift, error) {
 	if tenantID == 0 {

@@ -203,6 +203,7 @@ func run() error {
 	catalogIngestSvc := service.NewCatalogIngestService(conn, hub)
 	invoiceSvc := service.NewInvoiceService(conn, hub)
 	noteSvc := service.NewNoteService(conn, hub)
+	shiftSvc := service.NewShiftService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
@@ -260,6 +261,7 @@ func run() error {
 		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 		Notes:           httpapi.NewNoteHandler(noteSvc),
+		Shifts:          httpapi.NewShiftHandler(shiftSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),

@@ -73,6 +73,12 @@ type Deps struct {
 	// route under /api/notes.
 	Notes *NoteHandler
 
+	// Shifts, when non-nil, serves the auth-gated shift lifecycle routes: the
+	// per-participant shift list under /api/participants/{id}/shifts, the
+	// tenant-wide list, billing suggestions and to-record prompts, plus shift
+	// CRUD and the status-transition route under /api/shifts.
+	Shifts *ShiftHandler
+
 	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
 	// duplicate, bulk, and convert-to-invoice routes under /api/estimates.
 	Estimates *EstimateHandler
@@ -141,7 +147,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Notes != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Agent != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Notes != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Agent != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(deps.Session, deps.Users, deps.Tenants))
 				if deps.Auth != nil {
@@ -218,6 +224,17 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/notes/{id}", deps.Notes.Get)
 					pr.Put("/notes/{id}", deps.Notes.Update)
 					pr.Delete("/notes/{id}", deps.Notes.Delete)
+				}
+				if deps.Shifts != nil {
+					pr.Get("/participants/{id}/shifts", deps.Shifts.ListForParticipant)
+					pr.Get("/shifts", deps.Shifts.List)
+					pr.Get("/shifts/suggestions", deps.Shifts.Suggestions)
+					pr.Get("/shifts/to-record", deps.Shifts.ToRecord)
+					pr.Post("/shifts", deps.Shifts.Create)
+					pr.Get("/shifts/{id}", deps.Shifts.Get)
+					pr.Put("/shifts/{id}", deps.Shifts.Update)
+					pr.Delete("/shifts/{id}", deps.Shifts.Delete)
+					pr.Post("/shifts/{id}/status", deps.Shifts.UpdateStatus)
 				}
 				if deps.Estimates != nil {
 					pr.Get("/estimates", deps.Estimates.List)

@@ -43,6 +43,16 @@ func (s *ShiftService) ListParticipant(ctx context.Context, participantID int64,
 	return s.repo.ListParticipant(ctx, tenantID, participantID, from, to)
 }
 
+// List returns all the tenant's shifts. When status is non-empty the result is
+// restricted to shifts in that lifecycle status.
+func (s *ShiftService) List(ctx context.Context, status string) ([]*repository.Shift, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	if status != "" {
+		return s.repo.ListByStatus(ctx, tenantID, status)
+	}
+	return s.repo.List(ctx, tenantID)
+}
+
 // Get returns a shift by id, or (nil, nil) when absent.
 func (s *ShiftService) Get(ctx context.Context, id int64) (*repository.Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
