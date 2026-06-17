@@ -99,8 +99,8 @@ func (r *NotesRepo) Create(ctx context.Context, tenantID int64, authorUserID *in
 	if in.ParticipantID == 0 {
 		return nil, errors.New("create note: participant id required")
 	}
-	if in.ServiceDate == "" {
-		return nil, errors.New("create note: service date is required")
+	if !validISODate(in.ServiceDate) {
+		return nil, errors.New("create note: service date must be a valid YYYY-MM-DD date")
 	}
 	if in.Body == "" {
 		return nil, errors.New("create note: body is required")
@@ -142,8 +142,8 @@ func (r *NotesRepo) Create(ctx context.Context, tenantID int64, authorUserID *in
 // Update rewrites a note's editable fields and writes one audit row, atomically.
 // Returns (nil, nil) when the note does not exist for the tenant.
 func (r *NotesRepo) Update(ctx context.Context, tenantID, id int64, in NoteInput) (*Note, error) {
-	if in.ServiceDate == "" {
-		return nil, errors.New("update note: service date is required")
+	if !validISODate(in.ServiceDate) {
+		return nil, errors.New("update note: service date must be a valid YYYY-MM-DD date")
 	}
 	if in.Body == "" {
 		return nil, errors.New("update note: body is required")
@@ -217,6 +217,17 @@ func (r *NotesRepo) MarkBilled(ctx context.Context, tenantID int64, invoiceID *i
 		}
 		return nil
 	})
+}
+
+// validISODate reports whether s is a strict YYYY-MM-DD calendar date. The
+// range queries compare service_date lexicographically, so a non-ISO value would
+// silently mis-sort and mis-filter; reject it at the boundary.
+func validISODate(s string) bool {
+	if len(s) != 10 {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
 }
 
 // assertNonNegative rejects negative optional quantities at the boundary.

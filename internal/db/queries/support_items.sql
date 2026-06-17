@@ -5,7 +5,7 @@ SELECT * FROM support_items WHERE catalog_version_id = ? ORDER BY code;
 
 -- name: SearchSupportItems :many
 SELECT * FROM support_items
-WHERE catalog_version_id = ? AND (code LIKE ? OR name LIKE ?)
+WHERE catalog_version_id = ? AND ((code LIKE ? ESCAPE '\') OR (name LIKE ? ESCAPE '\'))
 ORDER BY code;
 
 -- name: GetSupportItem :one

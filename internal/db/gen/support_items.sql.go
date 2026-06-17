@@ -175,7 +175,7 @@ func (q *Queries) ListSupportItems(ctx context.Context, catalogVersionID int64) 
 
 const searchSupportItems = `-- name: SearchSupportItems :many
 SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata FROM support_items
-WHERE catalog_version_id = ? AND (code LIKE ? OR name LIKE ?)
+WHERE catalog_version_id = ? AND ((code LIKE ? ESCAPE '\') OR (name LIKE ? ESCAPE '\'))
 ORDER BY code
 `
 

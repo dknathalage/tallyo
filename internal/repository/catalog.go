@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -359,7 +360,7 @@ func (r *CatalogRepo) ListSupportItems(ctx context.Context, versionID int64) ([]
 // matches the query (LIKE, case-insensitive on the SQLite default collation),
 // by code. An empty query matches everything in the version.
 func (r *CatalogRepo) SearchSupportItems(ctx context.Context, versionID int64, query string) ([]*SupportItem, error) {
-	like := "%" + query + "%"
+	like := "%" + escapeLike(query) + "%"
 	rows, err := gen.New(r.db).SearchSupportItems(ctx, gen.SearchSupportItemsParams{
 		CatalogVersionID: versionID,
 		Code:             like,
@@ -373,6 +374,19 @@ func (r *CatalogRepo) SearchSupportItems(ctx context.Context, versionID int64, q
 		out = append(out, toSupportItem(rows[i]))
 	}
 	return out, nil
+}
+
+// escapeLike backslash-escapes the LIKE metacharacters (\, %, _) in a user query
+// so they match literally. The escape order matters: backslash itself is escaped
+// first, otherwise the escapes added for % and _ would be double-escaped. Callers
+// must pair this with `ESCAPE '\'` in the SQL LIKE clause.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(
+		`\`, `\\`,
+		`%`, `\%`,
+		`_`, `\_`,
+	)
+	return r.Replace(s)
 }
 
 // GetSupportItemByCode finds a support item by code within a version (spec §6
