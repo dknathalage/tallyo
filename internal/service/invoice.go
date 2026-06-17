@@ -14,6 +14,7 @@ import (
 // (validator) on create/update before reaching the repository.
 type InvoiceService struct {
 	repo      *repository.InvoicesRepo
+	shifts    *repository.ShiftsRepo
 	validator *LineValidator
 	hub       *realtime.Hub
 }
@@ -22,7 +23,12 @@ func NewInvoiceService(db *sql.DB, hub *realtime.Hub) *InvoiceService {
 	if hub == nil {
 		panic("NewInvoiceService: nil hub")
 	}
-	return &InvoiceService{repo: repository.NewInvoices(db), validator: NewLineValidator(db), hub: hub}
+	return &InvoiceService{
+		repo:      repository.NewInvoices(db),
+		shifts:    repository.NewShifts(db),
+		validator: NewLineValidator(db),
+		hub:       hub,
+	}
 }
 
 func (s *InvoiceService) List(ctx context.Context) ([]*repository.Invoice, error) {
@@ -112,23 +118,41 @@ func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.Inv
 	return inv, nil
 }
 
-// UpdateStatus sets the invoice status, then broadcasts on success.
+// UpdateStatus sets the invoice status, then broadcasts on success. When the
+// invoice advances to a terminal billing status ('sent'/'paid'), the shifts
+// attached to it advance in lockstep (recorded→drafted→sent→paid lifecycle).
 func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
+	cascade := status == "sent" || status == "paid"
+	if cascade {
+		if err := s.shifts.SetStatusForInvoice(ctx, tenantID, id, status); err != nil {
+			return err
+		}
+	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "status"})
+	if cascade {
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "status"})
+	}
 	return nil
 }
 
-// Delete removes an invoice, then broadcasts on success.
+// Delete removes an invoice, then broadcasts on success. Before deleting, any
+// shifts attached to the invoice are reverted to 'recorded' with a NULL
+// invoice_id, so the work returns to the unbilled pool rather than being orphaned
+// at status 'drafted' by the FK's ON DELETE SET NULL.
 func (s *InvoiceService) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
+	if err := s.shifts.ClearForInvoice(ctx, tenantID, id); err != nil {
+		return err
+	}
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "status"})
 	return nil
 }
 
