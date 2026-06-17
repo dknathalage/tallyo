@@ -7,7 +7,8 @@
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
 	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
-	import { dowDate, eventClass, statusLabel, todayISO } from '$lib/shifts/format';
+	import Calendar from '$lib/components/Calendar.svelte';
+	import { todayISO } from '$lib/shifts/format';
 	import type { Shift } from '$lib/api/types';
 
 	const participantId = $derived(Number(page.params.id));
@@ -39,18 +40,25 @@
 	}
 
 	// ---- Calendar (current month) ----
-	const today = todayISO();
-	const monthPrefix = today.slice(0, 7); // YYYY-MM
-	const monthShifts = $derived(myShifts.filter((s) => s.serviceDate.startsWith(monthPrefix)));
+	const month = todayISO().slice(0, 7); // YYYY-MM
 
 	// ---- Shift form ----
 	let formOpen = $state(false);
 	let formShift = $state<Shift | null>(null);
 	let formRecording = $state(false);
+	let formDate = $state('');
 
 	function openAdd(): void {
 		formShift = null;
 		formRecording = false;
+		formDate = '';
+		formOpen = true;
+	}
+
+	function addDay(dateISO: string): void {
+		formShift = null;
+		formRecording = false;
+		formDate = dateISO;
 		formOpen = true;
 	}
 
@@ -130,28 +138,12 @@
 	{#if tab === 'shifts'}
 		<ShiftTable shifts={myShifts} participantName={nameFor} onopen={openShift} />
 	{:else if tab === 'calendar'}
-		<div class="space-y-2">
-			{#each monthShifts as s (s.id)}
-				<button
-					type="button"
-					onclick={() => openShift(s)}
-					class="flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm {eventClass(
-						s.status
-					)}"
-				>
-					<span class="font-medium">{dowDate(s.serviceDate)}</span>
-					<span>{s.startTime}–{s.endTime}</span>
-					<span>{s.hours ? `${s.hours}h` : '—'}</span>
-					<span>{statusLabel(s.status)}</span>
-				</button>
-			{:else}
-				<p class="text-sm text-gray-500">No shifts this month.</p>
-			{/each}
-			<p class="text-xs text-gray-500">
-				This month. Use the <a href="/calendar" class="text-blue-600 hover:underline">Calendar</a>
-				for the full month grid.
-			</p>
+		<div class="rounded-lg border border-gray-200 bg-white p-3">
+			<Calendar shifts={myShifts} {nameFor} {month} onaddday={addDay} onopen={openShift} />
 		</div>
+		<p class="text-xs text-gray-500">
+			This participant's shifts this month. Click a day to add, a chip to edit or record.
+		</p>
 	{:else if tab === 'invoices'}
 		<div class="space-y-2">
 			{#each myInvoices as inv (inv.id)}
@@ -208,6 +200,7 @@
 	bind:open={formOpen}
 	shift={formShift}
 	recording={formRecording}
+	presetDate={formDate}
 	presetParticipantId={participantId}
 	onsaved={onSaved}
 />
