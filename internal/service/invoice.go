@@ -71,6 +71,27 @@ func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput,
 	return inv, nil
 }
 
+// CreateWithCatalogPricing is Create in catalogue-authoritative pricing mode:
+// every support-item line's unit price is resolved from the catalogue (the
+// tenant-zone cap) rather than trusted from the caller. Used by the AI agent's
+// create_invoice tool so the model owns only the code, service date and
+// quantity — never the price. A quotable item with no published cap still
+// requires a caller-supplied price (a *ValidationError otherwise).
+func (s *InvoiceService) CreateWithCatalogPricing(ctx context.Context, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	res, err := s.validator.ValidateFilling(ctx, tenantID, in.ParticipantID, items)
+	if err != nil {
+		return nil, err
+	}
+	in.Tax = res.Tax
+	inv, err := s.repo.Create(ctx, tenantID, in, res.Items)
+	if err != nil {
+		return nil, err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
+	return inv, nil
+}
+
 // Update rewrites an invoice. A nil result means the row was not found, in which
 // case no event is published.
 func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {

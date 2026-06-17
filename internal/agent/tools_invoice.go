@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strings"
 
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
@@ -74,6 +76,8 @@ type createInvoiceInput struct {
 	IssueDate     string                     `json:"issueDate"`
 	DueDate       string                     `json:"dueDate"`
 	Notes         string                     `json:"notes"`
+	NotesFrom     string                     `json:"notesFrom"`
+	NotesTo       string                     `json:"notesTo"`
 	Items         []repository.LineItemInput `json:"items"`
 }
 
@@ -87,9 +91,11 @@ const createInvoiceSchema = `{
     "issueDate": { "type": "string", "description": "Issue date (YYYY-MM-DD)." },
     "dueDate": { "type": "string", "description": "Due date (YYYY-MM-DD)." },
     "notes": { "type": "string", "description": "Optional notes." },
+    "notesFrom": { "type": "string", "description": "When drafting from a participant's journal: the inclusive start (YYYY-MM-DD) of the note range this invoice covers. Pass the same range you read notes for, so the platform can verify every recorded support is billed and link the notes." },
+    "notesTo": { "type": "string", "description": "Inclusive end (YYYY-MM-DD) of the covered note range. Pass alongside notesFrom." },
     "items": {
       "type": "array",
-      "description": "Line items. For an NDIS support item supply code + serviceDate; for a custom line supply a description only.",
+      "description": "Line items. For an NDIS support item supply code + serviceDate + quantity and OMIT unitPrice — the platform applies the authoritative NDIS price for that code, date and zone. For a custom line supply a description + quantity + unitPrice.",
       "items": {
         "type": "object",
         "properties": {
@@ -97,8 +103,8 @@ const createInvoiceSchema = `{
           "description": { "type": "string" },
           "serviceDate": { "type": "string", "description": "Service date (YYYY-MM-DD); required for a support item." },
           "unit": { "type": "string" },
-          "quantity": { "type": "number" },
-          "unitPrice": { "type": "number" },
+          "quantity": { "type": "number", "description": "Billable quantity (hours, km, each); must be greater than 0." },
+          "unitPrice": { "type": "number", "description": "Custom-line price only. IGNORED for a catalogue code (the platform applies the NDIS price)." },
           "gstFree": { "type": "boolean" },
           "sortOrder": { "type": "integer" }
         },
@@ -117,6 +123,21 @@ const createInvoiceSchema = `{
 // create under the active checkpoint (if any, threaded via context) in a
 // SEPARATE audited transaction, after the service write committed (B1).
 func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
+	return newCreateInvoiceTool(inv, nil, cp)
+}
+
+// NewCreateInvoiceToolVerified is NewCreateInvoiceTool plus a notes-completeness
+// guard (Pillar 4): before persisting, it checks that every support recorded in
+// the participant's notes for the invoice's date range is billed as a
+// catalogue-CODED line with a matching quantity. A gap (a missing line, or one
+// billed as a custom line instead of an NDIS code) is returned as a structured
+// is_error so the model self-corrects and re-submits. Used by the notes→invoice
+// agent path; the plain constructor (notes nil) skips the check.
+func NewCreateInvoiceToolVerified(inv *service.InvoiceService, notes *service.NoteService, cp *Checkpoint) Tool {
+	return newCreateInvoiceTool(inv, notes, cp)
+}
+
+func newCreateInvoiceTool(inv *service.InvoiceService, notes *service.NoteService, cp *Checkpoint) Tool {
 	return Tool{
 		Name:        "create_invoice",
 		Description: "Create a new invoice for a participant with line items. This is a write — it requires user approval before running.",
@@ -134,6 +155,26 @@ func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 			if len(in.Items) == 0 {
 				return Result{}, fmt.Errorf("create_invoice: at least one line item is required")
 			}
+			// A catalogue-coded line must carry a positive quantity: the platform
+			// supplies the price, so a zero/absent quantity would silently bill $0.
+			for i := range in.Items { // bounded by len(in.Items)
+				it := in.Items[i]
+				if it.Code != "" && it.Quantity <= 0 {
+					return Result{}, fmt.Errorf("create_invoice: line %d (code %q) needs a quantity greater than 0", i, it.Code)
+				}
+			}
+			// Pillar 4: verify the draft covers the participant's notes (only when
+			// a NoteService is wired — the notes→invoice path). The coverage range
+			// is the model-supplied [notesFrom, notesTo] when present (catches a
+			// whole day the model dropped), else derived from the coded lines.
+			// Pre-persist, so a gap never leaves an orphan invoice; returned as a
+			// tool error the model can act on.
+			coverFrom, coverTo := in.NotesFrom, in.NotesTo
+			if notes != nil {
+				if err := verifyNotesCovered(ctx, notes, in.ParticipantID, in.Items, coverFrom, coverTo); err != nil {
+					return Result{}, err
+				}
+			}
 
 			header := repository.InvoiceInput{
 				ParticipantID: in.ParticipantID,
@@ -142,7 +183,10 @@ func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 				DueDate:       in.DueDate,
 				Notes:         in.Notes,
 			}
-			created, err := inv.Create(ctx, header, in.Items)
+			// Catalogue-authoritative pricing: the model chooses the code, service
+			// date and quantity; the platform resolves the NDIS price. The model
+			// cannot misprice a coded line (Pillar 1).
+			created, err := inv.CreateWithCatalogPricing(ctx, header, in.Items)
 			if err != nil {
 				if ve, ok := service.AsValidationError(err); ok {
 					return Result{}, fmt.Errorf("create_invoice: invoice failed NDIS validation: %s", ve.Error())
@@ -164,10 +208,130 @@ func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 					return Result{}, fmt.Errorf("create_invoice: record checkpoint: %w", rErr)
 				}
 			}
+
+			// Link the covered notes to the new invoice (the soft billing flag).
+			// Best-effort: a billing-link failure must not undo a committed invoice,
+			// so it is logged into the result rather than failing the tool. On a
+			// later checkpoint revert the invoice delete nulls billed_invoice_id via
+			// FK, so the link is automatically cleared.
+			if notes != nil {
+				billCoveredNotes(ctx, notes, in.ParticipantID, created.ID, coverFrom, coverTo, in.Items)
+			}
 			return Result{JSON: created, Render: "card"}, nil
 		},
 	}
 }
+
+// verifyNotesCovered checks that every support recorded in the participant's
+// unbilled notes for the draft's service-date range is billed as a
+// catalogue-CODED line with a matching quantity (Pillar 4). It returns a
+// structured error naming the gaps — a missing line, or a support billed as a
+// custom line instead of an NDIS code — so the model self-corrects. Notes
+// without quantity tags are not enforced (the model bills those from prose,
+// which cannot be checked deterministically).
+func verifyNotesCovered(ctx context.Context, notes *service.NoteService, participantID int64, items []repository.LineItemInput, from, to string) error {
+	from, to, ok := coverageRange(items, from, to)
+	if !ok {
+		return nil // no coded lines and no explicit range → nothing to verify
+	}
+	recs, err := notes.ListParticipant(ctx, participantID, from, to)
+	if err != nil {
+		return fmt.Errorf("create_invoice: verify notes: %w", err)
+	}
+	gaps := make([]string, 0)
+	for i := range recs { // bounded by len(recs)
+		n := recs[i]
+		if n.BilledID != nil {
+			continue // already billed on another invoice
+		}
+		if n.TransportKm != nil && round2c(*n.TransportKm) > 0 && !hasCodedLine(items, n.ServiceDate, *n.TransportKm) {
+			gaps = append(gaps, fmt.Sprintf("%s: transport %.2f km", n.ServiceDate, *n.TransportKm))
+		}
+		if n.SupportHours != nil && round2c(*n.SupportHours) > 0 && !hasCodedLine(items, n.ServiceDate, *n.SupportHours) {
+			gaps = append(gaps, fmt.Sprintf("%s: support %.2f hours", n.ServiceDate, *n.SupportHours))
+		}
+	}
+	if len(gaps) > 0 {
+		return fmt.Errorf("create_invoice: the draft does not cover every recorded support. "+
+			"For each item below, add a catalogue-CODED line on that date with that quantity "+
+			"(use search_catalogue to find the NDIS code; do NOT bill it as a custom line): %s",
+			strings.Join(gaps, "; "))
+	}
+	return nil
+}
+
+// coverageRange returns the note range to verify/bill against: the explicit
+// [from, to] when both are supplied (catches a whole day the model dropped),
+// otherwise the min/max over the coded lines.
+func coverageRange(items []repository.LineItemInput, from, to string) (string, string, bool) {
+	if from != "" && to != "" {
+		return from, to, true
+	}
+	return codedDateRange(items)
+}
+
+// billCoveredNotes links every unbilled note in the coverage range to the new
+// invoice (the soft billing flag). Best-effort: errors are swallowed (a failed
+// link must not undo a committed invoice); a revert nulls the link via FK.
+// Bounded by the number of notes in range.
+func billCoveredNotes(ctx context.Context, notes *service.NoteService, participantID, invoiceID int64, from, to string, items []repository.LineItemInput) {
+	rf, rt, ok := coverageRange(items, from, to)
+	if !ok {
+		return
+	}
+	recs, err := notes.ListParticipant(ctx, participantID, rf, rt)
+	if err != nil {
+		return
+	}
+	ids := make([]int64, 0, len(recs))
+	for i := range recs { // bounded by len(recs)
+		if recs[i].BilledID == nil {
+			ids = append(ids, recs[i].ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	_ = notes.Bill(ctx, invoiceID, ids)
+}
+
+// codedDateRange returns the min/max service date over the coded lines, and
+// whether any coded line exists. Bounded by len(items).
+func codedDateRange(items []repository.LineItemInput) (from, to string, ok bool) {
+	for i := range items {
+		if items[i].Code == "" || items[i].ServiceDate == "" {
+			continue
+		}
+		d := items[i].ServiceDate
+		if !ok {
+			from, to, ok = d, d, true
+			continue
+		}
+		if d < from {
+			from = d
+		}
+		if d > to {
+			to = d
+		}
+	}
+	return from, to, ok
+}
+
+// hasCodedLine reports whether items contains a catalogue-coded line on
+// serviceDate whose quantity equals qty (at cent granularity). Bounded by
+// len(items).
+func hasCodedLine(items []repository.LineItemInput, serviceDate string, qty float64) bool {
+	for i := range items {
+		it := items[i]
+		if it.Code != "" && it.ServiceDate == serviceDate && round2c(it.Quantity) == round2c(qty) {
+			return true
+		}
+	}
+	return false
+}
+
+// round2c rounds to cents, matching the money/quantity rounding used elsewhere.
+func round2c(x float64) float64 { return math.Round(x*100) / 100 }
 
 // InvoiceRestoreFunc returns a RestoreFunc that reverts one recorded invoice
 // change via the service layer. It conflict-checks the live row's version

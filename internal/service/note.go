@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
@@ -13,15 +14,16 @@ import (
 // events after a successful commit. It resolves the caller's tenant (and, for
 // authorship, user) from the request context.
 type NoteService struct {
-	repo *repository.NotesRepo
-	hub  *realtime.Hub
+	repo     *repository.NotesRepo
+	invoices *repository.InvoicesRepo
+	hub      *realtime.Hub
 }
 
 func NewNoteService(db *sql.DB, hub *realtime.Hub) *NoteService {
 	if hub == nil {
 		panic("NewNoteService: nil hub")
 	}
-	return &NoteService{repo: repository.NewNotes(db), hub: hub}
+	return &NoteService{repo: repository.NewNotes(db), invoices: repository.NewInvoices(db), hub: hub}
 }
 
 // ListParticipant returns a participant's notes, optionally restricted to the
@@ -79,11 +81,23 @@ func (s *NoteService) Delete(ctx context.Context, id int64) error {
 }
 
 // Bill links each note to an invoice (the soft billing flag), then broadcasts a
-// single bulk event. An empty id list is a no-op.
+// single bulk event. An empty id list is a no-op. The invoice MUST belong to the
+// caller's tenant — otherwise a tenant could point a note at another tenant's
+// invoice id (cross-tenant linkage), so it is verified tenant-scoped first.
 func (s *NoteService) Bill(ctx context.Context, invoiceID int64, noteIDs []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if len(noteIDs) == 0 {
 		return nil
+	}
+	if invoiceID <= 0 {
+		return fmt.Errorf("bill notes: invoice id required")
+	}
+	inv, err := s.invoices.Get(ctx, tenantID, invoiceID)
+	if err != nil {
+		return fmt.Errorf("bill notes: verify invoice: %w", err)
+	}
+	if inv == nil {
+		return fmt.Errorf("bill notes: invoice %d not found for tenant", invoiceID)
 	}
 	id := invoiceID
 	if err := s.repo.MarkBilled(ctx, tenantID, &id, noteIDs); err != nil {

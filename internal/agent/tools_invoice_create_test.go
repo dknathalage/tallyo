@@ -25,7 +25,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -229,34 +228,72 @@ func TestCreateInvoiceFromNursingNote(t *testing.T) {
 	}
 }
 
-// TestCreateInvoiceNoteOverCapRejected asserts that when the note's self-care
-// rate exceeds the published NDIS price cap, the tool returns a structured
-// validation error (not a panic) so the agent feeds an is_error tool_result.
-func TestCreateInvoiceNoteOverCapRejected(t *testing.T) {
+// TestCreateInvoiceCatalogueAuthoritativePrice asserts Pillar 1: the agent's
+// create_invoice path IGNORES a model-supplied unit price for a catalogue-coded
+// line and bills at the authoritative NDIS cap. Here the model sends an over-cap
+// $80 self-care rate; the platform overrides it to the $70.23 cap rather than
+// rejecting — so a model misprice can neither overbill nor (with $0) underbill.
+func TestCreateInvoiceCatalogueAuthoritativePrice(t *testing.T) {
 	svc, tenantID, participantID := nursingNoteSvc(t)
 	tool := NewCreateInvoiceTool(svc, nil)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 
-	// One over-cap self-care line: $80 > $70.23 cap.
+	// Two coded lines with deliberately WRONG model prices: over-cap ($80) and
+	// zero ($0). Both must end up at the catalogue cap.
 	in := map[string]any{
 		"participantId": participantID,
 		"items": []map[string]any{
 			{"code": codeSelfCare, "serviceDate": "2026-06-09", "quantity": 7.0, "unitPrice": 80.00},
+			{"code": codeTransport, "serviceDate": "2026-06-09", "quantity": 10.0, "unitPrice": 0.0},
 		},
 	}
 	raw, err := json.Marshal(in)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	_, err = tool.Handler(ctx, raw)
-	if err == nil {
-		t.Fatal("expected an over-cap validation error")
+	res, err := tool.Handler(ctx, raw)
+	if err != nil {
+		t.Fatalf("create_invoice: %v", err)
 	}
-	// The tool flattens the ValidationError into a readable message (the text the
-	// agent feeds back as an is_error tool_result), so assert on the message — it
-	// must name the NDIS validation failure and the breached cap, not panic.
-	msg := err.Error()
-	if !strings.Contains(msg, "NDIS validation") || !strings.Contains(msg, "price cap") {
-		t.Fatalf("error message %q does not describe the price-cap failure", msg)
+	inv, ok := res.JSON.(*repository.Invoice)
+	if !ok {
+		t.Fatalf("result JSON is %T, want *repository.Invoice", res.JSON)
+	}
+	byCode := map[string]float64{}
+	for i := range inv.LineItems { // bounded by len(inv.LineItems)
+		byCode[inv.LineItems[i].Code] = inv.LineItems[i].UnitPrice
+	}
+	if byCode[codeSelfCare] != priceSelfCare {
+		t.Fatalf("self-care unit price = %.2f, want cap %.2f (over-cap $80 must be overridden)", byCode[codeSelfCare], priceSelfCare)
+	}
+	if byCode[codeTransport] != priceTransport {
+		t.Fatalf("transport unit price = %.2f, want cap %.2f ($0 must be overridden)", byCode[codeTransport], priceTransport)
+	}
+	// Total = 7×70.23 + 10×1.00 = 491.61 + 10.00 = 501.61.
+	if inv.Total != 501.61 {
+		t.Fatalf("total = %.2f, want 501.61 (priced at caps, not the model's numbers)", inv.Total)
+	}
+}
+
+// TestCreateInvoiceRejectsZeroQuantityCoded asserts the contract tightening
+// (Pillar 3): a catalogue-coded line with a non-positive quantity is rejected as
+// a structured tool error (not silently billed at $0) so the agent self-corrects.
+func TestCreateInvoiceRejectsZeroQuantityCoded(t *testing.T) {
+	svc, tenantID, participantID := nursingNoteSvc(t)
+	tool := NewCreateInvoiceTool(svc, nil)
+	ctx := reqctx.WithTenant(context.Background(), tenantID)
+
+	in := map[string]any{
+		"participantId": participantID,
+		"items": []map[string]any{
+			{"code": codeSelfCare, "serviceDate": "2026-06-09", "quantity": 0.0},
+		},
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if _, err := tool.Handler(ctx, raw); err == nil {
+		t.Fatal("expected an error for a zero-quantity coded line")
 	}
 }

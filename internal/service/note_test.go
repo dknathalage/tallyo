@@ -193,6 +193,49 @@ func TestNoteBillSetsAndBroadcasts(t *testing.T) {
 	}
 }
 
+func TestNoteBillRejectsCrossTenantInvoice(t *testing.T) {
+	conn := newTestDB(t)
+
+	// Tenant A: owns an invoice.
+	tenantA := seedTenant(t, conn)
+	participantA := seedParticipant(t, conn, tenantA)
+	invA := seedNoteInvoice(t, conn, tenantA, participantA)
+
+	// Tenant B: owns a note.
+	tenantB := seedTenant(t, conn)
+	participantB := seedParticipant(t, conn, tenantB)
+	hub := realtime.NewHub()
+	svc := NewNoteService(conn, hub)
+	ctxB := tctx(tenantB)
+
+	n, err := svc.Create(ctxB, repository.NoteInput{ParticipantID: participantB, ServiceDate: "2026-01-15", Body: "x"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	ch, unsub := hub.Subscribe(tenantB)
+	defer unsub()
+
+	// B tries to bill its note onto A's invoice — must be rejected.
+	if err := svc.Bill(ctxB, invA, []int64{n.ID}); err == nil {
+		t.Fatal("Bill cross-tenant invoice: want error, got nil")
+	}
+
+	// No bill event should fire.
+	select {
+	case e := <-ch:
+		t.Fatalf("no event expected on rejected cross-tenant Bill, got %+v", e)
+	case <-time.After(100 * time.Millisecond):
+		// ok
+	}
+
+	// B's note must remain unbilled.
+	got, _ := svc.Get(ctxB, n.ID)
+	if got == nil || got.BilledID != nil {
+		t.Fatalf("note must remain unbilled after rejected cross-tenant Bill: %+v", got)
+	}
+}
+
 func TestNoteBillEmptyNoEvent(t *testing.T) {
 	svc, hub, tenantID, _ := newNoteSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)

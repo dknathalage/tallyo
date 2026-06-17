@@ -91,6 +91,45 @@ func TestNoteCreateRejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestNoteCreateRejectsMalformedDate(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	pid := seedParticipant(t, conn, tid, "Jane")
+	repo := NewNotes(conn)
+	ctx := context.Background()
+
+	// Non-ISO service dates are rejected and create no row.
+	for _, bad := range []string{"2026-6-9", "not-a-date"} {
+		n, err := repo.Create(ctx, tid, nil, NoteInput{ParticipantID: pid, ServiceDate: bad, Body: "x"})
+		if err == nil {
+			t.Fatalf("Create %q: want error, got nil (note=%+v)", bad, n)
+		}
+		if n != nil {
+			t.Fatalf("Create %q: no note should be returned, got %+v", bad, n)
+		}
+	}
+
+	// Sanity: no rows were inserted by the rejected creates.
+	all, err := repo.ListParticipant(ctx, tid, pid, "", "")
+	if err != nil {
+		t.Fatalf("ListParticipant: %v", err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("rejected creates left rows behind: %+v", all)
+	}
+
+	// A valid ISO date still succeeds (guard against over-rejection).
+	good, err := repo.Create(ctx, tid, nil, NoteInput{ParticipantID: pid, ServiceDate: "2026-06-09", Body: "ok"})
+	if err != nil || good == nil || good.ServiceDate != "2026-06-09" {
+		t.Fatalf("valid date Create = %+v err=%v", good, err)
+	}
+
+	// Update also rejects a malformed date.
+	if _, err := repo.Update(ctx, tid, good.ID, NoteInput{ParticipantID: pid, ServiceDate: "2026-6-9", Body: "x"}); err == nil {
+		t.Fatal("Update with malformed date: want error, got nil")
+	}
+}
+
 func TestNoteGetFoundAbsentAndIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
