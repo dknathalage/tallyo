@@ -30,6 +30,6 @@ func buildRequest(cfg Config, reg *Registry, system string, history []llm.Messag
 		Messages:   history,
 		MaxTokens:  requestMaxTokens,
 		Model:      cfg.Model,
-		Effort:     "high",
+		Effort:     cfg.EffortFor(), // omitted for Haiku-tier models
 	}
 }

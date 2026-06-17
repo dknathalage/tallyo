@@ -122,6 +122,69 @@ func (s *SupportCatalogService) ListPrices(ctx context.Context, supportItemID in
 	return s.repo.ListPrices(ctx, supportItemID)
 }
 
+// CatalogMatch is one support item resolved for a service date, enriched with
+// its price cap in the requested zone. PriceCap is nil for a quotable item (no
+// fixed cap) or when no price row exists for the zone.
+type CatalogMatch struct {
+	Code      string   `json:"code"`
+	Name      string   `json:"name"`
+	Unit      string   `json:"unit"`
+	GstFree   bool     `json:"gstFree"`
+	Zone      string   `json:"zone"`
+	PriceCap  *float64 `json:"priceCap"`
+	Quotable  bool     `json:"quotable"`
+	VersionID int64    `json:"catalogVersionId"`
+}
+
+// SearchForDate resolves the catalogue version effective on serviceDate, finds
+// support items whose code or name matches query, and attaches each item's
+// price cap for the given zone (default "national" when zone is empty). Returns
+// an empty (non-nil) slice when no version is in effect or nothing matches —
+// capped at limit results (limit ≤ 0 → a default of 25) to bound the payload.
+func (s *SupportCatalogService) SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*CatalogMatch, error) {
+	if serviceDate == "" {
+		return nil, fmt.Errorf("catalogue search: service date is required")
+	}
+	if zone == "" {
+		zone = "national"
+	}
+	if limit <= 0 {
+		limit = 25
+	}
+	ver, err := s.repo.ResolveVersionForDate(ctx, serviceDate)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*CatalogMatch, 0)
+	if ver == nil {
+		return out, nil
+	}
+	items, err := s.repo.SearchSupportItems(ctx, ver.ID, query)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items { // bounded by len(items)
+		if len(out) >= limit {
+			break
+		}
+		it := items[i]
+		m := &CatalogMatch{
+			Code: it.Code, Name: it.Name, Unit: it.Unit, GstFree: it.GstFree,
+			Zone: zone, VersionID: ver.ID,
+		}
+		price, perr := s.repo.ResolveZonePrice(ctx, ver.ID, it.Code, zone)
+		if perr != nil {
+			return nil, perr
+		}
+		if price != nil {
+			m.PriceCap = price.PriceCap
+			m.Quotable = price.PriceCap == nil
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
 // CatalogIngestService is the platform-admin WRITE path for the GLOBAL NDIS
 // Support Catalogue: it parses an official Support Catalogue XLSX (fixed-format,
 // keyed to known NDIA headers — no column-mapping wizard) and bulk-loads a new

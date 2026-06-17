@@ -147,10 +147,21 @@ func run() error {
 
 	logger := setupLogger(*logFormat, *logLevel)
 
-	agentCfg := agent.Config{APIKey: envOr("ANTHROPIC_API_KEY", "")}.WithDefaults()
+	agentCfg := agent.Config{
+		APIKey: envOr("ANTHROPIC_API_KEY", ""),
+		Model:  envOr("ANTHROPIC_MODEL", ""),
+		Effort: envOr("ANTHROPIC_EFFORT", ""),
+	}
+	if e := agentCfg.Effort; e != "" && !agent.ValidEffort(e) {
+		logger.Warn("invalid ANTHROPIC_EFFORT; falling back to default",
+			slog.String("value", e))
+	}
+	agentCfg = agentCfg.WithDefaults()
 	if !agentCfg.Enabled() {
 		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
 	}
+	logger.Info("agent model configured",
+		slog.String("model", agentCfg.Model), slog.String("effort", agentCfg.Effort))
 
 	dir := *dataDir
 	if dir == "" {
@@ -188,6 +199,7 @@ func run() error {
 	supportCatalogSvc := service.NewSupportCatalogService(conn)
 	catalogIngestSvc := service.NewCatalogIngestService(conn, hub)
 	invoiceSvc := service.NewInvoiceService(conn, hub)
+	noteSvc := service.NewNoteService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
 	paymentSvc := service.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
@@ -207,6 +219,8 @@ func run() error {
 		agentCP := agent.NewCheckpoint(agentStore, conn)
 		agentReg.Register(agent.NewListInvoicesTool(invoiceSvc))
 		agentReg.Register(agent.NewCreateInvoiceTool(invoiceSvc, agentCP))
+		agentReg.Register(agent.NewListParticipantNotesTool(noteSvc))
+		agentReg.Register(agent.NewSearchCatalogueTool(supportCatalogSvc))
 		agentBudget := agent.NewBudgetWallClock(agentStore, agentCfg)
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, "high")
 		agentSvc = agent.NewAgent(agentCfg, llmClient, agentStore, agentReg, agentCP, agentEvents).
@@ -242,6 +256,7 @@ func run() error {
 		CustomItems:     httpapi.NewCustomItemHandler(customItemSvc),
 		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
+		Notes:           httpapi.NewNoteHandler(noteSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
 		Payments:        httpapi.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),

@@ -1,5 +1,7 @@
 version: "3"
 
+dotenv: ['.env']
+
 vars:
   BINARY: tallyo
   PORT: '{{.PORT | default "8080"}}'

@@ -355,6 +355,26 @@ func (r *CatalogRepo) ListSupportItems(ctx context.Context, versionID int64) ([]
 	return out, nil
 }
 
+// SearchSupportItems returns the support items in a version whose code or name
+// matches the query (LIKE, case-insensitive on the SQLite default collation),
+// by code. An empty query matches everything in the version.
+func (r *CatalogRepo) SearchSupportItems(ctx context.Context, versionID int64, query string) ([]*SupportItem, error) {
+	like := "%" + query + "%"
+	rows, err := gen.New(r.db).SearchSupportItems(ctx, gen.SearchSupportItemsParams{
+		CatalogVersionID: versionID,
+		Code:             like,
+		Name:             like,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search support items: %w", err)
+	}
+	out := make([]*SupportItem, 0, len(rows))
+	for i := range rows { // bounded by len(rows)
+		out = append(out, toSupportItem(rows[i]))
+	}
+	return out, nil
+}
+
 // GetSupportItemByCode finds a support item by code within a version (spec §6
 // step 2), or (nil, nil) when none matches.
 func (r *CatalogRepo) GetSupportItemByCode(ctx context.Context, versionID int64, code string) (*SupportItem, error) {
