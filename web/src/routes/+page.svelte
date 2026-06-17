@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
+	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
 	import { shortDate, statusLabel, todayISO } from '$lib/shifts/format';
-	import type { Shift, ShiftStatus, ShiftSuggestion } from '$lib/api/types';
+	import type { Shift, ShiftStatus } from '$lib/api/types';
 
 	const STAGES: ShiftStatus[] = ['scheduled', 'recorded', 'drafted', 'sent', 'paid'];
 
@@ -91,22 +91,6 @@
 		}
 	}
 
-	// ---- AI invoice suggestions ----
-	let draftingPid = $state<number | null>(null);
-	let draftError = $state<string | null>(null);
-
-	async function draft(s: ShiftSuggestion): Promise<void> {
-		draftError = null;
-		draftingPid = s.participantId;
-		try {
-			const invoice = await shiftsApi.draftInvoice(s.participantId, s.from, s.to);
-			await goto(`/invoices?open=${invoice.id}`);
-		} catch (err) {
-			draftError = err instanceof Error ? err.message : 'Failed to draft invoice.';
-		} finally {
-			draftingPid = null;
-		}
-	}
 </script>
 
 <div class="space-y-6">
@@ -221,37 +205,7 @@
 	</section>
 
 	<!-- AI invoice suggestions -->
-	{#if shifts.suggestions.length > 0}
-		<section aria-label="Suggested invoices" class="space-y-2">
-			<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
-				✨ Suggested invoices (from recorded shifts)
-			</h2>
-			{#if draftError}
-				<p class="text-sm text-red-600">{draftError}</p>
-			{/if}
-			{#each shifts.suggestions as s (s.participantId)}
-				<div class="flex flex-wrap items-center gap-3 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
-					<span
-						class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white"
-						aria-hidden="true">✨</span
-					>
-					<span class="flex-1 text-sm">
-						<b>{participantName(s.participantId)}</b> — {s.count} recorded shift{s.count === 1
-							? ''
-							: 's'} · {shortDate(s.from)}–{shortDate(s.to)}
-					</span>
-					<button
-						type="button"
-						onclick={() => draft(s)}
-						disabled={draftingPid === s.participantId}
-						class="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-					>
-						{draftingPid === s.participantId ? 'Drafting…' : 'Draft invoice →'}
-					</button>
-				</div>
-			{/each}
-		</section>
-	{/if}
+	<InvoiceSuggestions suggestions={shifts.suggestions} nameFor={participantName} />
 
 	<!-- Shift table -->
 	<section>
