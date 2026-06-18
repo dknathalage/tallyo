@@ -28,8 +28,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	tallyoweb "github.com/dknathalage/tallyo/web"
@@ -97,7 +97,7 @@ const overdueSweepInterval = 1 * time.Hour
 //
 // A failure for one tenant is logged and the sweep continues with the next, so
 // one tenant's data problem cannot stall every other tenant's sweep.
-func runSweepOnce(inv *invoice.Service, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger) {
+func runSweepOnce(inv *invoice.Service, rec *recurring.Service, ag *agent.Agent, logger *slog.Logger) {
 	tenantIDs, err := inv.ActiveTenantIDs(context.Background())
 	if err != nil {
 		logger.Error("sweep: list active tenants failed", slog.Any("error", err))
@@ -128,7 +128,7 @@ func runSweepOnce(inv *invoice.Service, rec *service.RecurringService, ag *agent
 
 // runSweeper runs the per-tenant sweeps on each tick until done is closed. It
 // owns its single ticker and stops cleanly, so it never leaks a goroutine.
-func runSweeper(inv *invoice.Service, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger, done <-chan struct{}) {
+func runSweeper(inv *invoice.Service, rec *recurring.Service, ag *agent.Agent, logger *slog.Logger, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -215,7 +215,7 @@ func run() error {
 	invoiceSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	estimateSvc := estimate.NewService(conn, hub)
 	paymentSvc := invoice.NewPaymentService(conn, hub)
-	recurringSvc := service.NewRecurringService(conn, hub)
+	recurringSvc := recurring.NewService(conn, hub)
 
 	// AI agent (optional): the full service is only constructed when
 	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired
@@ -275,7 +275,7 @@ func run() error {
 		Shifts:          shift.NewHandler(shiftSvc),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
-		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
+		Recurring:       recurring.NewHandler(recurringSvc),
 		Export:          httpapi.NewExportHandler(customItemSvc, invoiceSvc, estimateSvc),
 		Agent:           agentHandler,
 	}

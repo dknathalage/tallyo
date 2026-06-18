@@ -1,4 +1,4 @@
-package repository
+package recurring
 
 // NOTE (J4): rewritten for the tenant-scoped NDIS recurring_templates schema.
 // Templates carry participant_id / plan_manager_id and a JSON line_items column.
@@ -74,28 +74,28 @@ type GeneratedInvoice struct {
 	InvoiceNumber string `json:"invoiceNumber"`
 }
 
-// RecurringRepo reads and writes recurring_templates (tenant-scoped) and
+// Repo reads and writes recurring_templates (tenant-scoped) and
 // generates invoices from them. Generation advances next_due in the same
 // transaction as the invoice insert so re-running the due sweep never
 // double-generates.
-type RecurringRepo struct {
+type Repo struct {
 	db   *sql.DB
 	snap *billing.SnapshotBuilder
 }
 
-// NewRecurring constructs a repository. A nil db is a programmer error.
-func NewRecurring(db *sql.DB) *RecurringRepo {
+// NewRepo constructs a repository. A nil db is a programmer error.
+func NewRepo(db *sql.DB) *Repo {
 	if db == nil {
-		panic("repository: NewRecurring requires a non-nil *sql.DB")
+		panic("recurring: NewRepo requires a non-nil *sql.DB")
 	}
-	return &RecurringRepo{db: db, snap: billing.NewSnapshotBuilder(db)}
+	return &Repo{db: db, snap: billing.NewSnapshotBuilder(db)}
 }
 
 // validFrequencies is the closed set of supported cadences.
 var validFrequencies = map[string]bool{"weekly": true, "monthly": true, "quarterly": true}
 
 // validate checks a writable template input at the module boundary.
-func (r *RecurringRepo) validate(in RecurringInput) error {
+func (r *Repo) validate(in RecurringInput) error {
 	if in.Name == "" {
 		return errors.New("recurring: name is required")
 	}
@@ -113,7 +113,7 @@ func (r *RecurringRepo) validate(in RecurringInput) error {
 
 // List returns templates (all, or active only), each with participant name and
 // parsed line items. The slice is always non-nil.
-func (r *RecurringRepo) List(ctx context.Context, tenantID int64, activeOnly bool) ([]*RecurringTemplate, error) {
+func (r *Repo) List(ctx context.Context, tenantID int64, activeOnly bool) ([]*RecurringTemplate, error) {
 	q := gen.New(r.db)
 	if activeOnly {
 		rows, err := q.ListActiveRecurringTemplates(ctx, tenantID)
@@ -139,7 +139,7 @@ func (r *RecurringRepo) List(ctx context.Context, tenantID int64, activeOnly boo
 
 // Get returns the template (with participant name and line items), or (nil, nil)
 // when absent.
-func (r *RecurringRepo) Get(ctx context.Context, tenantID, id int64) (*RecurringTemplate, error) {
+func (r *Repo) Get(ctx context.Context, tenantID, id int64) (*RecurringTemplate, error) {
 	row, err := gen.New(r.db).GetRecurringTemplate(ctx, gen.GetRecurringTemplateParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -152,7 +152,7 @@ func (r *RecurringRepo) Get(ctx context.Context, tenantID, id int64) (*Recurring
 
 // Create validates and inserts a template, auditing the create with the real id,
 // then re-reads the row.
-func (r *RecurringRepo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*RecurringTemplate, error) {
+func (r *Repo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*RecurringTemplate, error) {
 	if tenantID == 0 {
 		return nil, errors.New("create recurring: tenant id required")
 	}
@@ -197,7 +197,7 @@ func (r *RecurringRepo) Create(ctx context.Context, tenantID int64, in Recurring
 
 // Update validates and rewrites a template, atomically with one audit row.
 // Returns (nil, nil) when the template does not exist.
-func (r *RecurringRepo) Update(ctx context.Context, tenantID, id int64, in RecurringInput) (*RecurringTemplate, error) {
+func (r *Repo) Update(ctx context.Context, tenantID, id int64, in RecurringInput) (*RecurringTemplate, error) {
 	if err := r.validate(in); err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func (r *RecurringRepo) Update(ctx context.Context, tenantID, id int64, in Recur
 }
 
 // Delete removes a template and writes one audit row.
-func (r *RecurringRepo) Delete(ctx context.Context, tenantID, id int64) error {
+func (r *Repo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "recurring_template", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
@@ -251,7 +251,7 @@ func (r *RecurringRepo) Delete(ctx context.Context, tenantID, id int64) error {
 }
 
 // AdvanceDate returns date advanced by one period of freq, in YYYY-MM-DD.
-func (r *RecurringRepo) AdvanceDate(date, freq string) (string, error) {
+func (r *Repo) AdvanceDate(date, freq string) (string, error) {
 	t, err := time.Parse("2006-01-02", date)
 	if err != nil {
 		return "", fmt.Errorf("advance date: %w", err)
@@ -272,7 +272,7 @@ func (r *RecurringRepo) AdvanceDate(date, freq string) (string, error) {
 // GenerateOne creates a draft invoice from the template AND advances next_due in
 // the same transaction (idempotent re-runs). Returns (nil, nil) when the
 // template is missing. The returned invoice is re-read after commit.
-func (r *RecurringRepo) GenerateOne(ctx context.Context, tenantID, templateID int64) (*invoice.Invoice, error) {
+func (r *Repo) GenerateOne(ctx context.Context, tenantID, templateID int64) (*invoice.Invoice, error) {
 	tpl, err := r.Get(ctx, tenantID, templateID)
 	if err != nil {
 		return nil, fmt.Errorf("generate one: %w", err)
@@ -305,7 +305,7 @@ type genSnapshots struct {
 }
 
 // buildGenSnapshots builds default snapshots for a generated invoice.
-func (r *RecurringRepo) buildGenSnapshots(ctx context.Context, tenantID int64, participantID, planManagerID *int64) genSnapshots {
+func (r *Repo) buildGenSnapshots(ctx context.Context, tenantID int64, participantID, planManagerID *int64) genSnapshots {
 	var pid int64
 	if participantID != nil {
 		pid = *participantID
@@ -318,7 +318,7 @@ func (r *RecurringRepo) buildGenSnapshots(ctx context.Context, tenantID int64, p
 }
 
 // generateTx runs one generation attempt in one transaction for idempotency.
-func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *RecurringTemplate, items []billing.LineItemInput,
+func (r *Repo) generateTx(ctx context.Context, tenantID int64, tpl *RecurringTemplate, items []billing.LineItemInput,
 	today string, tax float64, snaps genSnapshots, invID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -395,7 +395,7 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []bill
 // whose next_due has passed. Idempotent: each generation advances next_due in
 // its own transaction. Returns a non-nil slice. This is the per-tenant sweep
 // path (spec §8): the caller iterates active tenants and skips suspended ones.
-func (r *RecurringRepo) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]GeneratedInvoice, error) {
+func (r *Repo) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]GeneratedInvoice, error) {
 	if tenantID == 0 {
 		return nil, errors.New("generate due: tenant id required")
 	}
@@ -496,4 +496,38 @@ func getRowToTemplate(r gen.GetRecurringTemplateRow) *RecurringTemplate {
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
+}
+
+// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
+func b2i(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
+func nullID(p *int64) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *p, Valid: true}
+}
+
+// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
+func ptrID(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
+}
+
+// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
+// the string is empty, and valid otherwise.
+func nzMaybe(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
 }

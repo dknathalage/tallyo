@@ -1,4 +1,4 @@
-package service
+package recurring
 
 import (
 	"context"
@@ -6,39 +6,38 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// RecurringService orchestrates recurring-template reads/writes and invoice
+// Service orchestrates recurring-template reads/writes and invoice
 // generation, publishing change events after a successful commit.
-type RecurringService struct {
-	repo *repository.RecurringRepo
+type Service struct {
+	repo *Repo
 	hub  *realtime.Hub
 }
 
-// NewRecurringService constructs the service. A nil hub is a programmer error.
-func NewRecurringService(db *sql.DB, hub *realtime.Hub) *RecurringService {
+// NewService constructs the service. A nil hub is a programmer error.
+func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 	if hub == nil {
-		panic("NewRecurringService: nil hub")
+		panic("recurring.NewService: nil hub")
 	}
-	return &RecurringService{repo: repository.NewRecurring(db), hub: hub}
+	return &Service{repo: NewRepo(db), hub: hub}
 }
 
 // List returns templates (all, or active only).
-func (s *RecurringService) List(ctx context.Context, activeOnly bool) ([]*repository.RecurringTemplate, error) {
+func (s *Service) List(ctx context.Context, activeOnly bool) ([]*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID, activeOnly)
 }
 
 // Get returns a single template, or (nil, nil) when absent.
-func (s *RecurringService) Get(ctx context.Context, id int64) (*repository.RecurringTemplate, error) {
+func (s *Service) Get(ctx context.Context, id int64) (*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
 
 // Create inserts a template, then broadcasts on success.
-func (s *RecurringService) Create(ctx context.Context, in repository.RecurringInput) (*repository.RecurringTemplate, error) {
+func (s *Service) Create(ctx context.Context, in RecurringInput) (*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	tpl, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
@@ -50,7 +49,7 @@ func (s *RecurringService) Create(ctx context.Context, in repository.RecurringIn
 
 // Update rewrites a template. A nil result means the row was not found, in
 // which case no event is published.
-func (s *RecurringService) Update(ctx context.Context, id int64, in repository.RecurringInput) (*repository.RecurringTemplate, error) {
+func (s *Service) Update(ctx context.Context, id int64, in RecurringInput) (*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	tpl, err := s.repo.Update(ctx, tenantID, id, in)
 	if err != nil {
@@ -64,7 +63,7 @@ func (s *RecurringService) Update(ctx context.Context, id int64, in repository.R
 }
 
 // Delete removes a template, then broadcasts on success.
-func (s *RecurringService) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
@@ -76,7 +75,7 @@ func (s *RecurringService) Delete(ctx context.Context, id int64) error {
 // GenerateOne creates a draft invoice from the template and advances its
 // next_due. A nil invoice means the template was missing (no events). On
 // success it broadcasts both a template "generate" and an invoice "create".
-func (s *RecurringService) GenerateOne(ctx context.Context, id int64) (*invoice.Invoice, error) {
+func (s *Service) GenerateOne(ctx context.Context, id int64) (*invoice.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	inv, err := s.repo.GenerateOne(ctx, tenantID, id)
 	if err != nil {
@@ -107,7 +106,7 @@ func (s *RecurringService) GenerateOne(ctx context.Context, id int64) (*invoice.
 // it surfaces only when the invoice is next edited (which re-validates). This is
 // acceptable for this scope: generated invoices are drafts, reviewed before
 // being sent. Revisit when adding a service-date policy for recurring lines.
-func (s *RecurringService) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]repository.GeneratedInvoice, error) {
+func (s *Service) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]GeneratedInvoice, error) {
 	gens, err := s.repo.GenerateDueForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err

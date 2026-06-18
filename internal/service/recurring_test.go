@@ -5,28 +5,28 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/recurring"
 )
 
-func newRecurringSvc(t *testing.T) (*RecurringService, *realtime.Hub, int64, int64) {
+func newRecurringSvc(t *testing.T) (*recurring.Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewRecurringService(conn, hub), hub, tenantID, participantID
+	return recurring.NewService(conn, hub), hub, tenantID, participantID
 }
 
 // seedRecurringInput builds a valid monthly template input for the given
 // participant, due in the past so GenerateOne will produce an invoice.
-func seedRecurringInput(participantID int64) repository.RecurringInput {
+func seedRecurringInput(participantID int64) recurring.RecurringInput {
 	pid := participantID
-	return repository.RecurringInput{
+	return recurring.RecurringInput{
 		ParticipantID: &pid,
 		Name:          "Monthly",
 		Frequency:     "monthly",
 		NextDue:       "2026-01-01",
-		LineItems: []repository.RecurringLine{
+		LineItems: []recurring.RecurringLine{
 			{Description: "A", Quantity: 2, UnitPrice: 10, SortOrder: 0},
 			{Description: "B", Quantity: 1, UnitPrice: 5, SortOrder: 1},
 		},

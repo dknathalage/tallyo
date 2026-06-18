@@ -10,7 +10,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,7 +24,7 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	recH := NewRecurringHandler(service.NewRecurringService(conn, hub))
+	recH := recurring.NewHandler(recurring.NewService(conn, hub))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()
@@ -33,12 +33,7 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
-			pr.Get("/recurring", recH.List)
-			pr.Post("/recurring", recH.Create)
-			pr.Get("/recurring/{id}", recH.Get)
-			pr.Put("/recurring/{id}", recH.Update)
-			pr.Delete("/recurring/{id}", recH.Delete)
-			pr.Post("/recurring/{id}/generate", recH.Generate)
+			recH.Routes(pr)
 		})
 	})
 

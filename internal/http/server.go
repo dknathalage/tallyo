@@ -13,6 +13,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
@@ -93,7 +94,7 @@ type Deps struct {
 
 	// Recurring, when non-nil, serves the auth-gated recurring-template CRUD
 	// plus the generate route under /api/recurring.
-	Recurring *RecurringHandler
+	Recurring *recurring.Handler
 
 	// Export, when non-nil, serves the auth-gated CSV/Excel export routes under
 	// /api/export.
@@ -198,12 +199,7 @@ func NewServer(deps Deps) *Server {
 					deps.Payments.Routes(pr)
 				}
 				if deps.Recurring != nil {
-					pr.Get("/recurring", deps.Recurring.List)
-					pr.Post("/recurring", deps.Recurring.Create)
-					pr.Get("/recurring/{id}", deps.Recurring.Get)
-					pr.Put("/recurring/{id}", deps.Recurring.Update)
-					pr.Delete("/recurring/{id}", deps.Recurring.Delete)
-					pr.Post("/recurring/{id}/generate", deps.Recurring.Generate)
+					deps.Recurring.Routes(pr)
 				}
 				if deps.Export != nil {
 					pr.Get("/export/catalog", deps.Export.Catalog)

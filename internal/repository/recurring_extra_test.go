@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/recurring"
 )
 
 // TestRecurringListActiveOnly exercises the activeOnly=true path
@@ -12,14 +14,14 @@ func TestRecurringListActiveOnly(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewRecurring(conn)
+	repo := recurring.NewRepo(conn)
 	ctx := context.Background()
 
 	active := mkTemplate(t, repo, tid, pid, "2026-01-01")
 
-	inactive, err := repo.Create(ctx, tid, RecurringInput{
+	inactive, err := repo.Create(ctx, tid, recurring.RecurringInput{
 		ParticipantID: &pid, Name: "Paused", Frequency: "monthly", NextDue: "2026-02-01",
-		TaxRate: 0, LineItems: []RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: false,
+		TaxRate: 0, LineItems: []recurring.RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: false,
 	})
 	if err != nil {
 		t.Fatalf("Create inactive: %v", err)
