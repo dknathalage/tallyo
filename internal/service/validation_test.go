@@ -15,6 +15,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/google/uuid"
 )
 
@@ -377,7 +378,7 @@ func TestValidateClientGstFreeOverrideIgnoredForSupportItem(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	if _, err := repository.NewTaxRates(conn).Create(tctx(tid), tid, repository.TaxRateInput{
+	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
@@ -474,7 +475,7 @@ func TestValidateComputesTaxFromNonGstFreeLines(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	// Default 10% GST.
-	if _, err := repository.NewTaxRates(conn).Create(tctx(tid), tid, repository.TaxRateInput{
+	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
@@ -501,7 +502,7 @@ func TestValidateTotalsRoundToCents(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	if _, err := repository.NewTaxRates(conn).Create(tctx(tid), tid, repository.TaxRateInput{
+	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)

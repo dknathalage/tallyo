@@ -1,4 +1,8 @@
-package repository
+// Package taxrate is the tax-rate vertical slice: domain types, the audited
+// repository over the tax_rates table, the service (with SSE broadcast), and the
+// HTTP handler. It depends only on platform packages (db/gen, audit, reqctx,
+// realtime, httpx), never on other domain slices.
+package taxrate
 
 import (
 	"context"
@@ -43,7 +47,7 @@ type TaxRatesRepo struct {
 // NewTaxRates constructs a repository. A nil db is a programmer error.
 func NewTaxRates(db *sql.DB) *TaxRatesRepo {
 	if db == nil {
-		panic("repository: NewTaxRates requires a non-nil *sql.DB")
+		panic("taxrate: NewTaxRates requires a non-nil *sql.DB")
 	}
 	return &TaxRatesRepo{db: db}
 }

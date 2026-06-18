@@ -46,6 +46,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
 // FieldError is one structured, field-level validation failure. Line is the
@@ -99,7 +100,7 @@ type LineValidator struct {
 	catalog      *repository.CatalogRepo
 	profiles     *repository.BusinessProfileRepo
 	participants *repository.ParticipantsRepo
-	taxRates     *repository.TaxRatesRepo
+	taxRates     *taxrate.TaxRatesRepo
 }
 
 // NewLineValidator constructs the engine. A nil db is a programmer error.
@@ -111,7 +112,7 @@ func NewLineValidator(db *sql.DB) *LineValidator {
 		catalog:      repository.NewCatalog(db),
 		profiles:     repository.NewBusinessProfile(db),
 		participants: repository.NewParticipants(db),
-		taxRates:     repository.NewTaxRates(db),
+		taxRates:     taxrate.NewTaxRates(db),
 	}
 }
 

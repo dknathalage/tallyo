@@ -3,15 +3,17 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
 func TestTaxRateCreateGetList(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewTaxRates(conn)
+	repo := taxrate.NewTaxRates(conn)
 	ctx := context.Background()
 
-	gst, err := repo.Create(ctx, tid, TaxRateInput{Name: "GST", Rate: 10, IsDefault: true})
+	gst, err := repo.Create(ctx, tid, taxrate.TaxRateInput{Name: "GST", Rate: 10, IsDefault: true})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -33,13 +35,13 @@ func TestTaxRateCreateGetList(t *testing.T) {
 func TestTaxRateOnlyOneDefault(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewTaxRates(conn)
+	repo := taxrate.NewTaxRates(conn)
 	ctx := context.Background()
 
-	if _, err := repo.Create(ctx, tid, TaxRateInput{Name: "A", Rate: 5, IsDefault: true}); err != nil {
+	if _, err := repo.Create(ctx, tid, taxrate.TaxRateInput{Name: "A", Rate: 5, IsDefault: true}); err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	if _, err := repo.Create(ctx, tid, TaxRateInput{Name: "B", Rate: 10, IsDefault: true}); err != nil {
+	if _, err := repo.Create(ctx, tid, taxrate.TaxRateInput{Name: "B", Rate: 10, IsDefault: true}); err != nil {
 		t.Fatalf("Create B: %v", err)
 	}
 	def, err := repo.GetDefault(ctx, tid)
@@ -51,14 +53,14 @@ func TestTaxRateOnlyOneDefault(t *testing.T) {
 func TestTaxRateUpdateDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewTaxRates(conn)
+	repo := taxrate.NewTaxRates(conn)
 	ctx := context.Background()
 
-	tr, err := repo.Create(ctx, tid, TaxRateInput{Name: "GST", Rate: 10})
+	tr, err := repo.Create(ctx, tid, taxrate.TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, tr.ID, TaxRateInput{Name: "GST2", Rate: 12})
+	up, err := repo.Update(ctx, tid, tr.ID, taxrate.TaxRateInput{Name: "GST2", Rate: 12})
 	if err != nil || up == nil || up.Name != "GST2" || up.Rate != 12 {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
@@ -75,10 +77,10 @@ func TestTaxRateTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	repo := NewTaxRates(conn)
+	repo := taxrate.NewTaxRates(conn)
 	ctx := context.Background()
 
-	tr, err := repo.Create(ctx, a, TaxRateInput{Name: "GST", Rate: 10})
+	tr, err := repo.Create(ctx, a, taxrate.TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
