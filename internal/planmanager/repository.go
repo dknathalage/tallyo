@@ -1,9 +1,8 @@
-package repository
-
-// NOTE (J4): the old "payer" domain now backs the NDIS plan_managers table.
-// Types and constructor are renamed to PlanManager (low-friction, per J8/J9
-// direction); the FILE name stays payer.go to keep this change's scope bounded.
-// J8 owns renaming the file and updating service/http call sites.
+// Package planmanager is the plan-manager vertical slice: domain types, the
+// audited repository over the plan_managers table, the service (with SSE
+// broadcast), and the HTTP handler. It depends only on platform packages
+// (db/gen, audit, reqctx, realtime, httpx), never on other domain slices.
+package planmanager
 
 import (
 	"context"
@@ -49,7 +48,7 @@ type PlanManagersRepo struct {
 // NewPlanManagers constructs a repository. A nil db is a programmer error.
 func NewPlanManagers(db *sql.DB) *PlanManagersRepo {
 	if db == nil {
-		panic("repository: NewPlanManagers requires a non-nil *sql.DB")
+		panic("planmanager: NewPlanManagers requires a non-nil *sql.DB")
 	}
 	return &PlanManagersRepo{db: db}
 }
@@ -240,4 +239,9 @@ func toPlanManager(row gen.PlanManager) *PlanManager {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
+}
+
+// nz wraps a string into a valid sql.NullString. Used for optional string columns.
+func nz(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: true}
 }

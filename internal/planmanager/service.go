@@ -1,40 +1,40 @@
-package service
+package planmanager
 
 import (
 	"context"
 	"database/sql"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// PlanManagerService orchestrates plan-manager reads/writes and publishes change
-// events after a successful commit.
-type PlanManagerService struct {
-	repo *repository.PlanManagersRepo
+// Service orchestrates plan-manager reads/writes and publishes change events
+// after a successful commit.
+type Service struct {
+	repo *PlanManagersRepo
 	hub  *realtime.Hub
 }
 
-func NewPlanManagerService(db *sql.DB, hub *realtime.Hub) *PlanManagerService {
+// NewService constructs the plan-manager service. A nil hub is a programmer error.
+func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 	if hub == nil {
-		panic("NewPlanManagerService: nil hub")
+		panic("planmanager.NewService: nil hub")
 	}
-	return &PlanManagerService{repo: repository.NewPlanManagers(db), hub: hub}
+	return &Service{repo: NewPlanManagers(db), hub: hub}
 }
 
-func (s *PlanManagerService) List(ctx context.Context, search string) ([]*repository.PlanManager, error) {
+func (s *Service) List(ctx context.Context, search string) ([]*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID, search)
 }
 
-func (s *PlanManagerService) Get(ctx context.Context, id int64) (*repository.PlanManager, error) {
+func (s *Service) Get(ctx context.Context, id int64) (*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
 
 // Create inserts a plan manager, then broadcasts AFTER the commit succeeds.
-func (s *PlanManagerService) Create(ctx context.Context, in repository.PlanManagerInput) (*repository.PlanManager, error) {
+func (s *Service) Create(ctx context.Context, in PlanManagerInput) (*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	p, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
@@ -46,7 +46,7 @@ func (s *PlanManagerService) Create(ctx context.Context, in repository.PlanManag
 
 // Update mutates a plan manager, then broadcasts on success. A nil result means
 // the row was not found, in which case no event is published.
-func (s *PlanManagerService) Update(ctx context.Context, id int64, in repository.PlanManagerInput) (*repository.PlanManager, error) {
+func (s *Service) Update(ctx context.Context, id int64, in PlanManagerInput) (*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	p, err := s.repo.Update(ctx, tenantID, id, in)
 	if err != nil {
@@ -60,7 +60,7 @@ func (s *PlanManagerService) Update(ctx context.Context, id int64, in repository
 }
 
 // Delete removes a plan manager, then broadcasts on success.
-func (s *PlanManagerService) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
@@ -71,7 +71,7 @@ func (s *PlanManagerService) Delete(ctx context.Context, id int64) error {
 
 // BulkDelete removes multiple plan managers, then broadcasts a single
 // bulk_delete event on success.
-func (s *PlanManagerService) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err

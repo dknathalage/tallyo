@@ -7,6 +7,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
 )
@@ -48,7 +49,7 @@ type Deps struct {
 
 	// PlanManagers, when non-nil, serves the auth-gated plan-manager CRUD plus
 	// bulk-delete routes under /api/plan-managers.
-	PlanManagers *PlanManagerHandler
+	PlanManagers *planmanager.Handler
 
 	// TaxRates, when non-nil, serves the auth-gated tax-rate CRUD routes under
 	// /api/tax-rates.
@@ -161,12 +162,7 @@ func NewServer(deps Deps) *Server {
 					deps.BusinessProfile.Routes(pr)
 				}
 				if deps.PlanManagers != nil {
-					pr.Get("/plan-managers", deps.PlanManagers.List)
-					pr.Post("/plan-managers", deps.PlanManagers.Create)
-					pr.Post("/plan-managers/bulk-delete", deps.PlanManagers.BulkDelete)
-					pr.Get("/plan-managers/{id}", deps.PlanManagers.Get)
-					pr.Put("/plan-managers/{id}", deps.PlanManagers.Update)
-					pr.Delete("/plan-managers/{id}", deps.PlanManagers.Delete)
+					deps.PlanManagers.Routes(pr)
 				}
 				if deps.TaxRates != nil {
 					deps.TaxRates.Routes(pr)

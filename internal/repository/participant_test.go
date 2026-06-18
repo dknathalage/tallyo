@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/planmanager"
 )
 
 func TestParticipantCreateGet(t *testing.T) {
@@ -43,7 +45,7 @@ func TestParticipantWithPlanManagerName(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	ctx := context.Background()
-	pm, err := NewPlanManagers(conn).Create(ctx, tid, PlanManagerInput{Name: "PM Co"})
+	pm, err := planmanager.NewPlanManagers(conn).Create(ctx, tid, planmanager.PlanManagerInput{Name: "PM Co"})
 	if err != nil {
 		t.Fatalf("Create PM: %v", err)
 	}

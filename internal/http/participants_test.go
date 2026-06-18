@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -23,7 +24,7 @@ func newParticipantServer(t *testing.T) *httptest.Server {
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
-	pmH := NewPlanManagerHandler(service.NewPlanManagerService(conn, hub))
+	pmH := planmanager.NewHandler(planmanager.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

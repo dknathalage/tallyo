@@ -3,15 +3,17 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/planmanager"
 )
 
 func TestPlanManagerCreateGet(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := planmanager.NewPlanManagers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, tid, PlanManagerInput{Name: "Acme PM", Email: "a@b.com", Phone: "1", Address: "x"})
+	pm, err := repo.Create(ctx, tid, planmanager.PlanManagerInput{Name: "Acme PM", Email: "a@b.com", Phone: "1", Address: "x"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -27,7 +29,7 @@ func TestPlanManagerCreateGet(t *testing.T) {
 func TestPlanManagerRejectsEmptyName(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	if _, err := NewPlanManagers(conn).Create(context.Background(), tid, PlanManagerInput{Name: ""}); err == nil {
+	if _, err := planmanager.NewPlanManagers(conn).Create(context.Background(), tid, planmanager.PlanManagerInput{Name: ""}); err == nil {
 		t.Fatal("Create empty name: want error, got nil")
 	}
 }
@@ -35,11 +37,11 @@ func TestPlanManagerRejectsEmptyName(t *testing.T) {
 func TestPlanManagerListOrderedAndSearch(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := planmanager.NewPlanManagers(conn)
 	ctx := context.Background()
 
 	for _, n := range []string{"Beta", "Alpha", "Gamma"} {
-		if _, err := repo.Create(ctx, tid, PlanManagerInput{Name: n}); err != nil {
+		if _, err := repo.Create(ctx, tid, planmanager.PlanManagerInput{Name: n}); err != nil {
 			t.Fatalf("Create %s: %v", n, err)
 		}
 	}
@@ -63,14 +65,14 @@ func TestPlanManagerListOrderedAndSearch(t *testing.T) {
 func TestPlanManagerUpdateDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := planmanager.NewPlanManagers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, tid, PlanManagerInput{Name: "Acme"})
+	pm, err := repo.Create(ctx, tid, planmanager.PlanManagerInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, pm.ID, PlanManagerInput{Name: "Acme2", Email: "n@x.com"})
+	up, err := repo.Update(ctx, tid, pm.ID, planmanager.PlanManagerInput{Name: "Acme2", Email: "n@x.com"})
 	if err != nil || up == nil || up.Name != "Acme2" || up.Email != "n@x.com" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
@@ -85,11 +87,11 @@ func TestPlanManagerUpdateDelete(t *testing.T) {
 func TestPlanManagerBulkDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := planmanager.NewPlanManagers(conn)
 	ctx := context.Background()
 
-	a, _ := repo.Create(ctx, tid, PlanManagerInput{Name: "A"})
-	b, _ := repo.Create(ctx, tid, PlanManagerInput{Name: "B"})
+	a, _ := repo.Create(ctx, tid, planmanager.PlanManagerInput{Name: "A"})
+	b, _ := repo.Create(ctx, tid, planmanager.PlanManagerInput{Name: "B"})
 	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
@@ -105,10 +107,10 @@ func TestPlanManagerTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	repo := NewPlanManagers(conn)
+	repo := planmanager.NewPlanManagers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, a, PlanManagerInput{Name: "A PM"})
+	pm, err := repo.Create(ctx, a, planmanager.PlanManagerInput{Name: "A PM"})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
@@ -123,10 +125,10 @@ func TestPlanManagerTenantIsolation(t *testing.T) {
 func TestPlanManagerAuditCreate(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := planmanager.NewPlanManagers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, tid, PlanManagerInput{Name: "Acme"})
+	pm, err := repo.Create(ctx, tid, planmanager.PlanManagerInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -39,19 +39,14 @@ func newPlanManagerServer(t *testing.T) *httptest.Server {
 
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	pH := NewPlanManagerHandler(service.NewPlanManagerService(conn, realtime.NewHub()))
+	pH := planmanager.NewHandler(planmanager.NewService(conn, realtime.NewHub()))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
-			pr.Get("/plan-managers", pH.List)
-			pr.Post("/plan-managers", pH.Create)
-			pr.Post("/plan-managers/bulk-delete", pH.BulkDelete)
-			pr.Get("/plan-managers/{id}", pH.Get)
-			pr.Put("/plan-managers/{id}", pH.Update)
-			pr.Delete("/plan-managers/{id}", pH.Delete)
+			pH.Routes(pr)
 		})
 	})
 
