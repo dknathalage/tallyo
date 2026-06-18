@@ -17,14 +17,41 @@ Self-hosted, source-available (AGPL-3.0) invoice management web app — Go backe
 
 ## Project Layout
 
-- `main.go` (repo root) — `serve` command: resolve data dir → open DB → migrate → build services → chi server (embedded SPA + `/api`) → graceful shutdown; runs the overdue + recurring sweeps (launch + hourly ticker).
-- `internal/db/` — modernc connection (`sqlite.go`), `migrate.go` (goose), `migrations/*.sql`, `queries/*.sql` (sqlc source), `gen/` (sqlc output — do not edit).
-- `internal/repository/` — data access per domain over sqlc gen; mutations routed through `audit.WithTx`.
-- `internal/audit/` — `WithTx` audited-mutation wrapper + `Log`/`Changes`.
-- `internal/numbering/` — concurrency-safe invoice/estimate document numbers (tx-scoped + retry).
-- `internal/service/` — orchestration + SSE broadcast (commit-then-publish).
-- `internal/http/` — chi server, middleware (recover/log/session/auth-guard), JSON helpers, static SPA handler, per-domain handlers, SSE `/api/events`.
-- `internal/{pdf,export,importer,realtime,auth}/` — PDF render, CSV/XLSX export, catalog import (parse/map/diff/commit), SSE hub, auth (password/users/invites/session).
+The backend is a **modular monolith of vertical domain slices**. Each domain owns
+its `repository.go` + `service.go` + `handler.go` + types in one package; the
+handler self-registers its routes via `Routes(r chi.Router)`. Slices depend on the
+shared platform packages, never on each other directly — cross-domain reads go
+through the central `db/gen`; cross-domain writes/behaviour go through small
+interfaces declared by the consumer and wired in `internal/app`.
+
+- `main.go` (repo root, ~40 lines) — parses flags, then calls `app.Run`.
+- `internal/app/` — composition root: resolve data dir → open DB → migrate → build
+  every slice's service+handler → assemble the chi router (`server.go`: middleware,
+  `/api` group, role gates, SPA catch-all) → graceful shutdown; owns the per-tenant
+  overdue+recurring sweeps and the agent sweep (`sweep.go`, launch + hourly ticker).
+  Also holds the auth/invite/signup HTTP handlers (kept here to avoid an
+  `auth → httpx → auth` cycle).
+- **Platform (cross-cutting, shared by slices):**
+  - `internal/db/` — modernc connection (`sqlite.go`), `migrate.go` (goose),
+    `migrations/*.sql`, `queries/*.sql` (sqlc source), `gen/` (sqlc output, ONE
+    central package — do not edit, do not split).
+  - `internal/audit/` — `WithTx` audited-mutation wrapper + `Log`/`Changes`.
+  - `internal/numbering/` — concurrency-safe document numbers (tx-scoped + retry).
+  - `internal/reqctx/` — tenant/user request context.
+  - `internal/realtime/` — SSE hub + the `/api/events` stream handler.
+  - `internal/httpx/` — domain-agnostic HTTP helpers: `WriteJSON`/`WriteError`/
+    `WriteValidationError`/`DecodeJSON`/`ParseID`, middleware (`Recover`,
+    `RequestLogger`, `RequireAuth`, `RequireRole`, `RequirePlatformAdmin`), logging,
+    `SPAHandler`.
+  - `internal/pdf/` (maroto render), `internal/importer/` (catalog parse/map/diff).
+- `internal/billing/` — the shared **billing-document core**: `LineItem(Input)`
+  types, `ComputeTotals`/`Round2`, `SnapshotBuilder` (reads gen), and the NDIS
+  `LineValidator`. The invoice/estimate/recurring slices compose it.
+- **Domain slices:** `internal/{invoice,estimate,recurring,shift,participant,
+  planmanager,taxrate,businessprofile,customitem,catalog,auth,agent,export}`.
+  `invoice` includes payment. `invoice` declares `ShiftLinker`; `shift` declares
+  `InvoiceChecker` — these break the invoice↔shift cycle. `agent` is a consumer
+  slice (its tools take interfaces; owns the `agent_*` tables + AI harness).
 - `web/` — SvelteKit SPA (`src/lib/api`, `src/lib/stores`, `src/routes`); `web/embed.go` embeds `web/build`.
 
 ## Run
@@ -50,7 +77,8 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `os.UserConfigDir()/Tal
 ## Conventions
 
 - sqlc source SQL in `internal/db/queries/`; never hand-edit `internal/db/gen/`.
-- Handlers call **services**, services call **repositories**, repositories call sqlc gen — never skip layers.
+- Each domain is a **vertical slice** (`internal/<domain>/`): handler → service → repository → sqlc gen, all in one package. Within a slice, handlers call its service, the service calls its repository, the repository calls gen — never skip a layer.
+- **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.ShiftLinker`, `shift.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` (line items, totals, snapshots, validator).
 - Every DB mutation is audited (via `audit.WithTx`) and broadcasts an SSE event from the service after commit.
 - JSON is camelCase (Go struct json tags); list endpoints return `[]` (non-nil) when empty.
 - Clean-break data model (fresh goose schema; no migration from the old Electron `tallyo.db`).
