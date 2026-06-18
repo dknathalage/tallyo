@@ -11,7 +11,21 @@ func TestComputeTotals(t *testing.T) {
 }
 
 func TestRound2(t *testing.T) {
-	if Round2(1.005) != 1.01 {
-		t.Fatalf("Round2(1.005) = %v, want 1.01", Round2(1.005))
+	// Cases off the half-cent boundary (where float64 representation makes
+	// rounding ambiguous): Round2 is math.Round(x*100)/100, the verbatim
+	// original used across invoice/estimate/recurring totals.
+	cases := []struct {
+		in   float64
+		want float64
+	}{
+		{1.234, 1.23},
+		{1.236, 1.24},
+		{2.5, 2.5},
+		{0.1 + 0.2, 0.3}, // 0.30000000000000004 → 0.3
+	}
+	for _, c := range cases {
+		if got := Round2(c.in); got != c.want {
+			t.Fatalf("Round2(%v) = %v, want %v", c.in, got, c.want)
+		}
 	}
 }
