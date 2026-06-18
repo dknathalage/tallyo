@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/xuri/excelize/v2"
 )
@@ -28,7 +29,7 @@ func boolStr(b bool) string {
 
 // CatalogCSV renders the tenant's custom items to CSV with a fixed header. A nil
 // slice yields a header-only document.
-func CatalogCSV(items []*repository.CustomItem) ([]byte, error) {
+func CatalogCSV(items []*customitem.CustomItem) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	if err := w.Write([]string{"name", "rate", "unit", "gstFree"}); err != nil {
@@ -106,7 +107,7 @@ func EstimatesCSV(estimates []*repository.Estimate) ([]byte, error) {
 
 // CatalogXLSX renders the tenant's custom items to an .xlsx workbook. The default
 // sheet holds a header row followed by one row per item.
-func CatalogXLSX(items []*repository.CustomItem) ([]byte, error) {
+func CatalogXLSX(items []*customitem.CustomItem) ([]byte, error) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
 

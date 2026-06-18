@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -25,12 +25,12 @@ func newExportServer(t *testing.T) *httptest.Server {
 	users, tenantID, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
-	customItemSvc := service.NewCustomItemService(conn, hub)
+	customItemSvc := customitem.NewService(conn, hub)
 	seedCtx := reqctx.WithTenant(t.Context(), tenantID)
-	if _, err := customItemSvc.Create(seedCtx, repository.CustomItemInput{Name: "Consulting", Rate: 150.5, Unit: "hour"}); err != nil {
+	if _, err := customItemSvc.Create(seedCtx, customitem.CustomItemInput{Name: "Consulting", Rate: 150.5, Unit: "hour"}); err != nil {
 		t.Fatalf("seed item 1: %v", err)
 	}
-	if _, err := customItemSvc.Create(seedCtx, repository.CustomItemInput{Name: "Design", Rate: 90, Unit: "hour"}); err != nil {
+	if _, err := customItemSvc.Create(seedCtx, customitem.CustomItemInput{Name: "Design", Rate: 90, Unit: "hour"}); err != nil {
 		t.Fatalf("seed item 2: %v", err)
 	}
 

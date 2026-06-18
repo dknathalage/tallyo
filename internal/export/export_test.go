@@ -5,11 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func sampleItems() []*repository.CustomItem {
-	return []*repository.CustomItem{
+func sampleItems() []*customitem.CustomItem {
+	return []*customitem.CustomItem{
 		{ID: 1, Name: "Consulting", Rate: 150.5, Unit: "hour"},
 		{ID: 2, Name: "Design", Rate: 90, Unit: "hour", GstFree: true},
 	}

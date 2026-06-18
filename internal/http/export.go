@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/export"
 	"github.com/dknathalage/tallyo/internal/service"
 )
@@ -11,13 +12,13 @@ import (
 // invoices, and estimates. All routes are auth-gated by the server's RequireAuth
 // group.
 type ExportHandler struct {
-	customItems *service.CustomItemService
+	customItems *customitem.Service
 	invoices    *service.InvoiceService
 	estimates   *service.EstimateService
 }
 
 // NewExportHandler constructs the handler. A nil service is a programmer error.
-func NewExportHandler(customItems *service.CustomItemService, invoices *service.InvoiceService, estimates *service.EstimateService) *ExportHandler {
+func NewExportHandler(customItems *customitem.Service, invoices *service.InvoiceService, estimates *service.EstimateService) *ExportHandler {
 	if customItems == nil || invoices == nil || estimates == nil {
 		panic("NewExportHandler: nil service")
 	}

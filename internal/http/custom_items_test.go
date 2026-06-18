@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -22,7 +23,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	ciH := NewCustomItemHandler(service.NewCustomItemService(conn, hub))
+	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
 	scH := NewSupportCatalogHandler(service.NewSupportCatalogService(conn), service.NewCatalogIngestService(conn, hub))
 
 	router := chi.NewRouter()
@@ -30,12 +31,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
-			pr.Get("/custom-items", ciH.List)
-			pr.Post("/custom-items", ciH.Create)
-			pr.Post("/custom-items/bulk-delete", ciH.BulkDelete)
-			pr.Get("/custom-items/{id}", ciH.Get)
-			pr.Put("/custom-items/{id}", ciH.Update)
-			pr.Delete("/custom-items/{id}", ciH.Delete)
+			ciH.Routes(pr)
 			pr.Get("/support-catalog/versions", scH.ListVersions)
 			pr.Get("/support-catalog/versions/{id}/items", scH.ListItems)
 			pr.Get("/support-catalog/items/{itemId}/prices", scH.ListPrices)

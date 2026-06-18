@@ -6,81 +6,8 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/xuri/excelize/v2"
 )
-
-func newCustomItemSvc(t *testing.T) (*CustomItemService, *realtime.Hub, int64) {
-	t.Helper()
-	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	hub := realtime.NewHub()
-	return NewCustomItemService(conn, hub), hub, tenantID
-}
-
-func TestCustomItemCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newCustomItemSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
-	item, err := svc.Create(tctx(tenantID), repository.CustomItemInput{Name: "Widget", Rate: 5})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if item == nil {
-		t.Fatal("Create returned nil item")
-	}
-
-	select {
-	case e := <-ch:
-		if e.Entity != "custom_item" || e.ID != item.ID || e.Action != "create" {
-			t.Fatalf("event=%+v want custom_item/%d/create", e, item.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Create")
-	}
-}
-
-func TestCustomItemCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub, tenantID := newCustomItemSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
-	if _, err := svc.Create(tctx(tenantID), repository.CustomItemInput{Name: ""}); err == nil {
-		t.Fatal("empty name must error")
-	}
-	select {
-	case e := <-ch:
-		t.Fatalf("no event expected on failed create, got %+v", e)
-	case <-time.After(100 * time.Millisecond):
-		// ok
-	}
-}
-
-func TestCustomItemBulkDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newCustomItemSvc(t)
-	ctx := tctx(tenantID)
-
-	item, err := svc.Create(ctx, repository.CustomItemInput{Name: "Widget", Rate: 5})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
-	if err := svc.BulkDelete(ctx, []int64{item.ID}); err != nil {
-		t.Fatalf("BulkDelete: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "custom_item" || e.ID != 0 || e.Action != "bulk_delete" {
-			t.Fatalf("event=%+v want custom_item/0/bulk_delete", e)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after BulkDelete")
-	}
-}
 
 // catalogXLSX builds a synthetic NDIS-Support-Catalogue-shaped XLSX in-memory.
 // Columns mirror the canonical headers the fixed parser expects; the three zone

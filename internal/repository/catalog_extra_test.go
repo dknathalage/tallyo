@@ -5,58 +5,6 @@ import (
 	"testing"
 )
 
-func TestCustomItemSearch(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "T")
-	repo := NewCustomItems(conn)
-	ctx := context.Background()
-
-	if _, err := repo.Create(ctx, tid, CustomItemInput{Name: "Travel km", Rate: 1}); err != nil {
-		t.Fatalf("Create Travel: %v", err)
-	}
-	if _, err := repo.Create(ctx, tid, CustomItemInput{Name: "Cleaning hour", Rate: 2}); err != nil {
-		t.Fatalf("Create Cleaning: %v", err)
-	}
-
-	hits, err := repo.Search(ctx, tid, "Travel")
-	if err != nil {
-		t.Fatalf("Search: %v", err)
-	}
-	if len(hits) != 1 || hits[0].Name != "Travel km" {
-		t.Fatalf("Search Travel = %+v, want one", hits)
-	}
-	none, err := repo.Search(ctx, tid, "Nonexistent")
-	if err != nil {
-		t.Fatalf("Search none: %v", err)
-	}
-	if len(none) != 0 {
-		t.Fatalf("Search Nonexistent len = %d, want 0", len(none))
-	}
-}
-
-func TestCustomItemBulkDelete(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "T")
-	repo := NewCustomItems(conn)
-	ctx := context.Background()
-
-	a, _ := repo.Create(ctx, tid, CustomItemInput{Name: "A", Rate: 1})
-	b, _ := repo.Create(ctx, tid, CustomItemInput{Name: "B", Rate: 1})
-	c, _ := repo.Create(ctx, tid, CustomItemInput{Name: "C", Rate: 1})
-
-	// Empty is a no-op.
-	if err := repo.BulkDelete(ctx, tid, nil); err != nil {
-		t.Fatalf("BulkDelete empty: %v", err)
-	}
-	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
-		t.Fatalf("BulkDelete: %v", err)
-	}
-	list, _ := repo.List(ctx, tid)
-	if len(list) != 1 || list[0].ID != c.ID {
-		t.Fatalf("after bulk delete = %+v, want only c (id=%d)", list, c.ID)
-	}
-}
-
 func TestCatalogGetVersion(t *testing.T) {
 	conn := newTestDB(t)
 	repo := NewCatalog(conn)

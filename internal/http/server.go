@@ -7,6 +7,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -62,7 +63,7 @@ type Deps struct {
 
 	// CustomItems, when non-nil, serves the auth-gated per-tenant custom-item
 	// CRUD plus bulk-delete routes under /api/custom-items.
-	CustomItems *CustomItemHandler
+	CustomItems *customitem.Handler
 
 	// SupportCatalog, when non-nil, serves the auth-gated read-only GLOBAL NDIS
 	// Support Catalogue routes under /api/support-catalog.
@@ -172,12 +173,7 @@ func NewServer(deps Deps) *Server {
 					deps.Participants.Routes(pr)
 				}
 				if deps.CustomItems != nil {
-					pr.Get("/custom-items", deps.CustomItems.List)
-					pr.Post("/custom-items", deps.CustomItems.Create)
-					pr.Post("/custom-items/bulk-delete", deps.CustomItems.BulkDelete)
-					pr.Get("/custom-items/{id}", deps.CustomItems.Get)
-					pr.Put("/custom-items/{id}", deps.CustomItems.Update)
-					pr.Delete("/custom-items/{id}", deps.CustomItems.Delete)
+					deps.CustomItems.Routes(pr)
 				}
 				// SupportCatalog is the GLOBAL NDIS catalogue. Reads are open to
 				// any authenticated tenant user; the XLSX ingest (write) is gated
