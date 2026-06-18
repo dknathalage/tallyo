@@ -9,7 +9,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // Untrusted-content seam (Task 11): Invoice records returned by these tools
@@ -31,7 +30,7 @@ type listInvoicesInput struct {
 // NewListInvoicesTool returns a read tool that lists the current tenant's
 // invoices, optionally filtered by status. Valid statuses are: draft, sent,
 // paid, overdue. Call this when the user asks to see, list, or look up invoices.
-func NewListInvoicesTool(inv *invoice.Service) Tool {
+func NewListInvoicesTool(inv InvoiceLister) Tool {
 	return Tool{
 		Name:        "list_invoices",
 		Description: "List the current tenant's invoices. Optionally filter by status (draft|sent|paid|overdue). Call this when the user asks to see, list, or look up invoices.",
@@ -127,7 +126,7 @@ const createInvoiceSchema = `{
 // panic) so the caller feeds an is_error tool_result. On success it records the
 // create under the active checkpoint (if any, threaded via context) in a
 // SEPARATE audited transaction, after the service write committed (B1).
-func NewCreateInvoiceTool(inv *invoice.Service, cp *Checkpoint) Tool {
+func NewCreateInvoiceTool(inv InvoiceCreator, cp *Checkpoint) Tool {
 	return newCreateInvoiceTool(inv, cp)
 }
 
@@ -139,11 +138,11 @@ func NewCreateInvoiceTool(inv *invoice.Service, cp *Checkpoint) Tool {
 // On success it records the create under the checkpoint, then MarkDrafted the
 // covered shifts (status → drafted, linked to the new invoice). Same create_invoice
 // semantics otherwise (catalogue-authoritative pricing, RiskRisky, quantity guard).
-func NewCreateInvoiceToolForShifts(inv *invoice.Service, shifts *shift.Service, cp *Checkpoint) Tool {
+func NewCreateInvoiceToolForShifts(inv InvoiceCreator, shifts ShiftWorker, cp *Checkpoint) Tool {
 	return newCreateInvoiceToolShifts(inv, shifts, cp)
 }
 
-func newCreateInvoiceTool(inv *invoice.Service, cp *Checkpoint) Tool {
+func newCreateInvoiceTool(inv InvoiceCreator, cp *Checkpoint) Tool {
 	return Tool{
 		Name:        "create_invoice",
 		Description: "Create a new invoice for a participant with line items. This is a write — it requires user approval before running.",
@@ -212,7 +211,7 @@ func newCreateInvoiceTool(inv *invoice.Service, cp *Checkpoint) Tool {
 // shift verify/bill: before persisting it checks the draft covers every quantity
 // recorded on an unbilled shift in [from, to] as a catalogue-CODED line, and on
 // success links the covered shifts to the invoice (status → drafted).
-func newCreateInvoiceToolShifts(inv *invoice.Service, shifts *shift.Service, cp *Checkpoint) Tool {
+func newCreateInvoiceToolShifts(inv InvoiceCreator, shifts ShiftWorker, cp *Checkpoint) Tool {
 	return Tool{
 		Name:        "create_invoice",
 		Description: "Create a new invoice for a participant with line items. This is a write — it requires user approval before running.",
@@ -296,7 +295,7 @@ func newCreateInvoiceToolShifts(inv *invoice.Service, shifts *shift.Service, cp 
 // catalogue-CODED line with a matching quantity (Pillar 4). A
 // gap — a missing line, or a quantity billed as a custom line instead of an NDIS
 // code — yields a structured error so the model self-corrects.
-func verifyShiftsCovered(ctx context.Context, shifts *shift.Service, participantID int64, items []billing.LineItemInput, from, to string) error {
+func verifyShiftsCovered(ctx context.Context, shifts ShiftLister, participantID int64, items []billing.LineItemInput, from, to string) error {
 	from, to, ok := coverageRange(items, from, to)
 	if !ok {
 		return nil // no coded lines and no explicit range → nothing to verify
@@ -331,7 +330,7 @@ func verifyShiftsCovered(ctx context.Context, shifts *shift.Service, participant
 // invoice (status → drafted via MarkDrafted). Best-effort: errors are swallowed
 // (a failed link must not undo a committed invoice); a revert clears the link via
 // FK. Bounded by the number of shifts in range.
-func billCoveredShifts(ctx context.Context, shifts *shift.Service, participantID, invoiceID int64, from, to string, items []billing.LineItemInput) {
+func billCoveredShifts(ctx context.Context, shifts ShiftWorker, participantID, invoiceID int64, from, to string, items []billing.LineItemInput) {
 	rf, rt, ok := coverageRange(items, from, to)
 	if !ok {
 		return
@@ -404,7 +403,7 @@ func round2c(x float64) float64 { return math.Round(x*100) / 100 }
 // change via the service layer. It conflict-checks the live row's version
 // (UpdatedAt) against the captured EntityVersion before applying; a mismatch
 // returns ErrConflict so the caller records and skips it.
-func InvoiceRestoreFunc(inv *invoice.Service) RestoreFunc {
+func InvoiceRestoreFunc(inv InvoiceAccessor) RestoreFunc {
 	return func(ctx context.Context, ch Change) error {
 		if inv == nil {
 			return fmt.Errorf("invoice restore: nil service")
