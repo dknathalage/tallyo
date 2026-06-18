@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -105,7 +106,7 @@ func seedParticipantPlan(t *testing.T, conn *sql.DB, tenantID int64, planStart, 
 // setTenantZone saves a business profile with the given zone for the tenant.
 func setTenantZone(t *testing.T, conn *sql.DB, tenantID int64, zone string) {
 	t.Helper()
-	if err := repository.NewBusinessProfile(conn).Save(tctx(tenantID), tenantID, repository.BusinessProfileInput{
+	if err := businessprofile.NewBusinessProfile(conn).Save(tctx(tenantID), tenantID, businessprofile.BusinessProfileInput{
 		Name: "Acme NDIS", Zone: zone,
 	}); err != nil {
 		t.Fatalf("setTenantZone: %v", err)

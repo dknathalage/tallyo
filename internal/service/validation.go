@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
@@ -98,7 +99,7 @@ func AsValidationError(err error) (*ValidationError, bool) {
 // computed tax). It holds no mutable state beyond those repositories.
 type LineValidator struct {
 	catalog      *repository.CatalogRepo
-	profiles     *repository.BusinessProfileRepo
+	profiles     *businessprofile.BusinessProfileRepo
 	participants *repository.ParticipantsRepo
 	taxRates     *taxrate.TaxRatesRepo
 }
@@ -110,7 +111,7 @@ func NewLineValidator(db *sql.DB) *LineValidator {
 	}
 	return &LineValidator{
 		catalog:      repository.NewCatalog(db),
-		profiles:     repository.NewBusinessProfile(db),
+		profiles:     businessprofile.NewBusinessProfile(db),
 		participants: repository.NewParticipants(db),
 		taxRates:     taxrate.NewTaxRates(db),
 	}

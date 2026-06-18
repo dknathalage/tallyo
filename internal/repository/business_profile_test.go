@@ -3,15 +3,17 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 )
 
 func TestBusinessProfileSaveThenGet(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "Acme NDIS")
-	repo := NewBusinessProfile(conn)
+	repo := businessprofile.NewBusinessProfile(conn)
 	ctx := context.Background()
 
-	if err := repo.Save(ctx, tid, BusinessProfileInput{Name: "Acme", Email: "a@b.com", Zone: "remote"}); err != nil {
+	if err := repo.Save(ctx, tid, businessprofile.BusinessProfileInput{Name: "Acme", Email: "a@b.com", Zone: "remote"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	got, err := repo.Get(ctx, tid)
@@ -29,10 +31,10 @@ func TestBusinessProfileSaveThenGet(t *testing.T) {
 func TestBusinessProfileDefaults(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewBusinessProfile(conn)
+	repo := businessprofile.NewBusinessProfile(conn)
 	ctx := context.Background()
 
-	if err := repo.Save(ctx, tid, BusinessProfileInput{Name: "X"}); err != nil {
+	if err := repo.Save(ctx, tid, businessprofile.BusinessProfileInput{Name: "X"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	got, err := repo.Get(ctx, tid)
@@ -50,7 +52,7 @@ func TestBusinessProfileDefaults(t *testing.T) {
 func TestBusinessProfileGetMissing(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	got, err := NewBusinessProfile(conn).Get(context.Background(), tid)
+	got, err := businessprofile.NewBusinessProfile(conn).Get(context.Background(), tid)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -62,7 +64,7 @@ func TestBusinessProfileGetMissing(t *testing.T) {
 func TestBusinessProfileRejectsEmptyName(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	if err := NewBusinessProfile(conn).Save(context.Background(), tid, BusinessProfileInput{Name: ""}); err == nil {
+	if err := businessprofile.NewBusinessProfile(conn).Save(context.Background(), tid, businessprofile.BusinessProfileInput{Name: ""}); err == nil {
 		t.Fatal("Save empty name: want error, got nil")
 	}
 }
@@ -71,10 +73,10 @@ func TestBusinessProfileTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	repo := NewBusinessProfile(conn)
+	repo := businessprofile.NewBusinessProfile(conn)
 	ctx := context.Background()
 
-	if err := repo.Save(ctx, a, BusinessProfileInput{Name: "Tenant A Co"}); err != nil {
+	if err := repo.Save(ctx, a, businessprofile.BusinessProfileInput{Name: "Tenant A Co"}); err != nil {
 		t.Fatalf("Save A: %v", err)
 	}
 	// Tenant B has no profile yet; must not see tenant A's.

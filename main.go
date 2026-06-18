@@ -18,6 +18,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
 	"github.com/dknathalage/tallyo/internal/realtime"
@@ -196,7 +197,7 @@ func run() error {
 	users := auth.NewUsers(conn)
 	tenants := auth.NewTenants(conn)
 	invites := auth.NewInvites(conn)
-	bpSvc := service.NewBusinessProfileService(conn, hub)
+	bpSvc := businessprofile.NewService(conn, hub)
 	planManagerSvc := service.NewPlanManagerService(conn, hub)
 	taxRateSvc := taxrate.NewService(conn, hub)
 	participantSvc := service.NewParticipantService(conn, hub)
@@ -257,7 +258,7 @@ func run() error {
 		Auth:            httpapi.NewAuthHandler(sm, users, tenants),
 		Invites:         httpapi.NewInviteHandler(invites, users),
 		Events:          httpapi.NewEventsHandler(hub),
-		BusinessProfile: httpapi.NewBusinessProfileHandler(bpSvc),
+		BusinessProfile: businessprofile.NewHandler(bpSvc),
 		PlanManagers:    httpapi.NewPlanManagerHandler(planManagerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
 		Participants:    httpapi.NewParticipantHandler(participantSvc),

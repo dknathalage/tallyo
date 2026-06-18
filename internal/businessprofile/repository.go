@@ -1,11 +1,8 @@
-// Package repository provides the data-access layer over the sqlc-generated
-// queries. Services use repositories; they never touch internal/db/gen directly.
-//
-// Tenant scoping is the data-layer half of multi-tenant isolation (spec §3.1):
-// every method on a tenant-owned repository takes a tenantID and passes it into
-// the generated query, which filters WHERE tenant_id = ?. The global NDIS
-// catalogue repositories (CatalogRepo) are NOT tenant-scoped.
-package repository
+// Package businessprofile is the business-profile vertical slice: domain types,
+// the audited repository over the business_profile table, the service (with SSE
+// broadcast), and the HTTP handler. It depends only on platform packages
+// (db/gen, audit, reqctx, realtime, httpx), never on other domain slices.
+package businessprofile
 
 import (
 	"context"
@@ -53,7 +50,7 @@ type BusinessProfileRepo struct {
 // NewBusinessProfile constructs a repository. A nil db is a programmer error.
 func NewBusinessProfile(db *sql.DB) *BusinessProfileRepo {
 	if db == nil {
-		panic("repository: NewBusinessProfile requires a non-nil *sql.DB")
+		panic("businessprofile: NewBusinessProfile requires a non-nil *sql.DB")
 	}
 	return &BusinessProfileRepo{db: db}
 }
@@ -97,7 +94,7 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID int64, in Busin
 		Action:     "update",
 		Changes:    audit.Changes(map[string]any{"name": in.Name}),
 	}, func(tx *sql.Tx) error {
-		id, err := existingUuid(ctx, tx, tenantID)
+		id, err := existingUUID(ctx, tx, tenantID)
 		if err != nil {
 			return fmt.Errorf("read uuid: %w", err)
 		}
@@ -108,9 +105,9 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID int64, in Busin
 	})
 }
 
-// existingUuid returns the tenant's current profile uuid, or a freshly generated
+// existingUUID returns the tenant's current profile uuid, or a freshly generated
 // one when no row exists yet. Read inside the tx so the upsert preserves it.
-func existingUuid(ctx context.Context, tx *sql.Tx, tenantID int64) (string, error) {
+func existingUUID(ctx context.Context, tx *sql.Tx, tenantID int64) (string, error) {
 	var id string
 	err := tx.QueryRowContext(ctx, "SELECT uuid FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {

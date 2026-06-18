@@ -6,6 +6,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
 )
@@ -43,7 +44,7 @@ type Deps struct {
 
 	// BusinessProfile, when non-nil, serves the auth-gated GET/PUT singleton
 	// business profile at /api/business-profile.
-	BusinessProfile *BusinessProfileHandler
+	BusinessProfile *businessprofile.Handler
 
 	// PlanManagers, when non-nil, serves the auth-gated plan-manager CRUD plus
 	// bulk-delete routes under /api/plan-managers.
@@ -157,9 +158,7 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/events", deps.Events.Stream)
 				}
 				if deps.BusinessProfile != nil {
-					// Business settings: all roles may read; owner/admin may edit.
-					pr.Get("/business-profile", deps.BusinessProfile.Get)
-					pr.With(RequireRole("owner", "admin")).Put("/business-profile", deps.BusinessProfile.Put)
+					deps.BusinessProfile.Routes(pr)
 				}
 				if deps.PlanManagers != nil {
 					pr.Get("/plan-managers", deps.PlanManagers.List)

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -22,15 +22,14 @@ func newBusinessProfileServer(t *testing.T) *httptest.Server {
 
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	bpH := NewBusinessProfileHandler(service.NewBusinessProfileService(conn, realtime.NewHub()))
+	bpH := businessprofile.NewHandler(businessprofile.NewService(conn, realtime.NewHub()))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
-			pr.Get("/business-profile", bpH.Get)
-			pr.Put("/business-profile", bpH.Put)
+			bpH.Routes(pr)
 		})
 	})
 
