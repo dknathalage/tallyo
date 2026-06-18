@@ -1,4 +1,4 @@
-package service
+package shift
 
 import (
 	"testing"
@@ -7,23 +7,22 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/shift"
 )
 
-func newShiftSvc(t *testing.T) (*shift.Service, *realtime.Hub, int64, int64) {
+func newShiftSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	return shift.NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, participantID
+	return NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, participantID
 }
 
-func shiftInput(pid int64, date string) shift.ShiftInput {
-	return shift.ShiftInput{
+func shiftInput(pid int64, date string) ShiftInput {
+	return ShiftInput{
 		ParticipantID: pid, ServiceDate: date, StartTime: "09:00", EndTime: "12:00",
 		Hours: 3, Km: 10,
-		Measures: []shift.Measure{{Label: "Goal", Value: 1, Unit: "x", Code: "C"}},
+		Measures: []Measure{{Label: "Goal", Value: 1, Unit: "x", Code: "C"}},
 		Tags:     []string{"t1"},
 	}
 }
@@ -53,10 +52,10 @@ func TestShiftCreateBroadcasts(t *testing.T) {
 
 func TestShiftCreateAttributesAuthor(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	uid := seedUser(t, conn, tenantID)
-	svc := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
 	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
@@ -68,7 +67,7 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	}
 }
 
-func TestShiftListParticipantRange(t *testing.T) {
+func TestShiftListParticipantRangeSvc(t *testing.T) {
 	svc, _, tenantID, participantID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
@@ -116,7 +115,7 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 	}
 }
 
-func TestShiftDelete(t *testing.T) {
+func TestShiftDeleteSvc(t *testing.T) {
 	svc, hub, tenantID, participantID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
@@ -166,10 +165,10 @@ func TestShiftToRecord(t *testing.T) {
 
 func TestShiftSuggestions(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	p1 := seedParticipant(t, conn, tenantID)
-	p2 := seedParticipant(t, conn, tenantID)
-	svc := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	p1 := seedParticipant(t, conn, tenantID, "Jane")
+	p2 := seedParticipant(t, conn, tenantID, "Bob")
+	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	var p1ids []int64
@@ -191,7 +190,7 @@ func TestShiftSuggestions(t *testing.T) {
 	if len(sugs) != 2 {
 		t.Fatalf("suggestions = %d, want 2: %+v", len(sugs), sugs)
 	}
-	byPID := map[int64]shift.Suggestion{}
+	byPID := map[int64]Suggestion{}
 	for _, s := range sugs {
 		byPID[s.ParticipantID] = s
 	}
@@ -206,11 +205,11 @@ func TestShiftSuggestions(t *testing.T) {
 
 func TestShiftMarkDrafted(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	invID := seedDraftInvoice(t, conn, tenantID, participantID)
 	hub := realtime.NewHub()
-	svc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
@@ -240,14 +239,14 @@ func TestShiftMarkDrafted(t *testing.T) {
 func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	conn := newTestDB(t)
 
-	tenantA := seedTenant(t, conn)
-	participantA := seedParticipant(t, conn, tenantA)
+	tenantA := seedTenant(t, conn, "Acme NDIS")
+	participantA := seedParticipant(t, conn, tenantA, "Jane")
 	invA := seedDraftInvoice(t, conn, tenantA, participantA)
 
-	tenantB := seedTenant(t, conn)
-	participantB := seedParticipant(t, conn, tenantB)
+	tenantB := seedTenant(t, conn, "Beta NDIS")
+	participantB := seedParticipant(t, conn, tenantB, "Bob")
 	hub := realtime.NewHub()
-	svc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, hub, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
 	sh, err := svc.Create(ctxB, shiftInput(participantB, "2026-01-15"))

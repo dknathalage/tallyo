@@ -1,19 +1,18 @@
-package service
+package participant
 
 import (
 	"testing"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newParticipantSvc(t *testing.T) (*participant.Service, *realtime.Hub, int64) {
+func newParticipantSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
 	hub := realtime.NewHub()
-	return participant.NewService(conn, hub), hub, tenantID
+	return NewService(conn, hub), hub, tenantID
 }
 
 func TestParticipantCreateBroadcasts(t *testing.T) {
@@ -21,7 +20,7 @@ func TestParticipantCreateBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	c, err := svc.Create(tctx(tenantID), participant.ParticipantInput{Name: "Acme"})
+	c, err := svc.Create(tctx(tenantID), ParticipantInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -44,7 +43,7 @@ func TestParticipantCreateEmptyNameNoEvent(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), participant.ParticipantInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), ParticipantInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {
@@ -59,7 +58,7 @@ func TestParticipantBulkDeleteBroadcasts(t *testing.T) {
 	svc, hub, tenantID := newParticipantSvc(t)
 	ctx := tctx(tenantID)
 
-	c, err := svc.Create(ctx, participant.ParticipantInput{Name: "Acme"})
+	c, err := svc.Create(ctx, ParticipantInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

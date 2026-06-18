@@ -1,43 +1,28 @@
-package repository
+package invoice
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"testing"
-
-	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/invoice"
 )
-
-// seedInvoice creates a minimal one-line invoice and returns its id.
-func seedInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64, unitPrice float64) int64 {
-	t.Helper()
-	inv, err := invoice.NewInvoices(conn).Create(context.Background(), tenantID, invoice.InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
-	}, []billing.LineItemInput{{Description: "Service", Quantity: 1, UnitPrice: unitPrice}})
-	if err != nil {
-		t.Fatalf("seedInvoice: %v", err)
-	}
-	return inv.ID
-}
 
 func TestPaymentCreateAndTotals(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	invID := seedInvoice(t, conn, tid, pid, 100)
-	repo := invoice.NewPayments(conn)
+	invID := seedInvoiceRepo(t, conn, tid, pid, 100)
+	repo := NewPayments(conn)
 	ctx := context.Background()
 
-	p, err := repo.Create(ctx, tid, invoice.PaymentInput{InvoiceID: invID, Amount: 40, PaidAt: "2026-01-05", Method: "bank"})
+	p, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 40, PaidAt: "2026-01-05", Method: "bank"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if p.ID == 0 || p.Amount != 40 || p.Method != "bank" {
 		t.Fatalf("Create = %+v", p)
 	}
-	if _, err := repo.Create(ctx, tid, invoice.PaymentInput{InvoiceID: invID, Amount: 25, PaidAt: "2026-01-06"}); err != nil {
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 25, PaidAt: "2026-01-06"}); err != nil {
 		t.Fatalf("Create 2: %v", err)
 	}
 	total, err := repo.TotalPaid(ctx, tid, invID)
@@ -53,12 +38,12 @@ func TestPaymentCreateAndTotals(t *testing.T) {
 func TestPaymentRejectsBadInput(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := invoice.NewPayments(conn)
+	repo := NewPayments(conn)
 	ctx := context.Background()
-	if _, err := repo.Create(ctx, tid, invoice.PaymentInput{InvoiceID: 0, Amount: 1}); err == nil {
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: 0, Amount: 1}); err == nil {
 		t.Fatal("missing invoice: want error")
 	}
-	if _, err := repo.Create(ctx, tid, invoice.PaymentInput{InvoiceID: 1, Amount: 0}); err == nil {
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: 1, Amount: 0}); err == nil {
 		t.Fatal("non-positive amount: want error")
 	}
 }
@@ -67,11 +52,11 @@ func TestPaymentDeleteReturnsInvoiceID(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	invID := seedInvoice(t, conn, tid, pid, 100)
-	repo := invoice.NewPayments(conn)
+	invID := seedInvoiceRepo(t, conn, tid, pid, 100)
+	repo := NewPayments(conn)
 	ctx := context.Background()
 
-	p, err := repo.Create(ctx, tid, invoice.PaymentInput{InvoiceID: invID, Amount: 10, PaidAt: "2026-01-05"})
+	p, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 10, PaidAt: "2026-01-05"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -89,11 +74,11 @@ func TestPaymentTenantIsolation(t *testing.T) {
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
 	pid := seedParticipant(t, conn, a, "Jane")
-	invID := seedInvoice(t, conn, a, pid, 100)
-	repo := invoice.NewPayments(conn)
+	invID := seedInvoiceRepo(t, conn, a, pid, 100)
+	repo := NewPayments(conn)
 	ctx := context.Background()
 
-	p, err := repo.Create(ctx, a, invoice.PaymentInput{InvoiceID: invID, Amount: 50, PaidAt: "2026-01-05"})
+	p, err := repo.Create(ctx, a, PaymentInput{InvoiceID: invID, Amount: 50, PaidAt: "2026-01-05"})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}

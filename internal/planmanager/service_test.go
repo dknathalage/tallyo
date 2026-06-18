@@ -1,19 +1,18 @@
-package service
+package planmanager
 
 import (
 	"testing"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newPlanManagerSvc(t *testing.T) (*planmanager.Service, *realtime.Hub, int64) {
+func newPlanManagerSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
 	hub := realtime.NewHub()
-	return planmanager.NewService(conn, hub), hub, tenantID
+	return NewService(conn, hub), hub, tenantID
 }
 
 func TestPlanManagerCreateBroadcasts(t *testing.T) {
@@ -21,7 +20,7 @@ func TestPlanManagerCreateBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	pm, err := svc.Create(tctx(tenantID), planmanager.PlanManagerInput{Name: "Acme"})
+	pm, err := svc.Create(tctx(tenantID), PlanManagerInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -44,7 +43,7 @@ func TestPlanManagerCreateEmptyNameNoEvent(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), planmanager.PlanManagerInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), PlanManagerInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {

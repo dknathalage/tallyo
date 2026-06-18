@@ -1,44 +1,25 @@
-package repository
+package recurring
 
 import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/dknathalage/tallyo/internal/recurring"
 )
-
-func mkTemplate(t *testing.T, repo *recurring.Repo, tid, pid int64, nextDue string) *recurring.RecurringTemplate {
-	t.Helper()
-	tpl, err := repo.Create(context.Background(), tid, recurring.RecurringInput{
-		ParticipantID: &pid,
-		Name:          "Weekly support",
-		Frequency:     "weekly",
-		NextDue:       nextDue,
-		TaxRate:       10,
-		LineItems:     []recurring.RecurringLine{{Description: "Support", Quantity: 1, UnitPrice: 100}},
-		IsActive:      true,
-	})
-	if err != nil {
-		t.Fatalf("Create template: %v", err)
-	}
-	return tpl
-}
 
 func TestRecurringCRUD(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := recurring.NewRepo(conn)
+	repo := NewRepo(conn)
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, tid, pid, "2026-01-01")
 	if tpl.ID == 0 || len(tpl.LineItems) != 1 || tpl.ParticipantName != "Jane" {
 		t.Fatalf("Create = %+v", tpl)
 	}
-	up, err := repo.Update(ctx, tid, tpl.ID, recurring.RecurringInput{
+	up, err := repo.Update(ctx, tid, tpl.ID, RecurringInput{
 		ParticipantID: &pid, Name: "Monthly", Frequency: "monthly", NextDue: "2026-02-01",
-		TaxRate: 0, LineItems: []recurring.RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: true,
+		TaxRate: 0, LineItems: []RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: true,
 	})
 	if err != nil || up.Frequency != "monthly" || up.Name != "Monthly" {
 		t.Fatalf("Update = %+v err=%v", up, err)
@@ -57,13 +38,13 @@ func TestRecurringCRUD(t *testing.T) {
 func TestRecurringValidation(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := recurring.NewRepo(conn)
+	repo := NewRepo(conn)
 	ctx := context.Background()
 	pid := int64(1)
-	if _, err := repo.Create(ctx, tid, recurring.RecurringInput{Name: "", ParticipantID: &pid, Frequency: "weekly", NextDue: "2026-01-01"}); err == nil {
+	if _, err := repo.Create(ctx, tid, RecurringInput{Name: "", ParticipantID: &pid, Frequency: "weekly", NextDue: "2026-01-01"}); err == nil {
 		t.Fatal("empty name: want error")
 	}
-	if _, err := repo.Create(ctx, tid, recurring.RecurringInput{Name: "X", ParticipantID: &pid, Frequency: "daily", NextDue: "2026-01-01"}); err == nil {
+	if _, err := repo.Create(ctx, tid, RecurringInput{Name: "X", ParticipantID: &pid, Frequency: "daily", NextDue: "2026-01-01"}); err == nil {
 		t.Fatal("bad frequency: want error")
 	}
 }
@@ -72,7 +53,7 @@ func TestRecurringGenerateOneAdvancesNextDue(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := recurring.NewRepo(conn)
+	repo := NewRepo(conn)
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, tid, pid, "2026-01-01")
@@ -97,7 +78,7 @@ func TestRecurringGenerateDue(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := recurring.NewRepo(conn)
+	repo := NewRepo(conn)
 	ctx := context.Background()
 
 	// Past due date so it is selected.
@@ -126,7 +107,7 @@ func TestRecurringTenantIsolation(t *testing.T) {
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
 	pidA := seedParticipant(t, conn, a, "A Jane")
-	repo := recurring.NewRepo(conn)
+	repo := NewRepo(conn)
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, a, pidA, "2026-01-01")

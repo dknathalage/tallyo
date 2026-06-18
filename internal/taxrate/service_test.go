@@ -1,19 +1,18 @@
-package service
+package taxrate
 
 import (
 	"testing"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
-func newTaxSvc(t *testing.T) (*taxrate.Service, *realtime.Hub, int64) {
+func newTaxSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
 	hub := realtime.NewHub()
-	return taxrate.NewService(conn, hub), hub, tenantID
+	return NewService(conn, hub), hub, tenantID
 }
 
 func TestTaxRateCreateBroadcasts(t *testing.T) {
@@ -21,7 +20,7 @@ func TestTaxRateCreateBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	tr, err := svc.Create(tctx(tenantID), taxrate.TaxRateInput{Name: "GST", Rate: 10})
+	tr, err := svc.Create(tctx(tenantID), TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -44,7 +43,7 @@ func TestTaxRateCreateEmptyNameNoEvent(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), taxrate.TaxRateInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), TaxRateInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {

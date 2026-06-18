@@ -1,29 +1,13 @@
-package service
+package invoice
 
 import (
 	"testing"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 )
-
-// makeInvoice creates a single invoice for the tenant/participant and returns it.
-func makeInvoice(t *testing.T, svc *invoice.Service, tenantID, participantID int64) *invoice.Invoice {
-	t.Helper()
-	inv, err := svc.Create(tctx(tenantID), invoice.InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
-	if err != nil {
-		t.Fatalf("makeInvoice: %v", err)
-	}
-	if inv == nil {
-		t.Fatal("makeInvoice: nil invoice")
-	}
-	return inv
-}
 
 func TestInvoiceListAndGet(t *testing.T) {
 	svc, _, tenantID, participantID := newInvoiceSvc(t)
@@ -63,7 +47,7 @@ func TestInvoiceGetNotFoundReturnsNil(t *testing.T) {
 	}
 }
 
-func TestInvoiceListByStatus(t *testing.T) {
+func TestInvoiceListByStatusSvc(t *testing.T) {
 	svc, _, tenantID, participantID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
@@ -118,7 +102,7 @@ func TestInvoiceUpdate(t *testing.T) {
 
 	inv := makeInvoice(t, svc, tenantID, participantID)
 
-	updated, err := svc.Update(ctx, inv.ID, invoice.InvoiceInput{
+	updated, err := svc.Update(ctx, inv.ID, InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 3, UnitPrice: 7}})
 	if err != nil {
@@ -135,7 +119,7 @@ func TestInvoiceUpdate(t *testing.T) {
 func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, participantID := newInvoiceSvc(t)
 
-	got, err := svc.Update(tctx(tenantID), 999999, invoice.InvoiceInput{
+	got, err := svc.Update(tctx(tenantID), 999999, InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
@@ -243,11 +227,11 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 func TestInvoiceTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := invoice.NewService(conn, hub, shift.NewShifts(conn))
+	svc := NewService(conn, hub, shift.NewShifts(conn))
 
-	tenantA := seedTenant(t, conn)
-	partA := seedParticipant(t, conn, tenantA)
-	tenantB := seedTenant(t, conn)
+	tenantA := seedTenant(t, conn, "Acme NDIS")
+	partA := seedParticipant(t, conn, tenantA, "Jane")
+	tenantB := seedTenant(t, conn, "Beta NDIS")
 
 	inv := makeInvoice(t, svc, tenantA, partA)
 

@@ -1,4 +1,4 @@
-package repository
+package estimate
 
 import (
 	"context"
@@ -6,26 +6,14 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 )
-
-func mkEstimate(t *testing.T, repo *estimate.EstimatesRepo, tid, pid int64) *estimate.Estimate {
-	t.Helper()
-	est, err := repo.Create(context.Background(), tid, estimate.EstimateInput{
-		ParticipantID: pid, IssueDate: "2026-01-01", ValidUntil: "2026-02-01", Tax: 10,
-	}, []billing.LineItemInput{{Description: "Support", Quantity: 2, UnitPrice: 50}})
-	if err != nil {
-		t.Fatalf("Create estimate: %v", err)
-	}
-	return est
-}
 
 func TestEstimateCreateNumbersAndTotals(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := estimate.NewEstimates(conn)
+	repo := NewEstimates(conn)
 
 	est := mkEstimate(t, repo, tid, pid)
 	if est.Number != "EST-0001" {
@@ -43,13 +31,13 @@ func TestEstimateUpdateStatusAndConvert(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := estimate.NewEstimates(conn)
+	repo := NewEstimates(conn)
 	ctx := context.Background()
 
 	est := mkEstimate(t, repo, tid, pid)
 
 	// Cannot convert until accepted.
-	if _, err := repo.Convert(ctx, tid, est.ID); !errors.Is(err, estimate.ErrNotAccepted) {
+	if _, err := repo.Convert(ctx, tid, est.ID); !errors.Is(err, ErrNotAccepted) {
 		t.Fatalf("Convert before accept err = %v, want ErrNotAccepted", err)
 	}
 	if err := repo.UpdateStatus(ctx, tid, est.ID, "accepted"); err != nil {
@@ -63,7 +51,7 @@ func TestEstimateUpdateStatusAndConvert(t *testing.T) {
 		t.Fatalf("Convert result = %+v", res)
 	}
 	// Estimate is now converted; a second convert is rejected.
-	if _, err := repo.Convert(ctx, tid, est.ID); !errors.Is(err, estimate.ErrAlreadyConverted) {
+	if _, err := repo.Convert(ctx, tid, est.ID); !errors.Is(err, ErrAlreadyConverted) {
 		t.Fatalf("second Convert err = %v, want ErrAlreadyConverted", err)
 	}
 	// The produced invoice exists with the copied line.
@@ -77,7 +65,7 @@ func TestEstimateDuplicate(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := estimate.NewEstimates(conn)
+	repo := NewEstimates(conn)
 	ctx := context.Background()
 
 	src := mkEstimate(t, repo, tid, pid)
@@ -94,7 +82,7 @@ func TestEstimateListAndDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := estimate.NewEstimates(conn)
+	repo := NewEstimates(conn)
 	ctx := context.Background()
 
 	est := mkEstimate(t, repo, tid, pid)
@@ -114,7 +102,7 @@ func TestEstimateTenantIsolation(t *testing.T) {
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
 	pidA := seedParticipant(t, conn, a, "A Jane")
-	repo := estimate.NewEstimates(conn)
+	repo := NewEstimates(conn)
 	ctx := context.Background()
 
 	est := mkEstimate(t, repo, a, pidA)
@@ -125,3 +113,6 @@ func TestEstimateTenantIsolation(t *testing.T) {
 		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 }
+
+// unused import guard
+var _ = billing.LineItemInput{}

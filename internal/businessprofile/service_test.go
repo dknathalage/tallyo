@@ -1,19 +1,18 @@
-package service
+package businessprofile
 
 import (
 	"testing"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newSvc(t *testing.T) (*businessprofile.Service, *realtime.Hub, int64) {
+func newSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
 	hub := realtime.NewHub()
-	return businessprofile.NewService(conn, hub), hub, tenantID
+	return NewService(conn, hub), hub, tenantID
 }
 
 func TestSaveBroadcastsAfterCommit(t *testing.T) {
@@ -22,7 +21,7 @@ func TestSaveBroadcastsAfterCommit(t *testing.T) {
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	if err := svc.Save(ctx, businessprofile.BusinessProfileInput{Name: "Acme"}); err != nil {
+	if err := svc.Save(ctx, BusinessProfileInput{Name: "Acme"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	got, err := svc.Get(ctx)
@@ -44,7 +43,7 @@ func TestSaveEmptyNameNoEvent(t *testing.T) {
 	svc, hub, tenantID := newSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.Save(tctx(tenantID), businessprofile.BusinessProfileInput{Name: ""}); err == nil {
+	if err := svc.Save(tctx(tenantID), BusinessProfileInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {

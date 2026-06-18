@@ -1,35 +1,20 @@
-package repository
+package invoice
 
 import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/invoice"
 )
-
-// mkInvoice creates a single-line invoice for tests below.
-func mkInvoice(t *testing.T, repo *invoice.InvoicesRepo, tid, pid int64, due string) *invoice.Invoice {
-	t.Helper()
-	inv, err := repo.Create(context.Background(), tid, invoice.InvoiceInput{
-		ParticipantID: pid, IssueDate: "2026-01-01", DueDate: due,
-	}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
-	if err != nil {
-		t.Fatalf("Create invoice: %v", err)
-	}
-	return inv
-}
 
 func TestInvoiceListByStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := invoice.NewInvoices(conn)
+	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	a := mkInvoice(t, repo, tid, pid, "2026-01-31")
-	mkInvoice(t, repo, tid, pid, "2026-02-28") // stays draft
+	a := mkInvoiceRepo(t, repo, tid, pid, "2026-01-31")
+	mkInvoiceRepo(t, repo, tid, pid, "2026-02-28") // stays draft
 	if err := repo.UpdateStatus(ctx, tid, a.ID, "sent"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
@@ -55,12 +40,12 @@ func TestInvoiceListParticipantInvoices(t *testing.T) {
 	tid := seedTenant(t, conn, "T")
 	jane := seedParticipant(t, conn, tid, "Jane")
 	bob := seedParticipant(t, conn, tid, "Bob")
-	repo := invoice.NewInvoices(conn)
+	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	mkInvoice(t, repo, tid, jane, "2026-01-31")
-	mkInvoice(t, repo, tid, jane, "2026-02-28")
-	mkInvoice(t, repo, tid, bob, "2026-03-31")
+	mkInvoiceRepo(t, repo, tid, jane, "2026-01-31")
+	mkInvoiceRepo(t, repo, tid, jane, "2026-02-28")
+	mkInvoiceRepo(t, repo, tid, bob, "2026-03-31")
 
 	janeInvs, err := repo.ListParticipantInvoices(ctx, tid, jane)
 	if err != nil {
@@ -80,12 +65,12 @@ func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := invoice.NewInvoices(conn)
+	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	a := mkInvoice(t, repo, tid, pid, "2026-01-31")
-	b := mkInvoice(t, repo, tid, pid, "2026-02-28")
-	c := mkInvoice(t, repo, tid, pid, "2026-03-31")
+	a := mkInvoiceRepo(t, repo, tid, pid, "2026-01-31")
+	b := mkInvoiceRepo(t, repo, tid, pid, "2026-02-28")
+	c := mkInvoiceRepo(t, repo, tid, pid, "2026-03-31")
 
 	// Empty slice is a no-op (no error, nothing deleted).
 	if err := repo.BulkDelete(ctx, tid, nil); err != nil {
@@ -118,15 +103,15 @@ func TestInvoiceMarkOverdueForTenant(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := invoice.NewInvoices(conn)
+	repo := NewInvoices(conn)
 	ctx := context.Background()
 
 	past := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")
 	future := time.Now().UTC().AddDate(0, 0, 30).Format("2006-01-02")
 
-	overdueInv := mkInvoice(t, repo, tid, pid, past)
-	notDue := mkInvoice(t, repo, tid, pid, future)
-	draftPast := mkInvoice(t, repo, tid, pid, past)
+	overdueInv := mkInvoiceRepo(t, repo, tid, pid, past)
+	notDue := mkInvoiceRepo(t, repo, tid, pid, future)
+	draftPast := mkInvoiceRepo(t, repo, tid, pid, past)
 
 	// Only 'sent' invoices are eligible; mark both past-due ones sent except draftPast.
 	if err := repo.UpdateStatus(ctx, tid, overdueInv.ID, "sent"); err != nil {
@@ -159,7 +144,7 @@ func TestInvoiceMarkOverdueForTenant(t *testing.T) {
 
 func TestInvoiceMarkOverdueRequiresTenant(t *testing.T) {
 	conn := newTestDB(t)
-	repo := invoice.NewInvoices(conn)
+	repo := NewInvoices(conn)
 	if _, err := repo.MarkOverdueForTenant(context.Background(), 0); err == nil {
 		t.Fatal("MarkOverdueForTenant(0): want error")
 	}
@@ -169,7 +154,7 @@ func TestInvoiceActiveTenantIDs(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "Active A")
 	b := seedTenant(t, conn, "Active B")
-	repo := invoice.NewInvoices(conn)
+	repo := NewInvoices(conn)
 
 	ids, err := repo.ActiveTenantIDs(context.Background())
 	if err != nil {

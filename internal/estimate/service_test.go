@@ -1,22 +1,11 @@
-package service
+package estimate
 
 import (
 	"testing"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/estimate"
-	"github.com/dknathalage/tallyo/internal/realtime"
 )
-
-func newEstimateSvc(t *testing.T) (*estimate.Service, *realtime.Hub, int64, int64) {
-	t.Helper()
-	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
-	hub := realtime.NewHub()
-	return estimate.NewService(conn, hub), hub, tenantID, participantID
-}
 
 func TestEstimateCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newEstimateSvc(t)
@@ -24,7 +13,7 @@ func TestEstimateCreateBroadcasts(t *testing.T) {
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	est, err := svc.Create(ctx, estimate.EstimateInput{
+	est, err := svc.Create(ctx, EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
@@ -47,7 +36,7 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 	svc, hub, tenantID, participantID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est, err := svc.Create(ctx, estimate.EstimateInput{
+	est, err := svc.Create(ctx, EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
@@ -92,7 +81,7 @@ func TestEstimateDuplicateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est, err := svc.Create(ctx, estimate.EstimateInput{
+	est, err := svc.Create(ctx, EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {

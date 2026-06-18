@@ -1,46 +1,31 @@
-package service
+package invoice
 
 import (
 	"testing"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
 // newPaymentSvc wires a migrated DB with a payment service, the hub, an invoices
 // repo, and a seeded tenant + participant so a seeded invoice can be paid.
-func newPaymentSvc(t *testing.T) (*invoice.PaymentService, *realtime.Hub, *invoice.InvoicesRepo, int64, int64) {
+func newPaymentSvc(t *testing.T) (*PaymentService, *realtime.Hub, *InvoicesRepo, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	return invoice.NewPaymentService(conn, hub), hub, invoice.NewInvoices(conn), tenantID, participantID
-}
-
-// seedInvoice creates a single-line invoice (unit price 25, qty 1) so the total
-// is a clean 25.
-func seedInvoice(t *testing.T, invoices *invoice.InvoicesRepo, tenantID, participantID int64) *invoice.Invoice {
-	t.Helper()
-	inv, err := invoices.Create(tctx(tenantID), tenantID, invoice.InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-06-01", DueDate: "2026-07-01",
-	}, []billing.LineItemInput{{Description: "Work", Quantity: 1, UnitPrice: 25}})
-	if err != nil {
-		t.Fatalf("seed invoice: %v", err)
-	}
-	return inv
+	return NewPaymentService(conn, hub), hub, NewInvoices(conn), tenantID, participantID
 }
 
 func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoice(t, invoices, tenantID, participantID)
+	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	p, err := svc.Create(ctx, invoice.PaymentInput{
+	p, err := svc.Create(ctx, PaymentInput{
 		InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05",
 	})
 	if err != nil {
@@ -73,11 +58,11 @@ func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 
 func TestPaymentCreateZeroAmountNoEvent(t *testing.T) {
 	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoice(t, invoices, tenantID, participantID)
+	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), invoice.PaymentInput{
+	if _, err := svc.Create(tctx(tenantID), PaymentInput{
 		InvoiceID: inv.ID, Amount: 0, PaidAt: "2026-06-05",
 	}); err == nil {
 		t.Fatal("zero amount must error")
@@ -92,10 +77,10 @@ func TestPaymentCreateZeroAmountNoEvent(t *testing.T) {
 
 func TestPaymentListForInvoice(t *testing.T) {
 	svc, _, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoice(t, invoices, tenantID, participantID)
+	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
 	ctx := tctx(tenantID)
 
-	if _, err := svc.Create(ctx, invoice.PaymentInput{InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05"}); err != nil {
+	if _, err := svc.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	list, err := svc.ListForInvoice(ctx, inv.ID)
@@ -109,10 +94,10 @@ func TestPaymentListForInvoice(t *testing.T) {
 
 func TestPaymentDeleteBroadcastsPaymentAndInvoice(t *testing.T) {
 	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoice(t, invoices, tenantID, participantID)
+	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
 	ctx := tctx(tenantID)
 
-	p, err := svc.Create(ctx, invoice.PaymentInput{InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05"})
+	p, err := svc.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

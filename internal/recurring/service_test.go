@@ -1,39 +1,9 @@
-package service
+package recurring
 
 import (
 	"testing"
 	"time"
-
-	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/recurring"
 )
-
-func newRecurringSvc(t *testing.T) (*recurring.Service, *realtime.Hub, int64, int64) {
-	t.Helper()
-	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
-	hub := realtime.NewHub()
-	return recurring.NewService(conn, hub), hub, tenantID, participantID
-}
-
-// seedRecurringInput builds a valid monthly template input for the given
-// participant, due in the past so GenerateOne will produce an invoice.
-func seedRecurringInput(participantID int64) recurring.RecurringInput {
-	pid := participantID
-	return recurring.RecurringInput{
-		ParticipantID: &pid,
-		Name:          "Monthly",
-		Frequency:     "monthly",
-		NextDue:       "2026-01-01",
-		LineItems: []recurring.RecurringLine{
-			{Description: "A", Quantity: 2, UnitPrice: 10, SortOrder: 0},
-			{Description: "B", Quantity: 1, UnitPrice: 5, SortOrder: 1},
-		},
-		TaxRate:  10,
-		IsActive: true,
-	}
-}
 
 func TestRecurringCreateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newRecurringSvc(t)

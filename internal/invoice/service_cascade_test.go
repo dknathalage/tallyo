@@ -1,10 +1,9 @@
-package service
+package invoice
 
 import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 )
@@ -28,14 +27,14 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 	for _, status := range []string{"sent", "paid"} {
 		t.Run(status, func(t *testing.T) {
 			conn := newTestDB(t)
-			tenantID := seedTenant(t, conn)
-			participantID := seedParticipant(t, conn, tenantID)
+			tenantID := seedTenant(t, conn, "Acme NDIS")
+			participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 			hub := realtime.NewHub()
-			invSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
-			shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
+			invSvc := NewService(conn, hub, shift.NewShifts(conn))
+			shiftSvc := shift.NewService(conn, hub, NewInvoices(conn))
 			ctx := tctx(tenantID)
 
-			inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
+			inv, err := invSvc.Create(ctx, InvoiceInput{
 				ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 			}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 			if err != nil {
@@ -56,14 +55,14 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 
 func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	invSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
-	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
+	invSvc := NewService(conn, hub, shift.NewShifts(conn))
+	shiftSvc := shift.NewService(conn, hub, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
-	inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
+	inv, err := invSvc.Create(ctx, InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
@@ -83,14 +82,14 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 
 func TestInvoiceDeleteRevertsShiftsToRecorded(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn)
-	participantID := seedParticipant(t, conn, tenantID)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	invSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
-	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
+	invSvc := NewService(conn, hub, shift.NewShifts(conn))
+	shiftSvc := shift.NewService(conn, hub, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
-	inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
+	inv, err := invSvc.Create(ctx, InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
