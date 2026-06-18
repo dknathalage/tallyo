@@ -9,6 +9,7 @@ import (
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/google/uuid"
 )
 
@@ -48,7 +49,7 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 // Used by invoice/estimate/payment tests that need a valid participant FK.
 func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
 	t.Helper()
-	p, err := NewParticipants(conn).Create(context.Background(), tenantID, ParticipantInput{Name: name})
+	p, err := participant.NewParticipants(conn).Create(context.Background(), tenantID, participant.ParticipantInput{Name: name})
 	if err != nil {
 		t.Fatalf("seedParticipant %q: %v", name, err)
 	}

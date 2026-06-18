@@ -46,6 +46,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
@@ -100,7 +101,7 @@ func AsValidationError(err error) (*ValidationError, bool) {
 type LineValidator struct {
 	catalog      *repository.CatalogRepo
 	profiles     *businessprofile.BusinessProfileRepo
-	participants *repository.ParticipantsRepo
+	participants *participant.ParticipantsRepo
 	taxRates     *taxrate.TaxRatesRepo
 }
 
@@ -112,7 +113,7 @@ func NewLineValidator(db *sql.DB) *LineValidator {
 	return &LineValidator{
 		catalog:      repository.NewCatalog(db),
 		profiles:     businessprofile.NewBusinessProfile(db),
-		participants: repository.NewParticipants(db),
+		participants: participant.NewParticipants(db),
 		taxRates:     taxrate.NewTaxRates(db),
 	}
 }

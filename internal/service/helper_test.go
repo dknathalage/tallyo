@@ -10,6 +10,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/google/uuid"
@@ -103,7 +104,7 @@ func containsID(ids []int64, target int64) bool {
 // Used by invoice/estimate/payment/recurring tests that need a valid FK.
 func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 	t.Helper()
-	p, err := repository.NewParticipants(conn).Create(tctx(tenantID), tenantID, repository.ParticipantInput{Name: "Jane Participant"})
+	p, err := participant.NewParticipants(conn).Create(tctx(tenantID), tenantID, participant.ParticipantInput{Name: "Jane Participant"})
 	if err != nil {
 		t.Fatalf("seedParticipant: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -22,7 +23,7 @@ func newPaymentServer(t *testing.T) *httptest.Server {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
+	pH := participant.NewHandler(participant.NewService(conn, hub))
 	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
 	payH := NewPaymentHandler(service.NewPaymentService(conn, hub))
 

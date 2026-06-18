@@ -7,6 +7,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
@@ -57,7 +58,7 @@ type Deps struct {
 
 	// Participants, when non-nil, serves the auth-gated participant CRUD plus
 	// bulk-delete routes under /api/participants.
-	Participants *ParticipantHandler
+	Participants *participant.Handler
 
 	// CustomItems, when non-nil, serves the auth-gated per-tenant custom-item
 	// CRUD plus bulk-delete routes under /api/custom-items.
@@ -168,12 +169,7 @@ func NewServer(deps Deps) *Server {
 					deps.TaxRates.Routes(pr)
 				}
 				if deps.Participants != nil {
-					pr.Get("/participants", deps.Participants.List)
-					pr.Post("/participants", deps.Participants.Create)
-					pr.Post("/participants/bulk-delete", deps.Participants.BulkDelete)
-					pr.Get("/participants/{id}", deps.Participants.Get)
-					pr.Put("/participants/{id}", deps.Participants.Update)
-					pr.Delete("/participants/{id}", deps.Participants.Delete)
+					deps.Participants.Routes(pr)
 				}
 				if deps.CustomItems != nil {
 					pr.Get("/custom-items", deps.CustomItems.List)

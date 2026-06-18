@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -35,8 +36,8 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 	hub := realtime.NewHub()
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 
-	partSvc := service.NewParticipantService(conn, hub)
-	part, err := partSvc.Create(ctx, repository.ParticipantInput{Name: "Stark"})
+	partSvc := participant.NewService(conn, hub)
+	part, err := partSvc.Create(ctx, participant.ParticipantInput{Name: "Stark"})
 	if err != nil {
 		t.Fatalf("seed participant: %v", err)
 	}

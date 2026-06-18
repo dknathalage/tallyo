@@ -20,8 +20,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
 )
@@ -46,7 +46,7 @@ func newStallAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.In
 
 	// A participant with a plan window enclosing the custom line's service date,
 	// so the filling validator accepts a custom (codeless) line on approval.
-	p, err := repository.NewParticipants(conn).Create(ctx, tenantID, repository.ParticipantInput{
+	p, err := participant.NewParticipants(conn).Create(ctx, tenantID, participant.ParticipantInput{
 		Name: "Stall Participant", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
 	})
 	if err != nil {
@@ -364,7 +364,7 @@ func newStallAgentDeferred(t *testing.T) (*Agent, *Store, *service.InvoiceServic
 	tenantID, userID := seedTenantUser(t, conn)
 	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
 
-	p, err := repository.NewParticipants(conn).Create(ctx, tenantID, repository.ParticipantInput{
+	p, err := participant.NewParticipants(conn).Create(ctx, tenantID, participant.ParticipantInput{
 		Name: "Approve Participant", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
 	})
 	if err != nil {

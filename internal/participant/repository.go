@@ -1,9 +1,8 @@
-package repository
-
-// NOTE (J4): the old "client" domain now backs the NDIS participants table.
-// Types and constructor are renamed to Participant (low-friction, per J8/J9
-// direction); the FILE name stays client.go to keep this change's scope bounded.
-// J8 owns renaming the file and updating service/http call sites.
+// Package participant is the participant vertical slice: domain types, the
+// audited repository over the participants table, the service (with SSE
+// broadcast), and the HTTP handler. It depends only on platform packages
+// (db/gen, audit, reqctx, realtime, httpx), never on other domain slices.
+package participant
 
 import (
 	"context"
@@ -61,7 +60,7 @@ type ParticipantsRepo struct {
 // NewParticipants constructs a repository. A nil db is a programmer error.
 func NewParticipants(db *sql.DB) *ParticipantsRepo {
 	if db == nil {
-		panic("repository: NewParticipants requires a non-nil *sql.DB")
+		panic("participant: NewParticipants requires a non-nil *sql.DB")
 	}
 	return &ParticipantsRepo{db: db}
 }
@@ -280,6 +279,11 @@ func nzMaybe(s string) sql.NullString {
 	if s == "" {
 		return sql.NullString{}
 	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+// nz wraps a string into a valid sql.NullString.
+func nz(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
 }
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -25,7 +26,7 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	estH := NewEstimateHandler(service.NewEstimateService(conn, hub))
 	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
-	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
+	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

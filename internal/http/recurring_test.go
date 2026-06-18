@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -24,7 +25,7 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	recH := NewRecurringHandler(service.NewRecurringService(conn, hub))
-	pH := NewParticipantHandler(service.NewParticipantService(conn, hub))
+	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

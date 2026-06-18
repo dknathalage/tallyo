@@ -10,6 +10,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/agent/llm"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -76,7 +77,7 @@ func TestImportShiftsIdempotent(t *testing.T) {
 	_, tenantID, userID := seedTenantOwner(t, conn)
 
 	tctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
-	p, err := repository.NewParticipants(conn).Create(tctx, tenantID, repository.ParticipantInput{Name: "Tania"})
+	p, err := participant.NewParticipants(conn).Create(tctx, tenantID, participant.ParticipantInput{Name: "Tania"})
 	if err != nil {
 		t.Fatalf("seed participant: %v", err)
 	}

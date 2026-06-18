@@ -21,6 +21,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -201,7 +202,7 @@ func run() error {
 	bpSvc := businessprofile.NewService(conn, hub)
 	planManagerSvc := planmanager.NewService(conn, hub)
 	taxRateSvc := taxrate.NewService(conn, hub)
-	participantSvc := service.NewParticipantService(conn, hub)
+	participantSvc := participant.NewService(conn, hub)
 	customItemSvc := service.NewCustomItemService(conn, hub)
 	supportCatalogSvc := service.NewSupportCatalogService(conn)
 	catalogIngestSvc := service.NewCatalogIngestService(conn, hub)
@@ -262,7 +263,7 @@ func run() error {
 		BusinessProfile: businessprofile.NewHandler(bpSvc),
 		PlanManagers:    planmanager.NewHandler(planManagerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
-		Participants:    httpapi.NewParticipantHandler(participantSvc),
+		Participants:    participant.NewHandler(participantSvc),
 		CustomItems:     httpapi.NewCustomItemHandler(customItemSvc),
 		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),

@@ -30,6 +30,7 @@ import (
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -65,7 +66,7 @@ func nursingNoteSvc(t *testing.T) (svc *service.InvoiceService, tenantID, partic
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 
 	// Participant with a plan window enclosing the service week (NDIS FY26).
-	p, err := repository.NewParticipants(conn).Create(ctx, tenantID, repository.ParticipantInput{
+	p, err := participant.NewParticipants(conn).Create(ctx, tenantID, participant.ParticipantInput{
 		Name: "Tania Hangevelled", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
 	})
 	if err != nil {

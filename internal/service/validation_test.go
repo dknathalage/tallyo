@@ -15,7 +15,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/google/uuid"
 )
@@ -94,7 +94,7 @@ func addItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, 
 // seedParticipantPlan inserts a participant with an explicit plan window.
 func seedParticipantPlan(t *testing.T, conn *sql.DB, tenantID int64, planStart, planEnd string) int64 {
 	t.Helper()
-	p, err := repository.NewParticipants(conn).Create(tctx(tenantID), tenantID, repository.ParticipantInput{
+	p, err := participant.NewParticipants(conn).Create(tctx(tenantID), tenantID, participant.ParticipantInput{
 		Name: "Plan Participant", PlanStart: planStart, PlanEnd: planEnd,
 	})
 	if err != nil {

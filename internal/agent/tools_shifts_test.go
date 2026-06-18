@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -51,7 +52,7 @@ func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, participantID int6
 	tenantID = seedNoteTenant(t, c)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 
-	p, err := repository.NewParticipants(c).Create(ctx, tenantID, repository.ParticipantInput{
+	p, err := participant.NewParticipants(c).Create(ctx, tenantID, participant.ParticipantInput{
 		Name: "Tania Hangevelled", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
 	})
 	if err != nil {

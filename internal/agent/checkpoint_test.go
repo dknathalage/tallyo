@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -46,7 +47,7 @@ func newCheckpointFixture(t *testing.T) (ctx context.Context, s *Store, inv *ser
 // test package (which has no seedParticipant helper of its own).
 func seedAgentParticipant(t *testing.T, db *sql.DB, ctx context.Context) int64 {
 	t.Helper()
-	p, err := repository.NewParticipants(db).Create(ctx, reqctx.MustTenant(ctx), repository.ParticipantInput{Name: "Jane Participant"})
+	p, err := participant.NewParticipants(db).Create(ctx, reqctx.MustTenant(ctx), participant.ParticipantInput{Name: "Jane Participant"})
 	if err != nil {
 		t.Fatalf("seedAgentParticipant: %v", err)
 	}
