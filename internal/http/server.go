@@ -9,6 +9,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -72,7 +73,7 @@ type Deps struct {
 
 	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
 	// bulk routes, plus the per-participant stats route under /api.
-	Invoices *InvoiceHandler
+	Invoices *invoice.Handler
 
 	// Shifts, when non-nil, serves the auth-gated shift lifecycle routes: the
 	// per-participant shift list under /api/participants/{id}/shifts, the
@@ -86,7 +87,7 @@ type Deps struct {
 
 	// Payments, when non-nil, serves the auth-gated per-invoice payment list
 	// and create routes plus payment deletion under /api.
-	Payments *PaymentHandler
+	Payments *invoice.PaymentHandler
 
 	// Recurring, when non-nil, serves the auth-gated recurring-template CRUD
 	// plus the generate route under /api/recurring.
@@ -183,16 +184,7 @@ func NewServer(deps Deps) *Server {
 					deps.SupportCatalog.Routes(pr)
 				}
 				if deps.Invoices != nil {
-					pr.Get("/invoices", deps.Invoices.List)
-					pr.Post("/invoices", deps.Invoices.Create)
-					pr.Post("/invoices/bulk-delete", deps.Invoices.BulkDelete)
-					pr.Post("/invoices/bulk-status", deps.Invoices.BulkStatus)
-					pr.Get("/invoices/{id}", deps.Invoices.Get)
-					pr.Put("/invoices/{id}", deps.Invoices.Update)
-					pr.Delete("/invoices/{id}", deps.Invoices.Delete)
-					pr.Post("/invoices/{id}/status", deps.Invoices.Status)
-					pr.Get("/invoices/{id}/pdf", deps.Invoices.Pdf)
-					pr.Get("/participants/{id}/stats", deps.Invoices.ParticipantStats)
+					deps.Invoices.Routes(pr)
 				}
 				if deps.Shifts != nil {
 					pr.Get("/participants/{id}/shifts", deps.Shifts.ListForParticipant)
@@ -219,9 +211,7 @@ func NewServer(deps Deps) *Server {
 					pr.Post("/estimates/{id}/convert", deps.Estimates.Convert)
 				}
 				if deps.Payments != nil {
-					pr.Get("/invoices/{id}/payments", deps.Payments.ListForInvoice)
-					pr.Post("/invoices/{id}/payments", deps.Payments.Create)
-					pr.Delete("/payments/{id}", deps.Payments.Delete)
+					deps.Payments.Routes(pr)
 				}
 				if deps.Recurring != nil {
 					pr.Get("/recurring", deps.Recurring.List)

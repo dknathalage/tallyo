@@ -12,14 +12,15 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
 // newSkipPlanAgent mirrors newStallAgent but sets cfg.SkipPlan = true.
-func newSkipPlanAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.InvoiceService, int64, context.Context) {
+func newSkipPlanAgent(t *testing.T, client llm.Client) (*Agent, *Store, *invoice.Service, int64, context.Context) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "agent.db"))
 	if err != nil {
@@ -41,7 +42,7 @@ func newSkipPlanAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := service.NewInvoiceService(conn, hub)
+	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()

@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
@@ -66,8 +65,26 @@ func money(v float64) string {
 	return fmt.Sprintf("AUD %.2f", v)
 }
 
+// InvoiceDoc is the minimal flat shape needed to render an invoice PDF. It is
+// defined here (not in the invoice package) so the pdf package does not import
+// the invoice slice, avoiding a cycle. The invoice handler constructs one from
+// its *invoice.Invoice before calling RenderInvoice.
+type InvoiceDoc struct {
+	Number           string
+	IssueDate        string
+	DueDate          string
+	Status           string
+	BusinessSnapshot string
+	ClientSnapshot   string
+	LineItems        []*billing.LineItem
+	Subtotal         float64
+	Tax              float64
+	Total            float64
+	Notes            string
+}
+
 // RenderInvoice renders an invoice to PDF bytes from its snapshots.
-func RenderInvoice(inv *repository.Invoice) ([]byte, error) {
+func RenderInvoice(inv *InvoiceDoc) ([]byte, error) {
 	if inv == nil {
 		return nil, errors.New("pdf: nil invoice")
 	}
@@ -87,8 +104,25 @@ func RenderInvoice(inv *repository.Invoice) ([]byte, error) {
 	return render(d)
 }
 
+// EstimateDoc is the minimal flat shape needed to render an estimate PDF. It is
+// defined here (not in the repository package) so the pdf package does not
+// import the repository slice, avoiding a cycle.
+type EstimateDoc struct {
+	Number           string
+	IssueDate        string
+	ValidUntil       string
+	Status           string
+	BusinessSnapshot string
+	ClientSnapshot   string
+	LineItems        []*billing.LineItem
+	Subtotal         float64
+	Tax              float64
+	Total            float64
+	Notes            string
+}
+
 // RenderEstimate renders an estimate to PDF bytes from its snapshots.
-func RenderEstimate(est *repository.Estimate) ([]byte, error) {
+func RenderEstimate(est *EstimateDoc) ([]byte, error) {
 	if est == nil {
 		return nil, errors.New("pdf: nil estimate")
 	}

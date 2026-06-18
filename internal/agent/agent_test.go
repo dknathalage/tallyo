@@ -8,15 +8,16 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
 // newTestAgent wires a real Store + InvoiceService over the same temp DB, a
 // Registry with list_invoices + propose_plan, a Checkpoint, Events, and the
 // supplied scripted llm. It returns the agent, store, and an authed context.
-func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.InvoiceService, context.Context) {
+func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, *invoice.Service, context.Context) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "agent.db"))
 	if err != nil {
@@ -31,7 +32,7 @@ func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.Inv
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := service.NewInvoiceService(conn, hub)
+	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()

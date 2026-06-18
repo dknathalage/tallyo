@@ -23,9 +23,11 @@ import (
 	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -94,7 +96,7 @@ const overdueSweepInterval = 1 * time.Hour
 //
 // A failure for one tenant is logged and the sweep continues with the next, so
 // one tenant's data problem cannot stall every other tenant's sweep.
-func runSweepOnce(inv *service.InvoiceService, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger) {
+func runSweepOnce(inv *invoice.Service, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger) {
 	tenantIDs, err := inv.ActiveTenantIDs(context.Background())
 	if err != nil {
 		logger.Error("sweep: list active tenants failed", slog.Any("error", err))
@@ -125,7 +127,7 @@ func runSweepOnce(inv *service.InvoiceService, rec *service.RecurringService, ag
 
 // runSweeper runs the per-tenant sweeps on each tick until done is closed. It
 // owns its single ticker and stops cleanly, so it never leaks a goroutine.
-func runSweeper(inv *service.InvoiceService, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger, done <-chan struct{}) {
+func runSweeper(inv *invoice.Service, rec *service.RecurringService, ag *agent.Agent, logger *slog.Logger, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -208,10 +210,10 @@ func run() error {
 	customItemSvc := customitem.NewService(conn, hub)
 	supportCatalogSvc := catalog.NewService(conn)
 	catalogIngestSvc := catalog.NewIngestService(conn, hub)
-	invoiceSvc := service.NewInvoiceService(conn, hub)
 	shiftSvc := service.NewShiftService(conn, hub)
+	invoiceSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	estimateSvc := service.NewEstimateService(conn, hub)
-	paymentSvc := service.NewPaymentService(conn, hub)
+	paymentSvc := invoice.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
 
 	// AI agent (optional): the full service is only constructed when
@@ -268,10 +270,10 @@ func run() error {
 		Participants:    participant.NewHandler(participantSvc),
 		CustomItems:     customitem.NewHandler(customItemSvc),
 		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
-		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
+		Invoices:        invoice.NewHandler(invoiceSvc),
 		Shifts:          httpapi.NewShiftHandler(shiftSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),
-		Payments:        httpapi.NewPaymentHandler(paymentSvc),
+		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),
 		Export:          httpapi.NewExportHandler(customItemSvc, invoiceSvc, estimateSvc),
 		Agent:           agentHandler,

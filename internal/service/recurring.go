@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -75,7 +76,7 @@ func (s *RecurringService) Delete(ctx context.Context, id int64) error {
 // GenerateOne creates a draft invoice from the template and advances its
 // next_due. A nil invoice means the template was missing (no events). On
 // success it broadcasts both a template "generate" and an invoice "create".
-func (s *RecurringService) GenerateOne(ctx context.Context, id int64) (*repository.Invoice, error) {
+func (s *RecurringService) GenerateOne(ctx context.Context, id int64) (*invoice.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	inv, err := s.repo.GenerateOne(ctx, tenantID, id)
 	if err != nil {

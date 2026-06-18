@@ -9,9 +9,10 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
 // startSuspendedRisky builds a fresh agent over a real DB with a seeded
@@ -20,7 +21,7 @@ import (
 // wired agent/store/inv/ctx, the conversation id, the awaiting step id, and the
 // Fake (still holding the appended resume responses). The participant is seeded
 // BEFORE scripting so the risky input references a real participant id.
-func startSuspendedRisky(t *testing.T, resume ...llm.Response) (*Agent, *Store, *service.InvoiceService, context.Context, int64, int64, *llm.Fake) {
+func startSuspendedRisky(t *testing.T, resume ...llm.Response) (*Agent, *Store, *invoice.Service, context.Context, int64, int64, *llm.Fake) {
 	t.Helper()
 
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "agent.db"))
@@ -35,7 +36,7 @@ func startSuspendedRisky(t *testing.T, resume ...llm.Response) (*Agent, *Store, 
 	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
 
 	store := NewStore(conn)
-	inv := service.NewInvoiceService(conn, realtime.NewHub())
+	inv := invoice.NewService(conn, realtime.NewHub(), repository.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	participantID := seedAgentParticipant(t, conn, ctx)

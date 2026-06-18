@@ -18,8 +18,10 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -36,7 +38,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	invH := NewInvoiceHandler(service.NewInvoiceService(conn, hub))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, repository.NewShifts(conn)))
 	estH := NewEstimateHandler(service.NewEstimateService(conn, hub))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
@@ -46,7 +48,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 		api.Group(func(pr chi.Router) {
 			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
-			pr.Post("/invoices", invH.Create)
+			invH.Routes(pr)
 			pr.Post("/estimates", estH.Create)
 		})
 	})

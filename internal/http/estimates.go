@@ -270,7 +270,20 @@ func (h *EstimateHandler) Pdf(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not found")
 		return
 	}
-	b, err := pdf.RenderEstimate(est)
+	estDoc := &pdf.EstimateDoc{
+		Number:           est.Number,
+		IssueDate:        est.IssueDate,
+		ValidUntil:       est.ValidUntil,
+		Status:           est.Status,
+		BusinessSnapshot: est.BusinessSnapshot,
+		ClientSnapshot:   est.ClientSnapshot,
+		LineItems:        est.LineItems,
+		Subtotal:         est.Subtotal,
+		Tax:              est.Tax,
+		Total:            est.Total,
+		Notes:            est.Notes,
+	}
+	b, err := pdf.RenderEstimate(estDoc)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "pdf render failed")
 		return

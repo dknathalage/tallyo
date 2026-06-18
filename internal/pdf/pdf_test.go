@@ -5,11 +5,10 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/repository"
 )
 
 func TestRenderInvoiceProducesPDF(t *testing.T) {
-	inv := &repository.Invoice{
+	inv := &InvoiceDoc{
 		Number: "INV-0001", IssueDate: "2026-06-05", DueDate: "2026-07-05",
 		BusinessSnapshot: `{"name":"Acme LLC","email":"acme@x.com","address":"1 St"}`,
 		ClientSnapshot:   `{"name":"Client Co","email":"c@x.com"}`,
@@ -33,7 +32,7 @@ func TestRenderInvoiceProducesPDF(t *testing.T) {
 }
 
 func TestRenderEstimateProducesPDF(t *testing.T) {
-	est := &repository.Estimate{
+	est := &EstimateDoc{
 		Number: "EST-0001", IssueDate: "2026-06-05", ValidUntil: "2026-07-05",
 		BusinessSnapshot: `{"name":"Acme LLC"}`, ClientSnapshot: `{"name":"Client Co"}`,
 		Subtotal: 25, Tax: 2.5, Total: 27.5, Status: "draft",

@@ -5,6 +5,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/export"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
@@ -13,12 +14,12 @@ import (
 // group.
 type ExportHandler struct {
 	customItems *customitem.Service
-	invoices    *service.InvoiceService
+	invoices    *invoice.Service
 	estimates   *service.EstimateService
 }
 
 // NewExportHandler constructs the handler. A nil service is a programmer error.
-func NewExportHandler(customItems *customitem.Service, invoices *service.InvoiceService, estimates *service.EstimateService) *ExportHandler {
+func NewExportHandler(customItems *customitem.Service, invoices *invoice.Service, estimates *service.EstimateService) *ExportHandler {
 	if customItems == nil || invoices == nil || estimates == nil {
 		panic("NewExportHandler: nil service")
 	}

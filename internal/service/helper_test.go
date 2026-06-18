@@ -10,8 +10,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/google/uuid"
 )
@@ -72,10 +72,10 @@ func seedSuspendedTenant(t *testing.T, conn *sql.DB) int64 {
 
 // seedSentPastDue creates an invoice, flips it to 'sent', and back-dates its
 // due_date into the past so the overdue sweep selects it. Returns the invoice.
-func seedSentPastDue(t *testing.T, conn *sql.DB, svc *InvoiceService, tenantID, participantID int64) *repository.Invoice {
+func seedSentPastDue(t *testing.T, conn *sql.DB, svc *invoice.Service, tenantID, participantID int64) *invoice.Invoice {
 	t.Helper()
 	ctx := tctx(tenantID)
-	inv, err := svc.Create(ctx, repository.InvoiceInput{
+	inv, err := svc.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-01-15",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {

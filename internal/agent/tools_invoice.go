@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/service"
 )
 
@@ -31,7 +31,7 @@ type listInvoicesInput struct {
 // NewListInvoicesTool returns a read tool that lists the current tenant's
 // invoices, optionally filtered by status. Valid statuses are: draft, sent,
 // paid, overdue. Call this when the user asks to see, list, or look up invoices.
-func NewListInvoicesTool(inv *service.InvoiceService) Tool {
+func NewListInvoicesTool(inv *invoice.Service) Tool {
 	return Tool{
 		Name:        "list_invoices",
 		Description: "List the current tenant's invoices. Optionally filter by status (draft|sent|paid|overdue). Call this when the user asks to see, list, or look up invoices.",
@@ -70,7 +70,7 @@ func NewListInvoicesTool(inv *service.InvoiceService) Tool {
 }
 
 // createInvoiceInput is the parsed input for the create_invoice tool. It maps
-// directly onto repository.InvoiceInput / []billing.LineItemInput.
+// directly onto invoice.InvoiceInput / []billing.LineItemInput.
 type createInvoiceInput struct {
 	ParticipantID int64  `json:"participantId"`
 	PlanManagerID *int64 `json:"planManagerId"`
@@ -127,7 +127,7 @@ const createInvoiceSchema = `{
 // panic) so the caller feeds an is_error tool_result. On success it records the
 // create under the active checkpoint (if any, threaded via context) in a
 // SEPARATE audited transaction, after the service write committed (B1).
-func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
+func NewCreateInvoiceTool(inv *invoice.Service, cp *Checkpoint) Tool {
 	return newCreateInvoiceTool(inv, cp)
 }
 
@@ -139,11 +139,11 @@ func NewCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 // On success it records the create under the checkpoint, then MarkDrafted the
 // covered shifts (status → drafted, linked to the new invoice). Same create_invoice
 // semantics otherwise (catalogue-authoritative pricing, RiskRisky, quantity guard).
-func NewCreateInvoiceToolForShifts(inv *service.InvoiceService, shifts *service.ShiftService, cp *Checkpoint) Tool {
+func NewCreateInvoiceToolForShifts(inv *invoice.Service, shifts *service.ShiftService, cp *Checkpoint) Tool {
 	return newCreateInvoiceToolShifts(inv, shifts, cp)
 }
 
-func newCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
+func newCreateInvoiceTool(inv *invoice.Service, cp *Checkpoint) Tool {
 	return Tool{
 		Name:        "create_invoice",
 		Description: "Create a new invoice for a participant with line items. This is a write — it requires user approval before running.",
@@ -170,7 +170,7 @@ func newCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 				}
 			}
 
-			header := repository.InvoiceInput{
+			header := invoice.InvoiceInput{
 				ParticipantID: in.ParticipantID,
 				PlanManagerID: in.PlanManagerID,
 				IssueDate:     in.IssueDate,
@@ -212,7 +212,7 @@ func newCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 // shift verify/bill: before persisting it checks the draft covers every quantity
 // recorded on an unbilled shift in [from, to] as a catalogue-CODED line, and on
 // success links the covered shifts to the invoice (status → drafted).
-func newCreateInvoiceToolShifts(inv *service.InvoiceService, shifts *service.ShiftService, cp *Checkpoint) Tool {
+func newCreateInvoiceToolShifts(inv *invoice.Service, shifts *service.ShiftService, cp *Checkpoint) Tool {
 	return Tool{
 		Name:        "create_invoice",
 		Description: "Create a new invoice for a participant with line items. This is a write — it requires user approval before running.",
@@ -249,7 +249,7 @@ func newCreateInvoiceToolShifts(inv *service.InvoiceService, shifts *service.Shi
 				}
 			}
 
-			header := repository.InvoiceInput{
+			header := invoice.InvoiceInput{
 				ParticipantID: in.ParticipantID,
 				PlanManagerID: in.PlanManagerID,
 				IssueDate:     in.IssueDate,
@@ -404,7 +404,7 @@ func round2c(x float64) float64 { return math.Round(x*100) / 100 }
 // change via the service layer. It conflict-checks the live row's version
 // (UpdatedAt) against the captured EntityVersion before applying; a mismatch
 // returns ErrConflict so the caller records and skips it.
-func InvoiceRestoreFunc(inv *service.InvoiceService) RestoreFunc {
+func InvoiceRestoreFunc(inv *invoice.Service) RestoreFunc {
 	return func(ctx context.Context, ch Change) error {
 		if inv == nil {
 			return fmt.Errorf("invoice restore: nil service")

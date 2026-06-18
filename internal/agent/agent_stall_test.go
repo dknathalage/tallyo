@@ -20,10 +20,11 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
 // newStallAgent wires the same stack as newTestAgent (Store + InvoiceService +
@@ -31,7 +32,7 @@ import (
 // with a wide plan window and returns its id, so an approved create_invoice with
 // a custom line actually persists. It returns the agent, store, invoice service,
 // the seeded participant id, and an authed context.
-func newStallAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.InvoiceService, int64, context.Context) {
+func newStallAgent(t *testing.T, client llm.Client) (*Agent, *Store, *invoice.Service, int64, context.Context) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "agent.db"))
 	if err != nil {
@@ -55,7 +56,7 @@ func newStallAgent(t *testing.T, client llm.Client) (*Agent, *Store, *service.In
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := service.NewInvoiceService(conn, hub)
+	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()
@@ -351,7 +352,7 @@ func TestStallForceThenApproveCreates(t *testing.T) {
 // id), then scripts the forced-path fake against that id and swaps it onto the
 // agent. This is needed because the create_invoice input must reference the
 // seeded participant, which is only known after wiring the stack.
-func newStallAgentDeferred(t *testing.T) (*Agent, *Store, *service.InvoiceService, int64, context.Context) {
+func newStallAgentDeferred(t *testing.T) (*Agent, *Store, *invoice.Service, int64, context.Context) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "agent.db"))
 	if err != nil {
@@ -384,7 +385,7 @@ func newStallAgentDeferred(t *testing.T) (*Agent, *Store, *service.InvoiceServic
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := service.NewInvoiceService(conn, hub)
+	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()

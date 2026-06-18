@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -43,7 +44,7 @@ func fullCodedLines() []verifyLine {
 
 // assertNoInvoice fails the test when any invoice has been persisted — a rejected
 // draft must leave no orphan.
-func assertNoInvoice(t *testing.T, inv *service.InvoiceService, ctx context.Context) {
+func assertNoInvoice(t *testing.T, inv *invoice.Service, ctx context.Context) {
 	t.Helper()
 	rows, err := inv.List(ctx)
 	if err != nil {
@@ -57,13 +58,13 @@ func assertNoInvoice(t *testing.T, inv *service.InvoiceService, ctx context.Cont
 // shiftsCreateFixture seeds the nursing-note fixture as recorded shifts (tenant,
 // Tania, catalogue, 4 shifts) and returns the shift-keyed create_invoice tool,
 // the invoice and shift services, and an authed context.
-func shiftsCreateFixture(t *testing.T) (Tool, *service.InvoiceService, *service.ShiftService, context.Context, int64) {
+func shiftsCreateFixture(t *testing.T) (Tool, *invoice.Service, *service.ShiftService, context.Context, int64) {
 	t.Helper()
 	conn, tenantID, participantID := shiftToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 	shifts := service.NewShiftService(conn, realtime.NewHub())
 	seedReferenceShifts(t, shifts, ctx, participantID)
-	inv := service.NewInvoiceService(conn, realtime.NewHub())
+	inv := invoice.NewService(conn, realtime.NewHub(), repository.NewShifts(conn))
 	tool := NewCreateInvoiceToolForShifts(inv, shifts, nil)
 	return tool, inv, shifts, ctx, participantID
 }
@@ -91,9 +92,9 @@ func TestShiftCreateFullyCodedDraftSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create_invoice: %v", err)
 	}
-	got, ok := res.JSON.(*repository.Invoice)
+	got, ok := res.JSON.(*invoice.Invoice)
 	if !ok {
-		t.Fatalf("result JSON is %T, want *repository.Invoice", res.JSON)
+		t.Fatalf("result JSON is %T, want *invoice.Invoice", res.JSON)
 	}
 	if got.Total != 1905.76 {
 		t.Fatalf("total = %.2f, want 1905.76", got.Total)
@@ -168,9 +169,9 @@ func TestShiftCreateMarksShiftsDrafted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create_invoice: %v", err)
 	}
-	created, ok := res.JSON.(*repository.Invoice)
+	created, ok := res.JSON.(*invoice.Invoice)
 	if !ok {
-		t.Fatalf("result JSON is %T, want *repository.Invoice", res.JSON)
+		t.Fatalf("result JSON is %T, want *invoice.Invoice", res.JSON)
 	}
 	recs, err := shifts.ListParticipant(ctx, pid, "2026-06-09", "2026-06-12")
 	if err != nil {

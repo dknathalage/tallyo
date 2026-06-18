@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/dknathalage/tallyo/internal/customitem"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/xuri/excelize/v2"
 )
@@ -52,7 +53,7 @@ func CatalogCSV(items []*customitem.CustomItem) ([]byte, error) {
 }
 
 // InvoicesCSV renders invoices to CSV with a fixed header.
-func InvoicesCSV(invoices []*repository.Invoice) ([]byte, error) {
+func InvoicesCSV(invoices []*invoice.Invoice) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	header := []string{"number", "participantName", "issueDate", "dueDate", "status", "subtotal", "tax", "total"}

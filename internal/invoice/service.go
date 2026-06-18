@@ -1,4 +1,4 @@
-package service
+package invoice
 
 import (
 	"context"
@@ -6,53 +6,63 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// InvoiceService orchestrates invoice reads/writes and publishes change events
+// ShiftLinker is the narrow interface the invoice service requires to cascade
+// status changes to linked shifts. It breaks the invoice↔shift import cycle:
+// the invoice package declares this interface; the caller (main.go) injects a
+// concrete *repository.ShiftsRepo which satisfies it.
+type ShiftLinker interface {
+	SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error
+	ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error
+}
+
+// Service orchestrates invoice reads/writes and publishes change events
 // after a successful commit. Line items pass through the NDIS validation engine
 // (validator) on create/update before reaching the repository.
-type InvoiceService struct {
-	repo      *repository.InvoicesRepo
-	shifts    *repository.ShiftsRepo
+type Service struct {
+	repo      *InvoicesRepo
+	shifts    ShiftLinker
 	validator *billing.LineValidator
 	hub       *realtime.Hub
 }
 
-func NewInvoiceService(db *sql.DB, hub *realtime.Hub) *InvoiceService {
+// NewService constructs the invoice service. A nil hub is a programmer error.
+// shifts may be nil (shift cascade is skipped when nil).
+func NewService(db *sql.DB, hub *realtime.Hub, shifts ShiftLinker) *Service {
 	if hub == nil {
-		panic("NewInvoiceService: nil hub")
+		panic("invoice.NewService: nil hub")
 	}
-	return &InvoiceService{
-		repo:      repository.NewInvoices(db),
-		shifts:    repository.NewShifts(db),
+	return &Service{
+		repo:      NewInvoices(db),
+		shifts:    shifts,
 		validator: billing.NewLineValidator(db),
 		hub:       hub,
 	}
 }
 
-func (s *InvoiceService) List(ctx context.Context) ([]*repository.Invoice, error) {
+func (s *Service) List(ctx context.Context) ([]*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *InvoiceService) ListByStatus(ctx context.Context, status string) ([]*repository.Invoice, error) {
+func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *InvoiceService) ListParticipantInvoices(ctx context.Context, participantID int64) ([]*repository.Invoice, error) {
+func (s *Service) ListParticipantInvoices(ctx context.Context, participantID int64) ([]*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListParticipantInvoices(ctx, tenantID, participantID)
 }
 
-func (s *InvoiceService) Get(ctx context.Context, id int64) (*repository.Invoice, error) {
+func (s *Service) Get(ctx context.Context, id int64) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
 
-func (s *InvoiceService) ParticipantStats(ctx context.Context, participantID int64) (*repository.ParticipantStats, error) {
+func (s *Service) ParticipantStats(ctx context.Context, participantID int64) (*ParticipantStats, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ParticipantStats(ctx, tenantID, participantID)
 }
@@ -63,7 +73,7 @@ func (s *InvoiceService) ParticipantStats(ctx context.Context, participantID int
 // gst-free defaulting, snapshotting) first; tax is COMPUTED from the validated
 // lines and overrides any client-supplied value (see validation.go tax note).
 // A validation failure returns a *ValidationError with field-level detail.
-func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput, items []billing.LineItemInput) (*repository.Invoice, error) {
+func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -84,7 +94,7 @@ func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput,
 // create_invoice tool so the model owns only the code, service date and
 // quantity — never the price. A quotable item with no published cap still
 // requires a caller-supplied price (a *ValidationError otherwise).
-func (s *InvoiceService) CreateWithCatalogPricing(ctx context.Context, in repository.InvoiceInput, items []billing.LineItemInput) (*repository.Invoice, error) {
+func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.ValidateFilling(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -101,7 +111,7 @@ func (s *InvoiceService) CreateWithCatalogPricing(ctx context.Context, in reposi
 
 // Update rewrites an invoice. A nil result means the row was not found, in which
 // case no event is published.
-func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []billing.LineItemInput) (*repository.Invoice, error) {
+func (s *Service) Update(ctx context.Context, id int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -122,13 +132,13 @@ func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.Inv
 // UpdateStatus sets the invoice status, then broadcasts on success. When the
 // invoice advances to a terminal billing status ('sent'/'paid'), the shifts
 // attached to it advance in lockstep (recorded→drafted→sent→paid lifecycle).
-func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
 	cascade := status == "sent" || status == "paid"
-	if cascade {
+	if cascade && s.shifts != nil {
 		if err := s.shifts.SetStatusForInvoice(ctx, tenantID, id, status); err != nil {
 			return err
 		}
@@ -144,10 +154,12 @@ func (s *InvoiceService) UpdateStatus(ctx context.Context, id int64, status stri
 // shifts attached to the invoice are reverted to 'recorded' with a NULL
 // invoice_id, so the work returns to the unbilled pool rather than being orphaned
 // at status 'drafted' by the FK's ON DELETE SET NULL.
-func (s *InvoiceService) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.shifts.ClearForInvoice(ctx, tenantID, id); err != nil {
-		return err
+	if s.shifts != nil {
+		if err := s.shifts.ClearForInvoice(ctx, tenantID, id); err != nil {
+			return err
+		}
 	}
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
@@ -158,7 +170,7 @@ func (s *InvoiceService) Delete(ctx context.Context, id int64) error {
 }
 
 // BulkDelete removes several invoices, then broadcasts a single bulk event.
-func (s *InvoiceService) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
@@ -168,7 +180,7 @@ func (s *InvoiceService) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 // BulkUpdateStatus sets several invoices' status, then broadcasts a bulk event.
-func (s *InvoiceService) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
@@ -179,7 +191,7 @@ func (s *InvoiceService) BulkUpdateStatus(ctx context.Context, ids []int64, stat
 
 // ActiveTenantIDs returns the ids of active (non-suspended) tenants. The sweep
 // driver uses it to iterate tenants and skip suspended ones (spec §8).
-func (s *InvoiceService) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+func (s *Service) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
 	return s.repo.ActiveTenantIDs(ctx)
 }
 
@@ -187,7 +199,7 @@ func (s *InvoiceService) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
 // sweep path) and, when any flipped, broadcasts a sweep event scoped to that
 // tenant so only its subscribers resync. ctx must carry the tenant (the sweep
 // driver attaches it via reqctx.WithTenant).
-func (s *InvoiceService) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]repository.OverdueInvoice, error) {
+func (s *Service) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]OverdueInvoice, error) {
 	rows, err := s.repo.MarkOverdueForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err

@@ -30,11 +30,11 @@ import (
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -51,7 +51,7 @@ const (
 // version effective over that year carrying the two reference support items
 // priced at the national cap. It returns the invoice service and the seeded
 // participant id — everything create_invoice needs to validate the note's lines.
-func nursingNoteSvc(t *testing.T) (svc *service.InvoiceService, tenantID, participantID int64) {
+func nursingNoteSvc(t *testing.T) (svc *invoice.Service, tenantID, participantID int64) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "note.db"))
 	if err != nil {
@@ -79,7 +79,7 @@ func nursingNoteSvc(t *testing.T) (svc *service.InvoiceService, tenantID, partic
 	seedNoteItem(t, conn, verID, codeTransport, "Activity Based Transport", priceTransport)
 	seedNoteItem(t, conn, verID, codeSelfCare, "Assistance with self care - weekday daytime", priceSelfCare)
 
-	return service.NewInvoiceService(conn, realtime.NewHub()), tenantID, p.ID
+	return invoice.NewService(conn, realtime.NewHub(), repository.NewShifts(conn)), tenantID, p.ID
 }
 
 func seedNoteTenant(t *testing.T, conn *sql.DB) int64 {
@@ -189,9 +189,9 @@ func TestCreateInvoiceFromNursingNote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create_invoice: %v", err)
 	}
-	inv, ok := res.JSON.(*repository.Invoice)
+	inv, ok := res.JSON.(*invoice.Invoice)
 	if !ok {
-		t.Fatalf("result JSON is %T, want *repository.Invoice", res.JSON)
+		t.Fatalf("result JSON is %T, want *invoice.Invoice", res.JSON)
 	}
 
 	if res.Render != "card" {
@@ -256,9 +256,9 @@ func TestCreateInvoiceCatalogueAuthoritativePrice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create_invoice: %v", err)
 	}
-	inv, ok := res.JSON.(*repository.Invoice)
+	inv, ok := res.JSON.(*invoice.Invoice)
 	if !ok {
-		t.Fatalf("result JSON is %T, want *repository.Invoice", res.JSON)
+		t.Fatalf("result JSON is %T, want *invoice.Invoice", res.JSON)
 	}
 	byCode := map[string]float64{}
 	for i := range inv.LineItems { // bounded by len(inv.LineItems)

@@ -6,17 +6,18 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newInvoiceSvc(t *testing.T) (*InvoiceService, *realtime.Hub, int64, int64) {
+func newInvoiceSvc(t *testing.T) (*invoice.Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewInvoiceService(conn, hub), hub, tenantID, participantID
+	return invoice.NewService(conn, hub, repository.NewShifts(conn)), hub, tenantID, participantID
 }
 
 func TestInvoiceCreateBroadcasts(t *testing.T) {
@@ -25,7 +26,7 @@ func TestInvoiceCreateBroadcasts(t *testing.T) {
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	inv, err := svc.Create(ctx, repository.InvoiceInput{
+	inv, err := svc.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
@@ -48,7 +49,7 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	inv, err := svc.Create(ctx, repository.InvoiceInput{
+	inv, err := svc.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
@@ -78,7 +79,7 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewInvoiceService(conn, hub)
+	svc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 
 	tenantA := seedTenant(t, conn)          // active
 	tenantB := seedSuspendedTenant(t, conn) // suspended
@@ -136,7 +137,7 @@ func TestInvoiceCreateEmptyItemsNoEvent(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), repository.InvoiceInput{
+	if _, err := svc.Create(tctx(tenantID), invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, nil); err == nil {
 		t.Fatal("empty items must error")

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/invoice"
 )
 
 func mkEstimate(t *testing.T, repo *EstimatesRepo, tid, pid int64) *Estimate {
@@ -65,7 +66,7 @@ func TestEstimateUpdateStatusAndConvert(t *testing.T) {
 		t.Fatalf("second Convert err = %v, want ErrAlreadyConverted", err)
 	}
 	// The produced invoice exists with the copied line.
-	inv, err := NewInvoices(conn).Get(ctx, tid, res.InvoiceID)
+	inv, err := invoice.NewInvoices(conn).Get(ctx, tid, res.InvoiceID)
 	if err != nil || inv == nil || len(inv.LineItems) != 1 || inv.Total != 110 {
 		t.Fatalf("converted invoice = %+v err=%v", inv, err)
 	}

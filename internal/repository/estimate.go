@@ -16,6 +16,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
 )
@@ -518,7 +519,7 @@ func (r *EstimatesRepo) convertTx(ctx context.Context, tenantID int64, est *Esti
 	defer func() { _ = tx.Rollback() }()
 
 	q := gen.New(tx)
-	num, err := nextInvoiceNumber(ctx, q, tenantID)
+	num, err := invoice.NextInvoiceNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}

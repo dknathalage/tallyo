@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/customitem"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
@@ -16,8 +17,8 @@ func sampleItems() []*customitem.CustomItem {
 	}
 }
 
-func sampleInvoices() []*repository.Invoice {
-	return []*repository.Invoice{
+func sampleInvoices() []*invoice.Invoice {
+	return []*invoice.Invoice{
 		{Number: "INV-001", ParticipantName: "Acme", IssueDate: "2026-01-01", DueDate: "2026-01-31", Status: "sent", Subtotal: 100, Tax: 10, Total: 110},
 		{Number: "INV-002", ParticipantName: "Globex", IssueDate: "2026-02-01", DueDate: "2026-02-28", Status: "paid", Subtotal: 200, Tax: 20, Total: 220},
 	}

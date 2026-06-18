@@ -17,6 +17,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
 )
@@ -271,7 +272,7 @@ func (r *RecurringRepo) AdvanceDate(date, freq string) (string, error) {
 // GenerateOne creates a draft invoice from the template AND advances next_due in
 // the same transaction (idempotent re-runs). Returns (nil, nil) when the
 // template is missing. The returned invoice is re-read after commit.
-func (r *RecurringRepo) GenerateOne(ctx context.Context, tenantID, templateID int64) (*Invoice, error) {
+func (r *RecurringRepo) GenerateOne(ctx context.Context, tenantID, templateID int64) (*invoice.Invoice, error) {
 	tpl, err := r.Get(ctx, tenantID, templateID)
 	if err != nil {
 		return nil, fmt.Errorf("generate one: %w", err)
@@ -293,7 +294,7 @@ func (r *RecurringRepo) GenerateOne(ctx context.Context, tenantID, templateID in
 	if err != nil {
 		return nil, fmt.Errorf("generate one: %w", err)
 	}
-	return NewInvoices(r.db).Get(ctx, tenantID, invID)
+	return invoice.NewInvoices(r.db).Get(ctx, tenantID, invID)
 }
 
 // genSnapshots holds the default snapshot JSON for a generated invoice.
@@ -326,7 +327,7 @@ func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *Rec
 	defer func() { _ = tx.Rollback() }()
 
 	q := gen.New(tx)
-	num, err := nextInvoiceNumber(ctx, q, tenantID)
+	num, err := invoice.NextInvoiceNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}
@@ -334,7 +335,7 @@ func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *Rec
 	if err != nil {
 		return err
 	}
-	if err := insertItems(ctx, q, tenantID, inv.ID, items); err != nil {
+	if err := invoice.InsertLineItems(ctx, q, tenantID, inv.ID, items); err != nil {
 		return err
 	}
 	newDue, err := r.AdvanceDate(tpl.NextDue, tpl.Frequency)

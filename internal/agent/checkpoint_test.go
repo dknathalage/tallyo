@@ -8,16 +8,16 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
-// newCheckpointFixture builds a Store, an InvoiceService and an open checkpoint
+// newCheckpointFixture builds a Store, an invoice.Service and an open checkpoint
 // tied to a real assistant message, plus a seeded participant id.
-func newCheckpointFixture(t *testing.T) (ctx context.Context, s *Store, inv *service.InvoiceService, cp *Checkpoint, checkpointID, participantID int64) {
+func newCheckpointFixture(t *testing.T) (ctx context.Context, s *Store, inv *invoice.Service, cp *Checkpoint, checkpointID, participantID int64) {
 	t.Helper()
 	s = newTestStore(t)
 	tenantID, userID := seedTenantUser(t, s.db)
@@ -25,7 +25,7 @@ func newCheckpointFixture(t *testing.T) (ctx context.Context, s *Store, inv *ser
 
 	participantID = seedAgentParticipant(t, s.db, ctx)
 
-	inv = service.NewInvoiceService(s.db, realtime.NewHub())
+	inv = invoice.NewService(s.db, realtime.NewHub(), repository.NewShifts(s.db))
 	cp = NewCheckpoint(s, s.db)
 
 	conv, err := s.CreateConversation(ctx, "chat")
@@ -57,7 +57,7 @@ func seedAgentParticipant(t *testing.T, db *sql.DB, ctx context.Context) int64 {
 func TestCheckpointRevertCreateDeletesRow(t *testing.T) {
 	ctx, s, inv, cp, checkpointID, participantID := newCheckpointFixture(t)
 
-	created, err := inv.Create(ctx, repository.InvoiceInput{
+	created, err := inv.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "Custom A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
@@ -100,7 +100,7 @@ func TestCheckpointRevertCreateDeletesRow(t *testing.T) {
 func TestCheckpointRevertConflictReportedNotApplied(t *testing.T) {
 	ctx, _, inv, cp, checkpointID, participantID := newCheckpointFixture(t)
 
-	created, err := inv.Create(ctx, repository.InvoiceInput{
+	created, err := inv.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "Custom A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
@@ -151,9 +151,9 @@ func TestCreateInvoiceToolRecordsCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	out, ok := res.JSON.(*repository.Invoice)
+	out, ok := res.JSON.(*invoice.Invoice)
 	if !ok || out == nil {
-		t.Fatalf("Handler JSON = %T, want *repository.Invoice", res.JSON)
+		t.Fatalf("Handler JSON = %T, want *invoice.Invoice", res.JSON)
 	}
 
 	changes, err := s.ListCheckpointChanges(ctx, checkpointID)
@@ -196,13 +196,13 @@ func TestCreateInvoiceToolValidationError(t *testing.T) {
 func TestCheckpointMultiChangeOrdering(t *testing.T) {
 	ctx, s, inv, cp, checkpointID, participantID := newCheckpointFixture(t)
 
-	first, err := inv.Create(ctx, repository.InvoiceInput{
+	first, err := inv.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "First", Quantity: 1, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create first: %v", err)
 	}
-	second, err := inv.Create(ctx, repository.InvoiceInput{
+	second, err := inv.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-02", DueDate: "2026-02-02",
 	}, []billing.LineItemInput{{Description: "Second", Quantity: 1, UnitPrice: 20}})
 	if err != nil {

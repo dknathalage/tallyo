@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
 func noopHandler(context.Context, json.RawMessage) (Result, error) { return Result{}, nil }
@@ -70,7 +71,7 @@ func TestRegistryDefsExcludeMeta(t *testing.T) {
 
 // newTestInvoiceSvc opens a temp DB, migrates it, seeds a tenant + participant,
 // and returns the InvoiceService plus the tenant id.
-func newTestInvoiceSvc(t *testing.T) (*service.InvoiceService, int64) {
+func newTestInvoiceSvc(t *testing.T) (*invoice.Service, int64) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "tool.db"))
 	if err != nil {
@@ -81,7 +82,7 @@ func newTestInvoiceSvc(t *testing.T) (*service.InvoiceService, int64) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	hub := realtime.NewHub()
-	svc := service.NewInvoiceService(conn, hub)
+	svc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 
 	// Seed a tenant directly via SQL (avoids importing gen from test file).
 	res, err := conn.Exec(

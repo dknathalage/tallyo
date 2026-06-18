@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -30,11 +31,11 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 			tenantID := seedTenant(t, conn)
 			participantID := seedParticipant(t, conn, tenantID)
 			hub := realtime.NewHub()
-			invSvc := NewInvoiceService(conn, hub)
+			invSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 			shiftSvc := NewShiftService(conn, hub)
 			ctx := tctx(tenantID)
 
-			inv, err := invSvc.Create(ctx, repository.InvoiceInput{
+			inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
 				ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 			}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 			if err != nil {
@@ -58,11 +59,11 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	invSvc := NewInvoiceService(conn, hub)
+	invSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	shiftSvc := NewShiftService(conn, hub)
 	ctx := tctx(tenantID)
 
-	inv, err := invSvc.Create(ctx, repository.InvoiceInput{
+	inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
@@ -85,11 +86,11 @@ func TestInvoiceDeleteRevertsShiftsToRecorded(t *testing.T) {
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	invSvc := NewInvoiceService(conn, hub)
+	invSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 	shiftSvc := NewShiftService(conn, hub)
 	ctx := tctx(tenantID)
 
-	inv, err := invSvc.Create(ctx, repository.InvoiceInput{
+	inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {

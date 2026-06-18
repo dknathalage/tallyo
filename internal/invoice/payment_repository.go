@@ -1,4 +1,4 @@
-package repository
+package invoice
 
 import (
 	"context"
@@ -46,7 +46,7 @@ type PaymentsRepo struct {
 // NewPayments constructs a repository. A nil db is a programmer error.
 func NewPayments(db *sql.DB) *PaymentsRepo {
 	if db == nil {
-		panic("repository: NewPayments requires a non-nil *sql.DB")
+		panic("invoice: NewPayments requires a non-nil *sql.DB")
 	}
 	return &PaymentsRepo{db: db}
 }

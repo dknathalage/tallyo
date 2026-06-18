@@ -1,4 +1,4 @@
-package repository
+package invoice
 
 // NOTE (J4): rewritten to the NDIS invoice/line-item domain (spec §4.2). The
 // header no longer carries payment_terms / currency / tax_rate / tax_rate_id;
@@ -96,7 +96,7 @@ type InvoicesRepo struct {
 // NewInvoices constructs a repository. A nil db is a programmer error.
 func NewInvoices(db *sql.DB) *InvoicesRepo {
 	if db == nil {
-		panic("repository: NewInvoices requires a non-nil *sql.DB")
+		panic("invoice: NewInvoices requires a non-nil *sql.DB")
 	}
 	return &InvoicesRepo{db: db, snap: billing.NewSnapshotBuilder(db)}
 }
@@ -150,7 +150,7 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 	defer func() { _ = tx.Rollback() }()
 
 	q := gen.New(tx)
-	num, err := nextInvoiceNumber(ctx, q, tenantID)
+	num, err := NextInvoiceNumber(ctx, q, tenantID)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 	if err != nil {
 		return err
 	}
-	if err := insertItems(ctx, q, tenantID, inv.ID, items); err != nil {
+	if err := InsertLineItems(ctx, q, tenantID, inv.ID, items); err != nil {
 		return err
 	}
 	if err := audit.Log(ctx, tx, audit.Entry{
@@ -174,8 +174,9 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 	return nil
 }
 
-// nextInvoiceNumber allocates the next per-tenant invoice number ("INV-NNNN").
-func nextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (string, error) {
+// NextInvoiceNumber allocates the next per-tenant invoice number ("INV-NNNN").
+// Exported so that estimate and recurring repositories can reuse it.
+func NextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (string, error) {
 	const prefix = "INV-"
 	max, err := q.MaxInvoiceNumberLike(ctx, gen.MaxInvoiceNumberLikeParams{
 		PrefixLen: int64(len(prefix)),
@@ -214,8 +215,9 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 	}
 }
 
-// insertItems writes each line item with its computed total. Bounded by len.
-func insertItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []billing.LineItemInput) error {
+// InsertLineItems writes each line item with its computed total. Bounded by len.
+// Exported so that recurring repository can reuse it.
+func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
@@ -342,7 +344,7 @@ func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in Invoic
 		if e := q.DeleteLineItemsForInvoice(ctx, gen.DeleteLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: id}); e != nil {
 			return fmt.Errorf("clear items: %w", e)
 		}
-		return insertItems(ctx, q, tenantID, id, items)
+		return InsertLineItems(ctx, q, tenantID, id, items)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("update invoice: %w", err)

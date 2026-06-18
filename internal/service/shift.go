@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -15,7 +16,7 @@ import (
 // tenant (and, for authorship, user) from the request context.
 type ShiftService struct {
 	repo     *repository.ShiftsRepo
-	invoices *repository.InvoicesRepo
+	invoices *invoice.InvoicesRepo
 	hub      *realtime.Hub
 }
 
@@ -23,7 +24,7 @@ func NewShiftService(db *sql.DB, hub *realtime.Hub) *ShiftService {
 	if hub == nil {
 		panic("NewShiftService: nil hub")
 	}
-	return &ShiftService{repo: repository.NewShifts(db), invoices: repository.NewInvoices(db), hub: hub}
+	return &ShiftService{repo: repository.NewShifts(db), invoices: invoice.NewInvoices(db), hub: hub}
 }
 
 // Suggestion is a billing prompt: a participant's recorded-but-unbilled shifts

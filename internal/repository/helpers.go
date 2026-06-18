@@ -44,3 +44,11 @@ func nzMaybe(s string) sql.NullString {
 	}
 	return sql.NullString{String: s, Valid: true}
 }
+
+// orDefault returns s when non-empty, otherwise returns def.
+func orDefault(s, def string) string {
+	if s != "" {
+		return s
+	}
+	return def
+}

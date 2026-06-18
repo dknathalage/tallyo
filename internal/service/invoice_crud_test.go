@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
 // makeInvoice creates a single invoice for the tenant/participant and returns it.
-func makeInvoice(t *testing.T, svc *InvoiceService, tenantID, participantID int64) *repository.Invoice {
+func makeInvoice(t *testing.T, svc *invoice.Service, tenantID, participantID int64) *invoice.Invoice {
 	t.Helper()
-	inv, err := svc.Create(tctx(tenantID), repository.InvoiceInput{
+	inv, err := svc.Create(tctx(tenantID), invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
 	if err != nil {
@@ -117,7 +118,7 @@ func TestInvoiceUpdate(t *testing.T) {
 
 	inv := makeInvoice(t, svc, tenantID, participantID)
 
-	updated, err := svc.Update(ctx, inv.ID, repository.InvoiceInput{
+	updated, err := svc.Update(ctx, inv.ID, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 3, UnitPrice: 7}})
 	if err != nil {
@@ -134,7 +135,7 @@ func TestInvoiceUpdate(t *testing.T) {
 func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, participantID := newInvoiceSvc(t)
 
-	got, err := svc.Update(tctx(tenantID), 999999, repository.InvoiceInput{
+	got, err := svc.Update(tctx(tenantID), 999999, invoice.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
@@ -242,7 +243,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 func TestInvoiceTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewInvoiceService(conn, hub)
+	svc := invoice.NewService(conn, hub, repository.NewShifts(conn))
 
 	tenantA := seedTenant(t, conn)
 	partA := seedParticipant(t, conn, tenantA)
