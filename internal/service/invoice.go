@@ -16,7 +16,7 @@ import (
 type InvoiceService struct {
 	repo      *repository.InvoicesRepo
 	shifts    *repository.ShiftsRepo
-	validator *LineValidator
+	validator *billing.LineValidator
 	hub       *realtime.Hub
 }
 
@@ -27,7 +27,7 @@ func NewInvoiceService(db *sql.DB, hub *realtime.Hub) *InvoiceService {
 	return &InvoiceService{
 		repo:      repository.NewInvoices(db),
 		shifts:    repository.NewShifts(db),
-		validator: NewLineValidator(db),
+		validator: billing.NewLineValidator(db),
 		hub:       hub,
 	}
 }

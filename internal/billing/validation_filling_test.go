@@ -1,4 +1,4 @@
-package service
+package billing
 
 // Tests for the catalogue-authoritative fill-pricing mode (ValidateFilling, used
 // by the agent create path) plus the ValidationError rendering / unwrap helpers.
@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
@@ -27,7 +26,7 @@ func TestValidateFillingOverwritesUnitPriceWithCap(t *testing.T) {
 	v := NewLineValidator(conn)
 
 	// Caller sends a nonsense price; fill mode must replace it with the cap (100).
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []billing.LineItemInput{
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", 2, 7),
 	})
 	if err != nil {
@@ -48,7 +47,7 @@ func TestValidateFillingOverCapPriceStillPinnedToCap(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []billing.LineItemInput{
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", 1, 9999),
 	})
 	if err != nil {
@@ -69,7 +68,7 @@ func TestValidateFillingQuotableKeepsPositiveCallerPrice(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn)
 
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []billing.LineItemInput{
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_999", "2026-01-15", 1, 250),
 	})
 	if err != nil {
@@ -89,7 +88,7 @@ func TestValidateFillingQuotableZeroPriceRejected(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn)
 
-	_, err := v.ValidateFilling(context.Background(), tid, pid, []billing.LineItemInput{
+	_, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_999", "2026-01-15", 1, 0),
 	})
 	ve, ok := err.(*ValidationError)
@@ -113,7 +112,7 @@ func TestValidateFillingComputesTaxOnPinnedPrice(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(200)})
 	v := NewLineValidator(conn)
 
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []billing.LineItemInput{
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("02_022", "2026-01-15", 1, 5),
 	})
 	if err != nil {

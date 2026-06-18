@@ -6,11 +6,11 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
-	"github.com/dknathalage/tallyo/internal/service"
 )
 
-// WriteValidationError, when err is (or wraps) a *service.ValidationError, writes
+// WriteValidationError, when err is (or wraps) a *billing.ValidationError, writes
 // a 422 envelope {"error": "...", "details": [{line, field, message}, ...]} and
 // returns true. Otherwise it writes nothing and returns false, so callers can
 // fall through to their generic error handling. J12 reads "details" to surface
@@ -19,7 +19,7 @@ func WriteValidationError(w http.ResponseWriter, err error) bool {
 	if w == nil {
 		return false
 	}
-	ve, ok := service.AsValidationError(err)
+	ve, ok := billing.AsValidationError(err)
 	if !ok || ve == nil {
 		return false
 	}

@@ -15,7 +15,7 @@ import (
 // a Convert action that turns an accepted estimate into an invoice.
 type EstimateService struct {
 	repo      *repository.EstimatesRepo
-	validator *LineValidator
+	validator *billing.LineValidator
 	hub       *realtime.Hub
 }
 
@@ -23,7 +23,7 @@ func NewEstimateService(db *sql.DB, hub *realtime.Hub) *EstimateService {
 	if hub == nil {
 		panic("NewEstimateService: nil hub")
 	}
-	return &EstimateService{repo: repository.NewEstimates(db), validator: NewLineValidator(db), hub: hub}
+	return &EstimateService{repo: repository.NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub}
 }
 
 func (s *EstimateService) List(ctx context.Context) ([]*repository.Estimate, error) {

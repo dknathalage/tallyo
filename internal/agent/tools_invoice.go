@@ -182,7 +182,7 @@ func newCreateInvoiceTool(inv *service.InvoiceService, cp *Checkpoint) Tool {
 			// cannot misprice a coded line (Pillar 1).
 			created, err := inv.CreateWithCatalogPricing(ctx, header, in.Items)
 			if err != nil {
-				if ve, ok := service.AsValidationError(err); ok {
+				if ve, ok := billing.AsValidationError(err); ok {
 					return Result{}, fmt.Errorf("create_invoice: invoice failed NDIS validation: %s", ve.Error())
 				}
 				return Result{}, fmt.Errorf("create_invoice: %w", err)
@@ -260,7 +260,7 @@ func newCreateInvoiceToolShifts(inv *service.InvoiceService, shifts *service.Shi
 			// date and quantity; the platform resolves the NDIS price (Pillar 1).
 			created, err := inv.CreateWithCatalogPricing(ctx, header, in.Items)
 			if err != nil {
-				if ve, ok := service.AsValidationError(err); ok {
+				if ve, ok := billing.AsValidationError(err); ok {
 					return Result{}, fmt.Errorf("create_invoice: invoice failed NDIS validation: %s", ve.Error())
 				}
 				return Result{}, fmt.Errorf("create_invoice: %w", err)
