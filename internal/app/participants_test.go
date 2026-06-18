@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newParticipantServer wires the participant routes behind RequireAuth plus the
+// newParticipantServer wires the participant routes behind httpx.RequireAuth plus the
 // plan-manager create route so a participant can reference a plan-manager FK.
 func newParticipantServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -31,7 +32,7 @@ func newParticipantServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/participants", pH.List)
 			pr.Post("/participants", pH.Create)
 			pr.Post("/participants/bulk-delete", pH.BulkDelete)

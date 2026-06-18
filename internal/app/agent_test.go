@@ -1,8 +1,9 @@
-package httpapi
+package app
 
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,7 +20,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newAgentServer wires the agent routes behind RequireAuth over a single
+// newAgentServer wires the agent routes behind httpx.RequireAuth over a single
 // migrated DB seeded with an owner ("o@x.com" / "password1"). The supplied Fake
 // llm scripts the plan/execute loop. enabled toggles the 503 gate; cfg overrides
 // the agent config (zero value → defaults). Returns the server and the agent
@@ -49,13 +50,13 @@ func newAgentServer(t *testing.T, fake llm.Client, enabled bool, cfg agent.Confi
 		WithBudget(budget).
 		WithRestore(agent.InvoiceRestoreFunc(inv))
 
-	agentH := NewAgentHandler(ag, budget, enabled)
+	agentH := agent.NewAgentHandler(ag, budget, enabled)
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/agent/conversations", agentH.CreateConversation)
 			pr.Get("/agent/conversations", agentH.ListConversations)
 			pr.Get("/agent/conversations/{id}/messages", agentH.ListMessages)
@@ -139,7 +140,7 @@ func TestServerDisabledAgentReturns503(t *testing.T) {
 
 	// Disabled handler: nil agent + nil budget + enabled=false. This is exactly
 	// what main.go now passes when ANTHROPIC_API_KEY is unset.
-	disabled := NewAgentHandler(nil, nil, false)
+	disabled := agent.NewAgentHandler(nil, nil, false)
 
 	deps := Deps{
 		Assets:  newServerFS(),
@@ -209,13 +210,13 @@ func TestAgentListConversationsTenantScoping(t *testing.T) {
 	cfg := agent.Config{APIKey: "test"}.WithDefaults()
 	budget := agent.NewBudget(store, cfg, clockNow{})
 	ag := agent.NewAgent(cfg, llm.NewFake(), store, reg, cp, events).WithBudget(budget)
-	agentH := NewAgentHandler(ag, budget, true)
+	agentH := agent.NewAgentHandler(ag, budget, true)
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, usersA, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, usersA, auth.NewTenants(conn)))
 			pr.Post("/agent/conversations", agentH.CreateConversation)
 			pr.Get("/agent/conversations", agentH.ListConversations)
 		})

@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newPaymentServer wires the payment routes behind RequireAuth, plus participant
+// newPaymentServer wires the payment routes behind httpx.RequireAuth, plus participant
 // and invoice creation so payments can reference a real invoice.
 func newPaymentServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -32,7 +33,7 @@ func newPaymentServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
 			pr.Post("/invoices", invH.Create)
 			pr.Get("/invoices/{id}", invH.Get)

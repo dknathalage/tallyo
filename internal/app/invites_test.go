@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 // newInviteServer spins up a real httptest.Server with the invite routes wired
-// the same way production wires them: Create behind RequireAuth, Validate and
+// the same way production wires them: Create behind httpx.RequireAuth, Validate and
 // Accept public (the invitee is not logged in). It returns the server and the
 // users repo so tests can assert on created members.
 func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
@@ -37,7 +38,7 @@ func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
 		api.Get("/invites/{token}", invH.Validate)
 		api.Post("/invites/{token}/accept", invH.Accept)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/invites", invH.Create)
 		})
 	})

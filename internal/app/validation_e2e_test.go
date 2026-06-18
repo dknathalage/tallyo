@@ -1,4 +1,4 @@
-package httpapi
+package app
 
 // End-to-end coverage of the 422 validation surface (spec §10 / J12): an
 // over-cap support line driven through the REAL invoice and estimate HTTP
@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,7 +29,7 @@ import (
 )
 
 // newValidationServer wires the invoice + estimate + participant routes behind
-// RequireAuth and returns both the server and the underlying conn so the test
+// httpx.RequireAuth and returns both the server and the underlying conn so the test
 // can seed a catalogue version directly.
 func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	t.Helper()
@@ -46,7 +47,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
 			invH.Routes(pr)
 			pr.Post("/estimates", estH.Create)

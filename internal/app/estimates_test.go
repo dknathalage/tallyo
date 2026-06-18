@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newEstimateServer wires the estimate routes behind RequireAuth, plus
+// newEstimateServer wires the estimate routes behind httpx.RequireAuth, plus
 // participant creation so estimates can reference a valid participant FK, and the
 // invoice list so converted invoices can be observed.
 func newEstimateServer(t *testing.T) *httptest.Server {
@@ -34,7 +35,7 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Post("/participants", pH.Create)
 			invH.Routes(pr)
 			pr.Get("/estimates", estH.List)

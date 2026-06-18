@@ -1,8 +1,9 @@
-package httpapi
+package app
 
 import (
 	"bufio"
 	"context"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,11 +16,11 @@ import (
 )
 
 // testTenant is the tenant the SSE test streams subscribe under (the real
-// handler reads it from reqctx, attached upstream by RequireAuth).
+// handler reads it from reqctx, attached upstream by httpx.RequireAuth).
 const testTenant int64 = 1
 
 // withTenant injects a tenant into the request context, standing in for the
-// RequireAuth middleware that runs before Stream in production.
+// httpx.RequireAuth middleware that runs before Stream in production.
 func withTenant(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r.WithContext(reqctx.WithTenant(r.Context(), testTenant)))
@@ -28,7 +29,7 @@ func withTenant(next http.Handler) http.Handler {
 
 func TestEventsStreamsBroadcast(t *testing.T) {
 	hub := realtime.NewHub()
-	h := NewEventsHandler(hub)
+	h := realtime.NewEventsHandler(hub)
 	srv := httptest.NewServer(withTenant(http.HandlerFunc(h.Stream)))
 	defer srv.Close()
 
@@ -64,14 +65,14 @@ func TestEventsStreamsBroadcast(t *testing.T) {
 }
 
 // TestEventsStreamsThroughMiddleware guards the realtime path through the real
-// wrapper chain (RequestLogger's statusWriter + scs sessionResponseWriter).
+// wrapper chain (httpx.RequestLogger's statusWriter + scs sessionResponseWriter).
 // A plain w.(http.Flusher) assertion would fail or silently buffer here; the
 // handler must flush via http.ResponseController, which unwraps both wrappers.
 func TestEventsStreamsThroughMiddleware(t *testing.T) {
 	hub := realtime.NewHub()
-	h := NewEventsHandler(hub)
+	h := realtime.NewEventsHandler(hub)
 	sm := scs.New()
-	handler := RequestLogger(sm.LoadAndSave(withTenant(http.HandlerFunc(h.Stream))))
+	handler := httpx.RequestLogger(sm.LoadAndSave(withTenant(http.HandlerFunc(h.Stream))))
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
@@ -110,5 +111,5 @@ func TestNewEventsHandlerNilHubPanics(t *testing.T) {
 			t.Fatal("expected panic on nil hub")
 		}
 	}()
-	NewEventsHandler(nil)
+	realtime.NewEventsHandler(nil)
 }

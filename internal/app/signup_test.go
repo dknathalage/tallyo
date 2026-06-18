@@ -1,8 +1,9 @@
-package httpapi
+package app
 
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,7 +28,7 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 		api.Post("/signup", signupH.Signup)
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, tenants))
+			pr.Use(httpx.RequireAuth(sm, users, tenants))
 			pr.Get("/auth/me", authH.Me)
 		})
 	})
@@ -244,7 +245,7 @@ func TestLoginSuspendedTenantBlocked(t *testing.T) {
 }
 
 // newRoleServer wires a settings (business-profile PUT-like) probe and an invite
-// probe behind RequireRole("owner","admin") so role enforcement can be tested
+// probe behind httpx.RequireRole("owner","admin") so role enforcement can be tested
 // independently of the concrete handlers.
 func newRoleServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -266,8 +267,8 @@ func newRoleServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, tenants))
-			pr.With(RequireRole("owner", "admin")).Post("/settings", probe200)
+			pr.Use(httpx.RequireAuth(sm, users, tenants))
+			pr.With(httpx.RequireRole("owner", "admin")).Post("/settings", probe200)
 			pr.Get("/participants", probe200) // any role
 		})
 	})

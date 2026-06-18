@@ -1,4 +1,4 @@
-package httpapi
+package agent
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/agent/llm"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
@@ -23,10 +23,10 @@ import (
 // history, message send (async), permission decisions, checkpoint revert, and a
 // per-conversation SSE stream. Every handler 503s when the agent is disabled.
 type AgentHandler struct {
-	agent   *agent.Agent
-	store   *agent.Store
-	events  *agent.Events
-	budget  *agent.Budget
+	agent   *Agent
+	store   *Store
+	events  *Events
+	budget  *Budget
 	enabled bool
 
 	// shift import (optional, set via WithShiftImport when the agent is enabled):
@@ -34,14 +34,14 @@ type AgentHandler struct {
 	// used to persist the recorded shifts ImportShifts produces.
 	shifts        *shift.Service
 	extractClient llm.Client
-	extractCfg    agent.Config
+	extractCfg    Config
 }
 
 // NewAgentHandler constructs the handler. When ag is nil OR enabled is false the
 // handler is registered but every route returns 503; this keeps wiring uniform
 // (the route group is present) while the AI feature is off. A non-nil ag is
 // required when enabled is true (programmer error otherwise).
-func NewAgentHandler(ag *agent.Agent, budget *agent.Budget, enabled bool) *AgentHandler {
+func NewAgentHandler(ag *Agent, budget *Budget, enabled bool) *AgentHandler {
 	if enabled && ag == nil {
 		panic("NewAgentHandler: enabled handler requires a non-nil agent")
 	}
@@ -56,7 +56,7 @@ func NewAgentHandler(ag *agent.Agent, budget *agent.Budget, enabled bool) *Agent
 // WithShiftImport wires the structured-extraction model client (+ its config)
 // and the shift service used by ImportShifts. It is set in main.go when the
 // agent is enabled; ImportShifts 503s when any of these is absent.
-func (h *AgentHandler) WithShiftImport(shifts *shift.Service, client llm.Client, cfg agent.Config) *AgentHandler {
+func (h *AgentHandler) WithShiftImport(shifts *shift.Service, client llm.Client, cfg Config) *AgentHandler {
 	h.shifts = shifts
 	h.extractClient = client
 	h.extractCfg = cfg
@@ -72,7 +72,7 @@ type importShiftsRequest struct {
 
 // ImportShifts turns a free-text timesheet into recorded shifts for one
 // participant. It forces a single structured-extraction model call
-// (agent.ExtractShifts), then persists one recorded shift per extracted day via
+// (ExtractShifts), then persists one recorded shift per extracted day via
 // the ShiftService. The participant is taken from the body (resolution by name
 // is intentionally out of scope here). Returns the created shifts.
 func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
@@ -81,30 +81,30 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.shifts == nil || h.extractClient == nil {
-		WriteError(w, http.StatusServiceUnavailable, "shift import not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "shift import not configured")
 		return
 	}
 	var req importShiftsRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, "invalid request body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.ParticipantID <= 0 {
-		WriteError(w, http.StatusBadRequest, "participantId is required")
+		httpx.WriteError(w, http.StatusBadRequest, "participantId is required")
 		return
 	}
 	if strings.TrimSpace(req.Text) == "" {
-		WriteError(w, http.StatusBadRequest, "text is required")
+		httpx.WriteError(w, http.StatusBadRequest, "text is required")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(detach(tenantID, userID), 2*time.Minute)
 	defer cancel()
 
-	drafts, err := agent.ExtractShifts(ctx, h.extractClient, h.extractCfg.Model, h.extractCfg.EffortFor(), req.Text)
+	drafts, err := ExtractShifts(ctx, h.extractClient, h.extractCfg.Model, h.extractCfg.EffortFor(), req.Text)
 	if err != nil {
 		slog.Error("import shifts: extract", slog.Any("error", err))
-		WriteError(w, http.StatusBadGateway, "could not extract shifts from the timesheet")
+		httpx.WriteError(w, http.StatusBadGateway, "could not extract shifts from the timesheet")
 		return
 	}
 
@@ -114,7 +114,7 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 	seen, err := h.existingShiftKeys(ctx, req.ParticipantID, drafts)
 	if err != nil {
 		slog.Error("import shifts: load existing", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -138,19 +138,19 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 		})
 		if e != nil {
 			slog.Error("import shifts: create", slog.Any("error", e))
-			WriteError(w, http.StatusInternalServerError, "internal error")
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 		created = append(created, sh)
 	}
-	WriteJSON(w, http.StatusCreated, created)
+	httpx.WriteJSON(w, http.StatusCreated, created)
 }
 
 // existingShiftKeys returns the dedup-key set of the participant's already
 // recorded shifts that fall within the drafts' service-date span. It queries only
 // that window (the min..max draft date) rather than every shift, then keys each
 // existing row the same way a draft is keyed so re-imports are detected.
-func (h *AgentHandler) existingShiftKeys(ctx context.Context, participantID int64, drafts []agent.ShiftDraft) (map[string]struct{}, error) {
+func (h *AgentHandler) existingShiftKeys(ctx context.Context, participantID int64, drafts []ShiftDraft) (map[string]struct{}, error) {
 	keys := make(map[string]struct{}, len(drafts))
 	if len(drafts) == 0 {
 		return keys, nil
@@ -200,18 +200,18 @@ func (h *AgentHandler) DraftInvoiceFromShifts(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	pid, ok := parseID(r)
+	pid, ok := httpx.ParseID(r)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	var req draftInvoiceRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, "invalid request body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.From == "" || req.To == "" {
-		WriteError(w, http.StatusBadRequest, "from and to are required")
+		httpx.WriteError(w, http.StatusBadRequest, "from and to are required")
 		return
 	}
 
@@ -221,7 +221,7 @@ func (h *AgentHandler) DraftInvoiceFromShifts(w http.ResponseWriter, r *http.Req
 	conv, err := h.store.CreateConversation(ctx, "Invoice from shifts")
 	if err != nil {
 		slog.Error("draft invoice: create conversation", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -232,14 +232,14 @@ func (h *AgentHandler) DraftInvoiceFromShifts(w http.ResponseWriter, r *http.Req
 
 	if err := h.agent.Start(ctx, conv.ID, prompt); err != nil {
 		slog.Error("draft invoice: agent start", slog.Int64("conversationId", conv.ID), slog.Any("error", err))
-		WriteError(w, http.StatusBadGateway, "the assistant could not draft the invoice")
+		httpx.WriteError(w, http.StatusBadGateway, "the assistant could not draft the invoice")
 		return
 	}
 
 	inv, err := h.autoApproveInvoice(ctx, conv.ID)
 	if err != nil {
 		slog.Error("draft invoice: auto-approve", slog.Int64("conversationId", conv.ID), slog.Any("error", err))
-		WriteError(w, http.StatusBadGateway, "the assistant did not produce an invoice from these shifts")
+		httpx.WriteError(w, http.StatusBadGateway, "the assistant did not produce an invoice from these shifts")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -288,17 +288,17 @@ func (h *AgentHandler) autoApproveInvoice(ctx context.Context, convID int64) (js
 // after writing the appropriate error response.
 func (h *AgentHandler) guard(w http.ResponseWriter, r *http.Request) (tenantID, userID int64, ok bool) {
 	if !h.enabled {
-		WriteError(w, http.StatusServiceUnavailable, "AI not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "AI not configured")
 		return 0, 0, false
 	}
 	tid, tok := reqctx.TenantFrom(r.Context())
 	if !tok || tid <= 0 {
-		WriteError(w, http.StatusUnauthorized, "unauthorized")
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return 0, 0, false
 	}
 	uid, uok := reqctx.UserFrom(r.Context())
 	if !uok || uid <= 0 {
-		WriteError(w, http.StatusUnauthorized, "unauthorized")
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return 0, 0, false
 	}
 	return tid, uid, true
@@ -322,8 +322,8 @@ func (h *AgentHandler) CreateConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req createConversationRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, "invalid request body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	title := req.Title
@@ -332,11 +332,11 @@ func (h *AgentHandler) CreateConversation(w http.ResponseWriter, r *http.Request
 	}
 	conv, err := h.store.CreateConversation(r.Context(), title)
 	if err != nil {
-		LoggerFrom(r.Context()).Error("create conversation failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("create conversation failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	WriteJSON(w, http.StatusCreated, conv)
+	httpx.WriteJSON(w, http.StatusCreated, conv)
 }
 
 // ListConversations returns the acting tenant's conversations.
@@ -346,11 +346,11 @@ func (h *AgentHandler) ListConversations(w http.ResponseWriter, r *http.Request)
 	}
 	convs, err := h.store.ListConversations(r.Context())
 	if err != nil {
-		LoggerFrom(r.Context()).Error("list conversations failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("list conversations failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	WriteJSON(w, http.StatusOK, convs)
+	httpx.WriteJSON(w, http.StatusOK, convs)
 }
 
 // ListMessages returns a conversation's message history, 404 when the
@@ -359,27 +359,27 @@ func (h *AgentHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := h.guard(w, r); !ok {
 		return
 	}
-	id, ok := parseID(r)
+	id, ok := httpx.ParseID(r)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	if _, err := h.store.GetConversation(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "not found")
+			httpx.WriteError(w, http.StatusNotFound, "not found")
 			return
 		}
-		LoggerFrom(r.Context()).Error("get conversation failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("get conversation failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	msgs, err := h.store.ListMessages(r.Context(), id)
 	if err != nil {
-		LoggerFrom(r.Context()).Error("list messages failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("list messages failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	WriteJSON(w, http.StatusOK, msgs)
+	httpx.WriteJSON(w, http.StatusOK, msgs)
 }
 
 // sendMessageRequest is the send body.
@@ -395,33 +395,33 @@ func (h *AgentHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, ok := parseID(r)
+	id, ok := httpx.ParseID(r)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	var req sendMessageRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, "invalid request body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Text == "" {
-		WriteError(w, http.StatusBadRequest, "text is required")
+		httpx.WriteError(w, http.StatusBadRequest, "text is required")
 		return
 	}
 	// Rate-limit pre-check (per-user sliding window).
 	if h.budget != nil && !h.budget.AllowMessage(r.Context(), userID) {
-		WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
+		httpx.WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
 		return
 	}
 	// Ownership: only stream/run against the tenant's own conversation.
 	if _, err := h.store.GetConversation(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "not found")
+			httpx.WriteError(w, http.StatusNotFound, "not found")
 			return
 		}
-		LoggerFrom(r.Context()).Error("get conversation failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("get conversation failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -436,7 +436,7 @@ func (h *AgentHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	WriteJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "conversationId": id})
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "conversationId": id})
 }
 
 // decisionRequest is the permission-decision body.
@@ -451,14 +451,14 @@ func (h *AgentHandler) Decide(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, ok := parseID(r)
+	id, ok := httpx.ParseID(r)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	var req decisionRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, "invalid request body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	var allow bool
@@ -468,17 +468,17 @@ func (h *AgentHandler) Decide(w http.ResponseWriter, r *http.Request) {
 	case "deny":
 		allow = false
 	default:
-		WriteError(w, http.StatusBadRequest, "decision must be \"allow\" or \"deny\"")
+		httpx.WriteError(w, http.StatusBadRequest, "decision must be \"allow\" or \"deny\"")
 		return
 	}
 	// Verify the step belongs to the acting tenant before resuming.
 	if _, err := h.store.GetStep(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "not found")
+			httpx.WriteError(w, http.StatusNotFound, "not found")
 			return
 		}
-		LoggerFrom(r.Context()).Error("get step failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("get step failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -489,7 +489,7 @@ func (h *AgentHandler) Decide(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	WriteJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "stepId": id})
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "stepId": id})
 }
 
 // conflictJSON is the JSON shape of a skipped revert conflict.
@@ -505,32 +505,32 @@ func (h *AgentHandler) Revert(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := h.guard(w, r); !ok {
 		return
 	}
-	id, ok := parseID(r)
+	id, ok := httpx.ParseID(r)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	// Ownership: scope the checkpoint to the acting tenant.
 	if _, err := h.store.GetCheckpoint(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "not found")
+			httpx.WriteError(w, http.StatusNotFound, "not found")
 			return
 		}
-		LoggerFrom(r.Context()).Error("get checkpoint failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("get checkpoint failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	conflicts, err := h.agent.Revert(r.Context(), id)
 	if err != nil {
-		LoggerFrom(r.Context()).Error("revert failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("revert failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	out := make([]conflictJSON, 0, len(conflicts))
 	for i := range conflicts { // bounded by len(conflicts)
 		out = append(out, conflictJSON{Table: conflicts[i].Table, PK: conflicts[i].PK})
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"conflicts": out})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"conflicts": out})
 }
 
 // Stream is the per-conversation SSE endpoint. It mirrors EventsHandler.Stream:
@@ -542,17 +542,17 @@ func (h *AgentHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	}
 	convID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || convID <= 0 {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	// Ownership: only stream a conversation the acting tenant owns.
 	if _, err := h.store.GetConversation(r.Context(), convID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			WriteError(w, http.StatusNotFound, "not found")
+			httpx.WriteError(w, http.StatusNotFound, "not found")
 			return
 		}
-		LoggerFrom(r.Context()).Error("get conversation failed", slog.Any("error", err))
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.LoggerFrom(r.Context()).Error("get conversation failed", slog.Any("error", err))
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -596,10 +596,10 @@ func (h *AgentHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeAgentFrame marshals an agent.Event and writes one SSE data frame. It
+// writeAgentFrame marshals an Event and writes one SSE data frame. It
 // returns false only when a write fails (client gone); a marshal error skips the
 // event but keeps the stream alive (returns true).
-func writeAgentFrame(w http.ResponseWriter, e agent.Event) bool {
+func writeAgentFrame(w http.ResponseWriter, e Event) bool {
 	data, err := json.Marshal(e)
 	if err != nil {
 		return true // skip a bad event rather than kill the stream

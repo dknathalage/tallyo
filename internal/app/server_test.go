@@ -1,4 +1,4 @@
-package httpapi
+package app
 
 import (
 	"net/http/httptest"

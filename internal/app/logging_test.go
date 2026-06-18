@@ -1,8 +1,9 @@
-package httpapi
+package app
 
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -56,8 +57,8 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-// newLoggingServer builds a server with the full Recover→RequestLogger→Session
-// chain plus an authenticated probe, so the request logger and RequireAuth
+// newLoggingServer builds a server with the full httpx.Recover→httpx.RequestLogger→Session
+// chain plus an authenticated probe, so the request logger and httpx.RequireAuth
 // enrichment are exercised end to end.
 func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *auth.UsersRepo) {
 	t.Helper()
@@ -67,14 +68,14 @@ func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *aut
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 
 	router := chi.NewRouter()
-	router.Use(Recover)
-	router.Use(RequestLogger)
+	router.Use(httpx.Recover)
+	router.Use(httpx.RequestLogger)
 	router.Group(func(g chi.Router) {
 		g.Use(sm.LoadAndSave)
 		g.Route("/api", func(api chi.Router) {
 			api.Post("/auth/login", authH.Login)
 			api.Group(func(pr chi.Router) {
-				pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+				pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 				pr.Get("/probe", probe200)
 			})
 		})
@@ -169,7 +170,7 @@ func TestRequestLoggerNoSecretsOnLogin(t *testing.T) {
 }
 
 func TestLoggerFromFallsBackToDefault(t *testing.T) {
-	if LoggerFrom(t.Context()) == nil {
-		t.Fatal("LoggerFrom returned nil on bare context")
+	if httpx.LoggerFrom(t.Context()) == nil {
+		t.Fatal("httpx.LoggerFrom returned nil on bare context")
 	}
 }

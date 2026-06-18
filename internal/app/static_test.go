@@ -1,6 +1,7 @@
-package httpapi
+package app
 
 import (
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
@@ -15,7 +16,7 @@ func newTestFS() fstest.MapFS {
 }
 
 func TestSPAServesAsset(t *testing.T) {
-	h := SPAHandler(newTestFS())
+	h := httpx.SPAHandler(newTestFS())
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/_app/x.js", nil))
 	if w.Code != 200 || w.Body.String() != "JSDATA" {
@@ -24,7 +25,7 @@ func TestSPAServesAsset(t *testing.T) {
 }
 
 func TestSPAFallsBackTo200(t *testing.T) {
-	h := SPAHandler(newTestFS())
+	h := httpx.SPAHandler(newTestFS())
 	for _, path := range []string{"/", "/settings", "/clients/42"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))

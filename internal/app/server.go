@@ -1,18 +1,22 @@
-package httpapi
+package app
 
 import (
 	"io/fs"
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/estimate"
+	"github.com/dknathalage/tallyo/internal/export"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -48,7 +52,7 @@ type Deps struct {
 	Invites *InviteHandler
 
 	// Events, when non-nil, serves the auth-gated SSE stream at GET /api/events.
-	Events *EventsHandler
+	Events *realtime.EventsHandler
 
 	// BusinessProfile, when non-nil, serves the auth-gated GET/PUT singleton
 	// business profile at /api/business-profile.
@@ -98,13 +102,13 @@ type Deps struct {
 
 	// Export, when non-nil, serves the auth-gated CSV/Excel export routes under
 	// /api/export.
-	Export *ExportHandler
+	Export *export.Handler
 
 	// Agent, when non-nil, serves the auth-gated AI agent routes under
 	// /api/agent: conversation create/list, message history, async message
 	// send, permission decisions, checkpoint revert, and the per-conversation
 	// SSE stream. Every route 503s when the agent is disabled.
-	Agent *AgentHandler
+	Agent *agent.AgentHandler
 }
 
 // Server wraps the configured chi router.
@@ -117,12 +121,12 @@ type Server struct {
 // deps.Assets is nil since the server cannot serve the UI without it.
 func NewServer(deps Deps) *Server {
 	if deps.Assets == nil {
-		panic("httpapi.NewServer: deps.Assets is required")
+		panic("app.NewServer: deps.Assets is required")
 	}
 
 	r := chi.NewRouter()
-	r.Use(Recover)
-	r.Use(RequestLogger)
+	r.Use(httpx.Recover)
+	r.Use(httpx.RequestLogger)
 	// LoadAndSave must wrap any route that reads or writes the session. It is
 	// harmless on session-free routes (/healthz, SPA).
 	if deps.Session != nil {
@@ -154,13 +158,13 @@ func NewServer(deps Deps) *Server {
 		// protected route, since RequireAuth requires non-nil Session and Users.
 		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Agent != nil {
 			api.Group(func(pr chi.Router) {
-				pr.Use(RequireAuth(deps.Session, deps.Users, deps.Tenants))
+				pr.Use(httpx.RequireAuth(deps.Session, deps.Users, deps.Tenants))
 				if deps.Auth != nil {
 					pr.Get("/auth/me", deps.Auth.Me)
 				}
 				if deps.Invites != nil {
 					// User management is owner/admin only (spec §3.2).
-					pr.With(RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
+					pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
 				}
 				if deps.Events != nil {
 					pr.Get("/events", deps.Events.Stream)
@@ -223,7 +227,7 @@ func NewServer(deps Deps) *Server {
 
 	// SPA static handler must be registered last as the catch-all so that
 	// /healthz and /api take precedence.
-	r.Handle("/*", SPAHandler(deps.Assets))
+	r.Handle("/*", httpx.SPAHandler(deps.Assets))
 
 	return &Server{Router: r}
 }

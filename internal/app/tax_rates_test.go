@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newTaxRateServer wires the tax-rate routes behind RequireAuth the same way
+// newTaxRateServer wires the tax-rate routes behind httpx.RequireAuth the same way
 // production does, plus a login route so tests can authenticate.
 func newTaxRateServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -27,7 +28,7 @@ func newTaxRateServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/tax-rates", trH.List)
 			pr.Post("/tax-rates", trH.Create)
 			pr.Get("/tax-rates/{id}", trH.Get)

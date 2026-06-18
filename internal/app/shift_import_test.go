@@ -1,4 +1,4 @@
-package httpapi
+package app
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ import (
 // migrated temp DB, plus a request context carrying a tenant+user so guard
 // passes. The fake llm is never reached by the validation tests (they return
 // before any model call).
-func newImportHandler(t *testing.T) (*AgentHandler, context.Context) {
+func newImportHandler(t *testing.T) (*agent.AgentHandler, context.Context) {
 	t.Helper()
 	conn := openMigratedDB(t, "shift_import.db")
 	_, tenantID, userID := seedTenantOwner(t, conn)
@@ -36,7 +36,7 @@ func newImportHandler(t *testing.T) (*AgentHandler, context.Context) {
 	ag := agent.NewAgent(cfg, llm.NewFake(), store, reg, cp, events).WithBudget(budget)
 
 	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
-	h := NewAgentHandler(ag, budget, true).WithShiftImport(shiftSvc, llm.NewFake(), cfg)
+	h := agent.NewAgentHandler(ag, budget, true).WithShiftImport(shiftSvc, llm.NewFake(), cfg)
 
 	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
 	return h, ctx
@@ -98,7 +98,7 @@ func TestImportShiftsIdempotent(t *testing.T) {
 	ag := agent.NewAgent(cfg, llm.NewFake(), store, reg, cp, events).WithBudget(budget)
 
 	shiftSvc := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
-	h := NewAgentHandler(ag, budget, true).WithShiftImport(shiftSvc, fake, cfg)
+	h := agent.NewAgentHandler(ag, budget, true).WithShiftImport(shiftSvc, fake, cfg)
 
 	body := `{"participantId":` + itoa(p.ID) + `,"text":"timesheet"}`
 
@@ -166,7 +166,7 @@ func TestImportShiftsBadBody400(t *testing.T) {
 
 func TestImportShiftsDisabled503(t *testing.T) {
 	// A guard-only (disabled) handler 503s before any validation.
-	h := NewAgentHandler(nil, nil, false)
+	h := agent.NewAgentHandler(nil, nil, false)
 	w := httptest.NewRecorder()
 	h.ImportShifts(w, importReq(t, context.Background(), `{"participantId":1,"text":"x"}`))
 	if w.Code != http.StatusServiceUnavailable {

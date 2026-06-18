@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"bytes"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/estimate"
+	"github.com/dknathalage/tallyo/internal/export"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -18,7 +20,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newExportServer wires the export routes behind RequireAuth and seeds two
+// newExportServer wires the export routes behind httpx.RequireAuth and seeds two
 // custom items so the catalog exports are non-empty. Seeding goes through the
 // authenticated owner's tenant context so the items belong to the tenant.
 func newExportServer(t *testing.T) *httptest.Server {
@@ -38,7 +40,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	expH := NewExportHandler(
+	expH := export.NewHandler(
 		customItemSvc,
 		invoice.NewService(conn, hub, shift.NewShifts(conn)),
 		estimate.NewService(conn, hub),
@@ -48,7 +50,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/export/catalog", expH.Catalog)
 			pr.Get("/export/invoices", expH.Invoices)
 			pr.Get("/export/estimates", expH.Estimates)

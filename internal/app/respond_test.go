@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,7 +10,7 @@ import (
 
 func TestWriteJSON(t *testing.T) {
 	w := httptest.NewRecorder()
-	WriteJSON(w, 200, map[string]string{"a": "b"})
+	httpx.WriteJSON(w, 200, map[string]string{"a": "b"})
 	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
 		t.Fatalf("content-type = %q", ct)
 	}
@@ -27,7 +28,7 @@ func TestWriteJSON(t *testing.T) {
 
 func TestWriteError(t *testing.T) {
 	w := httptest.NewRecorder()
-	WriteError(w, 404, "nope")
+	httpx.WriteError(w, 404, "nope")
 	if w.Code != 404 {
 		t.Fatalf("code = %d", w.Code)
 	}
@@ -42,7 +43,7 @@ func TestDecodeJSONRejectsUnknownField(t *testing.T) {
 	}
 	r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"x","bogus":1}`))
 	var dst in
-	if err := DecodeJSON(r, &dst); err == nil {
+	if err := httpx.DecodeJSON(r, &dst); err == nil {
 		t.Fatal("unknown field must error")
 	}
 }
@@ -53,7 +54,7 @@ func TestDecodeJSONOK(t *testing.T) {
 	}
 	r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"x"}`))
 	var dst in
-	if err := DecodeJSON(r, &dst); err != nil {
+	if err := httpx.DecodeJSON(r, &dst); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if dst.Name != "x" {

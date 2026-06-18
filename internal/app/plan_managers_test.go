@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -30,7 +31,7 @@ func delete_(t *testing.T, c *http.Client, url string) *http.Response {
 	return resp
 }
 
-// newPlanManagerServer wires the plan-manager routes behind RequireAuth the same
+// newPlanManagerServer wires the plan-manager routes behind httpx.RequireAuth the same
 // way production does, plus a login route so tests can authenticate.
 func newPlanManagerServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -45,7 +46,7 @@ func newPlanManagerServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pH.Routes(pr)
 		})
 	})

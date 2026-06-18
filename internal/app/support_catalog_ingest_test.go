@@ -1,8 +1,9 @@
-package httpapi
+package app
 
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ import (
 )
 
 // newCatalogIngestServer wires the platform-admin catalogue ingest route behind
-// RequireAuth + RequirePlatformAdmin. seedTenantOwner creates the "o@x.com"
+// httpx.RequireAuth + httpx.RequirePlatformAdmin. seedTenantOwner creates the "o@x.com"
 // owner as a platform admin; we additionally seed a non-admin "member" so the
 // 403 path is exercised.
 func newCatalogIngestServer(t *testing.T) *httptest.Server {
@@ -45,9 +46,9 @@ func newCatalogIngestServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/support-catalog/versions", scH.ListVersions)
-			pr.With(RequirePlatformAdmin).Post("/support-catalog/versions", scH.Ingest)
+			pr.With(httpx.RequirePlatformAdmin).Post("/support-catalog/versions", scH.Ingest)
 		})
 	})
 

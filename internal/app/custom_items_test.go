@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,7 @@ import (
 )
 
 // newCustomItemServer wires the per-tenant custom-item routes and the read-only
-// global support-catalog routes behind RequireAuth.
+// global support-catalog routes behind httpx.RequireAuth.
 func newCustomItemServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	conn := openMigratedDB(t, "custom_items.db")
@@ -30,7 +31,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			ciH.Routes(pr)
 			pr.Get("/support-catalog/versions", scH.ListVersions)
 			pr.Get("/support-catalog/versions/{id}/items", scH.ListItems)

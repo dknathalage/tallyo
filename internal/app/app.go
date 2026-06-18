@@ -26,7 +26,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/estimate"
-	httpapi "github.com/dknathalage/tallyo/internal/http"
+	"github.com/dknathalage/tallyo/internal/export"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
@@ -161,7 +161,7 @@ func Run(cfg Config, version string) error {
 	// enabled=false) so /api/agent/* routes are registered and return a clean 503
 	// instead of falling through to the SPA catch-all (200 index.html). agentSvc
 	// stays nil when disabled → the sweeper skips SweepExpired.
-	var agentHandler *httpapi.AgentHandler
+	var agentHandler *agent.AgentHandler
 	var agentSvc *agent.Agent
 	if agentCfg.Enabled() {
 		agentStore := agent.NewStore(conn)
@@ -179,10 +179,10 @@ func Run(cfg Config, version string) error {
 		agentSvc = agent.NewAgent(agentCfg, llmClient, agentStore, agentReg, agentCP, agentEvents).
 			WithBudget(agentBudget).
 			WithRestore(agent.InvoiceRestoreFunc(invoiceSvc))
-		agentHandler = httpapi.NewAgentHandler(agentSvc, agentBudget, true).
+		agentHandler = agent.NewAgentHandler(agentSvc, agentBudget, true).
 			WithShiftImport(shiftSvc, llmClient, agentCfg)
 	} else {
-		agentHandler = httpapi.NewAgentHandler(nil, nil, false)
+		agentHandler = agent.NewAgentHandler(nil, nil, false)
 	}
 
 	assets, err := fs.Sub(tallyoweb.Build, "build")
@@ -194,15 +194,15 @@ func Run(cfg Config, version string) error {
 		return fmt.Errorf("embedded SPA missing 200.html — run `npm run build` in web/ before `go build`: %w", err)
 	}
 
-	deps := httpapi.Deps{
+	deps := Deps{
 		Assets:          assets,
 		Users:           users,
 		Tenants:         tenants,
 		Session:         sm,
-		Signup:          httpapi.NewSignupHandler(sm, tenants, users),
-		Auth:            httpapi.NewAuthHandler(sm, users, tenants),
-		Invites:         httpapi.NewInviteHandler(invites, users),
-		Events:          httpapi.NewEventsHandler(hub),
+		Signup:          NewSignupHandler(sm, tenants, users),
+		Auth:            NewAuthHandler(sm, users, tenants),
+		Invites:         NewInviteHandler(invites, users),
+		Events:          realtime.NewEventsHandler(hub),
 		BusinessProfile: businessprofile.NewHandler(bpSvc),
 		PlanManagers:    planmanager.NewHandler(planManagerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
@@ -214,11 +214,11 @@ func Run(cfg Config, version string) error {
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),
-		Export:          httpapi.NewExportHandler(customItemSvc, invoiceSvc, estimateSvc),
+		Export:          export.NewHandler(customItemSvc, invoiceSvc, estimateSvc),
 		Agent:           agentHandler,
 	}
 
-	server := httpapi.NewServer(deps)
+	server := NewServer(deps)
 
 	// baseCtx is the parent of every request context. Cancelling it on shutdown
 	// signals long-lived handlers (the SSE /api/events stream) to return so

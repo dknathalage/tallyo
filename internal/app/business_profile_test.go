@@ -1,7 +1,8 @@
-package httpapi
+package app
 
 import (
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newBusinessProfileServer wires the business-profile routes behind RequireAuth
+// newBusinessProfileServer wires the business-profile routes behind httpx.RequireAuth
 // the same way production does, plus a login route so tests can authenticate.
 func newBusinessProfileServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -28,7 +29,7 @@ func newBusinessProfileServer(t *testing.T) *httptest.Server {
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			bpH.Routes(pr)
 		})
 	})
@@ -61,7 +62,7 @@ func TestBusinessProfileGetEmptyReturnsNull(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get empty: want 200 got %d", resp.StatusCode)
 	}
-	// svc.Get returns nil on empty DB; WriteJSON encodes that as JSON null.
+	// svc.Get returns nil on empty DB; httpx.WriteJSON encodes that as JSON null.
 	buf := make([]byte, 16)
 	n, _ := resp.Body.Read(buf)
 	if got := string(buf[:n]); got != "null\n" {

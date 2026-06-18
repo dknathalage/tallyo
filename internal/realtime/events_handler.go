@@ -1,22 +1,21 @@
-package httpapi
+package realtime
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // EventsHandler serves the Server-Sent-Events stream of change events.
 type EventsHandler struct {
-	hub *realtime.Hub
+	hub *Hub
 }
 
 // NewEventsHandler builds an EventsHandler. It panics on a nil hub since the
 // handler cannot function without one (programmer error at wiring time).
-func NewEventsHandler(hub *realtime.Hub) *EventsHandler {
+func NewEventsHandler(hub *Hub) *EventsHandler {
 	if hub == nil {
 		panic("NewEventsHandler: nil hub")
 	}
@@ -80,7 +79,7 @@ func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 // writeFrame marshals e and writes a single SSE data frame. It returns false
 // only when a write fails (client gone). A marshal error skips the event but
 // keeps the stream alive (returns true).
-func writeFrame(w http.ResponseWriter, e realtime.Event) bool {
+func writeFrame(w http.ResponseWriter, e Event) bool {
 	data, err := json.Marshal(e)
 	if err != nil {
 		return true // skip a bad event rather than kill the stream

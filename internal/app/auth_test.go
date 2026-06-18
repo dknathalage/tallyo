@@ -1,8 +1,9 @@
-package httpapi
+package app
 
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -31,7 +32,7 @@ func openMigratedDB(t *testing.T, name string) *sql.DB {
 
 // seedTenantOwner provisions a tenant plus its platform-admin owner
 // ("o@x.com" / "password1"). It returns the users repo, the tenant id, and the
-// owner user id. End-to-end login + RequireAuth wire the tenant into context, so
+// owner user id. End-to-end login + httpx.RequireAuth wire the tenant into context, so
 // callers only need the owner to exist in a tenant.
 func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64) {
 	t.Helper()
@@ -68,7 +69,7 @@ func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int6
 		api.Post("/auth/login", authH.Login)
 		api.Post("/auth/logout", authH.Logout)
 		api.Group(func(pr chi.Router) {
-			pr.Use(RequireAuth(sm, users, auth.NewTenants(conn)))
+			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
 			pr.Get("/auth/me", authH.Me)
 			pr.Get("/probe", probe200)
 		})
@@ -80,7 +81,7 @@ func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int6
 }
 
 func probe200(w http.ResponseWriter, _ *http.Request) {
-	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // jarClient returns an http.Client with a cookie jar so sessions persist.
