@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -100,30 +99,6 @@ func NewInvoices(db *sql.DB) *InvoicesRepo {
 		panic("repository: NewInvoices requires a non-nil *sql.DB")
 	}
 	return &InvoicesRepo{db: db}
-}
-
-// totals holds the server-computed money fields derived from line items.
-type totals struct {
-	subtotal float64
-	tax      float64
-	total    float64
-}
-
-// computeTotals sums line totals into the subtotal and applies the (already
-// computed) tax amount. Each boundary is rounded to the cent (spec §6).
-func computeTotals(items []billing.LineItemInput, tax float64) totals {
-	var subtotal float64
-	for i := range items { // bounded by len(items)
-		subtotal += round2(items[i].Quantity * items[i].UnitPrice)
-	}
-	subtotal = round2(subtotal)
-	tax = round2(tax)
-	return totals{subtotal: subtotal, tax: tax, total: round2(subtotal + tax)}
-}
-
-// round2 rounds to two decimal places (cents).
-func round2(x float64) float64 {
-	return math.Round(x*100) / 100
 }
 
 // fillSnapshots fills any empty snapshot field on in with a default built from
@@ -216,7 +191,7 @@ func nextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (str
 // createInvoiceParams builds the insert params, applying defaults (draft) and
 // computing totals from the line items.
 func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineItemInput, num string) gen.CreateInvoiceParams {
-	t := computeTotals(items, in.Tax)
+	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
 		Uuid:             uuid.NewString(),
@@ -227,9 +202,9 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
 		DueDate:          in.DueDate,
-		Subtotal:         t.subtotal,
-		Tax:              t.tax,
-		Total:            t.total,
+		Subtotal:         t.Subtotal,
+		Tax:              t.Tax,
+		Total:            t.Total,
 		Notes:            nzMaybe(in.Notes),
 		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
 		ClientSnapshot:   nzMaybe(in.ClientSnapshot),
@@ -257,7 +232,7 @@ func insertItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64,
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
 			GstFree:          b2i(it.GstFree),
-			LineTotal:        round2(it.Quantity * it.UnitPrice),
+			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
@@ -289,7 +264,7 @@ func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, e
 		return nil, fmt.Errorf("invoice total paid: %w", err)
 	}
 	inv.TotalPaid = tp
-	inv.Balance = round2(inv.Total - tp)
+	inv.Balance = billing.Round2(inv.Total - tp)
 	return inv, nil
 }
 
@@ -391,7 +366,7 @@ func keepSnapshots(in *InvoiceInput, existing gen.GetInvoiceRow) {
 // updateInvoiceParams builds the update params, recomputing totals from items.
 // The document number is immutable, so the existing number is preserved.
 func updateInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineItemInput, number string, id int64) gen.UpdateInvoiceParams {
-	t := computeTotals(items, in.Tax)
+	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateInvoiceParams{
 		Number:           number,
@@ -400,9 +375,9 @@ func updateInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
 		DueDate:          in.DueDate,
-		Subtotal:         t.subtotal,
-		Tax:              t.tax,
-		Total:            t.total,
+		Subtotal:         t.Subtotal,
+		Tax:              t.Tax,
+		Total:            t.Total,
 		Notes:            nzMaybe(in.Notes),
 		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
 		ClientSnapshot:   nzMaybe(in.ClientSnapshot),

@@ -282,8 +282,8 @@ func (r *RecurringRepo) GenerateOne(ctx context.Context, tenantID, templateID in
 	items := parseLines(tpl.LineItems)
 	today := time.Now().UTC().Format("2006-01-02")
 	// tax_rate is a percentage; compute the tax amount from the subtotal.
-	subtotal := computeTotals(items, 0).subtotal
-	tax := round2(subtotal * (tpl.TaxRate / 100))
+	subtotal := billing.ComputeTotals(items, 0).Subtotal
+	tax := billing.Round2(subtotal * (tpl.TaxRate / 100))
 	snaps := r.buildGenSnapshots(ctx, tenantID, tpl.ParticipantID, tpl.PlanManagerID)
 
 	var invID int64
@@ -367,7 +367,7 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []bill
 	if tpl.ParticipantID != nil {
 		pid = *tpl.ParticipantID
 	}
-	t := computeTotals(items, tax)
+	t := billing.ComputeTotals(items, tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
 		Uuid:             uuid.NewString(),
@@ -378,9 +378,9 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []bill
 		Status:           "draft",
 		IssueDate:        today,
 		DueDate:          today,
-		Subtotal:         t.subtotal,
-		Tax:              t.tax,
-		Total:            t.total,
+		Subtotal:         t.Subtotal,
+		Tax:              t.Tax,
+		Total:            t.Total,
 		Notes:            nzMaybe(tpl.Notes),
 		BusinessSnapshot: nzMaybe(snaps.business),
 		ClientSnapshot:   nzMaybe(snaps.client),

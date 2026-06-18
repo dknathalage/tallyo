@@ -179,7 +179,7 @@ func nextEstimateNumber(ctx context.Context, q *gen.Queries, tenantID int64) (st
 
 // createEstimateParams builds the insert params, applying defaults and totals.
 func createEstimateParams(tenantID int64, in EstimateInput, items []billing.LineItemInput, num string) gen.CreateEstimateParams {
-	t := computeTotals(items, in.Tax)
+	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateEstimateParams{
 		Uuid:               uuid.NewString(),
@@ -190,9 +190,9 @@ func createEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 		Status:             orDefault(in.Status, "draft"),
 		IssueDate:          in.IssueDate,
 		ValidUntil:         in.ValidUntil,
-		Subtotal:           t.subtotal,
-		Tax:                t.tax,
-		Total:              t.total,
+		Subtotal:           t.Subtotal,
+		Tax:                t.Tax,
+		Total:              t.Total,
 		Notes:              nzMaybe(in.Notes),
 		ConvertedInvoiceID: sql.NullInt64{},
 		BusinessSnapshot:   nzMaybe(in.BusinessSnapshot),
@@ -221,7 +221,7 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
 			GstFree:          b2i(it.GstFree),
-			LineTotal:        round2(it.Quantity * it.UnitPrice),
+			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
@@ -348,7 +348,7 @@ func keepEstimateSnapshots(in *EstimateInput, existing gen.GetEstimateRow) {
 
 // updateEstimateParams builds the update params; the number is immutable.
 func updateEstimateParams(tenantID int64, in EstimateInput, items []billing.LineItemInput, number string, id int64) gen.UpdateEstimateParams {
-	t := computeTotals(items, in.Tax)
+	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateEstimateParams{
 		Number:           number,
@@ -357,9 +357,9 @@ func updateEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
 		ValidUntil:       in.ValidUntil,
-		Subtotal:         t.subtotal,
-		Tax:              t.tax,
-		Total:            t.total,
+		Subtotal:         t.Subtotal,
+		Tax:              t.Tax,
+		Total:            t.Total,
 		Notes:            nzMaybe(in.Notes),
 		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
 		ClientSnapshot:   nzMaybe(in.ClientSnapshot),
