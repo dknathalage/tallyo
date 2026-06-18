@@ -109,9 +109,24 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotency: skip drafts that match a shift already recorded for this
+	// participant. Re-importing the same timesheet (or one that overlaps a prior
+	// import) must not create duplicates. The set also dedups within this batch.
+	seen, err := h.existingShiftKeys(ctx, req.ParticipantID, drafts)
+	if err != nil {
+		slog.Error("import shifts: load existing", slog.Any("error", err))
+		WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	created := make([]*repository.Shift, 0, len(drafts))
 	for i := range drafts { // bounded by len(drafts)
 		d := drafts[i]
+		key := shiftDedupKey(d.ServiceDate, d.StartTime, d.EndTime, d.Hours, d.Km)
+		if _, dup := seen[key]; dup {
+			continue // already recorded (or an in-batch duplicate)
+		}
+		seen[key] = struct{}{}
 		sh, e := h.shifts.Create(ctx, repository.ShiftInput{
 			ParticipantID: req.ParticipantID,
 			ServiceDate:   d.ServiceDate,
@@ -130,6 +145,42 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 		created = append(created, sh)
 	}
 	WriteJSON(w, http.StatusCreated, created)
+}
+
+// existingShiftKeys returns the dedup-key set of the participant's already
+// recorded shifts that fall within the drafts' service-date span. It queries only
+// that window (the min..max draft date) rather than every shift, then keys each
+// existing row the same way a draft is keyed so re-imports are detected.
+func (h *AgentHandler) existingShiftKeys(ctx context.Context, participantID int64, drafts []agent.ShiftDraft) (map[string]struct{}, error) {
+	keys := make(map[string]struct{}, len(drafts))
+	if len(drafts) == 0 {
+		return keys, nil
+	}
+	from, to := drafts[0].ServiceDate, drafts[0].ServiceDate
+	for i := range drafts { // bounded by len(drafts); ISO dates sort lexicographically
+		if d := drafts[i].ServiceDate; d < from {
+			from = d
+		} else if d > to {
+			to = d
+		}
+	}
+	existing, err := h.shifts.ListParticipant(ctx, participantID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("list existing shifts: %w", err)
+	}
+	for i := range existing { // bounded by len(existing)
+		s := existing[i]
+		keys[shiftDedupKey(s.ServiceDate, s.StartTime, s.EndTime, s.Hours, s.Km)] = struct{}{}
+	}
+	return keys, nil
+}
+
+// shiftDedupKey is the natural identity of a shift for import idempotency:
+// service date, start/end time (as written) and the billable hours/km. The free
+// note is deliberately excluded — model re-extractions can reword it, which would
+// defeat dedup — while date+times+quantities pin the same delivered shift.
+func shiftDedupKey(serviceDate, startTime, endTime string, hours, km float64) string {
+	return fmt.Sprintf("%s\x1f%s\x1f%s\x1f%.3f\x1f%.3f", serviceDate, startTime, endTime, hours, km)
 }
 
 // draftInvoiceRequest is the body of DraftInvoiceFromShifts: the inclusive

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -271,7 +272,17 @@ func run() error {
 	}
 
 	server := httpapi.NewServer(deps)
-	srv := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: server.Router}
+
+	// baseCtx is the parent of every request context. Cancelling it on shutdown
+	// signals long-lived handlers (the SSE /api/events stream) to return so
+	// srv.Shutdown can drain instead of blocking until its timeout.
+	baseCtx, cancelBase := context.WithCancel(context.Background())
+	defer cancelBase()
+	srv := &http.Server{
+		Addr:        fmt.Sprintf(":%d", *port),
+		Handler:     server.Router,
+		BaseContext: func(net.Listener) context.Context { return baseCtx },
+	}
 
 	// Run one per-tenant sweep at startup, then keep a background sweeper running
 	// on an hourly tick. The done channel stops the goroutine on shutdown so it
@@ -304,6 +315,7 @@ func run() error {
 		logger.Info("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		cancelBase() // release long-lived SSE handlers so Shutdown can drain
 		if err := srv.Shutdown(ctx); err != nil {
 			return fmt.Errorf("shutdown: %w", err)
 		}
