@@ -77,10 +77,10 @@ type ConvertResult struct {
 }
 
 // EstimatesRepo reads and writes the estimates + estimate_line_items tables
-// (tenant-scoped). It reuses InvoicesRepo for the shared snapshot builders.
+// (tenant-scoped).
 type EstimatesRepo struct {
 	db   *sql.DB
-	snap *InvoicesRepo
+	snap *billing.SnapshotBuilder
 }
 
 // NewEstimates constructs a repository. A nil db is a programmer error.
@@ -88,20 +88,20 @@ func NewEstimates(db *sql.DB) *EstimatesRepo {
 	if db == nil {
 		panic("repository: NewEstimates requires a non-nil *sql.DB")
 	}
-	return &EstimatesRepo{db: db, snap: NewInvoices(db)}
+	return &EstimatesRepo{db: db, snap: billing.NewSnapshotBuilder(db)}
 }
 
 // fillSnapshots fills any empty snapshot field on in with a default built from
 // the business profile, participant and plan manager.
 func (r *EstimatesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *EstimateInput) {
 	if in.BusinessSnapshot == "" {
-		in.BusinessSnapshot = r.snap.buildBusinessSnapshot(ctx, tenantID)
+		in.BusinessSnapshot = r.snap.Business(ctx, tenantID)
 	}
 	if in.ClientSnapshot == "" {
-		in.ClientSnapshot = r.snap.buildParticipantSnapshot(ctx, tenantID, in.ParticipantID)
+		in.ClientSnapshot = r.snap.Participant(ctx, tenantID, in.ParticipantID)
 	}
 	if in.PayerSnapshot == "" {
-		in.PayerSnapshot = r.snap.buildPlanManagerSnapshot(ctx, tenantID, in.PlanManagerID)
+		in.PayerSnapshot = r.snap.PlanManager(ctx, tenantID, in.PlanManagerID)
 	}
 }
 

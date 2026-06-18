@@ -79,7 +79,7 @@ type GeneratedInvoice struct {
 // double-generates.
 type RecurringRepo struct {
 	db   *sql.DB
-	snap *InvoicesRepo
+	snap *billing.SnapshotBuilder
 }
 
 // NewRecurring constructs a repository. A nil db is a programmer error.
@@ -87,7 +87,7 @@ func NewRecurring(db *sql.DB) *RecurringRepo {
 	if db == nil {
 		panic("repository: NewRecurring requires a non-nil *sql.DB")
 	}
-	return &RecurringRepo{db: db, snap: NewInvoices(db)}
+	return &RecurringRepo{db: db, snap: billing.NewSnapshotBuilder(db)}
 }
 
 // validFrequencies is the closed set of supported cadences.
@@ -310,9 +310,9 @@ func (r *RecurringRepo) buildGenSnapshots(ctx context.Context, tenantID int64, p
 		pid = *participantID
 	}
 	return genSnapshots{
-		business: r.snap.buildBusinessSnapshot(ctx, tenantID),
-		client:   r.snap.buildParticipantSnapshot(ctx, tenantID, pid),
-		payer:    r.snap.buildPlanManagerSnapshot(ctx, tenantID, planManagerID),
+		business: r.snap.Business(ctx, tenantID),
+		client:   r.snap.Participant(ctx, tenantID, pid),
+		payer:    r.snap.PlanManager(ctx, tenantID, planManagerID),
 	}
 }
 

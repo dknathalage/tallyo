@@ -20,7 +20,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -90,7 +89,8 @@ type ParticipantStats struct {
 
 // InvoicesRepo reads and writes the invoices + line_items tables (tenant-scoped).
 type InvoicesRepo struct {
-	db *sql.DB
+	db   *sql.DB
+	snap *billing.SnapshotBuilder
 }
 
 // NewInvoices constructs a repository. A nil db is a programmer error.
@@ -98,20 +98,20 @@ func NewInvoices(db *sql.DB) *InvoicesRepo {
 	if db == nil {
 		panic("repository: NewInvoices requires a non-nil *sql.DB")
 	}
-	return &InvoicesRepo{db: db}
+	return &InvoicesRepo{db: db, snap: billing.NewSnapshotBuilder(db)}
 }
 
 // fillSnapshots fills any empty snapshot field on in with a default built from
 // the business profile, participant and plan manager.
 func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *InvoiceInput) {
 	if in.BusinessSnapshot == "" {
-		in.BusinessSnapshot = r.buildBusinessSnapshot(ctx, tenantID)
+		in.BusinessSnapshot = r.snap.Business(ctx, tenantID)
 	}
 	if in.ClientSnapshot == "" {
-		in.ClientSnapshot = r.buildParticipantSnapshot(ctx, tenantID, in.ParticipantID)
+		in.ClientSnapshot = r.snap.Participant(ctx, tenantID, in.ParticipantID)
 	}
 	if in.PayerSnapshot == "" {
-		in.PayerSnapshot = r.buildPlanManagerSnapshot(ctx, tenantID, in.PlanManagerID)
+		in.PayerSnapshot = r.snap.PlanManager(ctx, tenantID, in.PlanManagerID)
 	}
 }
 
@@ -524,54 +524,6 @@ func (r *InvoicesRepo) ParticipantStats(ctx context.Context, tenantID, participa
 		return nil, fmt.Errorf("participant stats: %w", err)
 	}
 	return &ParticipantStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced, TotalPaid: row.TotalPaid}, nil
-}
-
-// snapshotJSON builds the default snapshot JSON for an entity. metadata is parsed
-// into an object (or {} on failure) so the stored shape is uniform.
-func snapshotJSON(name, email, phone, address, metadata string) string {
-	var meta any
-	if err := json.Unmarshal([]byte(metadata), &meta); err != nil || metadata == "" {
-		meta = map[string]any{}
-	}
-	b, err := json.Marshal(map[string]any{
-		"name": name, "email": email, "phone": phone, "address": address, "metadata": meta,
-	})
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
-}
-
-// buildBusinessSnapshot reads the tenant's business profile and renders a default
-// snapshot.
-func (r *InvoicesRepo) buildBusinessSnapshot(ctx context.Context, tenantID int64) string {
-	bp, err := gen.New(r.db).GetBusinessProfile(ctx, tenantID)
-	if err != nil {
-		return "{}"
-	}
-	return snapshotJSON(bp.Name, bp.Email.String, bp.Phone.String, bp.Address.String, bp.Metadata.String)
-}
-
-// buildParticipantSnapshot reads the participant and renders a default snapshot.
-func (r *InvoicesRepo) buildParticipantSnapshot(ctx context.Context, tenantID, participantID int64) string {
-	p, err := gen.New(r.db).GetParticipant(ctx, gen.GetParticipantParams{TenantID: tenantID, ID: participantID})
-	if err != nil {
-		return "{}"
-	}
-	return snapshotJSON(p.Name, p.Email.String, p.Phone.String, p.Address.String, p.Metadata.String)
-}
-
-// buildPlanManagerSnapshot renders a default snapshot for the given plan manager,
-// or "{}" when none is set.
-func (r *InvoicesRepo) buildPlanManagerSnapshot(ctx context.Context, tenantID int64, planManagerID *int64) string {
-	if planManagerID == nil {
-		return "{}"
-	}
-	pm, err := gen.New(r.db).GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, ID: *planManagerID})
-	if err != nil {
-		return "{}"
-	}
-	return snapshotJSON(pm.Name, pm.Email.String, pm.Phone.String, pm.Address.String, pm.Metadata.String)
 }
 
 // invoiceFields is the shared, flat shape of every invoices join row (List,
