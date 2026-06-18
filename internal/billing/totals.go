@@ -22,9 +22,7 @@ func ComputeTotals(items []LineItemInput, tax float64) Totals {
 	return Totals{Subtotal: subtotal, Tax: tax, Total: Round2(subtotal + tax)}
 }
 
-// Round2 rounds to two decimal places (cents). A small epsilon is added before
-// rounding to handle IEEE 754 cases such as 1.005, which cannot be represented
-// exactly and would otherwise round down without it.
+// Round2 rounds to two decimal places (cents).
 func Round2(x float64) float64 {
-	return math.Round((x+1e-9)*100) / 100
+	return math.Round(x*100) / 100
 }
