@@ -23,8 +23,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // newStallAgent wires the same stack as newTestAgent (Store + InvoiceService +
@@ -56,7 +56,7 @@ func newStallAgent(t *testing.T, client llm.Client) (*Agent, *Store, *invoice.Se
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	inv := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()
@@ -385,7 +385,7 @@ func newStallAgentDeferred(t *testing.T) (*Agent, *Store, *invoice.Service, int6
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	inv := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()

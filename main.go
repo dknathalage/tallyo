@@ -28,9 +28,9 @@ import (
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
@@ -211,8 +211,8 @@ func run() error {
 	customItemSvc := customitem.NewService(conn, hub)
 	supportCatalogSvc := catalog.NewService(conn)
 	catalogIngestSvc := catalog.NewIngestService(conn, hub)
-	shiftSvc := service.NewShiftService(conn, hub)
-	invoiceSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
+	invoiceSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	estimateSvc := estimate.NewService(conn, hub)
 	paymentSvc := invoice.NewPaymentService(conn, hub)
 	recurringSvc := service.NewRecurringService(conn, hub)
@@ -272,7 +272,7 @@ func run() error {
 		CustomItems:     customitem.NewHandler(customItemSvc),
 		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
-		Shifts:          httpapi.NewShiftHandler(shiftSvc),
+		Shifts:          shift.NewHandler(shiftSvc),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       httpapi.NewRecurringHandler(recurringSvc),

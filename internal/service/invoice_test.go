@@ -8,7 +8,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 func newInvoiceSvc(t *testing.T) (*invoice.Service, *realtime.Hub, int64, int64) {
@@ -17,7 +17,7 @@ func newInvoiceSvc(t *testing.T) (*invoice.Service, *realtime.Hub, int64, int64)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return invoice.NewService(conn, hub, repository.NewShifts(conn)), hub, tenantID, participantID
+	return invoice.NewService(conn, hub, shift.NewShifts(conn)), hub, tenantID, participantID
 }
 
 func TestInvoiceCreateBroadcasts(t *testing.T) {
@@ -79,7 +79,7 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	svc := invoice.NewService(conn, hub, shift.NewShifts(conn))
 
 	tenantA := seedTenant(t, conn)          // active
 	tenantB := seedSuspendedTenant(t, conn) // suspended

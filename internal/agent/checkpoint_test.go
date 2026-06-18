@@ -11,8 +11,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // newCheckpointFixture builds a Store, an invoice.Service and an open checkpoint
@@ -25,7 +25,7 @@ func newCheckpointFixture(t *testing.T) (ctx context.Context, s *Store, inv *inv
 
 	participantID = seedAgentParticipant(t, s.db, ctx)
 
-	inv = invoice.NewService(s.db, realtime.NewHub(), repository.NewShifts(s.db))
+	inv = invoice.NewService(s.db, realtime.NewHub(), shift.NewShifts(s.db))
 	cp = NewCheckpoint(s, s.db)
 
 	conv, err := s.CreateConversation(ctx, "chat")

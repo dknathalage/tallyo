@@ -1,30 +1,38 @@
-package service
+package shift
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 
-	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// ShiftService orchestrates the shift lifecycle (record→draft→bill) and
+// InvoiceChecker is the narrow interface the shift service requires to verify
+// that an invoice exists before linking shifts to it. It breaks the
+// shift→invoice import cycle: the shift package declares this interface; the
+// caller (main.go) injects a concrete *invoice.InvoicesRepo which satisfies it.
+type InvoiceChecker interface {
+	Exists(ctx context.Context, tenantID, invoiceID int64) (bool, error)
+}
+
+// Service orchestrates the shift lifecycle (record→draft→bill) and
 // publishes change events after a successful commit. It resolves the caller's
 // tenant (and, for authorship, user) from the request context.
-type ShiftService struct {
-	repo     *repository.ShiftsRepo
-	invoices *invoice.InvoicesRepo
+type Service struct {
+	repo     *ShiftsRepo
+	invoices InvoiceChecker
 	hub      *realtime.Hub
 }
 
-func NewShiftService(db *sql.DB, hub *realtime.Hub) *ShiftService {
+// NewService constructs the shift service. A nil hub is a programmer error.
+// invoices is the InvoiceChecker used to verify the invoice in MarkDrafted.
+func NewService(db *sql.DB, hub *realtime.Hub, invoices InvoiceChecker) *Service {
 	if hub == nil {
-		panic("NewShiftService: nil hub")
+		panic("shift.NewService: nil hub")
 	}
-	return &ShiftService{repo: repository.NewShifts(db), invoices: invoice.NewInvoices(db), hub: hub}
+	return &Service{repo: NewShifts(db), invoices: invoices, hub: hub}
 }
 
 // Suggestion is a billing prompt: a participant's recorded-but-unbilled shifts
@@ -39,14 +47,14 @@ type Suggestion struct {
 
 // ListParticipant returns a participant's shifts, optionally restricted to the
 // [from, to] service-date window (both empty → all shifts).
-func (s *ShiftService) ListParticipant(ctx context.Context, participantID int64, from, to string) ([]*repository.Shift, error) {
+func (s *Service) ListParticipant(ctx context.Context, participantID int64, from, to string) ([]*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListParticipant(ctx, tenantID, participantID, from, to)
 }
 
 // List returns all the tenant's shifts. When status is non-empty the result is
 // restricted to shifts in that lifecycle status.
-func (s *ShiftService) List(ctx context.Context, status string) ([]*repository.Shift, error) {
+func (s *Service) List(ctx context.Context, status string) ([]*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	if status != "" {
 		return s.repo.ListByStatus(ctx, tenantID, status)
@@ -55,14 +63,14 @@ func (s *ShiftService) List(ctx context.Context, status string) ([]*repository.S
 }
 
 // Get returns a shift by id, or (nil, nil) when absent.
-func (s *ShiftService) Get(ctx context.Context, id int64) (*repository.Shift, error) {
+func (s *Service) Get(ctx context.Context, id int64) (*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
 
 // Create inserts a shift attributed to the authenticated user, then broadcasts
 // after the commit succeeds.
-func (s *ShiftService) Create(ctx context.Context, in repository.ShiftInput) (*repository.Shift, error) {
+func (s *Service) Create(ctx context.Context, in ShiftInput) (*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	var author *int64
 	if uid, ok := reqctx.UserFrom(ctx); ok {
@@ -78,7 +86,7 @@ func (s *ShiftService) Create(ctx context.Context, in repository.ShiftInput) (*r
 
 // Update mutates a shift, then broadcasts on success. A nil result means the row
 // was not found, in which case no event is published.
-func (s *ShiftService) Update(ctx context.Context, id int64, in repository.ShiftInput) (*repository.Shift, error) {
+func (s *Service) Update(ctx context.Context, id int64, in ShiftInput) (*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.Update(ctx, tenantID, id, in)
 	if err != nil {
@@ -92,7 +100,7 @@ func (s *ShiftService) Update(ctx context.Context, id int64, in repository.Shift
 }
 
 // UpdateStatus advances a shift's lifecycle status, then broadcasts on success.
-func (s *ShiftService) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
@@ -102,7 +110,7 @@ func (s *ShiftService) UpdateStatus(ctx context.Context, id int64, status string
 }
 
 // Delete removes a shift, then broadcasts on success.
-func (s *ShiftService) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
@@ -112,14 +120,14 @@ func (s *ShiftService) Delete(ctx context.Context, id int64) error {
 }
 
 // ToRecord returns the tenant's scheduled shifts still awaiting a record.
-func (s *ShiftService) ToRecord(ctx context.Context) ([]*repository.Shift, error) {
+func (s *Service) ToRecord(ctx context.Context) ([]*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListScheduled(ctx, tenantID)
 }
 
 // Suggestions groups each participant's recorded-but-unbilled shifts into a
 // billing prompt, resolving the concrete shift ids per participant.
-func (s *ShiftService) Suggestions(ctx context.Context) ([]Suggestion, error) {
+func (s *Service) Suggestions(ctx context.Context) ([]Suggestion, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	aggs, err := s.repo.UnbilledByParticipant(ctx, tenantID)
 	if err != nil {
@@ -150,7 +158,7 @@ func (s *ShiftService) Suggestions(ctx context.Context) ([]Suggestion, error) {
 // then broadcasts a single bulk event. An empty id list is a no-op. The invoice
 // MUST belong to the caller's tenant — verified tenant-scoped first to prevent
 // cross-tenant linkage.
-func (s *ShiftService) MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []int64) error {
+func (s *Service) MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if len(shiftIDs) == 0 {
 		return nil
@@ -158,11 +166,11 @@ func (s *ShiftService) MarkDrafted(ctx context.Context, invoiceID int64, shiftID
 	if invoiceID <= 0 {
 		return fmt.Errorf("mark drafted: invoice id required")
 	}
-	inv, err := s.invoices.Get(ctx, tenantID, invoiceID)
+	exists, err := s.invoices.Exists(ctx, tenantID, invoiceID)
 	if err != nil {
 		return fmt.Errorf("mark drafted: verify invoice: %w", err)
 	}
-	if inv == nil {
+	if !exists {
 		return fmt.Errorf("mark drafted: invoice %d not found for tenant", invoiceID)
 	}
 	for i := range shiftIDs { // bounded by len(shiftIDs)

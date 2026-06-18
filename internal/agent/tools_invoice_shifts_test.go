@@ -15,9 +15,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // verifyLine is the create_invoice line shape used by the completeness tests.
@@ -58,13 +57,13 @@ func assertNoInvoice(t *testing.T, inv *invoice.Service, ctx context.Context) {
 // shiftsCreateFixture seeds the nursing-note fixture as recorded shifts (tenant,
 // Tania, catalogue, 4 shifts) and returns the shift-keyed create_invoice tool,
 // the invoice and shift services, and an authed context.
-func shiftsCreateFixture(t *testing.T) (Tool, *invoice.Service, *service.ShiftService, context.Context, int64) {
+func shiftsCreateFixture(t *testing.T) (Tool, *invoice.Service, *shift.Service, context.Context, int64) {
 	t.Helper()
 	conn, tenantID, participantID := shiftToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
-	shifts := service.NewShiftService(conn, realtime.NewHub())
+	shifts := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	seedReferenceShifts(t, shifts, ctx, participantID)
-	inv := invoice.NewService(conn, realtime.NewHub(), repository.NewShifts(conn))
+	inv := invoice.NewService(conn, realtime.NewHub(), shift.NewShifts(conn))
 	tool := NewCreateInvoiceToolForShifts(inv, shifts, nil)
 	return tool, inv, shifts, ctx, participantID
 }

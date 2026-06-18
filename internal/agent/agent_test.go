@@ -10,8 +10,8 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // newTestAgent wires a real Store + InvoiceService over the same temp DB, a
@@ -32,7 +32,7 @@ func newTestAgent(t *testing.T, client llm.Client) (*Agent, *Store, *invoice.Ser
 
 	store := NewStore(conn)
 	hub := realtime.NewHub()
-	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	inv := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	reg := NewRegistry()

@@ -1,4 +1,8 @@
-package repository
+// Package shift is the shift vertical slice: domain types, the audited
+// repository over the shifts table, the service (with SSE broadcast), and the
+// HTTP handler. It depends only on platform packages (db/gen, audit, reqctx,
+// realtime, httpx), never on other domain slices.
+package shift
 
 import (
 	"context"
@@ -79,7 +83,7 @@ type ShiftsRepo struct {
 // NewShifts constructs a repository. A nil db is a programmer error.
 func NewShifts(db *sql.DB) *ShiftsRepo {
 	if db == nil {
-		panic("repository: NewShifts requires a non-nil *sql.DB")
+		panic("shift: NewShifts requires a non-nil *sql.DB")
 	}
 	return &ShiftsRepo{db: db}
 }
@@ -514,4 +518,21 @@ func validISODate(s string) bool {
 	}
 	_, err := time.Parse("2006-01-02", s)
 	return err == nil
+}
+
+// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
+func nullID(p *int64) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *p, Valid: true}
+}
+
+// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
+func ptrID(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
 }

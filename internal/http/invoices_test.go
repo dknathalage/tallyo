@@ -10,7 +10,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,7 +24,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	invH := invoice.NewHandler(invoice.NewService(conn, hub, repository.NewShifts(conn)))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewShifts(conn)))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()

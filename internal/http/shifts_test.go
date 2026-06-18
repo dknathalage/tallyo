@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,7 +20,7 @@ import (
 // tenant context, and the seeded participant id. The handler is exercised
 // directly (no router) by injecting the tenant context plus chi {id} param.
 type shiftFixture struct {
-	h             *ShiftHandler
+	h             *shift.Handler
 	ctx           context.Context
 	tenantID      int64
 	participantID int64
@@ -46,7 +46,7 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 	}
 
 	return &shiftFixture{
-		h:             NewShiftHandler(service.NewShiftService(conn, hub)),
+		h:             shift.NewHandler(shift.NewService(conn, hub, invoice.NewInvoices(conn))),
 		ctx:           ctx,
 		tenantID:      tenantID,
 		participantID: part.ID,
@@ -73,14 +73,14 @@ func (f *shiftFixture) req(t *testing.T, method, url, idParam, body string) *htt
 }
 
 // createShift posts a shift via the handler and returns the decoded shift.
-func (f *shiftFixture) createShift(t *testing.T, body string) repository.Shift {
+func (f *shiftFixture) createShift(t *testing.T, body string) shift.Shift {
 	t.Helper()
 	w := httptest.NewRecorder()
 	f.h.Create(w, f.req(t, http.MethodPost, "/api/shifts", "", body))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create shift: want 201 got %d (%s)", w.Code, w.Body.String())
 	}
-	var out repository.Shift
+	var out shift.Shift
 	if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
 		t.Fatalf("decode shift: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestShiftListForParticipantReturnsCreated(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", w.Code)
 	}
-	var out []repository.Shift
+	var out []shift.Shift
 	if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestShiftListForParticipantRangeFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("list range: want 200 got %d", w.Code)
 	}
-	var out []repository.Shift
+	var out []shift.Shift
 	if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestShiftListForParticipantStatusFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("list status: want 200 got %d", w.Code)
 	}
-	var out []repository.Shift
+	var out []shift.Shift
 	if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestShiftListAllTenant(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("list all: want 200 got %d", w.Code)
 	}
-	var out []repository.Shift
+	var out []shift.Shift
 	if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestShiftStatusTransition(t *testing.T) {
 	if gw.Code != http.StatusOK {
 		t.Fatalf("get after status: want 200 got %d", gw.Code)
 	}
-	var got repository.Shift
+	var got shift.Shift
 	if err := json.NewDecoder(gw.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}

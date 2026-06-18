@@ -4,25 +4,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
-func newShiftSvc(t *testing.T) (*ShiftService, *realtime.Hub, int64, int64) {
+func newShiftSvc(t *testing.T) (*shift.Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewShiftService(conn, hub), hub, tenantID, participantID
+	return shift.NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, participantID
 }
 
-func shiftInput(pid int64, date string) repository.ShiftInput {
-	return repository.ShiftInput{
+func shiftInput(pid int64, date string) shift.ShiftInput {
+	return shift.ShiftInput{
 		ParticipantID: pid, ServiceDate: date, StartTime: "09:00", EndTime: "12:00",
 		Hours: 3, Km: 10,
-		Measures: []repository.Measure{{Label: "Goal", Value: 1, Unit: "x", Code: "C"}},
+		Measures: []shift.Measure{{Label: "Goal", Value: 1, Unit: "x", Code: "C"}},
 		Tags:     []string{"t1"},
 	}
 }
@@ -55,7 +56,7 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	uid := seedUser(t, conn, tenantID)
-	svc := NewShiftService(conn, realtime.NewHub())
+	svc := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
 	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
@@ -168,7 +169,7 @@ func TestShiftSuggestions(t *testing.T) {
 	tenantID := seedTenant(t, conn)
 	p1 := seedParticipant(t, conn, tenantID)
 	p2 := seedParticipant(t, conn, tenantID)
-	svc := NewShiftService(conn, realtime.NewHub())
+	svc := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	var p1ids []int64
@@ -190,7 +191,7 @@ func TestShiftSuggestions(t *testing.T) {
 	if len(sugs) != 2 {
 		t.Fatalf("suggestions = %d, want 2: %+v", len(sugs), sugs)
 	}
-	byPID := map[int64]Suggestion{}
+	byPID := map[int64]shift.Suggestion{}
 	for _, s := range sugs {
 		byPID[s.ParticipantID] = s
 	}
@@ -209,7 +210,7 @@ func TestShiftMarkDrafted(t *testing.T) {
 	participantID := seedParticipant(t, conn, tenantID)
 	invID := seedDraftInvoice(t, conn, tenantID, participantID)
 	hub := realtime.NewHub()
-	svc := NewShiftService(conn, hub)
+	svc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
@@ -246,7 +247,7 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	tenantB := seedTenant(t, conn)
 	participantB := seedParticipant(t, conn, tenantB)
 	hub := realtime.NewHub()
-	svc := NewShiftService(conn, hub)
+	svc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
 	sh, err := svc.Create(ctxB, shiftInput(participantB, "2026-01-15"))

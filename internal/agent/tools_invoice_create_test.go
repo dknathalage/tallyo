@@ -33,8 +33,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/google/uuid"
 )
 
@@ -79,7 +79,7 @@ func nursingNoteSvc(t *testing.T) (svc *invoice.Service, tenantID, participantID
 	seedNoteItem(t, conn, verID, codeTransport, "Activity Based Transport", priceTransport)
 	seedNoteItem(t, conn, verID, codeSelfCare, "Assistance with self care - weekday daytime", priceSelfCare)
 
-	return invoice.NewService(conn, realtime.NewHub(), repository.NewShifts(conn)), tenantID, p.ID
+	return invoice.NewService(conn, realtime.NewHub(), shift.NewShifts(conn)), tenantID, p.ID
 }
 
 func seedNoteTenant(t *testing.T, conn *sql.DB) int64 {

@@ -515,6 +515,17 @@ func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, tenantID, id i
 	})
 }
 
+// Exists reports whether the tenant has an invoice with the given id.
+// It satisfies the shift.InvoiceChecker interface so the shift service can
+// verify invoice ownership without importing the invoice package.
+func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID int64) (bool, error) {
+	inv, err := r.Get(ctx, tenantID, invoiceID)
+	if err != nil {
+		return false, err
+	}
+	return inv != nil, nil
+}
+
 // ParticipantStats returns the count and summed totals of a participant's
 // invoices.
 func (r *InvoicesRepo) ParticipantStats(ctx context.Context, tenantID, participantID int64) (*ParticipantStats, error) {

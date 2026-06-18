@@ -13,6 +13,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
 )
@@ -80,7 +81,7 @@ type Deps struct {
 	// per-participant shift list under /api/participants/{id}/shifts, the
 	// tenant-wide list, billing suggestions and to-record prompts, plus shift
 	// CRUD and the status-transition route under /api/shifts.
-	Shifts *ShiftHandler
+	Shifts *shift.Handler
 
 	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
 	// duplicate, bulk, and convert-to-invoice routes under /api/estimates.
@@ -188,15 +189,7 @@ func NewServer(deps Deps) *Server {
 					deps.Invoices.Routes(pr)
 				}
 				if deps.Shifts != nil {
-					pr.Get("/participants/{id}/shifts", deps.Shifts.ListForParticipant)
-					pr.Get("/shifts", deps.Shifts.List)
-					pr.Get("/shifts/suggestions", deps.Shifts.Suggestions)
-					pr.Get("/shifts/to-record", deps.Shifts.ToRecord)
-					pr.Post("/shifts", deps.Shifts.Create)
-					pr.Get("/shifts/{id}", deps.Shifts.Get)
-					pr.Put("/shifts/{id}", deps.Shifts.Update)
-					pr.Delete("/shifts/{id}", deps.Shifts.Delete)
-					pr.Post("/shifts/{id}/status", deps.Shifts.UpdateStatus)
+					deps.Shifts.Routes(pr)
 				}
 				if deps.Estimates != nil {
 					deps.Estimates.Routes(pr)

@@ -14,9 +14,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/agent/llm"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,7 +32,7 @@ type AgentHandler struct {
 	// shift import (optional, set via WithShiftImport when the agent is enabled):
 	// the structured-extraction model client + its config, and the shift service
 	// used to persist the recorded shifts ImportShifts produces.
-	shifts        *service.ShiftService
+	shifts        *shift.Service
 	extractClient llm.Client
 	extractCfg    agent.Config
 }
@@ -57,7 +56,7 @@ func NewAgentHandler(ag *agent.Agent, budget *agent.Budget, enabled bool) *Agent
 // WithShiftImport wires the structured-extraction model client (+ its config)
 // and the shift service used by ImportShifts. It is set in main.go when the
 // agent is enabled; ImportShifts 503s when any of these is absent.
-func (h *AgentHandler) WithShiftImport(shifts *service.ShiftService, client llm.Client, cfg agent.Config) *AgentHandler {
+func (h *AgentHandler) WithShiftImport(shifts *shift.Service, client llm.Client, cfg agent.Config) *AgentHandler {
 	h.shifts = shifts
 	h.extractClient = client
 	h.extractCfg = cfg
@@ -119,7 +118,7 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created := make([]*repository.Shift, 0, len(drafts))
+	created := make([]*shift.Shift, 0, len(drafts))
 	for i := range drafts { // bounded by len(drafts)
 		d := drafts[i]
 		key := shiftDedupKey(d.ServiceDate, d.StartTime, d.EndTime, d.Hours, d.Km)
@@ -127,7 +126,7 @@ func (h *AgentHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 			continue // already recorded (or an in-batch duplicate)
 		}
 		seen[key] = struct{}{}
-		sh, e := h.shifts.Create(ctx, repository.ShiftInput{
+		sh, e := h.shifts.Create(ctx, shift.ShiftInput{
 			ParticipantID: req.ParticipantID,
 			ServiceDate:   d.ServiceDate,
 			StartTime:     d.StartTime,

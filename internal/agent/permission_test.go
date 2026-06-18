@@ -11,8 +11,8 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // startSuspendedRisky builds a fresh agent over a real DB with a seeded
@@ -36,7 +36,7 @@ func startSuspendedRisky(t *testing.T, resume ...llm.Response) (*Agent, *Store, 
 	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
 
 	store := NewStore(conn)
-	inv := invoice.NewService(conn, realtime.NewHub(), repository.NewShifts(conn))
+	inv := invoice.NewService(conn, realtime.NewHub(), shift.NewShifts(conn))
 	cp := NewCheckpoint(store, conn)
 
 	participantID := seedAgentParticipant(t, conn, ctx)

@@ -3,17 +3,19 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
-func sampleShiftInput(pid int64) ShiftInput {
-	return ShiftInput{
+func sampleShiftInput(pid int64) shift.ShiftInput {
+	return shift.ShiftInput{
 		ParticipantID: pid,
 		ServiceDate:   "2026-01-15",
 		StartTime:     "09:00",
 		EndTime:       "12:00",
 		Hours:         3,
 		Km:            12.5,
-		Measures:      []Measure{{Label: "Goal A", Value: 4, Unit: "score", Code: "G1"}},
+		Measures:      []shift.Measure{{Label: "Goal A", Value: 4, Unit: "score", Code: "G1"}},
 		Note:          "Supported community access",
 		Tags:          []string{"community", "transport"},
 	}
@@ -24,7 +26,7 @@ func TestShiftCreateRoundTrip(t *testing.T) {
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
 	uid := seedUser(t, conn, tid)
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	s, err := repo.Create(ctx, tid, &uid, sampleShiftInput(pid))
@@ -58,10 +60,10 @@ func TestShiftCreateEmptyMeasuresTagsNeverNil(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
-	s, err := repo.Create(ctx, tid, nil, ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-16"})
+	s, err := repo.Create(ctx, tid, nil, shift.ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-16"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -77,7 +79,7 @@ func TestShiftCreateStatusOverride(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	in := sampleShiftInput(pid)
@@ -95,18 +97,18 @@ func TestShiftCreateRejectsInvalid(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	cases := []struct {
 		name string
-		in   ShiftInput
+		in   shift.ShiftInput
 	}{
-		{"empty serviceDate", ShiftInput{ParticipantID: pid, ServiceDate: ""}},
-		{"malformed serviceDate", ShiftInput{ParticipantID: pid, ServiceDate: "2026-6-9"}},
-		{"zero participant", ShiftInput{ParticipantID: 0, ServiceDate: "2026-01-15"}},
-		{"negative hours", ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Hours: -1}},
-		{"negative km", ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Km: -1}},
+		{"empty serviceDate", shift.ShiftInput{ParticipantID: pid, ServiceDate: ""}},
+		{"malformed serviceDate", shift.ShiftInput{ParticipantID: pid, ServiceDate: "2026-6-9"}},
+		{"zero participant", shift.ShiftInput{ParticipantID: 0, ServiceDate: "2026-01-15"}},
+		{"negative hours", shift.ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Hours: -1}},
+		{"negative km", shift.ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Km: -1}},
 	}
 	for _, c := range cases {
 		if s, err := repo.Create(ctx, tid, nil, c.in); err == nil {
@@ -120,7 +122,7 @@ func TestShiftGetFoundAbsentAndIsolation(t *testing.T) {
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
 	pa := seedParticipant(t, conn, a, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	s, err := repo.Create(ctx, a, nil, sampleShiftInput(pa))
@@ -144,7 +146,7 @@ func TestShiftListParticipantRange(t *testing.T) {
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
 	other := seedParticipant(t, conn, tid, "Other")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	for _, d := range []string{"2026-01-10", "2026-01-15", "2026-01-20"} {
@@ -181,7 +183,7 @@ func TestShiftUpdateStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	in := sampleShiftInput(pid)
@@ -211,7 +213,7 @@ func TestShiftSetInvoiceAndClear(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	s, err := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
@@ -241,7 +243,7 @@ func TestShiftSetStatusForInvoice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	s, _ := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
@@ -262,7 +264,7 @@ func TestShiftListRecordedUnbilled(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	// Two recorded unbilled.
@@ -303,7 +305,7 @@ func TestShiftUnbilledByParticipant(t *testing.T) {
 	tid := seedTenant(t, conn, "T")
 	p1 := seedParticipant(t, conn, tid, "Jane")
 	p2 := seedParticipant(t, conn, tid, "John")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	for _, d := range []string{"2026-01-10", "2026-01-20"} {
@@ -326,7 +328,7 @@ func TestShiftUnbilledByParticipant(t *testing.T) {
 	if len(aggs) != 2 {
 		t.Fatalf("aggs = %d, want 2: %+v", len(aggs), aggs)
 	}
-	byPID := map[int64]UnbilledAgg{}
+	byPID := map[int64]shift.UnbilledAgg{}
 	for _, a := range aggs {
 		byPID[a.ParticipantID] = a
 	}
@@ -342,7 +344,7 @@ func TestShiftUpdate(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	s, err := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
@@ -370,7 +372,7 @@ func TestShiftDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := shift.NewShifts(conn)
 	ctx := context.Background()
 
 	s, err := repo.Create(ctx, tid, nil, sampleShiftInput(pid))

@@ -13,8 +13,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -40,7 +40,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	expH := NewExportHandler(
 		customItemSvc,
-		invoice.NewService(conn, hub, repository.NewShifts(conn)),
+		invoice.NewService(conn, hub, shift.NewShifts(conn)),
 		estimate.NewService(conn, hub),
 	)
 

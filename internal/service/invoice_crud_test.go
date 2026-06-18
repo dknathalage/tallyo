@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // makeInvoice creates a single invoice for the tenant/participant and returns it.
@@ -243,7 +243,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 func TestInvoiceTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	svc := invoice.NewService(conn, hub, shift.NewShifts(conn))
 
 	tenantA := seedTenant(t, conn)
 	partA := seedParticipant(t, conn, tenantA)

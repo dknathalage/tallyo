@@ -9,8 +9,8 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 func noopHandler(context.Context, json.RawMessage) (Result, error) { return Result{}, nil }
@@ -82,7 +82,7 @@ func newTestInvoiceSvc(t *testing.T) (*invoice.Service, int64) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	hub := realtime.NewHub()
-	svc := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	svc := invoice.NewService(conn, hub, shift.NewShifts(conn))
 
 	// Seed a tenant directly via SQL (avoids importing gen from test file).
 	res, err := conn.Exec(

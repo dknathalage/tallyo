@@ -6,15 +6,15 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // seedDraftedShift creates a recorded shift and drafts it onto inv via the
-// ShiftService, returning the shift id.
-func seedDraftedShift(t *testing.T, shiftSvc *ShiftService, tenantID, participantID, invoiceID int64) int64 {
+// shift.Service, returning the shift id.
+func seedDraftedShift(t *testing.T, shiftSvc *shift.Service, tenantID, participantID, invoiceID int64) int64 {
 	t.Helper()
 	ctx := tctx(tenantID)
-	sh, err := shiftSvc.Create(ctx, repository.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
+	sh, err := shiftSvc.Create(ctx, shift.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
 	if err != nil {
 		t.Fatalf("seedDraftedShift create: %v", err)
 	}
@@ -31,8 +31,8 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 			tenantID := seedTenant(t, conn)
 			participantID := seedParticipant(t, conn, tenantID)
 			hub := realtime.NewHub()
-			invSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
-			shiftSvc := NewShiftService(conn, hub)
+			invSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
+			shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
 			ctx := tctx(tenantID)
 
 			inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
@@ -59,8 +59,8 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	invSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
-	shiftSvc := NewShiftService(conn, hub)
+	invSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
+	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, invoice.InvoiceInput{
@@ -86,8 +86,8 @@ func TestInvoiceDeleteRevertsShiftsToRecorded(t *testing.T) {
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	invSvc := invoice.NewService(conn, hub, repository.NewShifts(conn))
-	shiftSvc := NewShiftService(conn, hub)
+	invSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
+	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, invoice.InvoiceInput{

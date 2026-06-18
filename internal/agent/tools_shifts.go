@@ -6,8 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dknathalage/tallyo/internal/catalog"
-	"github.com/dknathalage/tallyo/internal/repository"
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // candidateView is a curated catalogue suggestion attached to a shift, derived
@@ -66,7 +65,7 @@ type shiftView struct {
 // an invoice from shifts. Shift notes are free text authored by users, so each
 // is returned fenced as untrusted content (the model must treat the note as
 // data, not instructions).
-func NewListParticipantShiftsTool(shifts *service.ShiftService) Tool {
+func NewListParticipantShiftsTool(shifts *shift.Service) Tool {
 	return newListParticipantShiftsTool(shifts, nil)
 }
 
@@ -76,7 +75,7 @@ func NewListParticipantShiftsTool(shifts *service.ShiftService) Tool {
 // resolved for the shift's service date. This lets the model pick the code from a
 // short list instead of free-form searching, cutting search_catalogue round-trips
 // and code-mapping errors.
-func NewListParticipantShiftsToolWithCatalog(shifts *service.ShiftService, cat *catalog.Service) Tool {
+func NewListParticipantShiftsToolWithCatalog(shifts *shift.Service, cat *catalog.Service) Tool {
 	return newListParticipantShiftsTool(shifts, cat)
 }
 
@@ -84,7 +83,7 @@ func NewListParticipantShiftsToolWithCatalog(shifts *service.ShiftService, cat *
 // is non-nil it enriches each shift with candidate catalogue codes; cat == nil
 // yields the plain (no-candidates) behaviour, keeping the original constructor
 // unchanged for existing callers and tests.
-func newListParticipantShiftsTool(shifts *service.ShiftService, cat *catalog.Service) Tool {
+func newListParticipantShiftsTool(shifts *shift.Service, cat *catalog.Service) Tool {
 	return Tool{
 		Name:        "list_participant_shifts",
 		Description: "List a participant's recorded shifts within an optional date range. Call this when drafting an invoice from shifts.",
@@ -128,7 +127,7 @@ func newListParticipantShiftsTool(shifts *service.ShiftService, cat *catalog.Ser
 // shift from its structured measures (hours → self-care, km → transport), for
 // the shift's service date. It is best-effort: cat == nil or any lookup error
 // yields nil (no candidates) and never fails the read.
-func shiftCandidates(ctx context.Context, cat *catalog.Service, sh *repository.Shift) []candidateView {
+func shiftCandidates(ctx context.Context, cat *catalog.Service, sh *shift.Shift) []candidateView {
 	if cat == nil || sh == nil || sh.ServiceDate == "" {
 		return nil
 	}

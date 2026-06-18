@@ -15,7 +15,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
+	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -34,7 +34,7 @@ func newAgentServer(t *testing.T, fake llm.Client, enabled bool, cfg agent.Confi
 
 	hub := realtime.NewHub()
 	store := agent.NewStore(conn)
-	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	inv := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	cp := agent.NewCheckpoint(store, conn)
 
 	reg := agent.NewRegistry()
@@ -201,7 +201,7 @@ func TestAgentListConversationsTenantScoping(t *testing.T) {
 	authH := NewAuthHandler(sm, usersA, auth.NewTenants(conn))
 	hub := realtime.NewHub()
 	store := agent.NewStore(conn)
-	inv := invoice.NewService(conn, hub, repository.NewShifts(conn))
+	inv := invoice.NewService(conn, hub, shift.NewShifts(conn))
 	cp := agent.NewCheckpoint(store, conn)
 	reg := agent.NewRegistry()
 	reg.Register(agent.NewListInvoicesTool(inv))

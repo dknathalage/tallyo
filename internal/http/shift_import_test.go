@@ -10,11 +10,11 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/agent/llm"
+	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // newImportHandler builds an enabled AgentHandler with shift import wired over a
@@ -35,7 +35,7 @@ func newImportHandler(t *testing.T) (*AgentHandler, context.Context) {
 	budget := agent.NewBudget(store, cfg, clockNow{})
 	ag := agent.NewAgent(cfg, llm.NewFake(), store, reg, cp, events).WithBudget(budget)
 
-	shiftSvc := service.NewShiftService(conn, hub)
+	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
 	h := NewAgentHandler(ag, budget, true).WithShiftImport(shiftSvc, llm.NewFake(), cfg)
 
 	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
@@ -97,7 +97,7 @@ func TestImportShiftsIdempotent(t *testing.T) {
 	budget := agent.NewBudget(store, cfg, clockNow{})
 	ag := agent.NewAgent(cfg, llm.NewFake(), store, reg, cp, events).WithBudget(budget)
 
-	shiftSvc := service.NewShiftService(conn, realtime.NewHub())
+	shiftSvc := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	h := NewAgentHandler(ag, budget, true).WithShiftImport(shiftSvc, fake, cfg)
 
 	body := `{"participantId":` + itoa(p.ID) + `,"text":"timesheet"}`
@@ -107,7 +107,7 @@ func TestImportShiftsIdempotent(t *testing.T) {
 	if w1.Code != http.StatusCreated {
 		t.Fatalf("first import: want 201 got %d (%s)", w1.Code, w1.Body.String())
 	}
-	var first []*repository.Shift
+	var first []*shift.Shift
 	if err := json.Unmarshal(w1.Body.Bytes(), &first); err != nil {
 		t.Fatalf("first import: decode: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestImportShiftsIdempotent(t *testing.T) {
 	if w2.Code != http.StatusCreated {
 		t.Fatalf("second import: want 201 got %d (%s)", w2.Code, w2.Body.String())
 	}
-	var second []*repository.Shift
+	var second []*shift.Shift
 	if err := json.Unmarshal(w2.Body.Bytes(), &second); err != nil {
 		t.Fatalf("second import: decode: %v", err)
 	}
