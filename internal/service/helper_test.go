@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/repository"
@@ -75,7 +76,7 @@ func seedSentPastDue(t *testing.T, conn *sql.DB, svc *InvoiceService, tenantID, 
 	ctx := tctx(tenantID)
 	inv, err := svc.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-01-15",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("seedSentPastDue create: %v", err)
 	}

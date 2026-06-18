@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/google/uuid"
@@ -113,8 +114,8 @@ func setTenantZone(t *testing.T, conn *sql.DB, tenantID int64, zone string) {
 func fptr(f float64) *float64 { return &f }
 
 // supportLine builds a support-item line input for the given code/date/price.
-func supportLine(code, date string, qty, unitPrice float64) repository.LineItemInput {
-	return repository.LineItemInput{Code: code, ServiceDate: date, Quantity: qty, UnitPrice: unitPrice}
+func supportLine(code, date string, qty, unitPrice float64) billing.LineItemInput {
+	return billing.LineItemInput{Code: code, ServiceDate: date, Quantity: qty, UnitPrice: unitPrice}
 }
 
 // --- price-cap assertion (spec §6 step 4) --------------------------------
@@ -126,7 +127,7 @@ func TestValidateOverCapRejected(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	_, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_011", "2026-01-15", 1, 100.01),
 	})
 	ve, ok := err.(*ValidationError)
@@ -145,7 +146,7 @@ func TestValidateAtCapAllowed(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_011", "2026-01-15", 2, 100),
 	})
 	if err != nil {
@@ -163,7 +164,7 @@ func TestValidateQuotableNilCapAllowsAnyPrice(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn)
 
-	if _, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	if _, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_999", "2026-01-15", 1, 999999),
 	}); err != nil {
 		t.Fatalf("quotable item (nil cap) should allow any price: %v", err)
@@ -179,7 +180,7 @@ func TestValidateUnknownCodeRejected(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	_, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("NOPE", "2026-01-15", 1, 1),
 	})
 	ve, ok := err.(*ValidationError)
@@ -196,7 +197,7 @@ func TestValidateNoVersionForDateRejected(t *testing.T) {
 	v := NewLineValidator(conn)
 
 	// Service date before any catalogue window.
-	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	_, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_011", "2025-01-01", 1, 50),
 	})
 	ve, ok := err.(*ValidationError)
@@ -216,10 +217,10 @@ func TestValidateVersionResolutionPicksRightVersion(t *testing.T) {
 	ctx := context.Background()
 
 	// 100 is over the 2024-25 cap (90) but under the 2025-26 cap (110).
-	if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2024-12-01", 1, 100)}); err == nil {
+	if _, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", "2024-12-01", 1, 100)}); err == nil {
 		t.Fatal("date in 2024-25 window: 100 > cap 90 must reject")
 	}
-	if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2025-12-01", 1, 100)}); err != nil {
+	if _, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", "2025-12-01", 1, 100)}); err != nil {
 		t.Fatalf("date in 2025-26 window: 100 < cap 110 must pass: %v", err)
 	}
 }
@@ -233,7 +234,7 @@ func TestValidateVersionBoundaryDatesInclusive(t *testing.T) {
 	ctx := context.Background()
 
 	for _, d := range []string{"2025-07-01", "2026-06-30"} { // both window boundaries
-		if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", d, 1, 100)}); err != nil {
+		if _, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", d, 1, 100)}); err != nil {
 			t.Fatalf("boundary date %s should resolve & pass: %v", d, err)
 		}
 	}
@@ -250,7 +251,7 @@ func TestValidateServiceDateOutsidePlanRejected(t *testing.T) {
 	ctx := context.Background()
 
 	// After plan end (date still inside a valid catalogue window).
-	_, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 50)})
+	_, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", "2026-01-15", 1, 50)})
 	ve, ok := err.(*ValidationError)
 	if !ok || len(ve.Errors) != 1 || ve.Errors[0].Field != "serviceDate" {
 		t.Fatalf("after plan end: want one serviceDate error, got %v (%T)", err, err)
@@ -266,7 +267,7 @@ func TestValidateServiceDateOnPlanBoundaryAllowed(t *testing.T) {
 	ctx := context.Background()
 
 	for _, d := range []string{"2025-07-01", "2025-12-31"} { // plan window boundaries
-		if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", d, 1, 50)}); err != nil {
+		if _, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", d, 1, 50)}); err != nil {
 			t.Fatalf("plan boundary date %s should pass: %v", d, err)
 		}
 	}
@@ -288,7 +289,7 @@ func TestValidateZoneSelectsDifferentCap(t *testing.T) {
 	v := NewLineValidator(conn)
 	ctx := context.Background()
 
-	if _, err := v.Validate(ctx, a, pa, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err == nil {
+	if _, err := v.Validate(ctx, a, pa, []billing.LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err == nil {
 		t.Fatal("national tenant: 130 > cap 100 must reject")
 	}
 
@@ -296,7 +297,7 @@ func TestValidateZoneSelectsDifferentCap(t *testing.T) {
 	b := seedTenant(t, conn)
 	pb := seedParticipantPlan(t, conn, b, pid2start, pid2end)
 	setTenantZone(t, conn, b, "remote")
-	if _, err := v.Validate(ctx, b, pb, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err != nil {
+	if _, err := v.Validate(ctx, b, pb, []billing.LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err != nil {
 		t.Fatalf("remote tenant: 130 < cap 150 must pass: %v", err)
 	}
 }
@@ -317,11 +318,11 @@ func TestValidateDefaultsToNationalZoneWhenNoProfile(t *testing.T) {
 
 	// 120 is over the national cap (100) but under the remote cap (150). With the
 	// national fallback this must be REJECTED.
-	if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 120)}); err == nil {
+	if _, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", "2026-01-15", 1, 120)}); err == nil {
 		t.Fatal("no-profile tenant: 120 > national cap 100 must reject (national fallback)")
 	}
 	// 100 is exactly the national cap → must pass.
-	if _, err := v.Validate(ctx, tid, pid, []repository.LineItemInput{supportLine("01_011", "2026-01-15", 1, 100)}); err != nil {
+	if _, err := v.Validate(ctx, tid, pid, []billing.LineItemInput{supportLine("01_011", "2026-01-15", 1, 100)}); err != nil {
 		t.Fatalf("no-profile tenant: 100 == national cap must pass: %v", err)
 	}
 }
@@ -336,7 +337,7 @@ func TestValidateGstFreeDefaultedFromItem(t *testing.T) {
 	v := NewLineValidator(conn)
 
 	// Line leaves gstFree false; the item is GST-free so it should default true.
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_011", "2026-01-15", 1, 50),
 	})
 	if err != nil {
@@ -357,7 +358,7 @@ func TestValidateGstFreeNotDefaultedWhenItemTaxable(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("02_022", "2026-01-15", 1, 50),
 	})
 	if err != nil {
@@ -387,7 +388,7 @@ func TestValidateClientGstFreeOverrideIgnoredForSupportItem(t *testing.T) {
 	// Client lies: gstFree:true on a taxable catalogue item.
 	line := supportLine("02_022", "2026-01-15", 1, 200)
 	line.GstFree = true
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{line})
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{line})
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -408,7 +409,7 @@ func TestValidateSupportItemNegativeRejected(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	_, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_011", "2026-01-15", -1, -5),
 	})
 	ve, ok := err.(*ValidationError)
@@ -439,7 +440,7 @@ func TestValidateCustomItemSkipsCatalogChecks(t *testing.T) {
 	v := NewLineValidator(conn)
 	cid := int64(1)
 
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		{CustomItemID: &cid, Description: "Mileage", Quantity: 3, UnitPrice: 0.85},
 	})
 	if err != nil {
@@ -457,7 +458,7 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 	v := NewLineValidator(conn)
 	cid := int64(1)
 
-	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	_, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		{CustomItemID: &cid, Description: "Bad", Quantity: -1, UnitPrice: -5},
 	})
 	ve, ok := err.(*ValidationError)
@@ -483,7 +484,7 @@ func TestValidateComputesTaxFromNonGstFreeLines(t *testing.T) {
 	addItemToVersion(t, conn, verID, "TAX", false, map[string]*float64{"national": fptr(1000)})
 	v := NewLineValidator(conn)
 
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("GF", "2026-01-15", 1, 100),  // gst-free → 0 tax
 		supportLine("TAX", "2026-01-15", 1, 200), // taxable → 20 tax
 	})
@@ -508,7 +509,7 @@ func TestValidateTotalsRoundToCents(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "DRIFT", false, map[string]*float64{"national": fptr(1)})
 	v := NewLineValidator(conn)
 
-	res, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	res, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("DRIFT", "2026-01-15", 3, 0.1),
 	})
 	if err != nil {
@@ -529,7 +530,7 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn)
 
-	_, err := v.Validate(context.Background(), tid, pid, []repository.LineItemInput{
+	_, err := v.Validate(context.Background(), tid, pid, []billing.LineItemInput{
 		supportLine("01_011", "2025-08-01", 1, 200), // line 0: over cap
 		supportLine("NOPE", "2025-08-01", 1, 1),     // line 1: unknown code
 		supportLine("01_011", "2026-06-01", 1, 50),  // line 2: after plan end

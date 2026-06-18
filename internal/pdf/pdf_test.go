@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
@@ -14,7 +15,7 @@ func TestRenderInvoiceProducesPDF(t *testing.T) {
 		ClientSnapshot:   `{"name":"Client Co","email":"c@x.com"}`,
 		Subtotal:         25, Tax: 2.5, Total: 27.5,
 		Status: "draft", Notes: "thanks",
-		LineItems: []*repository.LineItem{
+		LineItems: []*billing.LineItem{
 			{Description: "Widget", Quantity: 2, UnitPrice: 10, LineTotal: 20},
 			{Description: "Gadget", Quantity: 1, UnitPrice: 5, LineTotal: 5},
 		},
@@ -36,7 +37,7 @@ func TestRenderEstimateProducesPDF(t *testing.T) {
 		Number: "EST-0001", IssueDate: "2026-06-05", ValidUntil: "2026-07-05",
 		BusinessSnapshot: `{"name":"Acme LLC"}`, ClientSnapshot: `{"name":"Client Co"}`,
 		Subtotal: 25, Tax: 2.5, Total: 27.5, Status: "draft",
-		LineItems: []*repository.LineItem{{Description: "Widget", Quantity: 2, UnitPrice: 10, LineTotal: 20}},
+		LineItems: []*billing.LineItem{{Description: "Widget", Quantity: 2, UnitPrice: 10, LineTotal: 20}},
 	}
 	b, err := RenderEstimate(est)
 	if err != nil {

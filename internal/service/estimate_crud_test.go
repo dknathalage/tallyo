@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -14,7 +15,7 @@ func makeEstimate(t *testing.T, svc *EstimateService, tenantID, participantID in
 	t.Helper()
 	est, err := svc.Create(tctx(tenantID), repository.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("makeEstimate: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestEstimateUpdate(t *testing.T) {
 
 	updated, err := svc.Update(ctx, est.ID, repository.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
-	}, []repository.LineItemInput{{Description: "B", Quantity: 2, UnitPrice: 8}})
+	}, []billing.LineItemInput{{Description: "B", Quantity: 2, UnitPrice: 8}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestEstimateUpdateNotFoundReturnsNil(t *testing.T) {
 
 	got, err := svc.Update(tctx(tenantID), 999999, repository.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
-	}, []repository.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
+	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Update missing: unexpected err %v", err)
 	}

@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/billing"
 )
 
 func TestEstimateUpdate(t *testing.T) {
@@ -15,7 +17,7 @@ func TestEstimateUpdate(t *testing.T) {
 	est := mkEstimate(t, repo, tid, pid)
 
 	// Missing participant and empty items are rejected.
-	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ParticipantID: 0}, []LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}}); err == nil {
+	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ParticipantID: 0}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}}); err == nil {
 		t.Fatal("Update with no participant: want error")
 	}
 	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ParticipantID: pid}, nil); err == nil {
@@ -24,7 +26,7 @@ func TestEstimateUpdate(t *testing.T) {
 
 	up, err := repo.Update(ctx, tid, est.ID, EstimateInput{
 		ParticipantID: pid, IssueDate: "2026-01-01", ValidUntil: "2026-03-01", Tax: 5,
-	}, []LineItemInput{{Description: "Y", Quantity: 3, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "Y", Quantity: 3, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -35,7 +37,7 @@ func TestEstimateUpdate(t *testing.T) {
 
 	// Updating a non-existent estimate returns (nil, nil).
 	missing, err := repo.Update(ctx, tid, 999999, EstimateInput{ParticipantID: pid},
-		[]LineItemInput{{Description: "Z", Quantity: 1, UnitPrice: 1}})
+		[]billing.LineItemInput{{Description: "Z", Quantity: 1, UnitPrice: 1}})
 	if err != nil || missing != nil {
 		t.Fatalf("Update missing = %+v err=%v, want nil/nil", missing, err)
 	}

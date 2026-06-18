@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -26,7 +27,7 @@ func TestInvoiceCreateBroadcasts(t *testing.T) {
 
 	inv, err := svc.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 
 	inv, err := svc.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -57,7 +58,7 @@ func TestCheckpointRevertCreateDeletesRow(t *testing.T) {
 
 	created, err := inv.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "Custom A", Quantity: 2, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "Custom A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestCheckpointRevertConflictReportedNotApplied(t *testing.T) {
 
 	created, err := inv.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "Custom A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "Custom A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -196,13 +197,13 @@ func TestCheckpointMultiChangeOrdering(t *testing.T) {
 
 	first, err := inv.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "First", Quantity: 1, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "First", Quantity: 1, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create first: %v", err)
 	}
 	second, err := inv.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-02", DueDate: "2026-02-02",
-	}, []repository.LineItemInput{{Description: "Second", Quantity: 1, UnitPrice: 20}})
+	}, []billing.LineItemInput{{Description: "Second", Quantity: 1, UnitPrice: 20}})
 	if err != nil {
 		t.Fatalf("Create second: %v", err)
 	}

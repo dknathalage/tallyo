@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
@@ -28,7 +29,7 @@ func NewEstimateHandler(svc *service.EstimateService) *EstimateHandler {
 // its json tags flatten) plus the line items. The frontend posts this shape.
 type estimateRequest struct {
 	repository.EstimateInput
-	LineItems []repository.LineItemInput `json:"lineItems"`
+	LineItems []billing.LineItemInput `json:"lineItems"`
 }
 
 // List returns estimates filtered by the optional ?participantId= or ?status= query

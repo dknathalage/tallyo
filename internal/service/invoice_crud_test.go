@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -13,7 +14,7 @@ func makeInvoice(t *testing.T, svc *InvoiceService, tenantID, participantID int6
 	t.Helper()
 	inv, err := svc.Create(tctx(tenantID), repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("makeInvoice: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestInvoiceUpdate(t *testing.T) {
 
 	updated, err := svc.Update(ctx, inv.ID, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
-	}, []repository.LineItemInput{{Description: "B", Quantity: 3, UnitPrice: 7}})
+	}, []billing.LineItemInput{{Description: "B", Quantity: 3, UnitPrice: 7}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
 
 	got, err := svc.Update(tctx(tenantID), 999999, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
-	}, []repository.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
+	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Update missing: unexpected err %v", err)
 	}

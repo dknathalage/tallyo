@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/billing"
 )
 
 func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
@@ -14,7 +16,7 @@ func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 
 	inv, err := repo.Create(ctx, tid, InvoiceInput{
 		ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31", Tax: 10,
-	}, []LineItemInput{
+	}, []billing.LineItemInput{
 		{Code: "01_011_0107_1_1", Description: "Support", Quantity: 2, UnitPrice: 50, GstFree: true},
 		{Description: "Travel", Quantity: 1, UnitPrice: 5},
 	})
@@ -33,7 +35,7 @@ func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 
 	// Second invoice increments the per-tenant number.
 	inv2, err := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-02-01", DueDate: "2026-02-28"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Create 2: %v", err)
 	}
@@ -50,7 +52,7 @@ func TestInvoiceGetWithBalance(t *testing.T) {
 	ctx := context.Background()
 
 	inv, err := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -77,12 +79,12 @@ func TestInvoiceUpdateAndStatus(t *testing.T) {
 	ctx := context.Background()
 
 	inv, err := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	up, err := repo.Update(ctx, tid, inv.ID, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-02-15", Tax: 5},
-		[]LineItemInput{{Description: "Y", Quantity: 2, UnitPrice: 10}})
+		[]billing.LineItemInput{{Description: "Y", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -106,7 +108,7 @@ func TestInvoiceListAndDelete(t *testing.T) {
 	ctx := context.Background()
 
 	a, _ := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
 	if list, err := repo.List(ctx, tid); err != nil || len(list) != 1 {
 		t.Fatalf("List len=%d err=%v", len(list), err)
 	}
@@ -126,7 +128,7 @@ func TestInvoiceParticipantStats(t *testing.T) {
 	ctx := context.Background()
 
 	inv, _ := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 200}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 200}})
 	if _, err := NewPayments(conn).Create(ctx, tid, PaymentInput{InvoiceID: inv.ID, Amount: 50, PaidAt: "2026-01-05"}); err != nil {
 		t.Fatalf("pay: %v", err)
 	}
@@ -148,7 +150,7 @@ func TestInvoiceTenantIsolation(t *testing.T) {
 	ctx := context.Background()
 
 	inv, err := repo.Create(ctx, a, InvoiceInput{ParticipantID: pidA, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
@@ -162,7 +164,7 @@ func TestInvoiceTenantIsolation(t *testing.T) {
 	// Per-tenant numbering: tenant B's first invoice is also INV-0001.
 	pidB := seedParticipant(t, conn, b, "B Bob")
 	invB, err := repo.Create(ctx, b, InvoiceInput{ParticipantID: pidB, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
-		[]LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
+		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Create B: %v", err)
 	}

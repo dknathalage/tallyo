@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/billing"
 )
 
 func mkEstimate(t *testing.T, repo *EstimatesRepo, tid, pid int64) *Estimate {
 	t.Helper()
 	est, err := repo.Create(context.Background(), tid, EstimateInput{
 		ParticipantID: pid, IssueDate: "2026-01-01", ValidUntil: "2026-02-01", Tax: 10,
-	}, []LineItemInput{{Description: "Support", Quantity: 2, UnitPrice: 50}})
+	}, []billing.LineItemInput{{Description: "Support", Quantity: 2, UnitPrice: 50}})
 	if err != nil {
 		t.Fatalf("Create estimate: %v", err)
 	}

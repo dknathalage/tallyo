@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
@@ -316,7 +317,7 @@ func (r *RecurringRepo) buildGenSnapshots(ctx context.Context, tenantID int64, p
 }
 
 // generateTx runs one generation attempt in one transaction for idempotency.
-func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *RecurringTemplate, items []LineItemInput,
+func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *RecurringTemplate, items []billing.LineItemInput,
 	today string, tax float64, snaps genSnapshots, invID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -361,7 +362,7 @@ func (r *RecurringRepo) generateTx(ctx context.Context, tenantID int64, tpl *Rec
 
 // recurringInvoiceParams maps a template + computed totals onto invoice create
 // params: a draft invoice dated today with default snapshots.
-func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []LineItemInput, today string, tax float64, snaps genSnapshots, num string) gen.CreateInvoiceParams {
+func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []billing.LineItemInput, today string, tax float64, snaps genSnapshots, num string) gen.CreateInvoiceParams {
 	var pid int64
 	if tpl.ParticipantID != nil {
 		pid = *tpl.ParticipantID
@@ -447,11 +448,11 @@ func unmarshalLines(s string) []*RecurringLine {
 }
 
 // parseLines converts stored template lines into writable line item inputs.
-func parseLines(lines []*RecurringLine) []LineItemInput {
-	out := make([]LineItemInput, 0, len(lines))
+func parseLines(lines []*RecurringLine) []billing.LineItemInput {
+	out := make([]billing.LineItemInput, 0, len(lines))
 	for i := range lines { // bounded by len(lines)
 		l := lines[i]
-		out = append(out, LineItemInput{
+		out = append(out, billing.LineItemInput{
 			SupportItemID: l.SupportItemID,
 			CustomItemID:  l.CustomItemID,
 			Code:          l.Code,

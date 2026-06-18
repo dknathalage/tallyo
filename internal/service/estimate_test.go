@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -25,7 +26,7 @@ func TestEstimateCreateBroadcasts(t *testing.T) {
 
 	est, err := svc.Create(ctx, repository.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -48,7 +49,7 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 
 	est, err := svc.Create(ctx, repository.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestEstimateDuplicateBroadcasts(t *testing.T) {
 
 	est, err := svc.Create(ctx, repository.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

@@ -3,6 +3,7 @@ package service
 import (
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -35,7 +36,7 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 
 			inv, err := invSvc.Create(ctx, repository.InvoiceInput{
 				ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-			}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+			}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 			if err != nil {
 				t.Fatalf("Create invoice: %v", err)
 			}
@@ -63,7 +64,7 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 
 	inv, err := invSvc.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create invoice: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestInvoiceDeleteRevertsShiftsToRecorded(t *testing.T) {
 
 	inv, err := invSvc.Create(ctx, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
-	}, []repository.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
+	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create invoice: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -62,7 +63,7 @@ func (s *InvoiceService) ParticipantStats(ctx context.Context, participantID int
 // gst-free defaulting, snapshotting) first; tax is COMPUTED from the validated
 // lines and overrides any client-supplied value (see validation.go tax note).
 // A validation failure returns a *ValidationError with field-level detail.
-func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
+func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput, items []billing.LineItemInput) (*repository.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -83,7 +84,7 @@ func (s *InvoiceService) Create(ctx context.Context, in repository.InvoiceInput,
 // create_invoice tool so the model owns only the code, service date and
 // quantity — never the price. A quotable item with no published cap still
 // requires a caller-supplied price (a *ValidationError otherwise).
-func (s *InvoiceService) CreateWithCatalogPricing(ctx context.Context, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
+func (s *InvoiceService) CreateWithCatalogPricing(ctx context.Context, in repository.InvoiceInput, items []billing.LineItemInput) (*repository.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.ValidateFilling(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -100,7 +101,7 @@ func (s *InvoiceService) CreateWithCatalogPricing(ctx context.Context, in reposi
 
 // Update rewrites an invoice. A nil result means the row was not found, in which
 // case no event is published.
-func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []repository.LineItemInput) (*repository.Invoice, error) {
+func (s *InvoiceService) Update(ctx context.Context, id int64, in repository.InvoiceInput, items []billing.LineItemInput) (*repository.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {

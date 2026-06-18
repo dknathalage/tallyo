@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
@@ -35,45 +36,27 @@ import (
 // Invoice is the domain view of an invoice with its resolved participant name
 // and embedded line items.
 type Invoice struct {
-	ID               int64       `json:"id"`
-	UUID             string      `json:"uuid"`
-	Number           string      `json:"number"`
-	ParticipantID    int64       `json:"participantId"`
-	ParticipantName  string      `json:"participantName"`
-	PlanManagerID    *int64      `json:"planManagerId"`
-	Status           string      `json:"status"`
-	IssueDate        string      `json:"issueDate"`
-	DueDate          string      `json:"dueDate"`
-	Subtotal         float64     `json:"subtotal"`
-	Tax              float64     `json:"tax"`
-	Total            float64     `json:"total"`
-	Notes            string      `json:"notes"`
-	BusinessSnapshot string      `json:"businessSnapshot"`
-	ClientSnapshot   string      `json:"participantSnapshot"`
-	PayerSnapshot    string      `json:"planManagerSnapshot"`
-	CreatedAt        string      `json:"createdAt"`
-	UpdatedAt        string      `json:"updatedAt"`
-	TotalPaid        float64     `json:"totalPaid"`
-	Balance          float64     `json:"balance"`
-	LineItems        []*LineItem `json:"lineItems"`
-}
-
-// LineItem is the domain view of a row in the line_items table.
-type LineItem struct {
-	ID               int64   `json:"id"`
-	UUID             string  `json:"uuid"`
-	SupportItemID    *int64  `json:"supportItemId"`
-	CustomItemID     *int64  `json:"customItemId"`
-	CatalogVersionID *int64  `json:"catalogVersionId"`
-	Code             string  `json:"code"`
-	Description      string  `json:"description"`
-	ServiceDate      string  `json:"serviceDate"`
-	Unit             string  `json:"unit"`
-	Quantity         float64 `json:"quantity"`
-	UnitPrice        float64 `json:"unitPrice"`
-	GstFree          bool    `json:"gstFree"`
-	LineTotal        float64 `json:"lineTotal"`
-	SortOrder        int64   `json:"sortOrder"`
+	ID               int64               `json:"id"`
+	UUID             string              `json:"uuid"`
+	Number           string              `json:"number"`
+	ParticipantID    int64               `json:"participantId"`
+	ParticipantName  string              `json:"participantName"`
+	PlanManagerID    *int64              `json:"planManagerId"`
+	Status           string              `json:"status"`
+	IssueDate        string              `json:"issueDate"`
+	DueDate          string              `json:"dueDate"`
+	Subtotal         float64             `json:"subtotal"`
+	Tax              float64             `json:"tax"`
+	Total            float64             `json:"total"`
+	Notes            string              `json:"notes"`
+	BusinessSnapshot string              `json:"businessSnapshot"`
+	ClientSnapshot   string              `json:"participantSnapshot"`
+	PayerSnapshot    string              `json:"planManagerSnapshot"`
+	CreatedAt        string              `json:"createdAt"`
+	UpdatedAt        string              `json:"updatedAt"`
+	TotalPaid        float64             `json:"totalPaid"`
+	Balance          float64             `json:"balance"`
+	LineItems        []*billing.LineItem `json:"lineItems"`
 }
 
 // InvoiceInput is the writable subset of an invoice header. Snapshot fields,
@@ -90,22 +73,6 @@ type InvoiceInput struct {
 	BusinessSnapshot string  `json:"businessSnapshot"`
 	ClientSnapshot   string  `json:"participantSnapshot"`
 	PayerSnapshot    string  `json:"planManagerSnapshot"`
-}
-
-// LineItemInput is the writable subset of a line item. LineTotal is computed
-// (round2(quantity*unitPrice)) when not explicitly supplied.
-type LineItemInput struct {
-	SupportItemID    *int64  `json:"supportItemId"`
-	CustomItemID     *int64  `json:"customItemId"`
-	CatalogVersionID *int64  `json:"catalogVersionId"`
-	Code             string  `json:"code"`
-	Description      string  `json:"description"`
-	ServiceDate      string  `json:"serviceDate"`
-	Unit             string  `json:"unit"`
-	Quantity         float64 `json:"quantity"`
-	UnitPrice        float64 `json:"unitPrice"`
-	GstFree          bool    `json:"gstFree"`
-	SortOrder        int64   `json:"sortOrder"`
 }
 
 // OverdueInvoice identifies an invoice flipped to overdue by MarkOverdue.
@@ -144,7 +111,7 @@ type totals struct {
 
 // computeTotals sums line totals into the subtotal and applies the (already
 // computed) tax amount. Each boundary is rounded to the cent (spec §6).
-func computeTotals(items []LineItemInput, tax float64) totals {
+func computeTotals(items []billing.LineItemInput, tax float64) totals {
 	var subtotal float64
 	for i := range items { // bounded by len(items)
 		subtotal += round2(items[i].Quantity * items[i].UnitPrice)
@@ -176,7 +143,7 @@ func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *In
 // Create inserts an invoice plus its line items inside one numbering-retried
 // transaction, audits the create, and re-reads the row. ParticipantID and at
 // least one line item are required.
-func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInput, items []LineItemInput) (*Invoice, error) {
+func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	if tenantID == 0 {
 		return nil, errors.New("create invoice: tenant id required")
 	}
@@ -200,7 +167,7 @@ func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInp
 
 // createTx runs a single create attempt: it allocates the per-tenant number,
 // inserts the header + items, and logs the audit row, all in one transaction.
-func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceInput, items []LineItemInput, newID *int64) error {
+func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceInput, items []billing.LineItemInput, newID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -248,7 +215,7 @@ func nextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (str
 
 // createInvoiceParams builds the insert params, applying defaults (draft) and
 // computing totals from the line items.
-func createInvoiceParams(tenantID int64, in InvoiceInput, items []LineItemInput, num string) gen.CreateInvoiceParams {
+func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineItemInput, num string) gen.CreateInvoiceParams {
 	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
@@ -273,7 +240,7 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []LineItemInput,
 }
 
 // insertItems writes each line item with its computed total. Bounded by len.
-func insertItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []LineItemInput) error {
+func insertItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
@@ -374,7 +341,7 @@ func (r *InvoicesRepo) ListParticipantInvoices(ctx context.Context, tenantID, pa
 // Update rewrites the header (recomputing totals) and replaces all line items,
 // atomically with one audit row. Empty snapshot inputs keep the existing stored
 // snapshots. Returns (nil, nil) when the invoice does not exist.
-func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in InvoiceInput, items []LineItemInput) (*Invoice, error) {
+func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	if in.ParticipantID == 0 {
 		return nil, errors.New("update invoice: participant is required")
 	}
@@ -423,7 +390,7 @@ func keepSnapshots(in *InvoiceInput, existing gen.GetInvoiceRow) {
 
 // updateInvoiceParams builds the update params, recomputing totals from items.
 // The document number is immutable, so the existing number is preserved.
-func updateInvoiceParams(tenantID int64, in InvoiceInput, items []LineItemInput, number string, id int64) gen.UpdateInvoiceParams {
+func updateInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineItemInput, number string, id int64) gen.UpdateInvoiceParams {
 	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateInvoiceParams{
@@ -670,7 +637,7 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 		PayerSnapshot:    f.payerSnap.String,
 		CreatedAt:        f.createdAt,
 		UpdatedAt:        f.updatedAt,
-		LineItems:        []*LineItem{},
+		LineItems:        []*billing.LineItem{},
 	}
 }
 
@@ -719,8 +686,8 @@ func invoiceFieldsFromParticipant(r gen.ListParticipantInvoicesRow) invoiceField
 }
 
 // mapLineItems maps generated line item rows to domain line items (non-nil).
-func mapLineItems(rows []gen.LineItem) []*LineItem {
-	out := make([]*LineItem, 0, len(rows))
+func mapLineItems(rows []gen.LineItem) []*billing.LineItem {
+	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		out = append(out, toLineItem(rows[i]))
 	}
@@ -728,8 +695,8 @@ func mapLineItems(rows []gen.LineItem) []*LineItem {
 }
 
 // toLineItem maps one generated line item to the domain shape.
-func toLineItem(row gen.LineItem) *LineItem {
-	return &LineItem{
+func toLineItem(row gen.LineItem) *billing.LineItem {
+	return &billing.LineItem{
 		ID:               row.ID,
 		UUID:             row.Uuid,
 		SupportItemID:    ptrID(row.SupportItemID),

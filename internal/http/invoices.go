@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -29,7 +30,7 @@ func NewInvoiceHandler(svc *service.InvoiceService) *InvoiceHandler {
 // its json tags flatten) plus the line items. The frontend posts this shape.
 type invoiceRequest struct {
 	repository.InvoiceInput
-	LineItems []repository.LineItemInput `json:"lineItems"`
+	LineItems []billing.LineItemInput `json:"lineItems"`
 }
 
 // List performs a read-time overdue sweep, then returns invoices filtered by the

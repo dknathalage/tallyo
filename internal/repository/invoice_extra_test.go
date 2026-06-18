@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/dknathalage/tallyo/internal/billing"
 )
 
 // mkInvoice creates a single-line invoice for tests below.
@@ -11,7 +13,7 @@ func mkInvoice(t *testing.T, repo *InvoicesRepo, tid, pid int64, due string) *In
 	t.Helper()
 	inv, err := repo.Create(context.Background(), tid, InvoiceInput{
 		ParticipantID: pid, IssueDate: "2026-01-01", DueDate: due,
-	}, []LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
+	}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create invoice: %v", err)
 	}

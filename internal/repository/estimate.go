@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
@@ -32,26 +33,26 @@ var ErrAlreadyConverted = errors.New("estimate already converted")
 // valid_until replaces due_date, and an optional converted_invoice_id records
 // the invoice produced by Convert.
 type Estimate struct {
-	ID                 int64       `json:"id"`
-	UUID               string      `json:"uuid"`
-	Number             string      `json:"number"`
-	ParticipantID      *int64      `json:"participantId"`
-	ParticipantName    string      `json:"participantName"`
-	PlanManagerID      *int64      `json:"planManagerId"`
-	Status             string      `json:"status"`
-	IssueDate          string      `json:"issueDate"`
-	ValidUntil         string      `json:"validUntil"`
-	Subtotal           float64     `json:"subtotal"`
-	Tax                float64     `json:"tax"`
-	Total              float64     `json:"total"`
-	Notes              string      `json:"notes"`
-	ConvertedInvoiceID *int64      `json:"convertedInvoiceId"`
-	BusinessSnapshot   string      `json:"businessSnapshot"`
-	ClientSnapshot     string      `json:"participantSnapshot"`
-	PayerSnapshot      string      `json:"planManagerSnapshot"`
-	CreatedAt          string      `json:"createdAt"`
-	UpdatedAt          string      `json:"updatedAt"`
-	LineItems          []*LineItem `json:"lineItems"`
+	ID                 int64               `json:"id"`
+	UUID               string              `json:"uuid"`
+	Number             string              `json:"number"`
+	ParticipantID      *int64              `json:"participantId"`
+	ParticipantName    string              `json:"participantName"`
+	PlanManagerID      *int64              `json:"planManagerId"`
+	Status             string              `json:"status"`
+	IssueDate          string              `json:"issueDate"`
+	ValidUntil         string              `json:"validUntil"`
+	Subtotal           float64             `json:"subtotal"`
+	Tax                float64             `json:"tax"`
+	Total              float64             `json:"total"`
+	Notes              string              `json:"notes"`
+	ConvertedInvoiceID *int64              `json:"convertedInvoiceId"`
+	BusinessSnapshot   string              `json:"businessSnapshot"`
+	ClientSnapshot     string              `json:"participantSnapshot"`
+	PayerSnapshot      string              `json:"planManagerSnapshot"`
+	CreatedAt          string              `json:"createdAt"`
+	UpdatedAt          string              `json:"updatedAt"`
+	LineItems          []*billing.LineItem `json:"lineItems"`
 }
 
 // EstimateInput is the writable subset of an estimate header.
@@ -107,7 +108,7 @@ func (r *EstimatesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *E
 // Create inserts an estimate plus its line items inside one numbering-retried
 // transaction, audits the create, and re-reads the row. ParticipantID and at
 // least one line item are required.
-func (r *EstimatesRepo) Create(ctx context.Context, tenantID int64, in EstimateInput, items []LineItemInput) (*Estimate, error) {
+func (r *EstimatesRepo) Create(ctx context.Context, tenantID int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	if tenantID == 0 {
 		return nil, errors.New("create estimate: tenant id required")
 	}
@@ -130,7 +131,7 @@ func (r *EstimatesRepo) Create(ctx context.Context, tenantID int64, in EstimateI
 }
 
 // createTx runs a single create attempt in one transaction.
-func (r *EstimatesRepo) createTx(ctx context.Context, tenantID int64, in EstimateInput, items []LineItemInput, newID *int64) error {
+func (r *EstimatesRepo) createTx(ctx context.Context, tenantID int64, in EstimateInput, items []billing.LineItemInput, newID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -177,7 +178,7 @@ func nextEstimateNumber(ctx context.Context, q *gen.Queries, tenantID int64) (st
 }
 
 // createEstimateParams builds the insert params, applying defaults and totals.
-func createEstimateParams(tenantID int64, in EstimateInput, items []LineItemInput, num string) gen.CreateEstimateParams {
+func createEstimateParams(tenantID int64, in EstimateInput, items []billing.LineItemInput, num string) gen.CreateEstimateParams {
 	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateEstimateParams{
@@ -203,7 +204,7 @@ func createEstimateParams(tenantID int64, in EstimateInput, items []LineItemInpu
 }
 
 // insertEstimateItems writes each line item with its computed total.
-func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimateID int64, items []LineItemInput) error {
+func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimateID int64, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
@@ -298,7 +299,7 @@ func (r *EstimatesRepo) ListParticipantEstimates(ctx context.Context, tenantID, 
 // Update rewrites the header (recomputing totals) and replaces all line items,
 // atomically with one audit row. Empty snapshot inputs keep the existing stored
 // snapshots. Returns (nil, nil) when the estimate does not exist.
-func (r *EstimatesRepo) Update(ctx context.Context, tenantID, id int64, in EstimateInput, items []LineItemInput) (*Estimate, error) {
+func (r *EstimatesRepo) Update(ctx context.Context, tenantID, id int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	if in.ParticipantID == 0 {
 		return nil, errors.New("update estimate: participant is required")
 	}
@@ -346,7 +347,7 @@ func keepEstimateSnapshots(in *EstimateInput, existing gen.GetEstimateRow) {
 }
 
 // updateEstimateParams builds the update params; the number is immutable.
-func updateEstimateParams(tenantID int64, in EstimateInput, items []LineItemInput, number string, id int64) gen.UpdateEstimateParams {
+func updateEstimateParams(tenantID int64, in EstimateInput, items []billing.LineItemInput, number string, id int64) gen.UpdateEstimateParams {
 	t := computeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateEstimateParams{
@@ -577,7 +578,7 @@ func buildInvoiceFromEstimate(tenantID int64, est *Estimate, num string) gen.Cre
 }
 
 // copyEstimateItemsToInvoice writes each estimate line item as an invoice line.
-func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []*LineItem) error {
+func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []*billing.LineItem) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
@@ -605,11 +606,11 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 }
 
 // lineItemsToInput converts stored line items back into writable inputs.
-func lineItemsToInput(items []*LineItem) []LineItemInput {
-	out := make([]LineItemInput, 0, len(items))
+func lineItemsToInput(items []*billing.LineItem) []billing.LineItemInput {
+	out := make([]billing.LineItemInput, 0, len(items))
 	for i := range items { // bounded by len(items)
 		it := items[i]
-		out = append(out, LineItemInput{
+		out = append(out, billing.LineItemInput{
 			SupportItemID:    it.SupportItemID,
 			CustomItemID:     it.CustomItemID,
 			CatalogVersionID: it.CatalogVersionID,
@@ -663,7 +664,7 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 		PayerSnapshot:      f.payerSnap.String,
 		CreatedAt:          f.createdAt,
 		UpdatedAt:          f.updatedAt,
-		LineItems:          []*LineItem{},
+		LineItems:          []*billing.LineItem{},
 	}
 }
 
@@ -716,8 +717,8 @@ func estimateFieldsFromParticipant(r gen.ListParticipantEstimatesRow) estimateFi
 }
 
 // mapEstimateLineItems maps generated rows to domain line items (non-nil).
-func mapEstimateLineItems(rows []gen.EstimateLineItem) []*LineItem {
-	out := make([]*LineItem, 0, len(rows))
+func mapEstimateLineItems(rows []gen.EstimateLineItem) []*billing.LineItem {
+	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		out = append(out, toEstimateLineItem(rows[i]))
 	}
@@ -726,8 +727,8 @@ func mapEstimateLineItems(rows []gen.EstimateLineItem) []*LineItem {
 
 // toEstimateLineItem maps one generated estimate line item to the shared
 // LineItem domain shape.
-func toEstimateLineItem(row gen.EstimateLineItem) *LineItem {
-	return &LineItem{
+func toEstimateLineItem(row gen.EstimateLineItem) *billing.LineItem {
+	return &billing.LineItem{
 		ID:               row.ID,
 		UUID:             row.Uuid,
 		SupportItemID:    ptrID(row.SupportItemID),

@@ -44,6 +44,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
 
@@ -118,7 +119,7 @@ func NewLineValidator(db *sql.DB) *LineValidator {
 // defaulted, line_total recomputed) plus the engine-computed tax. The caller
 // passes Items and Tax straight to the repository write path.
 type ValidationResult struct {
-	Items []repository.LineItemInput
+	Items []billing.LineItemInput
 	Tax   float64
 }
 
@@ -129,7 +130,7 @@ type ValidationResult struct {
 // Invariants (NASA rule 5): tenantID and participantID must be non-zero and at
 // least one line must be present; violations are programmer errors surfaced as
 // plain errors (the caller's repository would reject them anyway).
-func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID int64, items []repository.LineItemInput) (*ValidationResult, error) {
+func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID int64, items []billing.LineItemInput) (*ValidationResult, error) {
 	return v.validate(ctx, tenantID, participantID, items, false)
 }
 
@@ -139,11 +140,11 @@ func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID in
 // ≤ 0). Used by the agent's create path so the model only chooses code, service
 // date and quantity — the platform owns the price. The human UI path uses
 // Validate (caller-supplied price, capped) so providers may bill sub-cap.
-func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, participantID int64, items []repository.LineItemInput) (*ValidationResult, error) {
+func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, participantID int64, items []billing.LineItemInput) (*ValidationResult, error) {
 	return v.validate(ctx, tenantID, participantID, items, true)
 }
 
-func (v *LineValidator) validate(ctx context.Context, tenantID, participantID int64, items []repository.LineItemInput, fillPrice bool) (*ValidationResult, error) {
+func (v *LineValidator) validate(ctx context.Context, tenantID, participantID int64, items []billing.LineItemInput, fillPrice bool) (*ValidationResult, error) {
 	if tenantID == 0 {
 		return nil, fmt.Errorf("validate lines: tenant id required")
 	}
@@ -167,7 +168,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, participantID in
 		return nil, err
 	}
 
-	out := make([]repository.LineItemInput, len(items))
+	out := make([]billing.LineItemInput, len(items))
 	copy(out, items)
 	var ve ValidationError
 	for i := range out { // bounded by len(out)
@@ -185,7 +186,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, participantID in
 // failures to ve. Support-item lines run the full catalogue flow; custom-item
 // lines run only the non-negativity checks. Errors are accumulated, not thrown,
 // so the caller collects every problem in one pass.
-func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *repository.LineItemInput, ve *ValidationError, fillPrice bool) {
+func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *billing.LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line == nil {
 		return
 	}
@@ -207,7 +208,7 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planSta
 
 // validateSupportLine runs steps 1-6 for a support-item line, mutating the line
 // (snapshots, pinned version, defaulted gst_free) and appending failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *repository.LineItemInput, ve *ValidationError, fillPrice bool) {
+func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *billing.LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for an NDIS support item"})
 		return
@@ -251,7 +252,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 // the cap assertion is skipped, and in fill mode the caller-supplied price is
 // kept — but a quotable line with unit_price ≤ 0 is a failure (no price to
 // apply). A missing price row is itself a failure.
-func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID int64, zone string, line *repository.LineItemInput, ve *ValidationError, fillPrice bool) {
+func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID int64, zone string, line *billing.LineItemInput, ve *ValidationError, fillPrice bool) {
 	price, err := v.catalog.ResolveZonePrice(ctx, versionID, line.Code, zone)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "unitPrice", Message: "could not look up the price cap for your zone"})
@@ -320,7 +321,7 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 // not be able to flip a taxable item to GST-free (or vice versa) by sending its
 // own gstFree, which would corrupt the computed tax. Custom-item lines keep
 // their client-controlled gst_free (they never reach this function).
-func snapshotSupportItem(line *repository.LineItemInput, versionID int64, item *repository.SupportItem) {
+func snapshotSupportItem(line *billing.LineItemInput, versionID int64, item *repository.SupportItem) {
 	id := item.ID
 	line.SupportItemID = &id
 	vid := versionID
@@ -335,7 +336,7 @@ func snapshotSupportItem(line *repository.LineItemInput, versionID int64, item *
 // isSupportItemLine reports whether a line is an NDIS support-item line (it
 // carries a code and is not a custom item). Custom-item lines carry a
 // CustomItemID and no catalogue code.
-func isSupportItemLine(line *repository.LineItemInput) bool {
+func isSupportItemLine(line *billing.LineItemInput) bool {
 	if line.CustomItemID != nil {
 		return false
 	}
@@ -346,7 +347,7 @@ func isSupportItemLine(line *repository.LineItemInput) bool {
 // where line_total = round2(qty*unitPrice) — matching the repository's own
 // rounding so the engine's tax agrees with the persisted subtotal. gst_free
 // lines contribute zero. The total is rounded to the cent (spec §6 money note).
-func computeLineTax(items []repository.LineItemInput, rate float64) float64 {
+func computeLineTax(items []billing.LineItemInput, rate float64) float64 {
 	if rate <= 0 {
 		return 0
 	}

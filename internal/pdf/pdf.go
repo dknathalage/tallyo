@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
@@ -108,8 +109,8 @@ func RenderEstimate(est *repository.Estimate) ([]byte, error) {
 }
 
 // lineItemRows projects line items into renderable string rows. Invoices and
-// estimates share the repository.LineItem domain type.
-func lineItemRows(items []*repository.LineItem) [][4]string {
+// estimates share the billing.LineItem domain type.
+func lineItemRows(items []*billing.LineItem) [][4]string {
 	rows := make([][4]string, 0, len(items))
 	for _, it := range items {
 		if it == nil {

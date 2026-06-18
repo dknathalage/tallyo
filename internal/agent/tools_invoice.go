@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 )
@@ -69,7 +70,7 @@ func NewListInvoicesTool(inv *service.InvoiceService) Tool {
 }
 
 // createInvoiceInput is the parsed input for the create_invoice tool. It maps
-// directly onto repository.InvoiceInput / []repository.LineItemInput.
+// directly onto repository.InvoiceInput / []billing.LineItemInput.
 type createInvoiceInput struct {
 	ParticipantID int64  `json:"participantId"`
 	PlanManagerID *int64 `json:"planManagerId"`
@@ -80,13 +81,13 @@ type createInvoiceInput struct {
 	// invoice covers.
 	// Passed on the shifts→invoice path so the platform can verify completeness
 	// and mark the covered shifts drafted.
-	From  string                     `json:"from"`
-	To    string                     `json:"to"`
-	Items []repository.LineItemInput `json:"items"`
+	From  string                  `json:"from"`
+	To    string                  `json:"to"`
+	Items []billing.LineItemInput `json:"items"`
 }
 
 // createInvoiceSchema is the model-facing JSON schema for create_invoice. The
-// item shape mirrors repository.LineItemInput's json tags.
+// item shape mirrors billing.LineItemInput's json tags.
 const createInvoiceSchema = `{
   "type": "object",
   "properties": {
@@ -295,7 +296,7 @@ func newCreateInvoiceToolShifts(inv *service.InvoiceService, shifts *service.Shi
 // catalogue-CODED line with a matching quantity (Pillar 4). A
 // gap — a missing line, or a quantity billed as a custom line instead of an NDIS
 // code — yields a structured error so the model self-corrects.
-func verifyShiftsCovered(ctx context.Context, shifts *service.ShiftService, participantID int64, items []repository.LineItemInput, from, to string) error {
+func verifyShiftsCovered(ctx context.Context, shifts *service.ShiftService, participantID int64, items []billing.LineItemInput, from, to string) error {
 	from, to, ok := coverageRange(items, from, to)
 	if !ok {
 		return nil // no coded lines and no explicit range → nothing to verify
@@ -330,7 +331,7 @@ func verifyShiftsCovered(ctx context.Context, shifts *service.ShiftService, part
 // invoice (status → drafted via MarkDrafted). Best-effort: errors are swallowed
 // (a failed link must not undo a committed invoice); a revert clears the link via
 // FK. Bounded by the number of shifts in range.
-func billCoveredShifts(ctx context.Context, shifts *service.ShiftService, participantID, invoiceID int64, from, to string, items []repository.LineItemInput) {
+func billCoveredShifts(ctx context.Context, shifts *service.ShiftService, participantID, invoiceID int64, from, to string, items []billing.LineItemInput) {
 	rf, rt, ok := coverageRange(items, from, to)
 	if !ok {
 		return
@@ -354,7 +355,7 @@ func billCoveredShifts(ctx context.Context, shifts *service.ShiftService, partic
 // coverageRange returns the shift range to verify/bill against: the explicit
 // [from, to] when both are supplied (catches a whole day the model dropped),
 // otherwise the min/max over the coded lines.
-func coverageRange(items []repository.LineItemInput, from, to string) (string, string, bool) {
+func coverageRange(items []billing.LineItemInput, from, to string) (string, string, bool) {
 	if from != "" && to != "" {
 		return from, to, true
 	}
@@ -363,7 +364,7 @@ func coverageRange(items []repository.LineItemInput, from, to string) (string, s
 
 // codedDateRange returns the min/max service date over the coded lines, and
 // whether any coded line exists. Bounded by len(items).
-func codedDateRange(items []repository.LineItemInput) (from, to string, ok bool) {
+func codedDateRange(items []billing.LineItemInput) (from, to string, ok bool) {
 	for i := range items {
 		if items[i].Code == "" || items[i].ServiceDate == "" {
 			continue
@@ -386,7 +387,7 @@ func codedDateRange(items []repository.LineItemInput) (from, to string, ok bool)
 // hasCodedLine reports whether items contains a catalogue-coded line on
 // serviceDate whose quantity equals qty (at cent granularity). Bounded by
 // len(items).
-func hasCodedLine(items []repository.LineItemInput, serviceDate string, qty float64) bool {
+func hasCodedLine(items []billing.LineItemInput, serviceDate string, qty float64) bool {
 	for i := range items {
 		it := items[i]
 		if it.Code != "" && it.ServiceDate == serviceDate && round2c(it.Quantity) == round2c(qty) {

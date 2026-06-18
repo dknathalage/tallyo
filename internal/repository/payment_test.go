@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/billing"
 )
 
 // seedInvoice creates a minimal one-line invoice and returns its id.
@@ -12,7 +14,7 @@ func seedInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64, unit
 	t.Helper()
 	inv, err := NewInvoices(conn).Create(context.Background(), tenantID, InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
-	}, []LineItemInput{{Description: "Service", Quantity: 1, UnitPrice: unitPrice}})
+	}, []billing.LineItemInput{{Description: "Service", Quantity: 1, UnitPrice: unitPrice}})
 	if err != nil {
 		t.Fatalf("seedInvoice: %v", err)
 	}

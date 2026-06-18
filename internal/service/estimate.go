@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -46,7 +47,7 @@ func (s *EstimateService) Get(ctx context.Context, id int64) (*repository.Estima
 }
 
 // Create inserts an estimate + line items, then broadcasts on success.
-func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInput, items []repository.LineItemInput) (*repository.Estimate, error) {
+func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInput, items []billing.LineItemInput) (*repository.Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -63,7 +64,7 @@ func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInpu
 
 // Update rewrites an estimate. A nil result means the row was not found, in which
 // case no event is published.
-func (s *EstimateService) Update(ctx context.Context, id int64, in repository.EstimateInput, items []repository.LineItemInput) (*repository.Estimate, error) {
+func (s *EstimateService) Update(ctx context.Context, id int64, in repository.EstimateInput, items []billing.LineItemInput) (*repository.Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {

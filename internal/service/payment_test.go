@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
 )
@@ -25,7 +26,7 @@ func seedInvoice(t *testing.T, invoices *repository.InvoicesRepo, tenantID, part
 	t.Helper()
 	inv, err := invoices.Create(tctx(tenantID), tenantID, repository.InvoiceInput{
 		ParticipantID: participantID, IssueDate: "2026-06-01", DueDate: "2026-07-01",
-	}, []repository.LineItemInput{{Description: "Work", Quantity: 1, UnitPrice: 25}})
+	}, []billing.LineItemInput{{Description: "Work", Quantity: 1, UnitPrice: 25}})
 	if err != nil {
 		t.Fatalf("seed invoice: %v", err)
 	}
