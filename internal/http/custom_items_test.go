@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,7 +24,7 @@ func newCustomItemServer(t *testing.T) *httptest.Server {
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
-	scH := NewSupportCatalogHandler(service.NewSupportCatalogService(conn), service.NewCatalogIngestService(conn, hub))
+	scH := catalog.NewHandler(catalog.NewService(conn), catalog.NewIngestService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

@@ -1,4 +1,4 @@
-package service
+package catalog
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestSearchForDateByKeywordAttachesCap(t *testing.T) {
 	conn := newTestDB(t)
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true,
 		map[string]*float64{"national": fptr(100)})
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	// Item names are "Item <code>", so the keyword matches by name.
 	ms, err := svc.SearchForDate(context.Background(), "01_011", "2026-01-15", "national", 0)
@@ -45,7 +45,7 @@ func TestSearchForDatePartialCode(t *testing.T) {
 	conn := newTestDB(t)
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011_0107_1_1", true,
 		map[string]*float64{"national": fptr(60)})
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	ms, err := svc.SearchForDate(context.Background(), "01_011", "2026-01-15", "", 0)
 	if err != nil {
@@ -60,7 +60,7 @@ func TestSearchForDateQuotableItem(t *testing.T) {
 	conn := newTestDB(t)
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true,
 		map[string]*float64{"national": nil})
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	ms, err := svc.SearchForDate(context.Background(), "01_999", "2026-01-15", "national", 0)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestSearchForDateOutsideWindowEmpty(t *testing.T) {
 	conn := newTestDB(t)
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true,
 		map[string]*float64{"national": fptr(100)})
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	// Service date before any catalogue window.
 	ms, err := svc.SearchForDate(context.Background(), "01_011", "2020-01-01", "national", 0)
@@ -93,7 +93,7 @@ func TestSearchForDateOutsideWindowEmpty(t *testing.T) {
 
 func TestSearchForDateEmptyDateErrors(t *testing.T) {
 	conn := newTestDB(t)
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	if _, err := svc.SearchForDate(context.Background(), "01_011", "", "national", 0); err == nil {
 		t.Fatal("empty service date must error")
@@ -106,7 +106,7 @@ func TestSearchForDateLimitCaps(t *testing.T) {
 		map[string]*float64{"national": fptr(10)})
 	addItemToVersion(t, conn, verID, "01_002", true, map[string]*float64{"national": fptr(10)})
 	addItemToVersion(t, conn, verID, "01_003", true, map[string]*float64{"national": fptr(10)})
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	// Broad keyword "01_" matches all three; limit caps to 2.
 	ms, err := svc.SearchForDate(context.Background(), "01_", "2026-01-15", "national", 2)

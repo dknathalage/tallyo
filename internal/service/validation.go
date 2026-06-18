@@ -46,8 +46,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/participant"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
@@ -99,7 +99,7 @@ func AsValidationError(err error) (*ValidationError, bool) {
 // participants (for the plan window) and the tenant's tax rates (for the
 // computed tax). It holds no mutable state beyond those repositories.
 type LineValidator struct {
-	catalog      *repository.CatalogRepo
+	cat          *catalog.CatalogRepo
 	profiles     *businessprofile.BusinessProfileRepo
 	participants *participant.ParticipantsRepo
 	taxRates     *taxrate.TaxRatesRepo
@@ -111,7 +111,7 @@ func NewLineValidator(db *sql.DB) *LineValidator {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
-		catalog:      repository.NewCatalog(db),
+		cat:          catalog.NewCatalog(db),
 		profiles:     businessprofile.NewBusinessProfile(db),
 		participants: participant.NewParticipants(db),
 		taxRates:     taxrate.NewTaxRates(db),
@@ -218,7 +218,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	}
 
 	// Step 1: resolve the catalogue version for the service date.
-	ver, err := v.catalog.ResolveVersionForDate(ctx, line.ServiceDate)
+	ver, err := v.cat.ResolveVersionForDate(ctx, line.ServiceDate)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "could not resolve a price catalogue for that service date"})
 		return
@@ -229,7 +229,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	}
 
 	// Step 2: find the support item by code within that version; snapshot.
-	item, err := v.catalog.GetSupportItemByCode(ctx, ver.ID, line.Code)
+	item, err := v.cat.GetSupportItemByCode(ctx, ver.ID, line.Code)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "could not look up that support item code"})
 		return
@@ -256,7 +256,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 // kept — but a quotable line with unit_price ≤ 0 is a failure (no price to
 // apply). A missing price row is itself a failure.
 func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID int64, zone string, line *billing.LineItemInput, ve *ValidationError, fillPrice bool) {
-	price, err := v.catalog.ResolveZonePrice(ctx, versionID, line.Code, zone)
+	price, err := v.cat.ResolveZonePrice(ctx, versionID, line.Code, zone)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "unitPrice", Message: "could not look up the price cap for your zone"})
 		return
@@ -324,7 +324,7 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 // not be able to flip a taxable item to GST-free (or vice versa) by sending its
 // own gstFree, which would corrupt the computed tax. Custom-item lines keep
 // their client-controlled gst_free (they never reach this function).
-func snapshotSupportItem(line *billing.LineItemInput, versionID int64, item *repository.SupportItem) {
+func snapshotSupportItem(line *billing.LineItemInput, versionID int64, item *catalog.SupportItem) {
 	id := item.ID
 	line.SupportItemID = &id
 	vid := versionID

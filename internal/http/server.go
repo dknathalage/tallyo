@@ -7,6 +7,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
@@ -67,7 +68,7 @@ type Deps struct {
 
 	// SupportCatalog, when non-nil, serves the auth-gated read-only GLOBAL NDIS
 	// Support Catalogue routes under /api/support-catalog.
-	SupportCatalog *SupportCatalogHandler
+	SupportCatalog *catalog.Handler
 
 	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
 	// bulk routes, plus the per-participant stats route under /api.
@@ -179,10 +180,7 @@ func NewServer(deps Deps) *Server {
 				// any authenticated tenant user; the XLSX ingest (write) is gated
 				// to platform admins (spec §5).
 				if deps.SupportCatalog != nil {
-					pr.Get("/support-catalog/versions", deps.SupportCatalog.ListVersions)
-					pr.Get("/support-catalog/versions/{id}/items", deps.SupportCatalog.ListItems)
-					pr.Get("/support-catalog/items/{itemId}/prices", deps.SupportCatalog.ListPrices)
-					pr.With(RequirePlatformAdmin).Post("/support-catalog/versions", deps.SupportCatalog.Ingest)
+					deps.SupportCatalog.Routes(pr)
 				}
 				if deps.Invoices != nil {
 					pr.Get("/invoices", deps.Invoices.List)

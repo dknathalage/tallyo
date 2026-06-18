@@ -1,4 +1,4 @@
-package service
+package catalog
 
 import (
 	"context"
@@ -8,39 +8,39 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/importer"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-// SupportCatalogService exposes read access to the GLOBAL NDIS Support
-// Catalogue (catalog_versions / support_items / support_item_prices). It is NOT
+// Service exposes read access to the GLOBAL NDIS Support Catalogue
+// (catalog_versions / support_items / support_item_prices). It is NOT
 // tenant-scoped: the catalogue is shared reference data (spec §3.1/§4.3).
 //
-// Platform-admin write access (XLSX ingest) lives in CatalogIngestService below.
-type SupportCatalogService struct {
-	repo *repository.CatalogRepo
+// Platform-admin write access (XLSX ingest) lives in IngestService below.
+type Service struct {
+	repo *CatalogRepo
 }
 
-func NewSupportCatalogService(db *sql.DB) *SupportCatalogService {
-	return &SupportCatalogService{repo: repository.NewCatalog(db)}
+// NewService constructs the read service.
+func NewService(db *sql.DB) *Service {
+	return &Service{repo: NewCatalog(db)}
 }
 
 // ListVersions returns all catalogue versions.
-func (s *SupportCatalogService) ListVersions(ctx context.Context) ([]*repository.CatalogVersion, error) {
+func (s *Service) ListVersions(ctx context.Context) ([]*CatalogVersion, error) {
 	return s.repo.ListVersions(ctx)
 }
 
 // GetVersion returns a catalogue version by id, or (nil, nil) when absent.
-func (s *SupportCatalogService) GetVersion(ctx context.Context, id int64) (*repository.CatalogVersion, error) {
+func (s *Service) GetVersion(ctx context.Context, id int64) (*CatalogVersion, error) {
 	return s.repo.GetVersion(ctx, id)
 }
 
 // ListSupportItems returns the support items in a catalogue version.
-func (s *SupportCatalogService) ListSupportItems(ctx context.Context, versionID int64) ([]*repository.SupportItem, error) {
+func (s *Service) ListSupportItems(ctx context.Context, versionID int64) ([]*SupportItem, error) {
 	return s.repo.ListSupportItems(ctx, versionID)
 }
 
 // ListPrices returns the zone prices for a support item.
-func (s *SupportCatalogService) ListPrices(ctx context.Context, supportItemID int64) ([]*repository.SupportItemPrice, error) {
+func (s *Service) ListPrices(ctx context.Context, supportItemID int64) ([]*SupportItemPrice, error) {
 	return s.repo.ListPrices(ctx, supportItemID)
 }
 
@@ -63,7 +63,7 @@ type CatalogMatch struct {
 // price cap for the given zone (default "national" when zone is empty). Returns
 // an empty (non-nil) slice when no version is in effect or nothing matches —
 // capped at limit results (limit ≤ 0 → a default of 25) to bound the payload.
-func (s *SupportCatalogService) SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*CatalogMatch, error) {
+func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*CatalogMatch, error) {
 	if serviceDate == "" {
 		return nil, fmt.Errorf("catalogue search: service date is required")
 	}
@@ -107,23 +107,22 @@ func (s *SupportCatalogService) SearchForDate(ctx context.Context, query, servic
 	return out, nil
 }
 
-// CatalogIngestService is the platform-admin WRITE path for the GLOBAL NDIS
+// IngestService is the platform-admin WRITE path for the GLOBAL NDIS
 // Support Catalogue: it parses an official Support Catalogue XLSX (fixed-format,
 // keyed to known NDIA headers — no column-mapping wizard) and bulk-loads a new
 // catalog_version + support_items + per-zone prices in one transaction (spec §5).
 // It is NOT tenant-scoped.
-type CatalogIngestService struct {
-	repo *repository.CatalogRepo
+type IngestService struct {
+	repo *CatalogRepo
 	hub  *realtime.Hub
 }
 
-// NewCatalogIngestService constructs the ingest service. A nil hub is a
-// programmer error (the ingest must broadcast after commit).
-func NewCatalogIngestService(db *sql.DB, hub *realtime.Hub) *CatalogIngestService {
+// NewIngestService constructs the ingest service. A nil hub is a programmer error.
+func NewIngestService(db *sql.DB, hub *realtime.Hub) *IngestService {
 	if hub == nil {
-		panic("NewCatalogIngestService: nil hub")
+		panic("catalog.NewIngestService: nil hub")
 	}
-	return &CatalogIngestService{repo: repository.NewCatalog(db), hub: hub}
+	return &IngestService{repo: NewCatalog(db), hub: hub}
 }
 
 // IngestSummary is the JSON-friendly result of a catalogue ingest.
@@ -156,7 +155,7 @@ const (
 // required column is missing or zero data rows parse. Broadcasts an SSE event
 // AFTER the commit succeeds (spec §5). Catalogue is GLOBAL so the event is
 // broadcast to all subscribers.
-func (s *CatalogIngestService) IngestXLSX(ctx context.Context, data []byte, label, effectiveFrom, sourceFilename string) (*IngestSummary, error) {
+func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effectiveFrom, sourceFilename string) (*IngestSummary, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("ingest: empty file")
 	}
@@ -215,7 +214,7 @@ func (s *CatalogIngestService) IngestXLSX(ctx context.Context, data []byte, labe
 
 // buildIngestItems maps parsed rows to IngestItem values, skipping rows with a
 // blank support-item code. Bounded by len(rows).
-func buildIngestItems(rows []map[string]string, norm map[string]string) ([]repository.IngestItem, error) {
+func buildIngestItems(rows []map[string]string, norm map[string]string) ([]IngestItem, error) {
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("file has no data rows")
 	}
@@ -226,14 +225,14 @@ func buildIngestItems(rows []map[string]string, norm map[string]string) ([]repos
 		}
 		return strings.TrimSpace(row[key])
 	}
-	out := make([]repository.IngestItem, 0, len(rows))
+	out := make([]IngestItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		row := rows[i]
 		code := cell(row, colCode)
 		if code == "" {
 			continue // skip blank/spacer rows
 		}
-		it := repository.IngestItem{
+		it := IngestItem{
 			Code:              code,
 			Name:              cell(row, colName),
 			Unit:              cell(row, colUnit),

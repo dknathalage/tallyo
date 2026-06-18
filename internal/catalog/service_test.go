@@ -1,4 +1,4 @@
-package service
+package catalog
 
 import (
 	"context"
@@ -62,8 +62,8 @@ var catalogHeaders = []string{
 func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	ingest := NewCatalogIngestService(conn, hub)
-	read := NewSupportCatalogService(conn)
+	ingest := NewIngestService(conn, hub)
+	read := NewService(conn)
 
 	data := catalogXLSX(t, catalogHeaders, [][]string{
 		{"01_011_0107_1_1", "Assistance With Self-Care", "Hour", "Core", "Daily Living", "$67.56", "$94.58", "$101.34"},
@@ -144,8 +144,8 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 // a required column is rejected and NO version row is created (tx rollback).
 func TestCatalogIngestMissingColumnRejectsWholeUpload(t *testing.T) {
 	conn := newTestDB(t)
-	ingest := NewCatalogIngestService(conn, realtime.NewHub())
-	read := NewSupportCatalogService(conn)
+	ingest := NewIngestService(conn, realtime.NewHub())
+	read := NewService(conn)
 
 	// Drop the required "Support Item Name" column.
 	badHeaders := []string{"Support Item Number", "Unit", "National"}
@@ -169,7 +169,7 @@ func TestCatalogIngestMissingColumnRejectsWholeUpload(t *testing.T) {
 // TestCatalogIngestNoDataRowsRejected asserts a header-only sheet is rejected.
 func TestCatalogIngestNoDataRowsRejected(t *testing.T) {
 	conn := newTestDB(t)
-	ingest := NewCatalogIngestService(conn, realtime.NewHub())
+	ingest := NewIngestService(conn, realtime.NewHub())
 	data := catalogXLSX(t, catalogHeaders, nil)
 	if _, err := ingest.IngestXLSX(context.Background(), data, "empty", "2025-07-01", "empty.xlsx"); err == nil {
 		t.Fatal("expected error for zero data rows")
@@ -180,7 +180,7 @@ func TestCatalogIngestNoDataRowsRejected(t *testing.T) {
 // ingested, ListVersions returns an empty (non-nil) slice.
 func TestSupportCatalogListVersionsEmpty(t *testing.T) {
 	conn := newTestDB(t)
-	svc := NewSupportCatalogService(conn)
+	svc := NewService(conn)
 
 	versions, err := svc.ListVersions(tctx(seedTenant(t, conn)))
 	if err != nil {

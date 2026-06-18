@@ -1,4 +1,4 @@
-package service
+package catalog
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 func TestSupportCatalogGetVersionAndListPrices(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	ingest := NewCatalogIngestService(conn, hub)
-	read := NewSupportCatalogService(conn)
+	ingest := NewIngestService(conn, hub)
+	read := NewService(conn)
 	ctx := context.Background()
 
 	data := catalogXLSX(t, catalogHeaders, [][]string{
@@ -53,7 +53,7 @@ func TestSupportCatalogGetVersionAndListPrices(t *testing.T) {
 // yields (nil, nil) rather than an error.
 func TestSupportCatalogGetVersionMissingReturnsNil(t *testing.T) {
 	conn := newTestDB(t)
-	read := NewSupportCatalogService(conn)
+	read := NewService(conn)
 
 	ver, err := read.GetVersion(context.Background(), 999999)
 	if err != nil {

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/catalog"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
@@ -187,7 +188,7 @@ func TestListParticipantShiftsAttachesCandidates(t *testing.T) {
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 	seedReferenceShifts(t, shifts, ctx, participantID)
 
-	cat := service.NewSupportCatalogService(conn)
+	cat := catalog.NewService(conn)
 	tool := NewListParticipantShiftsToolWithCatalog(shifts, cat)
 
 	rows := runListShifts(t, tool, ctx, participantID, "2026-06-09", "2026-06-12")

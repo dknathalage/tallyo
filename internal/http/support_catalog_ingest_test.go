@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/xuri/excelize/v2"
 )
@@ -36,9 +36,9 @@ func newCatalogIngestServer(t *testing.T) *httptest.Server {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	scH := NewSupportCatalogHandler(
-		service.NewSupportCatalogService(conn),
-		service.NewCatalogIngestService(conn, hub),
+	scH := catalog.NewHandler(
+		catalog.NewService(conn),
+		catalog.NewIngestService(conn, hub),
 	)
 
 	router := chi.NewRouter()

@@ -19,6 +19,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	httpapi "github.com/dknathalage/tallyo/internal/http"
@@ -205,8 +206,8 @@ func run() error {
 	taxRateSvc := taxrate.NewService(conn, hub)
 	participantSvc := participant.NewService(conn, hub)
 	customItemSvc := customitem.NewService(conn, hub)
-	supportCatalogSvc := service.NewSupportCatalogService(conn)
-	catalogIngestSvc := service.NewCatalogIngestService(conn, hub)
+	supportCatalogSvc := catalog.NewService(conn)
+	catalogIngestSvc := catalog.NewIngestService(conn, hub)
 	invoiceSvc := service.NewInvoiceService(conn, hub)
 	shiftSvc := service.NewShiftService(conn, hub)
 	estimateSvc := service.NewEstimateService(conn, hub)
@@ -266,7 +267,7 @@ func run() error {
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
 		Participants:    participant.NewHandler(participantSvc),
 		CustomItems:     customitem.NewHandler(customItemSvc),
-		SupportCatalog:  httpapi.NewSupportCatalogHandler(supportCatalogSvc, catalogIngestSvc),
+		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        httpapi.NewInvoiceHandler(invoiceSvc),
 		Shifts:          httpapi.NewShiftHandler(shiftSvc),
 		Estimates:       httpapi.NewEstimateHandler(estimateSvc),

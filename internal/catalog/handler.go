@@ -1,29 +1,38 @@
-package httpapi
+package catalog
 
 import (
 	"io"
 	"net/http"
 	"strconv"
 
-	"github.com/dknathalage/tallyo/internal/service"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/go-chi/chi/v5"
 )
 
-// SupportCatalogHandler serves read access to the GLOBAL NDIS Support Catalogue
+// Handler serves read access to the GLOBAL NDIS Support Catalogue
 // (versions, support items, zone prices). It is NOT tenant-scoped. The
 // platform-admin XLSX ingest is served via Ingest (gated by RequirePlatformAdmin).
-type SupportCatalogHandler struct {
-	svc    *service.SupportCatalogService
-	ingest *service.CatalogIngestService
+type Handler struct {
+	svc    *Service
+	ingest *IngestService
 }
 
-// NewSupportCatalogHandler constructs the handler. A nil svc is a programmer
-// error. ingest may be nil when the platform-admin upload route is not mounted.
-func NewSupportCatalogHandler(svc *service.SupportCatalogService, ingest *service.CatalogIngestService) *SupportCatalogHandler {
+// NewHandler constructs the handler. A nil svc is a programmer error. ingest may
+// be nil when the platform-admin upload route is not mounted.
+func NewHandler(svc *Service, ingest *IngestService) *Handler {
 	if svc == nil {
-		panic("NewSupportCatalogHandler: nil svc")
+		panic("catalog.NewHandler: nil svc")
 	}
-	return &SupportCatalogHandler{svc: svc, ingest: ingest}
+	return &Handler{svc: svc, ingest: ingest}
+}
+
+// Routes registers the support-catalogue routes on r. Mounted inside the
+// authenticated /api group by the composition root.
+func (h *Handler) Routes(r chi.Router) {
+	r.Get("/support-catalog/versions", h.ListVersions)
+	r.Get("/support-catalog/versions/{id}/items", h.ListItems)
+	r.Get("/support-catalog/items/{itemId}/prices", h.ListPrices)
+	r.With(httpx.RequirePlatformAdmin).Post("/support-catalog/versions", h.Ingest)
 }
 
 // maxCatalogUpload caps the multipart catalogue upload (the official NDIS
@@ -35,39 +44,39 @@ const maxCatalogUpload = 32 << 20
 // only (gated by RequirePlatformAdmin at the route). Returns the created version
 // summary as JSON. The whole upload is rejected (400) when parsing fails or a
 // required column is missing — no partial version is created (the tx rolls back).
-func (h *SupportCatalogHandler) Ingest(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Ingest(w http.ResponseWriter, r *http.Request) {
 	if h.ingest == nil {
-		WriteError(w, http.StatusNotFound, "ingest not available")
+		httpx.WriteError(w, http.StatusNotFound, "ingest not available")
 		return
 	}
 	// Cap the request body before parsing to bound memory.
 	r.Body = http.MaxBytesReader(w, r.Body, maxCatalogUpload)
 	if err := r.ParseMultipartForm(maxCatalogUpload); err != nil {
-		WriteError(w, http.StatusBadRequest, "invalid or oversized upload")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid or oversized upload")
 		return
 	}
 
 	label := r.FormValue("label")
 	effectiveFrom := r.FormValue("effectiveFrom")
 	if label == "" || effectiveFrom == "" {
-		WriteError(w, http.StatusBadRequest, "label and effectiveFrom are required")
+		httpx.WriteError(w, http.StatusBadRequest, "label and effectiveFrom are required")
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "file is required")
+		httpx.WriteError(w, http.StatusBadRequest, "file is required")
 		return
 	}
 	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(file)
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "could not read upload")
+		httpx.WriteError(w, http.StatusBadRequest, "could not read upload")
 		return
 	}
 	if len(data) == 0 {
-		WriteError(w, http.StatusBadRequest, "uploaded file is empty")
+		httpx.WriteError(w, http.StatusBadRequest, "uploaded file is empty")
 		return
 	}
 
@@ -78,50 +87,50 @@ func (h *SupportCatalogHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	summary, err := h.ingest.IngestXLSX(r.Context(), data, label, effectiveFrom, filename)
 	if err != nil {
 		// Parse/validation failures are the client's problem (bad file shape).
-		WriteError(w, http.StatusBadRequest, err.Error())
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	WriteJSON(w, http.StatusCreated, summary)
+	httpx.WriteJSON(w, http.StatusCreated, summary)
 }
 
 // ListVersions returns all catalogue versions.
-func (h *SupportCatalogHandler) ListVersions(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListVersions(w http.ResponseWriter, r *http.Request) {
 	versions, err := h.svc.ListVersions(r.Context())
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	WriteJSON(w, http.StatusOK, versions)
+	httpx.WriteJSON(w, http.StatusOK, versions)
 }
 
 // ListItems returns the support items in a catalogue version. The {id} path
 // param is the version id.
-func (h *SupportCatalogHandler) ListItems(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(r)
+func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.ParseID(r)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "invalid id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	items, err := h.svc.ListSupportItems(r.Context(), id)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	WriteJSON(w, http.StatusOK, items)
+	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
 // ListPrices returns the zone prices for a support item. The {itemId} path param
 // is the support item id.
-func (h *SupportCatalogHandler) ListPrices(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListPrices(w http.ResponseWriter, r *http.Request) {
 	itemID, err := strconv.ParseInt(chi.URLParam(r, "itemId"), 10, 64)
 	if err != nil || itemID <= 0 {
-		WriteError(w, http.StatusBadRequest, "invalid item id")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
 	prices, perr := h.svc.ListPrices(r.Context(), itemID)
 	if perr != nil {
-		WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	WriteJSON(w, http.StatusOK, prices)
+	httpx.WriteJSON(w, http.StatusOK, prices)
 }

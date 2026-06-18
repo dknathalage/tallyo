@@ -1,4 +1,4 @@
-package repository
+package catalog
 
 // CatalogRepo — the GLOBAL NDIS Support Catalogue (catalog_versions,
 // support_items, support_item_prices). NOT tenant-scoped (shared reference
@@ -67,7 +67,7 @@ type CatalogRepo struct {
 // NewCatalog constructs a repository. A nil db is a programmer error.
 func NewCatalog(db *sql.DB) *CatalogRepo {
 	if db == nil {
-		panic("repository: NewCatalog requires a non-nil *sql.DB")
+		panic("catalog: NewCatalog requires a non-nil *sql.DB")
 	}
 	return &CatalogRepo{db: db}
 }
@@ -352,4 +352,21 @@ func toSupportItemPrice(row gen.SupportItemPrice) *SupportItemPrice {
 		Zone:          row.Zone,
 		PriceCap:      cap,
 	}
+}
+
+// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
+func b2i(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
+// the string is empty, and valid otherwise.
+func nzMaybe(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
 }

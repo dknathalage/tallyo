@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/service"
 )
@@ -75,7 +76,7 @@ func NewListParticipantShiftsTool(shifts *service.ShiftService) Tool {
 // resolved for the shift's service date. This lets the model pick the code from a
 // short list instead of free-form searching, cutting search_catalogue round-trips
 // and code-mapping errors.
-func NewListParticipantShiftsToolWithCatalog(shifts *service.ShiftService, cat *service.SupportCatalogService) Tool {
+func NewListParticipantShiftsToolWithCatalog(shifts *service.ShiftService, cat *catalog.Service) Tool {
 	return newListParticipantShiftsTool(shifts, cat)
 }
 
@@ -83,7 +84,7 @@ func NewListParticipantShiftsToolWithCatalog(shifts *service.ShiftService, cat *
 // is non-nil it enriches each shift with candidate catalogue codes; cat == nil
 // yields the plain (no-candidates) behaviour, keeping the original constructor
 // unchanged for existing callers and tests.
-func newListParticipantShiftsTool(shifts *service.ShiftService, cat *service.SupportCatalogService) Tool {
+func newListParticipantShiftsTool(shifts *service.ShiftService, cat *catalog.Service) Tool {
 	return Tool{
 		Name:        "list_participant_shifts",
 		Description: "List a participant's recorded shifts within an optional date range. Call this when drafting an invoice from shifts.",
@@ -127,7 +128,7 @@ func newListParticipantShiftsTool(shifts *service.ShiftService, cat *service.Sup
 // shift from its structured measures (hours → self-care, km → transport), for
 // the shift's service date. It is best-effort: cat == nil or any lookup error
 // yields nil (no candidates) and never fails the read.
-func shiftCandidates(ctx context.Context, cat *service.SupportCatalogService, sh *repository.Shift) []candidateView {
+func shiftCandidates(ctx context.Context, cat *catalog.Service, sh *repository.Shift) []candidateView {
 	if cat == nil || sh == nil || sh.ServiceDate == "" {
 		return nil
 	}
@@ -197,7 +198,7 @@ const searchCatalogueSchema = `{
 // item's code, name, unit, GST-free flag and the national price cap. Call this
 // to find the correct NDIS code and rate for an activity before creating an
 // invoice.
-func NewSearchCatalogueTool(cat *service.SupportCatalogService) Tool {
+func NewSearchCatalogueTool(cat *catalog.Service) Tool {
 	return Tool{
 		Name:        "search_catalogue",
 		Description: "Search the NDIS support-item catalogue effective on a service date by code or keyword, returning each item's code, name, unit, GST-free flag and the national price cap. Call this to find the correct NDIS code and rate for an activity before creating an invoice.",
