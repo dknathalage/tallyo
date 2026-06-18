@@ -5,17 +5,17 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 )
 
-func newEstimateSvc(t *testing.T) (*EstimateService, *realtime.Hub, int64, int64) {
+func newEstimateSvc(t *testing.T) (*estimate.Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
 	participantID := seedParticipant(t, conn, tenantID)
 	hub := realtime.NewHub()
-	return NewEstimateService(conn, hub), hub, tenantID, participantID
+	return estimate.NewService(conn, hub), hub, tenantID, participantID
 }
 
 func TestEstimateCreateBroadcasts(t *testing.T) {
@@ -24,7 +24,7 @@ func TestEstimateCreateBroadcasts(t *testing.T) {
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	est, err := svc.Create(ctx, repository.EstimateInput{
+	est, err := svc.Create(ctx, estimate.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
@@ -47,7 +47,7 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 	svc, hub, tenantID, participantID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est, err := svc.Create(ctx, repository.EstimateInput{
+	est, err := svc.Create(ctx, estimate.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
@@ -92,7 +92,7 @@ func TestEstimateDuplicateBroadcasts(t *testing.T) {
 	svc, hub, tenantID, participantID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est, err := svc.Create(ctx, repository.EstimateInput{
+	est, err := svc.Create(ctx, estimate.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {

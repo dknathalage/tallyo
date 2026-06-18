@@ -18,11 +18,11 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/repository"
-	"github.com/dknathalage/tallyo/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -39,7 +39,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	invH := invoice.NewHandler(invoice.NewService(conn, hub, repository.NewShifts(conn)))
-	estH := NewEstimateHandler(service.NewEstimateService(conn, hub))
+	estH := estimate.NewHandler(estimate.NewService(conn, hub))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()

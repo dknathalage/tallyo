@@ -1,4 +1,4 @@
-package service
+package estimate
 
 import (
 	"context"
@@ -6,48 +6,48 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// EstimateService orchestrates estimate reads/writes and publishes change events
+// Service orchestrates estimate reads/writes and publishes change events
 // after a successful commit. Unlike invoices it has no overdue sweep, but it adds
 // a Convert action that turns an accepted estimate into an invoice.
-type EstimateService struct {
-	repo      *repository.EstimatesRepo
+type Service struct {
+	repo      *EstimatesRepo
 	validator *billing.LineValidator
 	hub       *realtime.Hub
 }
 
-func NewEstimateService(db *sql.DB, hub *realtime.Hub) *EstimateService {
+// NewService constructs the estimate service. A nil hub is a programmer error.
+func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 	if hub == nil {
-		panic("NewEstimateService: nil hub")
+		panic("estimate.NewService: nil hub")
 	}
-	return &EstimateService{repo: repository.NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub}
+	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub}
 }
 
-func (s *EstimateService) List(ctx context.Context) ([]*repository.Estimate, error) {
+func (s *Service) List(ctx context.Context) ([]*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID)
 }
 
-func (s *EstimateService) ListByStatus(ctx context.Context, status string) ([]*repository.Estimate, error) {
+func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *EstimateService) ListParticipantEstimates(ctx context.Context, participantID int64) ([]*repository.Estimate, error) {
+func (s *Service) ListParticipantEstimates(ctx context.Context, participantID int64) ([]*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListParticipantEstimates(ctx, tenantID, participantID)
 }
 
-func (s *EstimateService) Get(ctx context.Context, id int64) (*repository.Estimate, error) {
+func (s *Service) Get(ctx context.Context, id int64) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
 
 // Create inserts an estimate + line items, then broadcasts on success.
-func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInput, items []billing.LineItemInput) (*repository.Estimate, error) {
+func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -64,7 +64,7 @@ func (s *EstimateService) Create(ctx context.Context, in repository.EstimateInpu
 
 // Update rewrites an estimate. A nil result means the row was not found, in which
 // case no event is published.
-func (s *EstimateService) Update(ctx context.Context, id int64, in repository.EstimateInput, items []billing.LineItemInput) (*repository.Estimate, error) {
+func (s *Service) Update(ctx context.Context, id int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *EstimateService) Update(ctx context.Context, id int64, in repository.Es
 }
 
 // UpdateStatus sets the estimate status, then broadcasts on success.
-func (s *EstimateService) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
@@ -93,7 +93,7 @@ func (s *EstimateService) UpdateStatus(ctx context.Context, id int64, status str
 }
 
 // Delete removes an estimate, then broadcasts on success.
-func (s *EstimateService) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
@@ -103,7 +103,7 @@ func (s *EstimateService) Delete(ctx context.Context, id int64) error {
 }
 
 // Duplicate copies an estimate, then broadcasts a create for the new id.
-func (s *EstimateService) Duplicate(ctx context.Context, id int64) (*repository.Estimate, error) {
+func (s *Service) Duplicate(ctx context.Context, id int64) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Duplicate(ctx, tenantID, id)
 	if err != nil {
@@ -114,7 +114,7 @@ func (s *EstimateService) Duplicate(ctx context.Context, id int64) (*repository.
 }
 
 // BulkDelete removes several estimates, then broadcasts a single bulk event.
-func (s *EstimateService) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
@@ -124,7 +124,7 @@ func (s *EstimateService) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 // BulkUpdateStatus sets several estimates' status, then broadcasts a bulk event.
-func (s *EstimateService) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
@@ -136,7 +136,7 @@ func (s *EstimateService) BulkUpdateStatus(ctx context.Context, ids []int64, sta
 // Convert turns an accepted estimate into an invoice. On success it broadcasts an
 // estimate "convert" event and an invoice "create" event for the new invoice, then
 // returns the result. ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
-func (s *EstimateService) Convert(ctx context.Context, id int64) (*repository.ConvertResult, error) {
+func (s *Service) Convert(ctx context.Context, id int64) (*ConvertResult, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.repo.Convert(ctx, tenantID, id)
 	if err != nil {

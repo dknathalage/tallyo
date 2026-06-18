@@ -5,26 +5,27 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/estimate"
 )
 
 func TestEstimateUpdate(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewEstimates(conn)
+	repo := estimate.NewEstimates(conn)
 	ctx := context.Background()
 
 	est := mkEstimate(t, repo, tid, pid)
 
 	// Missing participant and empty items are rejected.
-	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ParticipantID: 0}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}}); err == nil {
+	if _, err := repo.Update(ctx, tid, est.ID, estimate.EstimateInput{ParticipantID: 0}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}}); err == nil {
 		t.Fatal("Update with no participant: want error")
 	}
-	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ParticipantID: pid}, nil); err == nil {
+	if _, err := repo.Update(ctx, tid, est.ID, estimate.EstimateInput{ParticipantID: pid}, nil); err == nil {
 		t.Fatal("Update with no items: want error")
 	}
 
-	up, err := repo.Update(ctx, tid, est.ID, EstimateInput{
+	up, err := repo.Update(ctx, tid, est.ID, estimate.EstimateInput{
 		ParticipantID: pid, IssueDate: "2026-01-01", ValidUntil: "2026-03-01", Tax: 5,
 	}, []billing.LineItemInput{{Description: "Y", Quantity: 3, UnitPrice: 10}})
 	if err != nil {
@@ -36,7 +37,7 @@ func TestEstimateUpdate(t *testing.T) {
 	}
 
 	// Updating a non-existent estimate returns (nil, nil).
-	missing, err := repo.Update(ctx, tid, 999999, EstimateInput{ParticipantID: pid},
+	missing, err := repo.Update(ctx, tid, 999999, estimate.EstimateInput{ParticipantID: pid},
 		[]billing.LineItemInput{{Description: "Z", Quantity: 1, UnitPrice: 1}})
 	if err != nil || missing != nil {
 		t.Fatalf("Update missing = %+v err=%v, want nil/nil", missing, err)
@@ -48,7 +49,7 @@ func TestEstimateListByStatusAndParticipant(t *testing.T) {
 	tid := seedTenant(t, conn, "T")
 	jane := seedParticipant(t, conn, tid, "Jane")
 	bob := seedParticipant(t, conn, tid, "Bob")
-	repo := NewEstimates(conn)
+	repo := estimate.NewEstimates(conn)
 	ctx := context.Background()
 
 	a := mkEstimate(t, repo, tid, jane)
@@ -78,7 +79,7 @@ func TestEstimateBulkDeleteAndBulkStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	repo := NewEstimates(conn)
+	repo := estimate.NewEstimates(conn)
 	ctx := context.Background()
 
 	a := mkEstimate(t, repo, tid, pid)

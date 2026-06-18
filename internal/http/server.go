@@ -9,6 +9,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
+	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
@@ -83,7 +84,7 @@ type Deps struct {
 
 	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
 	// duplicate, bulk, and convert-to-invoice routes under /api/estimates.
-	Estimates *EstimateHandler
+	Estimates *estimate.Handler
 
 	// Payments, when non-nil, serves the auth-gated per-invoice payment list
 	// and create routes plus payment deletion under /api.
@@ -198,17 +199,7 @@ func NewServer(deps Deps) *Server {
 					pr.Post("/shifts/{id}/status", deps.Shifts.UpdateStatus)
 				}
 				if deps.Estimates != nil {
-					pr.Get("/estimates", deps.Estimates.List)
-					pr.Post("/estimates", deps.Estimates.Create)
-					pr.Post("/estimates/bulk-delete", deps.Estimates.BulkDelete)
-					pr.Post("/estimates/bulk-status", deps.Estimates.BulkStatus)
-					pr.Get("/estimates/{id}", deps.Estimates.Get)
-					pr.Put("/estimates/{id}", deps.Estimates.Update)
-					pr.Delete("/estimates/{id}", deps.Estimates.Delete)
-					pr.Post("/estimates/{id}/status", deps.Estimates.Status)
-					pr.Post("/estimates/{id}/duplicate", deps.Estimates.Duplicate)
-					pr.Get("/estimates/{id}/pdf", deps.Estimates.Pdf)
-					pr.Post("/estimates/{id}/convert", deps.Estimates.Convert)
+					deps.Estimates.Routes(pr)
 				}
 				if deps.Payments != nil {
 					deps.Payments.Routes(pr)

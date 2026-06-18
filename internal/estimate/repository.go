@@ -1,4 +1,4 @@
-package repository
+package estimate
 
 // NOTE (J4): rewritten to the NDIS estimate domain (spec §4.2), parallel to the
 // invoice rewrite. Same design decisions apply: `tax` is supplied on the header
@@ -87,7 +87,7 @@ type EstimatesRepo struct {
 // NewEstimates constructs a repository. A nil db is a programmer error.
 func NewEstimates(db *sql.DB) *EstimatesRepo {
 	if db == nil {
-		panic("repository: NewEstimates requires a non-nil *sql.DB")
+		panic("estimate: NewEstimates requires a non-nil *sql.DB")
 	}
 	return &EstimatesRepo{db: db, snap: billing.NewSnapshotBuilder(db)}
 }
@@ -745,4 +745,46 @@ func toEstimateLineItem(row gen.EstimateLineItem) *billing.LineItem {
 		LineTotal:        row.LineTotal,
 		SortOrder:        row.SortOrder.Int64,
 	}
+}
+
+// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
+func b2i(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
+func nullID(p *int64) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *p, Valid: true}
+}
+
+// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
+func ptrID(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
+}
+
+// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
+// the string is empty, and valid otherwise.
+func nzMaybe(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+// orDefault returns s when non-empty, otherwise def.
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }

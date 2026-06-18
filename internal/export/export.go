@@ -10,8 +10,8 @@ import (
 	"strconv"
 
 	"github.com/dknathalage/tallyo/internal/customitem"
+	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/repository"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -80,7 +80,7 @@ func InvoicesCSV(invoices []*invoice.Invoice) ([]byte, error) {
 }
 
 // EstimatesCSV renders estimates to CSV with a fixed header.
-func EstimatesCSV(estimates []*repository.Estimate) ([]byte, error) {
+func EstimatesCSV(estimates []*estimate.Estimate) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	header := []string{"number", "participantName", "issueDate", "validUntil", "status", "subtotal", "tax", "total"}

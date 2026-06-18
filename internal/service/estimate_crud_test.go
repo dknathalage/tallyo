@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/repository"
 )
 
 // makeEstimate creates a single estimate for the tenant/participant.
-func makeEstimate(t *testing.T, svc *EstimateService, tenantID, participantID int64) *repository.Estimate {
+func makeEstimate(t *testing.T, svc *estimate.Service, tenantID, participantID int64) *estimate.Estimate {
 	t.Helper()
-	est, err := svc.Create(tctx(tenantID), repository.EstimateInput{
+	est, err := svc.Create(tctx(tenantID), estimate.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 10}})
 	if err != nil {
@@ -92,7 +92,7 @@ func TestEstimateUpdate(t *testing.T) {
 
 	est := makeEstimate(t, svc, tenantID, participantID)
 
-	updated, err := svc.Update(ctx, est.ID, repository.EstimateInput{
+	updated, err := svc.Update(ctx, est.ID, estimate.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 2, UnitPrice: 8}})
 	if err != nil {
@@ -109,7 +109,7 @@ func TestEstimateUpdate(t *testing.T) {
 func TestEstimateUpdateNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, participantID := newEstimateSvc(t)
 
-	got, err := svc.Update(tctx(tenantID), 999999, repository.EstimateInput{
+	got, err := svc.Update(tctx(tenantID), 999999, estimate.EstimateInput{
 		ParticipantID: participantID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
@@ -221,7 +221,7 @@ func TestEstimateConvertNotAccepted(t *testing.T) {
 	est := makeEstimate(t, svc, tenantID, participantID) // status defaults to draft
 
 	res, err := svc.Convert(ctx, est.ID)
-	if !errors.Is(err, repository.ErrNotAccepted) {
+	if !errors.Is(err, estimate.ErrNotAccepted) {
 		t.Fatalf("Convert draft err = %v, want ErrNotAccepted", err)
 	}
 	if res != nil {
@@ -244,7 +244,7 @@ func TestEstimateConvertAlreadyConverted(t *testing.T) {
 	}
 
 	res, err := svc.Convert(ctx, est.ID)
-	if !errors.Is(err, repository.ErrAlreadyConverted) {
+	if !errors.Is(err, estimate.ErrAlreadyConverted) {
 		t.Fatalf("second Convert err = %v, want ErrAlreadyConverted", err)
 	}
 	if res != nil {
@@ -256,7 +256,7 @@ func TestEstimateConvertAlreadyConverted(t *testing.T) {
 func TestEstimateTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewEstimateService(conn, hub)
+	svc := estimate.NewService(conn, hub)
 
 	tenantA := seedTenant(t, conn)
 	partA := seedParticipant(t, conn, tenantA)
