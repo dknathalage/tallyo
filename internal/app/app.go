@@ -158,10 +158,12 @@ func Run(cfg Config, version string) error {
 	// Smart routes are registered and return a clean 503 instead of falling
 	// through to the SPA catch-all (200 index.html).
 	var smartsHandler *agent.SmartsHandler
+	var shiftDivider shift.ShiftDivider // nil when AI is disabled → /divide 503s
 	if agentCfg.APIKey != "" {
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
-		smarts := agent.NewSmarts(agentCfg, llmClient, invoiceSvc, shiftSvc, supportCatalogSvc)
+		smarts := agent.NewSmarts(agentCfg, llmClient, shiftSvc, supportCatalogSvc)
 		smartsHandler = agent.NewSmartsHandler(smarts, true)
+		shiftDivider = smarts
 	} else {
 		smartsHandler = agent.NewSmartsHandler(nil, false)
 	}
@@ -191,7 +193,7 @@ func Run(cfg Config, version string) error {
 		CustomItems:     customitem.NewHandler(customItemSvc),
 		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
-		Shifts:          shift.NewHandler(shiftSvc),
+		Shifts:          shift.NewHandler(shiftSvc, shiftDivider),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),

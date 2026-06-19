@@ -155,7 +155,6 @@ func NewServer(deps Deps) *Server {
 				pr.Get("/export/estimates", deps.Export.Estimates)
 			}
 			if deps.Smarts != nil {
-				pr.Post("/participants/{id}/draft-invoice", deps.Smarts.DraftInvoiceFromShifts)
 				pr.Post("/shifts/import", deps.Smarts.ImportShifts)
 			}
 		})

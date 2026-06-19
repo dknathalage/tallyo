@@ -46,7 +46,7 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 	}
 
 	return &shiftFixture{
-		h:             shift.NewHandler(shift.NewService(conn, hub, invoice.NewInvoices(conn))),
+		h:             shift.NewHandler(shift.NewService(conn, hub, invoice.NewInvoices(conn)), nil),
 		ctx:           ctx,
 		tenantID:      tenantID,
 		participantID: part.ID,
@@ -92,8 +92,6 @@ func TestShiftCreateRoundTripsFields(t *testing.T) {
 	body, err := json.Marshal(map[string]any{
 		"participantId": f.participantID,
 		"serviceDate":   "2026-01-05",
-		"hours":         2.5,
-		"km":            12.0,
 		"note":          "Took client shopping.",
 	})
 	if err != nil {
@@ -108,12 +106,6 @@ func TestShiftCreateRoundTripsFields(t *testing.T) {
 	}
 	if s.ServiceDate != "2026-01-05" {
 		t.Fatalf("serviceDate: want 2026-01-05 got %q", s.ServiceDate)
-	}
-	if s.Hours != 2.5 {
-		t.Fatalf("hours: want 2.5 got %v", s.Hours)
-	}
-	if s.Km != 12.0 {
-		t.Fatalf("km: want 12 got %v", s.Km)
 	}
 	if s.Status != "recorded" {
 		t.Fatalf("status: want recorded got %q", s.Status)

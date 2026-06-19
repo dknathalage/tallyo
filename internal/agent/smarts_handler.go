@@ -11,8 +11,9 @@ import (
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// SmartsHandler serves the one-shot AI "Smarts" routes: draft-invoice-from-shifts
-// and import-shifts. Every handler 503s when the feature is disabled.
+// SmartsHandler serves the one-shot AI "Smarts" routes: import-shifts (the
+// per-shift divide route is served by the shift handler via a ShiftDivider
+// interface). Every handler 503s when the feature is disabled.
 type SmartsHandler struct {
 	smarts  *Smarts
 	enabled bool
@@ -26,13 +27,6 @@ func NewSmartsHandler(s *Smarts, enabled bool) *SmartsHandler {
 		panic("NewSmartsHandler: enabled handler requires a non-nil Smarts")
 	}
 	return &SmartsHandler{smarts: s, enabled: enabled}
-}
-
-// draftInvoiceRequest is the body of DraftInvoiceFromShifts: the inclusive
-// service-date range of recorded shifts to bill.
-type draftInvoiceRequest struct {
-	From string `json:"from"`
-	To   string `json:"to"`
 }
 
 // importShiftsRequest is the body of ImportShifts: the participant the shifts
@@ -61,42 +55,6 @@ func (h *SmartsHandler) guard(w http.ResponseWriter, r *http.Request) (tenantID,
 		return 0, 0, false
 	}
 	return tid, uid, true
-}
-
-// DraftInvoiceFromShifts runs the draft-invoice Smart over a participant's
-// recorded shifts for a date range and returns the created invoice. Synchronous:
-// it blocks for the Smart run, on a detached context (bounded) so a client
-// disconnect does not abort a model call.
-func (h *SmartsHandler) DraftInvoiceFromShifts(w http.ResponseWriter, r *http.Request) {
-	tenantID, userID, ok := h.guard(w, r)
-	if !ok {
-		return
-	}
-	pid, ok := httpx.ParseID(r)
-	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
-		return
-	}
-	var req draftInvoiceRequest
-	if err := httpx.DecodeJSON(r, &req); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if req.From == "" || req.To == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "from and to are required")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(detach(tenantID, userID), 5*time.Minute)
-	defer cancel()
-
-	inv, err := h.smarts.DraftInvoiceFromShifts(ctx, pid, req.From, req.To)
-	if err != nil {
-		slog.Error("draft invoice", slog.Any("error", err))
-		httpx.WriteError(w, http.StatusBadGateway, "couldn't produce a valid invoice from these shifts")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusCreated, inv)
 }
 
 // ImportShifts turns a free-text timesheet into recorded shifts for one

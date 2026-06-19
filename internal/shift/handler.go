@@ -1,28 +1,42 @@
 package shift
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
 
-// Handler serves the shift lifecycle routes: per-participant listing,
-// tenant-wide listing, the billing-suggestion and to-record prompts, plus shift
-// CRUD and the status-transition endpoint.
-type Handler struct {
-	svc *Service
+// ShiftDivider is the narrow interface the shift handler needs to divide ONE
+// shift's note into priced line items. It is declared here (not imported from the
+// agent slice) and satisfied by *agent.Smarts, wired in internal/app — the same
+// consumer-declared pattern as InvoiceChecker. A nil divider (AI disabled) makes
+// the /divide route return 503.
+type ShiftDivider interface {
+	DivideShift(ctx context.Context, shiftID int64) error
 }
 
-// NewHandler constructs the handler. A nil svc is a programmer error.
-func NewHandler(svc *Service) *Handler {
+// Handler serves the shift lifecycle routes: per-participant listing,
+// tenant-wide listing, the billing-suggestion and to-record prompts, plus shift
+// CRUD, the status-transition endpoint, and the AI divide route.
+type Handler struct {
+	svc     *Service
+	divider ShiftDivider // nil when AI is disabled → /divide returns 503
+}
+
+// NewHandler constructs the handler. A nil svc is a programmer error. divider may
+// be nil (AI disabled), in which case the /divide route returns 503.
+func NewHandler(svc *Service, divider ShiftDivider) *Handler {
 	if svc == nil {
 		panic("shift.NewHandler: nil svc")
 	}
-	return &Handler{svc: svc}
+	return &Handler{svc: svc, divider: divider}
 }
 
 // Routes registers all shift routes on r. Mounted inside the authenticated
@@ -41,6 +55,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/shifts/{id}/items", h.AddItem)
 	r.Patch("/shifts/{id}/items/{itemId}", h.UpdateItem)
 	r.Delete("/shifts/{id}/items/{itemId}", h.DeleteItem)
+	r.Post("/shifts/{id}/divide", h.Divide)
 }
 
 // ListForParticipant returns a participant's shifts, optionally restricted to the
@@ -278,6 +293,46 @@ func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Divide runs the AI divide Smart over ONE shift — turning its note into priced
+// catalogue line items (idempotent: a re-divide replaces the shift's unbilled
+// items) — then returns the shift's items. Returns 503 when AI is disabled.
+// Synchronous: it blocks for the Smart run on a detached, bounded context so a
+// client disconnect does not abort the model call.
+func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
+	if h.divider == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "AI not configured")
+		return
+	}
+	id, ok := httpx.ParseID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	tenantID, tok := reqctx.TenantFrom(r.Context())
+	if !tok || tenantID <= 0 {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	uid, _ := reqctx.UserFrom(r.Context())
+
+	ctx, cancel := context.WithTimeout(reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), uid), 5*time.Minute)
+	defer cancel()
+
+	if err := h.divider.DivideShift(ctx, id); err != nil {
+		httpx.WriteError(w, http.StatusBadGateway, "couldn't divide this shift into line items")
+		return
+	}
+	items, err := h.svc.ListItems(ctx, id)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if items == nil {
+		items = []*billing.LineItem{}
+	}
+	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
 // decodeItem decodes + validates a line-item body: quantity ≥ 0 and a line is
