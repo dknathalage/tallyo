@@ -276,8 +276,11 @@ func (h *AgentHandler) autoApproveInvoice(ctx context.Context, convID int64) (js
 			return nil, fmt.Errorf("approve step %d: %w", stepID, err)
 		}
 		done, err := h.store.GetStep(ctx, stepID)
-		if err == nil && done.ToolName == "create_invoice" && done.Summary != "" && done.Summary != "null" {
-			return json.RawMessage(done.Summary), nil
+		// The created invoice JSON is the tool RESULT (persisted to the step's
+		// result column on approval); Summary is only the "Run create_invoice"
+		// label, so returning it would emit invalid JSON to the client.
+		if err == nil && done.ToolName == "create_invoice" && done.Result != "" && done.Result != "null" {
+			return json.RawMessage(done.Result), nil
 		}
 	}
 	return nil, fmt.Errorf("no invoice was produced")
