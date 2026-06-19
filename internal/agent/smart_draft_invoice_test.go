@@ -8,6 +8,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -149,4 +150,60 @@ func TestDraftInvoiceFromShiftsRetryExhausted(t *testing.T) {
 		t.Fatalf("expected %d model calls (loop bound); got %d", maxDraftRetries+1, fake.Calls())
 	}
 	assertNoInvoice(t, inv, ctx)
+}
+
+// TestDraftInvoiceSearchesCatalogueThenBillsWithNarrative drives the redesigned
+// flow: the model calls the read-only search_catalogue tool to ground its codes
+// (turn 1), then emits create_invoice with per-line descriptions taken from the
+// shift notes (turn 2). Asserts the search was actually run, the invoice was
+// created, and the line descriptions are the model's narrative — NOT the generic
+// catalogue item name the validator would otherwise backfill.
+func TestDraftInvoiceSearchesCatalogueThenBillsWithNarrative(t *testing.T) {
+	s, fake, inv, ctx, pid := draftFixture(t)
+
+	items := make([]map[string]any, 0, len(referenceWeek)*2)
+	for i := range referenceWeek {
+		d := referenceWeek[i]
+		items = append(items,
+			map[string]any{"code": codeSelfCare, "serviceDate": d.date, "quantity": d.hr,
+				"description": fmt.Sprintf("Self-care support for Tania on %s", d.date)},
+			map[string]any{"code": codeTransport, "serviceDate": d.date, "quantity": d.km,
+				"description": fmt.Sprintf("Community access transport, %.0f km", d.km)},
+		)
+	}
+	createRaw, err := json.Marshal(map[string]any{"issueDate": "2026-06-14", "items": items})
+	if err != nil {
+		t.Fatalf("marshal create input: %v", err)
+	}
+	fake.SetResponses(
+		toolUse("search_catalogue", `{"query":"self care","serviceDate":"2026-06-09"}`),
+		toolUse("create_invoice", string(createRaw)),
+	)
+
+	got, err := s.DraftInvoiceFromShifts(ctx, pid, "2026-06-09", "2026-06-12")
+	if err != nil {
+		t.Fatalf("DraftInvoiceFromShifts: %v", err)
+	}
+	if got == nil || got.ID == 0 {
+		t.Fatal("no invoice created")
+	}
+	if fake.Calls() != 2 {
+		t.Fatalf("model calls = %d, want 2 (search then create)", fake.Calls())
+	}
+
+	full, err := inv.Get(ctx, got.ID)
+	if err != nil {
+		t.Fatalf("get invoice: %v", err)
+	}
+	if len(full.LineItems) != len(referenceWeek)*2 {
+		t.Fatalf("line items = %d, want %d", len(full.LineItems), len(referenceWeek)*2)
+	}
+	for _, li := range full.LineItems {
+		if li.Description == "Assistance with self care - weekday daytime" || li.Description == "Activity Based Transport" {
+			t.Fatalf("line fell back to the catalogue name instead of the narrative: %q", li.Description)
+		}
+		if !strings.Contains(li.Description, "Tania") && !strings.Contains(li.Description, "transport") {
+			t.Fatalf("line description is not the service narrative: %q", li.Description)
+		}
+	}
 }
