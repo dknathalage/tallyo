@@ -150,6 +150,15 @@ const (
 	colVeryRemote = "very remote"
 )
 
+// nationalPriceColumns are the headers the standard ("national") zone price is
+// read from, in precedence order. The official catalogue has no single
+// "National" column — the standard price lives in per-state columns that are all
+// identical, so any present one is the national rate. "national" is tried first
+// to stay forward-compatible if NDIA reintroduces that column.
+var nationalPriceColumns = []string{
+	colNational, "act", "nsw", "nt", "qld", "sa", "tas", "vic", "wa",
+}
+
 // IngestXLSX parses fixed-format NDIS Support Catalogue XLSX bytes and loads a
 // new catalogue version. The WHOLE upload is rejected (no partial state) when a
 // required column is missing or zero data rows parse. Broadcasts an SSE event
@@ -282,6 +291,20 @@ func zonePrices(row map[string]string, norm map[string]string) map[string]*float
 		}
 		raw := strings.TrimSpace(row[key])
 		out[zones[i].zone] = parseCap(raw)
+	}
+	// The standard price has no single "national" column; read it from the first
+	// available per-state column (all states carry the identical national rate).
+	if _, have := out["national"]; !have {
+		for i := range nationalPriceColumns { // bounded by len(nationalPriceColumns)
+			key, ok := norm[nationalPriceColumns[i]]
+			if !ok {
+				continue
+			}
+			if raw := strings.TrimSpace(row[key]); raw != "" {
+				out["national"] = parseCap(raw)
+				break
+			}
+		}
 	}
 	return out
 }
