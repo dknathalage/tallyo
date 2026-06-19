@@ -88,6 +88,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `os.UserConfigDir()/Tal
 
 ## Database
 
+- **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema.
 - SQLite (modernc.org/sqlite, pure-Go) + sqlc + goose. WAL, `foreign_keys=ON`, `busy_timeout=5000`, `_txlock=immediate` (all mutations take the write lock at BEGIN).
 - Migrations are embedded and run on startup (`internal/db/migrate.go`). Add a new migration as `internal/db/migrations/NNNNN_*.sql` then `sqlc generate`.
 - DB file in the data dir (default `~/Library/Application Support/Tallyo/tallyo-go.db` on macOS); `DATA_DIR` / `--data-dir` override.
