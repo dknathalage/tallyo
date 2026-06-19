@@ -40,21 +40,15 @@
 {#if visible.length > 0}
 	<div class="space-y-2">
 		<p class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
-			✨ Suggested invoices (from recorded shifts)
+			Suggested invoices (from recorded shifts)
 		</p>
 		{#if error}
 			<p class="text-sm text-red-600">{error}</p>
 		{/if}
 		{#each visible as s (s.participantId)}
 			<div
-				class="flex items-center gap-4 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3"
+				class="flex items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
 			>
-				<div
-					class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white"
-					aria-hidden="true"
-				>
-					✨
-				</div>
 				<div class="flex-1 text-sm">
 					<span class="font-semibold">{nameFor(s.participantId)}</span> — {s.count} recorded
 					{s.count === 1 ? 'shift' : 'shifts'} · {shortDate(s.from)}–{shortDate(s.to)}
@@ -63,9 +57,9 @@
 					type="button"
 					disabled={drafting === s.participantId}
 					onclick={() => draft(s)}
-					class="rounded bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
 				>
-					{drafting === s.participantId ? 'Drafting…' : 'Draft invoice →'}
+					{drafting === s.participantId ? 'Drafting…' : 'Draft invoice'}
 				</button>
 			</div>
 		{/each}

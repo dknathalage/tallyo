@@ -129,7 +129,7 @@
 	</div>
 
 	<p class="text-sm text-gray-500">
-		Amber dashed = scheduled (click to record) · blue recorded · violet drafted · indigo sent ·
+		Amber dashed = scheduled (click to record) · blue recorded · slate drafted · teal sent ·
 		green paid. Click any day to add an ad-hoc shift.
 	</p>
 </div>

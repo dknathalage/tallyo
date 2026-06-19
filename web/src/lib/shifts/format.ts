@@ -74,9 +74,9 @@ export function statusBadgeClass(status: string): string {
 		case 'recorded':
 			return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200';
 		case 'drafted':
-			return 'bg-violet-50 text-violet-700 ring-1 ring-violet-200';
+			return 'bg-slate-50 text-slate-700 ring-1 ring-slate-200';
 		case 'sent':
-			return 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200';
+			return 'bg-teal-50 text-teal-700 ring-1 ring-teal-200';
 		case 'paid':
 			return 'bg-green-50 text-green-700 ring-1 ring-green-200';
 		default:
@@ -92,9 +92,9 @@ export function eventClass(status: string): string {
 		case 'recorded':
 			return 'border border-blue-200 bg-blue-50 text-blue-700';
 		case 'drafted':
-			return 'border border-violet-200 bg-violet-50 text-violet-700';
+			return 'border border-slate-200 bg-slate-50 text-slate-700';
 		case 'sent':
-			return 'border border-indigo-200 bg-indigo-50 text-indigo-700';
+			return 'border border-teal-200 bg-teal-50 text-teal-700';
 		case 'paid':
 			return 'border border-green-200 bg-green-50 text-green-700';
 		default:

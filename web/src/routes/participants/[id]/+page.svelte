@@ -4,6 +4,7 @@
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
+	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
 	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
@@ -72,6 +73,13 @@
 		void shifts.load();
 	}
 
+	async function deleteShifts(ids: number[]): Promise<void> {
+		for (const id of ids) {
+			await shiftsApi.remove(id);
+		}
+		await shifts.load();
+	}
+
 	function invStatusClass(status: string): string {
 		switch (status) {
 			case 'paid':
@@ -136,7 +144,7 @@
 	</nav>
 
 	{#if tab === 'shifts'}
-		<ShiftTable shifts={myShifts} participantName={nameFor} onopen={openShift} />
+		<ShiftTable shifts={myShifts} participantName={nameFor} onopen={openShift} ondelete={deleteShifts} />
 	{:else if tab === 'calendar'}
 		<div class="rounded-lg border border-gray-200 bg-white p-3">
 			<Calendar shifts={myShifts} {nameFor} {month} onaddday={addDay} onopen={openShift} />

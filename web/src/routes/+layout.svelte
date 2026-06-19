@@ -68,11 +68,11 @@
 			icon: LayoutGrid,
 			children: [{ href: '/', label: 'Shifts' }]
 		},
-		{
-			label: 'Calendar',
-			icon: CalendarDays,
-			children: [{ href: '/calendar', label: 'Calendar' }]
-		},
+//		{
+//			label: 'Calendar',
+//			icon: CalendarDays,
+//			children: [{ href: '/calendar', label: 'Calendar' }]
+//		},
 		{
 			label: 'Participants',
 			icon: Users,

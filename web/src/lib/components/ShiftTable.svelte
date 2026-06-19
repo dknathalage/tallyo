@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { DataTable, type ColumnDef } from '@careswitch/svelte-data-table';
 	import { dowDate, statusLabel, statusBadgeClass } from '$lib/shifts/format';
 	import type { Shift, ShiftStatus } from '$lib/api/types';
@@ -9,9 +11,11 @@
 		participantName: (id: number) => string;
 		/** Row click — open the shift (edit / record). */
 		onopen?: (shift: Shift) => void;
+		/** Bulk delete — called with the selected shift ids. */
+		ondelete?: (ids: number[]) => void | Promise<void>;
 	};
 
-	let { shifts, participantName, onopen }: Props = $props();
+	let { shifts, participantName, onopen, ondelete }: Props = $props();
 
 	// A flattened row carrying the derived participant name + a single tag string,
 	// so the table can sort/search/filter on plain scalar columns.
@@ -86,7 +90,13 @@
 	});
 
 	$effect(() => {
-		table.baseRows = shifts.map(toRow);
+		const rows = shifts.map(toRow);
+		// setFilter/clearFilter below (and baseRows) read #filterState while writing
+		// it; running the table mutations untracked keeps these effects from
+		// subscribing to that write and looping (effect_update_depth_exceeded).
+		untrack(() => {
+			table.baseRows = rows;
+		});
 	});
 
 	// Per-column filters. Text columns (date, note) substring-match; the
@@ -98,24 +108,26 @@
 	let statusFilter = $state<'all' | ShiftStatus>('all');
 
 	$effect(() => {
-		if (dateQuery.trim() === '') table.clearFilter('date');
-		else table.setFilter('date', [dateQuery]);
+		const q = dateQuery;
+		untrack(() => (q.trim() === '' ? table.clearFilter('date') : table.setFilter('date', [q])));
 	});
 	$effect(() => {
-		if (noteQuery.trim() === '') table.clearFilter('note');
-		else table.setFilter('note', [noteQuery]);
+		const q = noteQuery;
+		untrack(() => (q.trim() === '' ? table.clearFilter('note') : table.setFilter('note', [q])));
 	});
 	$effect(() => {
-		if (participantFilter === '') table.clearFilter('participant');
-		else table.setFilter('participant', [participantFilter]);
+		const q = participantFilter;
+		untrack(() =>
+			q === '' ? table.clearFilter('participant') : table.setFilter('participant', [q])
+		);
 	});
 	$effect(() => {
-		if (tagFilter === '') table.clearFilter('tags');
-		else table.setFilter('tags', [tagFilter]);
+		const q = tagFilter;
+		untrack(() => (q === '' ? table.clearFilter('tags') : table.setFilter('tags', [q])));
 	});
 	$effect(() => {
-		if (statusFilter === 'all') table.clearFilter('status');
-		else table.setFilter('status', [statusFilter]);
+		const q = statusFilter;
+		untrack(() => (q === 'all' ? table.clearFilter('status') : table.setFilter('status', [q])));
 	});
 
 	// Distinct participant names + tag codes for the dropdowns (from current data).
@@ -128,15 +140,84 @@
 		const dir = table.getSortState(columnId);
 		if (dir === 'asc') return '▲';
 		if (dir === 'desc') return '▼';
-		return '↕';
+		return ''; // no glyph until the column is the active sort
+	}
+
+	// Row selection for bulk actions. Keyed by shift id so it survives re-sorts
+	// and filter changes; ids that filter out of view simply aren't acted on.
+	const selected = new SvelteSet<number>();
+
+	const visibleIds = $derived(table.rows.map((r) => r.id));
+	const allVisibleSelected = $derived(
+		visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
+	);
+
+	function toggleRow(id: number): void {
+		if (selected.has(id)) selected.delete(id);
+		else selected.add(id);
+	}
+
+	function toggleAllVisible(): void {
+		if (allVisibleSelected) {
+			for (const id of visibleIds) selected.delete(id);
+		} else {
+			for (const id of visibleIds) selected.add(id);
+		}
+	}
+
+	let deleting = $state(false);
+
+	async function deleteSelected(): Promise<void> {
+		const ids = Array.from(selected);
+		if (ids.length === 0 || deleting) return;
+		if (!confirm(`Delete ${ids.length} shift${ids.length === 1 ? '' : 's'}? This cannot be undone.`))
+			return;
+		deleting = true;
+		try {
+			await ondelete?.(ids);
+			selected.clear();
+		} finally {
+			deleting = false;
+		}
 	}
 </script>
 
 <div class="space-y-3">
+	{#if selected.size > 0}
+		<div
+			class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
+		>
+			<span class="font-medium text-gray-700">{selected.size} selected</span>
+			<button
+				type="button"
+				onclick={deleteSelected}
+				disabled={deleting}
+				class="rounded bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+			>
+				{deleting ? 'Deleting…' : 'Delete'}
+			</button>
+			<button
+				type="button"
+				onclick={() => selected.clear()}
+				class="text-xs text-gray-500 hover:text-gray-900"
+			>
+				Clear
+			</button>
+		</div>
+	{/if}
 	<div class="overflow-x-auto rounded border border-gray-200 bg-white">
 		<table class="w-full text-sm">
 			<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 				<tr>
+					<th class="px-3 py-2">
+						<input
+							type="checkbox"
+							checked={allVisibleSelected}
+							onchange={toggleAllVisible}
+							aria-label="Select all shifts"
+							class="align-middle"
+						/>
+					</th>
 					{#each table.columns as column (column.id)}
 						{#if table.isSortable(column.id)}
 							<th class="px-3 py-2 font-medium {column.id === 'hours' || column.id === 'km' ? 'text-right' : ''}">
@@ -155,6 +236,7 @@
 					{/each}
 				</tr>
 				<tr class="bg-white">
+					<th></th>
 					<th class="px-3 py-1.5">
 						<input
 							bind:value={dateQuery}
@@ -216,8 +298,19 @@
 				{#each table.rows as row (row.id)}
 					<tr
 						class="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50"
+						class:bg-blue-50={selected.has(row.id)}
 						onclick={() => onopen?.(row.shift)}
 					>
+						<td class="px-3 py-2">
+							<input
+								type="checkbox"
+								checked={selected.has(row.id)}
+								onclick={(e) => e.stopPropagation()}
+								onchange={() => toggleRow(row.id)}
+								aria-label="Select shift"
+								class="align-middle"
+							/>
+						</td>
 						<td class="px-3 py-2 whitespace-nowrap">{dowDate(row.date)}</td>
 						<td class="px-3 py-2">{row.participant}</td>
 						<td class="px-3 py-2 whitespace-nowrap text-gray-500">{row.time || '—'}</td>
@@ -233,7 +326,7 @@
 						<td class="px-3 py-2">
 							{#each row.shift.tags as tag (tag)}
 								<span
-									class="mr-1 mb-1 inline-block rounded bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-violet-200"
+									class="mr-1 mb-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200"
 								>
 									{tag}
 								</span>
@@ -251,7 +344,7 @@
 					</tr>
 				{:else}
 					<tr>
-						<td colspan="8" class="px-3 py-6 text-center text-gray-500">No matching shifts.</td>
+						<td colspan="9" class="px-3 py-6 text-center text-gray-500">No matching shifts.</td>
 					</tr>
 				{/each}
 			</tbody>

@@ -60,6 +60,13 @@
 		void shifts.load();
 	}
 
+	async function deleteShifts(ids: number[]): Promise<void> {
+		for (const id of ids) {
+			await shiftsApi.remove(id);
+		}
+		await shifts.load();
+	}
+
 	// ---- Quick add (paste timesheet → import) ----
 	let importParticipant = $state('');
 	let importText = $state('');
@@ -185,7 +192,7 @@
 				disabled={importing}
 				class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
 			>
-				{importing ? 'Extracting…' : '✨ Extract shifts'}
+				{importing ? 'Extracting…' : 'Extract shifts'}
 			</button>
 			<button
 				type="button"
@@ -212,7 +219,7 @@
 		{#if shifts.loading && shifts.items.length === 0}
 			<p class="text-sm text-gray-500">Loading…</p>
 		{:else}
-			<ShiftTable shifts={shifts.items} {participantName} onopen={openRecord} />
+			<ShiftTable shifts={shifts.items} {participantName} onopen={openRecord} ondelete={deleteShifts} />
 		{/if}
 		<p class="mt-2 text-xs text-gray-500">
 			Status pipeline: scheduled → recorded → drafted → sent → paid.
