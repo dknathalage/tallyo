@@ -55,22 +55,22 @@ func assertNoInvoice(t *testing.T, inv *invoice.Service, ctx context.Context) {
 }
 
 // shiftsCreateFixture seeds the nursing-note fixture as recorded shifts (tenant,
-// Tania, catalogue, 4 shifts) and returns the shift-keyed create_invoice tool,
-// the invoice and shift services, and an authed context.
-func shiftsCreateFixture(t *testing.T) (Tool, *invoice.Service, *shift.Service, context.Context, int64) {
+// Tania, catalogue, 4 shifts) and returns a Smarts wired over the shift-keyed
+// invoice path, the invoice and shift services, and an authed context.
+func shiftsCreateFixture(t *testing.T) (*Smarts, *invoice.Service, *shift.Service, context.Context, int64) {
 	t.Helper()
 	conn, tenantID, participantID := shiftToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 	shifts := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	seedReferenceShifts(t, shifts, ctx, participantID)
 	inv := invoice.NewService(conn, realtime.NewHub(), shift.NewShifts(conn))
-	tool := NewCreateInvoiceToolForShifts(inv, shifts, nil)
-	return tool, inv, shifts, ctx, participantID
+	s := &Smarts{invoice: inv, shifts: shifts}
+	return s, inv, shifts, ctx, participantID
 }
 
-// runShiftCreate invokes the tool with the given lines over the full reference
-// range, declaring from/to so a dropped day is detected.
-func runShiftCreate(t *testing.T, tool Tool, ctx context.Context, participantID int64, items []verifyLine, from, to string) (Result, error) {
+// runShiftCreate invokes applyDraftInvoice with the given lines over the full
+// reference range, declaring from/to so a dropped day is detected.
+func runShiftCreate(t *testing.T, s *Smarts, ctx context.Context, participantID int64, items []verifyLine, from, to string) (*invoice.Invoice, error) {
 	t.Helper()
 	in := map[string]any{
 		"participantId": participantID, "issueDate": "2026-06-14",
@@ -80,20 +80,20 @@ func runShiftCreate(t *testing.T, tool Tool, ctx context.Context, participantID 
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	return tool.Handler(ctx, raw)
+	var parsed createInvoiceInput
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return s.applyDraftInvoice(ctx, parsed)
 }
 
 // TestShiftCreateFullyCodedDraftSucceeds asserts a complete, catalogue-coded
 // draft is priced authoritatively and persists at the reference total.
 func TestShiftCreateFullyCodedDraftSucceeds(t *testing.T) {
-	tool, _, _, ctx, pid := shiftsCreateFixture(t)
-	res, err := runShiftCreate(t, tool, ctx, pid, fullCodedLines(), "2026-06-09", "2026-06-12")
+	s, _, _, ctx, pid := shiftsCreateFixture(t)
+	got, err := runShiftCreate(t, s, ctx, pid, fullCodedLines(), "2026-06-09", "2026-06-12")
 	if err != nil {
 		t.Fatalf("create_invoice: %v", err)
-	}
-	got, ok := res.JSON.(*invoice.Invoice)
-	if !ok {
-		t.Fatalf("result JSON is %T, want *invoice.Invoice", res.JSON)
 	}
 	if got.Total != 1905.76 {
 		t.Fatalf("total = %.2f, want 1905.76", got.Total)
@@ -106,12 +106,12 @@ func TestShiftCreateFullyCodedDraftSucceeds(t *testing.T) {
 // TestShiftCreateMissingSelfCareRejected asserts that omitting the self-care
 // lines (every support hour unbilled) is rejected with no orphan invoice.
 func TestShiftCreateMissingSelfCareRejected(t *testing.T) {
-	tool, inv, _, ctx, pid := shiftsCreateFixture(t)
+	s, inv, _, ctx, pid := shiftsCreateFixture(t)
 	var items []verifyLine
 	for i := range referenceWeek {
 		items = append(items, verifyLine{Code: codeTransport, ServiceDate: referenceWeek[i].date, Quantity: referenceWeek[i].km})
 	}
-	_, err := runShiftCreate(t, tool, ctx, pid, items, "2026-06-09", "2026-06-12")
+	_, err := runShiftCreate(t, s, ctx, pid, items, "2026-06-09", "2026-06-12")
 	if err == nil {
 		t.Fatal("expected a completeness error for the omitted self-care lines")
 	}
@@ -124,7 +124,7 @@ func TestShiftCreateMissingSelfCareRejected(t *testing.T) {
 // TestShiftCreateCustomLineInsteadOfCodeRejected asserts a support billed as a
 // custom (uncoded) line is rejected — right quantity, wrong shape.
 func TestShiftCreateCustomLineInsteadOfCodeRejected(t *testing.T) {
-	tool, inv, _, ctx, pid := shiftsCreateFixture(t)
+	s, inv, _, ctx, pid := shiftsCreateFixture(t)
 	var items []verifyLine
 	for i := range referenceWeek {
 		d := referenceWeek[i]
@@ -133,7 +133,7 @@ func TestShiftCreateCustomLineInsteadOfCodeRejected(t *testing.T) {
 			verifyLine{Description: "self care", ServiceDate: d.date, Quantity: d.hr, UnitPrice: 65.0},
 		)
 	}
-	_, err := runShiftCreate(t, tool, ctx, pid, items, "2026-06-09", "2026-06-12")
+	_, err := runShiftCreate(t, s, ctx, pid, items, "2026-06-09", "2026-06-12")
 	if err == nil {
 		t.Fatal("expected a completeness error: self-care billed as a custom line, not a code")
 	}
@@ -144,7 +144,7 @@ func TestShiftCreateCustomLineInsteadOfCodeRejected(t *testing.T) {
 // declaring the full from/to range catches the dropped day (its supports lie
 // outside the coded-line range).
 func TestShiftCreateDroppedDayRejected(t *testing.T) {
-	tool, inv, _, ctx, pid := shiftsCreateFixture(t)
+	s, inv, _, ctx, pid := shiftsCreateFixture(t)
 	var items []verifyLine
 	for i := 0; i < 3; i++ {
 		d := referenceWeek[i]
@@ -153,7 +153,7 @@ func TestShiftCreateDroppedDayRejected(t *testing.T) {
 			verifyLine{Code: codeSelfCare, ServiceDate: d.date, Quantity: d.hr},
 		)
 	}
-	_, err := runShiftCreate(t, tool, ctx, pid, items, "2026-06-09", "2026-06-12")
+	_, err := runShiftCreate(t, s, ctx, pid, items, "2026-06-09", "2026-06-12")
 	if err == nil {
 		t.Fatal("expected rejection: 2026-06-12 was dropped entirely")
 	}
@@ -163,14 +163,10 @@ func TestShiftCreateDroppedDayRejected(t *testing.T) {
 // TestShiftCreateMarksShiftsDrafted asserts a successful create links every
 // covered shift to the new invoice and advances it to 'drafted'.
 func TestShiftCreateMarksShiftsDrafted(t *testing.T) {
-	tool, _, shifts, ctx, pid := shiftsCreateFixture(t)
-	res, err := runShiftCreate(t, tool, ctx, pid, fullCodedLines(), "2026-06-09", "2026-06-12")
+	s, _, shifts, ctx, pid := shiftsCreateFixture(t)
+	created, err := runShiftCreate(t, s, ctx, pid, fullCodedLines(), "2026-06-09", "2026-06-12")
 	if err != nil {
 		t.Fatalf("create_invoice: %v", err)
-	}
-	created, ok := res.JSON.(*invoice.Invoice)
-	if !ok {
-		t.Fatalf("result JSON is %T, want *invoice.Invoice", res.JSON)
 	}
 	recs, err := shifts.ListParticipant(ctx, pid, "2026-06-09", "2026-06-12")
 	if err != nil {
