@@ -41,12 +41,19 @@ type ShiftDrafter interface {
 	MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []int64) error
 }
 
-// ShiftWorker composes ShiftLister and ShiftDrafter; it is the interface used
-// by the create_invoice tool on the shifts lifecycle path and the
-// list_participant_shifts tool.
+// ShiftCreator is satisfied by *shift.Service; the import-shifts Smart creates
+// recorded shifts from extracted drafts.
+type ShiftCreator interface {
+	Create(ctx context.Context, in shift.ShiftInput) (*shift.Shift, error)
+}
+
+// ShiftWorker composes ShiftLister, ShiftDrafter and ShiftCreator; it is the
+// interface used by the create_invoice tool on the shifts lifecycle path, the
+// list_participant_shifts tool, and the import-shifts Smart.
 type ShiftWorker interface {
 	ShiftLister
 	ShiftDrafter
+	ShiftCreator
 }
 
 // CatalogueSearcher is satisfied by *catalog.Service; it covers the

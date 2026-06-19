@@ -63,13 +63,6 @@ func (h *AgentHandler) WithShiftImport(shifts *shift.Service, client llm.Client,
 	return h
 }
 
-// importShiftsRequest is the body of ImportShifts: the participant the shifts
-// are for, and the free-text timesheet to extract per-day rows from.
-type importShiftsRequest struct {
-	ParticipantID int64  `json:"participantId"`
-	Text          string `json:"text"`
-}
-
 // ImportShifts turns a free-text timesheet into recorded shifts for one
 // participant. It forces a single structured-extraction model call
 // (ExtractShifts), then persists one recorded shift per extracted day via
@@ -172,21 +165,6 @@ func (h *AgentHandler) existingShiftKeys(ctx context.Context, participantID int6
 		keys[shiftDedupKey(s.ServiceDate, s.StartTime, s.EndTime, s.Hours, s.Km)] = struct{}{}
 	}
 	return keys, nil
-}
-
-// shiftDedupKey is the natural identity of a shift for import idempotency:
-// service date, start/end time (as written) and the billable hours/km. The free
-// note is deliberately excluded — model re-extractions can reword it, which would
-// defeat dedup — while date+times+quantities pin the same delivered shift.
-func shiftDedupKey(serviceDate, startTime, endTime string, hours, km float64) string {
-	return fmt.Sprintf("%s\x1f%s\x1f%s\x1f%.3f\x1f%.3f", serviceDate, startTime, endTime, hours, km)
-}
-
-// draftInvoiceRequest is the body of DraftInvoiceFromShifts: the inclusive
-// service-date range of recorded shifts to bill.
-type draftInvoiceRequest struct {
-	From string `json:"from"`
-	To   string `json:"to"`
 }
 
 // DraftInvoiceFromShifts runs the AI agent over a participant's recorded shifts
@@ -305,13 +283,6 @@ func (h *AgentHandler) guard(w http.ResponseWriter, r *http.Request) (tenantID, 
 		return 0, 0, false
 	}
 	return tid, uid, true
-}
-
-// detach derives a fresh background context carrying the request's tenant+user.
-// The request context is canceled when the handler returns, so a goroutine that
-// outlives the request (the plan/execute loop) must NOT inherit it.
-func detach(tenantID, userID int64) context.Context {
-	return reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
 }
 
 // createConversationRequest is the create body.
