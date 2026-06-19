@@ -10,7 +10,6 @@ import (
 )
 
 type Querier interface {
-	AddTokenUsage(ctx context.Context, arg AddTokenUsageParams) error
 	ClearDefaultTaxRates(ctx context.Context, tenantID int64) error
 	ClearShiftsForInvoice(ctx context.Context, arg ClearShiftsForInvoiceParams) error
 	CloseCatalogVersion(ctx context.Context, arg CloseCatalogVersionParams) error
@@ -21,16 +20,7 @@ type Querier interface {
 	CountSupportItems(ctx context.Context, catalogVersionID int64) (int64, error)
 	CountUsers(ctx context.Context, tenantID int64) (int64, error)
 	CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error)
-	CreateAgentConversation(ctx context.Context, arg CreateAgentConversationParams) (AgentConversation, error)
-	CreateAgentMessage(ctx context.Context, arg CreateAgentMessageParams) (AgentMessage, error)
-	CreateAgentStep(ctx context.Context, arg CreateAgentStepParams) (AgentStep, error)
-	CreateAwaitingStep(ctx context.Context, arg CreateAwaitingStepParams) (AgentStep, error)
 	CreateCatalogVersion(ctx context.Context, arg CreateCatalogVersionParams) (CatalogVersion, error)
-	CreateCheckpoint(ctx context.Context, arg CreateCheckpointParams) (AgentCheckpoint, error)
-	// ordinal is auto-assigned as the next value per checkpoint (atomic within the
-	// insert) so callers never have to track it; reverse-ordinal replay in Revert
-	// is therefore correct across a multi-step turn.
-	CreateCheckpointChange(ctx context.Context, arg CreateCheckpointChangeParams) (AgentCheckpointChange, error)
 	CreateCustomItem(ctx context.Context, arg CreateCustomItemParams) (CustomItem, error)
 	CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error)
 	CreateEstimateLineItem(ctx context.Context, arg CreateEstimateLineItemParams) (EstimateLineItem, error)
@@ -63,13 +53,9 @@ type Querier interface {
 	DeleteTaxRate(ctx context.Context, arg DeleteTaxRateParams) error
 	DeleteTenant(ctx context.Context, id int64) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
-	GetAgentConversation(ctx context.Context, arg GetAgentConversationParams) (AgentConversation, error)
-	GetAgentStep(ctx context.Context, arg GetAgentStepParams) (AgentStep, error)
 	GetBusinessProfile(ctx context.Context, tenantID int64) (BusinessProfile, error)
 	GetCatalogVersion(ctx context.Context, id int64) (CatalogVersion, error)
 	GetCatalogVersionByUUID(ctx context.Context, uuid string) (CatalogVersion, error)
-	GetCheckpoint(ctx context.Context, arg GetCheckpointParams) (AgentCheckpoint, error)
-	GetConversationByMessage(ctx context.Context, arg GetConversationByMessageParams) (AgentConversation, error)
 	GetCurrentCatalogVersion(ctx context.Context) (CatalogVersion, error)
 	GetCustomItem(ctx context.Context, arg GetCustomItemParams) (CustomItem, error)
 	GetDefaultTaxRate(ctx context.Context, tenantID int64) (TaxRate, error)
@@ -87,25 +73,19 @@ type Querier interface {
 	GetTaxRate(ctx context.Context, arg GetTaxRateParams) (TaxRate, error)
 	GetTenant(ctx context.Context, id int64) (Tenant, error)
 	GetTenantByUUID(ctx context.Context, uuid string) (Tenant, error)
-	GetTokenUsage(ctx context.Context, arg GetTokenUsageParams) (int64, error)
 	GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error)
 	GetUserByEmailGlobal(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
 	ListActiveRecurringTemplates(ctx context.Context, tenantID int64) ([]ListActiveRecurringTemplatesRow, error)
 	ListActiveTenantIDs(ctx context.Context) ([]int64, error)
-	ListAgentConversations(ctx context.Context, tenantID int64) ([]AgentConversation, error)
-	ListAgentMessages(ctx context.Context, arg ListAgentMessagesParams) ([]ListAgentMessagesRow, error)
-	ListAgentSteps(ctx context.Context, arg ListAgentStepsParams) ([]AgentStep, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListCatalogVersions(ctx context.Context) ([]CatalogVersion, error)
-	ListCheckpointChanges(ctx context.Context, arg ListCheckpointChangesParams) ([]AgentCheckpointChange, error)
 	ListCustomItems(ctx context.Context, tenantID int64) ([]CustomItem, error)
 	ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemplatesForTenantParams) ([]RecurringTemplate, error)
 	ListEstimateLineItems(ctx context.Context, arg ListEstimateLineItemsParams) ([]EstimateLineItem, error)
 	ListEstimates(ctx context.Context, tenantID int64) ([]ListEstimatesRow, error)
 	ListEstimatesByStatus(ctx context.Context, arg ListEstimatesByStatusParams) ([]ListEstimatesByStatusRow, error)
-	ListExpiredAwaitingSteps(ctx context.Context, awaitExpiresAt sql.NullString) ([]AgentStep, error)
 	ListInvites(ctx context.Context, tenantID int64) ([]Invite, error)
 	ListInvoicePayments(ctx context.Context, arg ListInvoicePaymentsParams) ([]Payment, error)
 	ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoicesRow, error)
@@ -131,7 +111,6 @@ type Querier interface {
 	ListTenants(ctx context.Context) ([]Tenant, error)
 	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
 	ListUsers(ctx context.Context, tenantID int64) ([]User, error)
-	MarkCheckpointReverted(ctx context.Context, arg MarkCheckpointRevertedParams) error
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
 	// Highest numeric sequence (parsed from the suffix after prefix_len chars),
 	// pad-width independent. prefix_len is the length of the non-numeric prefix
@@ -143,8 +122,6 @@ type Querier interface {
 	MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumberLikeParams) (int64, error)
 	ParticipantInvoiceStats(ctx context.Context, arg ParticipantInvoiceStatsParams) (ParticipantInvoiceStatsRow, error)
 	ParticipantUnbilledAgg(ctx context.Context, tenantID int64) ([]ParticipantUnbilledAggRow, error)
-	PruneAgentSteps(ctx context.Context, createdAt string) error
-	PruneCheckpointChanges(ctx context.Context, createdAt string) error
 	ResolveCatalogVersionForDate(ctx context.Context, serviceDate string) (CatalogVersion, error)
 	ResolveZonePrice(ctx context.Context, arg ResolveZonePriceParams) (SupportItemPrice, error)
 	SearchCustomItems(ctx context.Context, arg SearchCustomItemsParams) ([]CustomItem, error)
@@ -156,11 +133,8 @@ type Querier interface {
 	SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error
 	SetShiftInvoice(ctx context.Context, arg SetShiftInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
-	TouchAgentConversation(ctx context.Context, arg TouchAgentConversationParams) error
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
-	UpdateAgentStepStatus(ctx context.Context, arg UpdateAgentStepStatusParams) error
 	UpdateBusinessZone(ctx context.Context, arg UpdateBusinessZoneParams) error
-	UpdateCheckpointStatus(ctx context.Context, arg UpdateCheckpointStatusParams) error
 	UpdateCustomItem(ctx context.Context, arg UpdateCustomItemParams) (CustomItem, error)
 	UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error)
 	UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error
