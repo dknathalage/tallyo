@@ -20,10 +20,9 @@ func newShiftSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 
 func shiftInput(pid int64, date string) ShiftInput {
 	return ShiftInput{
-		ParticipantID: pid, ServiceDate: date, StartTime: "09:00", EndTime: "12:00",
-		Hours: 3, Km: 10,
-		Measures: []Measure{{Label: "Goal", Value: 1, Unit: "x", Code: "C"}},
-		Tags:     []string{"t1"},
+		ParticipantID: pid, ServiceDate: date,
+		Note: "supported community access",
+		Tags: []string{"t1"},
 	}
 }
 

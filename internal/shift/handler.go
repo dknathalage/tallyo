@@ -1,8 +1,11 @@
 package shift
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 
+	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/go-chi/chi/v5"
 )
@@ -34,6 +37,10 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Put("/shifts/{id}", h.Update)
 	r.Delete("/shifts/{id}", h.Delete)
 	r.Post("/shifts/{id}/status", h.UpdateStatus)
+	r.Get("/shifts/{id}/items", h.ListItems)
+	r.Post("/shifts/{id}/items", h.AddItem)
+	r.Patch("/shifts/{id}/items/{itemId}", h.UpdateItem)
+	r.Delete("/shifts/{id}/items/{itemId}", h.DeleteItem)
 }
 
 // ListForParticipant returns a participant's shifts, optionally restricted to the
@@ -175,10 +182,131 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Delete(r.Context(), id); err != nil {
+		if errors.Is(err, ErrShiftBilled) {
+			httpx.WriteError(w, http.StatusConflict, "cannot delete a billed shift")
+			return
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListItems returns a shift's line items (billed + unbilled), [] when none.
+func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.ParseID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	items, err := h.svc.ListItems(r.Context(), id)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if items == nil {
+		items = []*billing.LineItem{}
+	}
+	httpx.WriteJSON(w, http.StatusOK, items)
+}
+
+// AddItem adds one line item to a shift. Unknown shift → 404; invalid line → 400.
+func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.ParseID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	in, ok := decodeItem(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.svc.AddItem(r.Context(), id, in)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if item == nil {
+		httpx.WriteError(w, http.StatusNotFound, "not found")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, item)
+}
+
+// UpdateItem rewrites one unbilled item. Unknown/billed item → 404.
+func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.ParseID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	itemID, ok := parseItemID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	in, ok := decodeItem(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.svc.UpdateItem(r.Context(), id, itemID, in)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if item == nil {
+		httpx.WriteError(w, http.StatusNotFound, "not found or already billed")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, item)
+}
+
+// DeleteItem removes one unbilled item (no-op when absent/billed).
+func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.ParseID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	itemID, ok := parseItemID(r)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	if err := h.svc.DeleteItem(r.Context(), id, itemID); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// decodeItem decodes + validates a line-item body: quantity ≥ 0 and a line is
+// either catalogue-coded or custom, not both. Writes a 400 and returns ok=false
+// on failure.
+func decodeItem(w http.ResponseWriter, r *http.Request) (billing.LineItemInput, bool) {
+	var in billing.LineItemInput
+	if err := httpx.DecodeJSON(r, &in); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
+		return in, false
+	}
+	if in.Quantity < 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "quantity must not be negative")
+		return in, false
+	}
+	if in.Code != "" && in.CustomItemID != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "a line is either catalogue-coded or custom, not both")
+		return in, false
+	}
+	return in, true
+}
+
+// parseItemID reads the {itemId} path param.
+func parseItemID(r *http.Request) (int64, bool) {
+	v, err := strconv.ParseInt(chi.URLParam(r, "itemId"), 10, 64)
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
 }
 
 // statusRequest is the body of UpdateStatus: the target lifecycle status.

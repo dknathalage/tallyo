@@ -10,60 +10,42 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/google/uuid"
 )
 
-// Measure is one structured outcome captured during a shift (e.g. a goal score
-// or a billable quantity). It is stored as JSON inside the shift's measures
-// column.
-type Measure struct {
-	Label string  `json:"label"`
-	Value float64 `json:"value"`
-	Unit  string  `json:"unit"`
-	Code  string  `json:"code"`
-}
-
 // Shift is the domain view of a row in the shifts table — the delivered-support
-// unit a provider records for a participant. Measures and Tags are stored as
-// JSON TEXT and are never nil. Status moves through the lifecycle
+// unit a provider records for a participant. A shift's billable quantities live
+// on its line_items rows (see ListItems), not on the shift itself. Tags is
+// stored as JSON TEXT and is never nil. Status moves through the lifecycle
 // scheduled→recorded→drafted→sent→paid; InvoiceID is set once the shift is
 // drafted onto an invoice.
 type Shift struct {
-	ID            int64     `json:"id"`
-	UUID          string    `json:"uuid"`
-	ParticipantID int64     `json:"participantId"`
-	ServiceDate   string    `json:"serviceDate"`
-	StartTime     string    `json:"startTime"`
-	EndTime       string    `json:"endTime"`
-	Hours         float64   `json:"hours"`
-	Km            float64   `json:"km"`
-	Measures      []Measure `json:"measures"`
-	Note          string    `json:"note"`
-	Tags          []string  `json:"tags"`
-	Status        string    `json:"status"`
-	InvoiceID     *int64    `json:"invoiceId"`
-	AuthorUserID  *int64    `json:"authorUserId"`
-	CreatedAt     string    `json:"createdAt"`
-	UpdatedAt     string    `json:"updatedAt"`
+	ID            int64    `json:"id"`
+	UUID          string   `json:"uuid"`
+	ParticipantID int64    `json:"participantId"`
+	ServiceDate   string   `json:"serviceDate"`
+	Note          string   `json:"note"`
+	Tags          []string `json:"tags"`
+	Status        string   `json:"status"`
+	InvoiceID     *int64   `json:"invoiceId"`
+	AuthorUserID  *int64   `json:"authorUserId"`
+	CreatedAt     string   `json:"createdAt"`
+	UpdatedAt     string   `json:"updatedAt"`
 }
 
 // ShiftInput is the writable subset of a shift.
 type ShiftInput struct {
-	ParticipantID int64     `json:"participantId"`
-	ServiceDate   string    `json:"serviceDate"`
-	StartTime     string    `json:"startTime"`
-	EndTime       string    `json:"endTime"`
-	Hours         float64   `json:"hours"`
-	Km            float64   `json:"km"`
-	Measures      []Measure `json:"measures"`
-	Note          string    `json:"note"`
-	Tags          []string  `json:"tags"`
-	Status        string    `json:"status"`
+	ParticipantID int64    `json:"participantId"`
+	ServiceDate   string   `json:"serviceDate"`
+	Note          string   `json:"note"`
+	Tags          []string `json:"tags"`
+	Status        string   `json:"status"`
 }
 
 // UnbilledAgg summarises a participant's recorded-but-unbilled shifts: how many there
@@ -102,10 +84,7 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 	if !validISODate(in.ServiceDate) {
 		return nil, errors.New("create shift: service date must be a valid YYYY-MM-DD date")
 	}
-	if err := assertShiftNonNegative(in); err != nil {
-		return nil, err
-	}
-	measures, tags, err := encodeShiftJSON(in)
+	tags, err := encodeTags(in.Tags)
 	if err != nil {
 		return nil, err
 	}
@@ -122,11 +101,6 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 			TenantID:      tenantID,
 			ParticipantID: in.ParticipantID,
 			ServiceDate:   in.ServiceDate,
-			StartTime:     in.StartTime,
-			EndTime:       in.EndTime,
-			Hours:         in.Hours,
-			Km:            in.Km,
-			Measures:      measures,
 			Note:          in.Note,
 			Tags:          tags,
 			Status:        status,
@@ -243,10 +217,7 @@ func (r *ShiftsRepo) Update(ctx context.Context, tenantID, id int64, in ShiftInp
 	if !validISODate(in.ServiceDate) {
 		return nil, errors.New("update shift: service date must be a valid YYYY-MM-DD date")
 	}
-	if err := assertShiftNonNegative(in); err != nil {
-		return nil, err
-	}
-	measures, tags, err := encodeShiftJSON(in)
+	tags, err := encodeTags(in.Tags)
 	if err != nil {
 		return nil, err
 	}
@@ -262,11 +233,6 @@ func (r *ShiftsRepo) Update(ctx context.Context, tenantID, id int64, in ShiftInp
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, e := gen.New(tx).UpdateShift(ctx, gen.UpdateShiftParams{
 			ServiceDate: in.ServiceDate,
-			StartTime:   in.StartTime,
-			EndTime:     in.EndTime,
-			Hours:       in.Hours,
-			Km:          in.Km,
-			Measures:    measures,
 			Note:        in.Note,
 			Tags:        tags,
 			Status:      status,
@@ -391,6 +357,187 @@ func (r *ShiftsRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	})
 }
 
+// ListItems returns a shift's line items (billed and unbilled), oldest first.
+func (r *ShiftsRepo) ListItems(ctx context.Context, tenantID, shiftID int64) ([]*billing.LineItem, error) {
+	if tenantID == 0 || shiftID == 0 {
+		return nil, errors.New("list shift items: tenant and shift id required")
+	}
+	rows, err := gen.New(r.db).ListLineItemsForShift(ctx, gen.ListLineItemsForShiftParams{
+		TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list shift items: %w", err)
+	}
+	out := make([]*billing.LineItem, 0, len(rows))
+	for i := range rows { // bounded by len(rows)
+		out = append(out, billing.LineItemFromRow(rows[i]))
+	}
+	return out, nil
+}
+
+// GetItem returns one line item by id, or (nil, nil) when absent for the tenant.
+func (r *ShiftsRepo) GetItem(ctx context.Context, tenantID, itemID int64) (*billing.LineItem, error) {
+	if tenantID == 0 || itemID == 0 {
+		return nil, errors.New("get shift item: tenant and item id required")
+	}
+	row, err := gen.New(r.db).GetLineItem(ctx, gen.GetLineItemParams{TenantID: tenantID, ID: itemID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get shift item: %w", err)
+	}
+	return billing.LineItemFromRow(row), nil
+}
+
+// CountItems returns how many UNBILLED items the shift carries.
+func (r *ShiftsRepo) CountItems(ctx context.Context, tenantID, shiftID int64) (int64, error) {
+	if tenantID == 0 || shiftID == 0 {
+		return 0, errors.New("count shift items: tenant and shift id required")
+	}
+	n, err := gen.New(r.db).CountShiftItems(ctx, gen.CountShiftItemsParams{
+		TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count shift items: %w", err)
+	}
+	return n, nil
+}
+
+// CreateItem inserts a line item on a shift (shift_id set, invoice_id NULL) and
+// writes one audit row. in is expected pre-priced by the caller.
+func (r *ShiftsRepo) CreateItem(ctx context.Context, tenantID, shiftID int64, in billing.LineItemInput) (*billing.LineItem, error) {
+	if tenantID == 0 || shiftID == 0 {
+		return nil, errors.New("create shift item: tenant and shift id required")
+	}
+	if in.Quantity < 0 {
+		return nil, errors.New("create shift item: quantity must not be negative")
+	}
+	var newID int64
+	err := audit.WithTx(ctx, r.db, audit.Entry{
+		EntityType: "line_item", EntityID: shiftID, Action: "create",
+	}, func(tx *sql.Tx) error {
+		row, e := gen.New(tx).CreateLineItem(ctx, lineItemParams(tenantID, &shiftID, in))
+		if e != nil {
+			return fmt.Errorf("insert: %w", e)
+		}
+		newID = row.ID
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create shift item: %w", err)
+	}
+	return r.GetItem(ctx, tenantID, newID)
+}
+
+// UpdateItem rewrites an UNBILLED shift item (invoice_id IS NULL guard) and
+// writes one audit row. Returns (nil, nil) when the item is absent or already
+// billed. in is expected pre-priced by the caller.
+func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in billing.LineItemInput) (*billing.LineItem, error) {
+	if tenantID == 0 || itemID == 0 {
+		return nil, errors.New("update shift item: tenant and item id required")
+	}
+	if in.Quantity < 0 {
+		return nil, errors.New("update shift item: quantity must not be negative")
+	}
+	var missing bool
+	err := audit.WithTx(ctx, r.db, audit.Entry{
+		EntityType: "line_item", EntityID: itemID, Action: "update",
+	}, func(tx *sql.Tx) error {
+		_, e := gen.New(tx).UpdateShiftLineItem(ctx, gen.UpdateShiftLineItemParams{
+			SupportItemID:    db.NullID(in.SupportItemID),
+			CustomItemID:     db.NullID(in.CustomItemID),
+			CatalogVersionID: db.NullID(in.CatalogVersionID),
+			Code:             db.NzMaybe(in.Code),
+			Description:      in.Description,
+			ServiceDate:      db.NzMaybe(in.ServiceDate),
+			Unit:             db.NzMaybe(in.Unit),
+			StartTime:        db.NzMaybe(in.StartTime),
+			EndTime:          db.NzMaybe(in.EndTime),
+			Quantity:         in.Quantity,
+			UnitPrice:        in.UnitPrice,
+			GstFree:          db.B2i(in.GstFree),
+			LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
+			TenantID:         tenantID,
+			ID:               itemID,
+		})
+		if errors.Is(e, sql.ErrNoRows) {
+			missing = true
+			return e
+		}
+		if e != nil {
+			return fmt.Errorf("update: %w", e)
+		}
+		return nil
+	})
+	if missing {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update shift item: %w", err)
+	}
+	return r.GetItem(ctx, tenantID, itemID)
+}
+
+// DeleteUnbilledItems removes ALL of a shift's unbilled items (invoice_id IS
+// NULL) in one audited mutation. Used to make a re-divide idempotent.
+func (r *ShiftsRepo) DeleteUnbilledItems(ctx context.Context, tenantID, shiftID int64) error {
+	if tenantID == 0 || shiftID == 0 {
+		return errors.New("delete unbilled items: tenant and shift id required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{
+		EntityType: "line_item", EntityID: shiftID, Action: "delete",
+	}, func(tx *sql.Tx) error {
+		if err := gen.New(tx).DeleteUnbilledItemsForShift(ctx, gen.DeleteUnbilledItemsForShiftParams{
+			TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true},
+		}); err != nil {
+			return fmt.Errorf("delete unbilled items: %w", err)
+		}
+		return nil
+	})
+}
+
+// DeleteItem removes an UNBILLED shift item (invoice_id IS NULL guard) and writes
+// one audit row.
+func (r *ShiftsRepo) DeleteItem(ctx context.Context, tenantID, itemID int64) error {
+	if tenantID == 0 || itemID == 0 {
+		return errors.New("delete shift item: tenant and item id required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{
+		EntityType: "line_item", EntityID: itemID, Action: "delete",
+	}, func(tx *sql.Tx) error {
+		if err := gen.New(tx).DeleteShiftLineItem(ctx, gen.DeleteShiftLineItemParams{TenantID: tenantID, ID: itemID}); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+		return nil
+	})
+}
+
+// lineItemParams builds the gen insert params for a line item. shiftID nil = an
+// invoice-only line; here it is always set (shift item, invoice_id NULL).
+func lineItemParams(tenantID int64, shiftID *int64, in billing.LineItemInput) gen.CreateLineItemParams {
+	return gen.CreateLineItemParams{
+		Uuid:             uuid.NewString(),
+		TenantID:         tenantID,
+		ShiftID:          db.NullID(shiftID),
+		InvoiceID:        sql.NullInt64{}, // unbilled shift item
+		SupportItemID:    db.NullID(in.SupportItemID),
+		CustomItemID:     db.NullID(in.CustomItemID),
+		CatalogVersionID: db.NullID(in.CatalogVersionID),
+		Code:             db.NzMaybe(in.Code),
+		Description:      in.Description,
+		ServiceDate:      db.NzMaybe(in.ServiceDate),
+		Unit:             db.NzMaybe(in.Unit),
+		StartTime:        db.NzMaybe(in.StartTime),
+		EndTime:          db.NzMaybe(in.EndTime),
+		Quantity:         in.Quantity,
+		UnitPrice:        in.UnitPrice,
+		GstFree:          db.B2i(in.GstFree),
+		LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
+		SortOrder:        sql.NullInt64{Int64: in.SortOrder, Valid: true},
+	}
+}
+
 // UnbilledByParticipant aggregates the tenant's recorded-but-unbilled shifts per
 // participant (count and service-date span), ready for billing suggestions.
 func (r *ShiftsRepo) UnbilledByParticipant(ctx context.Context, tenantID int64) ([]UnbilledAgg, error) {
@@ -413,37 +560,17 @@ func (r *ShiftsRepo) UnbilledByParticipant(ctx context.Context, tenantID int64) 
 	return out, nil
 }
 
-// assertShiftNonNegative rejects negative quantities at the boundary.
-func assertShiftNonNegative(in ShiftInput) error {
-	if in.Hours < 0 {
-		return errors.New("shift: hours must not be negative")
+// encodeTags marshals tags to JSON TEXT, defaulting a nil slice to an empty
+// array so the column is never NULL/"null".
+func encodeTags(tags []string) (string, error) {
+	if tags == nil {
+		tags = []string{}
 	}
-	if in.Km < 0 {
-		return errors.New("shift: km must not be negative")
-	}
-	return nil
-}
-
-// encodeShiftJSON marshals measures and tags to JSON TEXT, defaulting nil
-// slices to empty arrays so the columns are never NULL/"null".
-func encodeShiftJSON(in ShiftInput) (measures string, tags string, err error) {
-	measureVals := in.Measures
-	if measureVals == nil {
-		measureVals = []Measure{}
-	}
-	mb, err := json.Marshal(measureVals)
+	tb, err := json.Marshal(tags)
 	if err != nil {
-		return "", "", fmt.Errorf("shift: marshal measures: %w", err)
+		return "", fmt.Errorf("shift: marshal tags: %w", err)
 	}
-	tagVals := in.Tags
-	if tagVals == nil {
-		tagVals = []string{}
-	}
-	tb, err := json.Marshal(tagVals)
-	if err != nil {
-		return "", "", fmt.Errorf("shift: marshal tags: %w", err)
-	}
-	return string(mb), string(tb), nil
+	return string(tb), nil
 }
 
 // anyToString coerces a SQLite MIN/MAX aggregate (scanned as interface{}) into a
@@ -462,15 +589,6 @@ func anyToString(v any) string {
 }
 
 func toShift(r gen.Shift) (*Shift, error) {
-	measures := []Measure{}
-	if r.Measures != "" {
-		if err := json.Unmarshal([]byte(r.Measures), &measures); err != nil {
-			return nil, fmt.Errorf("shift %d: unmarshal measures: %w", r.ID, err)
-		}
-		if measures == nil {
-			measures = []Measure{}
-		}
-	}
 	tags := []string{}
 	if r.Tags != "" {
 		if err := json.Unmarshal([]byte(r.Tags), &tags); err != nil {
@@ -485,11 +603,6 @@ func toShift(r gen.Shift) (*Shift, error) {
 		UUID:          r.Uuid,
 		ParticipantID: r.ParticipantID,
 		ServiceDate:   r.ServiceDate,
-		StartTime:     r.StartTime,
-		EndTime:       r.EndTime,
-		Hours:         r.Hours,
-		Km:            r.Km,
-		Measures:      measures,
 		Note:          r.Note,
 		Tags:          tags,
 		Status:        r.Status,

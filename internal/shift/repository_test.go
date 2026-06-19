@@ -9,11 +9,6 @@ func sampleShiftInput(pid int64) ShiftInput {
 	return ShiftInput{
 		ParticipantID: pid,
 		ServiceDate:   "2026-01-15",
-		StartTime:     "09:00",
-		EndTime:       "12:00",
-		Hours:         3,
-		Km:            12.5,
-		Measures:      []Measure{{Label: "Goal A", Value: 4, Unit: "score", Code: "G1"}},
 		Note:          "Supported community access",
 		Tags:          []string{"community", "transport"},
 	}
@@ -34,11 +29,8 @@ func TestShiftCreateRoundTrip(t *testing.T) {
 	if s == nil || s.ID == 0 || s.ParticipantID != pid || s.ServiceDate != "2026-01-15" {
 		t.Fatalf("Create = %+v", s)
 	}
-	if s.StartTime != "09:00" || s.EndTime != "12:00" || s.Hours != 3 || s.Km != 12.5 || s.Note != "Supported community access" {
+	if s.Note != "Supported community access" {
 		t.Fatalf("scalar fields not round-tripped: %+v", s)
-	}
-	if len(s.Measures) != 1 || s.Measures[0].Label != "Goal A" || s.Measures[0].Value != 4 || s.Measures[0].Unit != "score" || s.Measures[0].Code != "G1" {
-		t.Fatalf("measures not round-tripped: %+v", s.Measures)
 	}
 	if len(s.Tags) != 2 || s.Tags[0] != "community" || s.Tags[1] != "transport" {
 		t.Fatalf("tags not round-tripped: %+v", s.Tags)
@@ -54,7 +46,7 @@ func TestShiftCreateRoundTrip(t *testing.T) {
 	}
 }
 
-func TestShiftCreateEmptyMeasuresTagsNeverNil(t *testing.T) {
+func TestShiftCreateEmptyTagsNeverNil(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
@@ -64,9 +56,6 @@ func TestShiftCreateEmptyMeasuresTagsNeverNil(t *testing.T) {
 	s, err := repo.Create(ctx, tid, nil, ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-16"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
-	}
-	if s.Measures == nil || len(s.Measures) != 0 {
-		t.Fatalf("measures must be non-nil empty, got %+v", s.Measures)
 	}
 	if s.Tags == nil || len(s.Tags) != 0 {
 		t.Fatalf("tags must be non-nil empty, got %+v", s.Tags)
@@ -105,8 +94,6 @@ func TestShiftCreateRejectsInvalid(t *testing.T) {
 		{"empty serviceDate", ShiftInput{ParticipantID: pid, ServiceDate: ""}},
 		{"malformed serviceDate", ShiftInput{ParticipantID: pid, ServiceDate: "2026-6-9"}},
 		{"zero participant", ShiftInput{ParticipantID: 0, ServiceDate: "2026-01-15"}},
-		{"negative hours", ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Hours: -1}},
-		{"negative km", ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Km: -1}},
 	}
 	for _, c := range cases {
 		if s, err := repo.Create(ctx, tid, nil, c.in); err == nil {
@@ -351,10 +338,10 @@ func TestShiftUpdateRepo(t *testing.T) {
 	}
 	in := sampleShiftInput(pid)
 	in.ServiceDate = "2026-01-18"
-	in.Hours = 5
+	in.Note = "updated note"
 	in.Tags = []string{"updated"}
 	up, err := repo.Update(ctx, tid, s.ID, in)
-	if err != nil || up == nil || up.ServiceDate != "2026-01-18" || up.Hours != 5 {
+	if err != nil || up == nil || up.ServiceDate != "2026-01-18" || up.Note != "updated note" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
 	if len(up.Tags) != 1 || up.Tags[0] != "updated" {
