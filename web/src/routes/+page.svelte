@@ -143,7 +143,7 @@
 						<span class="min-w-[8rem] font-semibold">{whenLabel(s.serviceDate)} · {shortDate(s.serviceDate)}</span>
 						<span class="flex-1 text-sm">
 							{participantName(s.participantId)}
-							<span class="text-gray-500">· scheduled {s.startTime}–{s.endTime}</span>
+							<span class="text-gray-500">· scheduled</span>
 						</span>
 						<button
 							type="button"

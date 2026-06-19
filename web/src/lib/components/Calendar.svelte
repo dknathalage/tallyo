@@ -61,7 +61,7 @@
 	}
 
 	function chipLabel(s: Shift): string {
-		return `${firstName(s.participantId)} ${s.hours ? `${s.hours}h` : s.startTime || ''}`.trim();
+		return firstName(s.participantId);
 	}
 </script>
 

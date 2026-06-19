@@ -180,9 +180,7 @@
 				>
 					<span>
 						{dowDate(s.serviceDate)}
-						<span class="text-gray-500">
-							· {s.startTime}–{s.endTime} · {s.hours}h · {s.km}km
-						</span>
+						{#if s.note}<span class="text-gray-500">· {s.note}</span>{/if}
 					</span>
 					<span class="text-gray-500">{statusLabel(s.status)}</span>
 				</a>

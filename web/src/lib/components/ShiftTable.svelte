@@ -23,9 +23,6 @@
 		id: number;
 		date: string;
 		participant: string;
-		time: string;
-		hours: number;
-		km: number;
 		note: string;
 		tags: string;
 		status: ShiftStatus;
@@ -37,9 +34,6 @@
 			id: s.id,
 			date: s.serviceDate,
 			participant: participantName(s.participantId),
-			time: s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : '',
-			hours: s.hours,
-			km: s.km,
 			note: s.note,
 			tags: s.tags.join(', '),
 			status: s.status,
@@ -65,9 +59,6 @@
 			sortable: true,
 			filter: (value: string, filterValue: string) => value === filterValue
 		},
-		{ id: 'time', key: 'time', name: 'Time', sortable: false },
-		{ id: 'hours', key: 'hours', name: 'Hrs', sortable: true },
-		{ id: 'km', key: 'km', name: 'Km', sortable: true },
 		{ id: 'note', key: 'note', name: 'Note', sortable: false, filter: textFilter },
 		{ id: 'tags', key: 'tags', name: 'Tags', sortable: false, filter: textFilter },
 		{
@@ -257,9 +248,6 @@
 							{/each}
 						</select>
 					</th>
-					<th></th>
-					<th></th>
-					<th></th>
 					<th class="px-3 py-1.5">
 						<input
 							bind:value={noteQuery}
@@ -313,9 +301,6 @@
 						</td>
 						<td class="px-3 py-2 whitespace-nowrap">{dowDate(row.date)}</td>
 						<td class="px-3 py-2">{row.participant}</td>
-						<td class="px-3 py-2 whitespace-nowrap text-gray-500">{row.time || '—'}</td>
-						<td class="px-3 py-2 text-right">{row.hours || '—'}</td>
-						<td class="px-3 py-2 text-right">{row.km || '—'}</td>
 						<td class="max-w-[18rem] px-3 py-2 text-gray-600">
 							{#if row.note}
 								{row.note}

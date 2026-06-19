@@ -1,9 +1,17 @@
 <script lang="ts">
 	import Modal from '$lib/components/Modal.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
+	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import { hoursBetween, todayISO } from '$lib/shifts/format';
-	import type { Shift, ShiftInput, ShiftMeasure, ShiftStatus } from '$lib/api/types';
+	import type {
+		Shift,
+		ShiftInput,
+		ShiftStatus,
+		LineItem,
+		LineItemInput,
+		SupportItem
+	} from '$lib/api/types';
 
 	type Props = {
 		open: boolean;
@@ -35,15 +43,17 @@
 	// Form fields. Re-seeded whenever the modal opens (the form is reused).
 	let fParticipantId = $state('');
 	let fDate = $state('');
-	let fStart = $state('');
-	let fEnd = $state('');
-	let fHours = $state('');
-	let fKm = $state('');
 	let fNote = $state('');
 	let fStatus = $state<ShiftStatus>('recorded');
-	let extraMeasures = $state<ShiftMeasure[]>([]);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+
+	// Shift line items (loaded for an existing shift only — a new shift is saved
+	// note-only, then re-opened to add items). Each add/remove hits the API and
+	// refetches; the server prices coded lines authoritatively.
+	let items = $state<LineItem[]>([]);
+	let itemsBusy = $state(false);
+	let itemError = $state<string | null>(null);
 
 	// Seed the form from props each time the modal transitions to open.
 	let lastOpen = false;
@@ -56,54 +66,176 @@
 
 	function seed(): void {
 		error = null;
-		extraMeasures = [];
+		itemError = null;
+		items = [];
+		resetDraft();
 		if (shift) {
 			fParticipantId = String(shift.participantId);
 			fDate = shift.serviceDate ? shift.serviceDate.slice(0, 10) : todayISO();
-			fStart = shift.startTime;
-			fEnd = shift.endTime;
-			fHours = shift.hours ? String(shift.hours) : '';
-			fKm = shift.km ? String(shift.km) : '';
 			fNote = shift.note;
 			fStatus = shift.status;
-			// Preserve any non-km/non-distance measures so an edit doesn't drop them.
-			extraMeasures = shift.measures.filter((m) => m.unit !== 'km');
+			void loadItems(shift.id);
 		} else {
 			const first = presetParticipantId ?? participants.items[0]?.id ?? null;
 			fParticipantId = first === null ? '' : String(first);
 			fDate = presetDate || todayISO();
-			fStart = '';
-			fEnd = '';
-			fHours = '';
-			fKm = '';
 			fNote = '';
 			fStatus = 'recorded';
 		}
 	}
 
-	function onTimeInput(): void {
-		if (fStart && fEnd) {
-			fHours = String(hoursBetween(fStart, fEnd));
+	async function loadItems(shiftId: number): Promise<void> {
+		try {
+			items = await shiftsApi.listItems(shiftId);
+		} catch (err) {
+			itemError = err instanceof Error ? err.message : 'Failed to load items.';
 		}
 	}
 
-	function addMeasure(): void {
-		extraMeasures = [...extraMeasures, { label: '', value: 0, unit: '', code: '' }];
+	async function divideAI(): Promise<void> {
+		if (!shift) return;
+		itemError = null;
+		itemsBusy = true;
+		try {
+			items = await shiftsApi.divideShift(shift.id);
+		} catch (err) {
+			itemError = err instanceof Error ? err.message : 'AI could not divide this shift.';
+		} finally {
+			itemsBusy = false;
+		}
 	}
 
-	function removeMeasure(i: number): void {
-		extraMeasures = extraMeasures.filter((_, idx) => idx !== i);
+	async function removeItem(id: number): Promise<void> {
+		if (!shift) return;
+		itemError = null;
+		itemsBusy = true;
+		try {
+			await shiftsApi.deleteItem(shift.id, id);
+			await loadItems(shift.id);
+		} catch (err) {
+			itemError = err instanceof Error ? err.message : 'Failed to remove item.';
+		} finally {
+			itemsBusy = false;
+		}
 	}
 
-	function buildMeasures(): ShiftMeasure[] {
-		const out: ShiftMeasure[] = [];
-		for (let i = 0; i < extraMeasures.length; i++) {
-			const m = extraMeasures[i];
-			if (m.label.trim().length > 0) {
-				out.push({ label: m.label, value: Number(m.value) || 0, unit: m.unit, code: m.code });
+	// ---- New-item draft + catalogue picker ----
+	// Mirrors billing.Classify: how a unit's quantity is captured.
+	function unitClass(unit: string): 'time' | 'distance' | 'count' {
+		const u = unit.trim().toUpperCase();
+		if (u === 'H' || u === 'HOUR' || u === 'HR') return 'time';
+		if (u === 'KM') return 'distance';
+		return 'count';
+	}
+
+	let niCode = $state('');
+	let niCustomItemId = $state<number | null>(null);
+	let niDescription = $state('');
+	let niUnit = $state('');
+	let niQuantity = $state('1');
+	let niUnitPrice = $state(''); // custom lines only; coded lines priced by server
+	let niStart = $state('');
+	let niEnd = $state('');
+
+	function resetDraft(): void {
+		niCode = '';
+		niCustomItemId = null;
+		niDescription = '';
+		niUnit = '';
+		niQuantity = '1';
+		niUnitPrice = '';
+		niStart = '';
+		niEnd = '';
+		pickerOpen = false;
+	}
+
+	function onDraftTime(): void {
+		if (niStart && niEnd) niQuantity = String(hoursBetween(niStart, niEnd));
+	}
+
+	let pickerOpen = $state(false);
+	let pickerSearch = $state('');
+	let catalogItems = $state<SupportItem[]>([]);
+	let catalogLoaded = $state(false);
+
+	async function ensureCatalog(): Promise<void> {
+		if (catalogLoaded) return;
+		catalogLoaded = true;
+		await supportCatalog.loadVersions();
+		if (supportCatalog.versions.length > 0) {
+			try {
+				catalogItems = await supportCatalog.loadItems(supportCatalog.versions[0].id);
+			} catch {
+				catalogItems = [];
 			}
 		}
-		return out;
+	}
+
+	const pickerResults = $derived.by<SupportItem[]>(() => {
+		const q = pickerSearch.trim().toLowerCase();
+		if (q === '') return catalogItems.slice(0, 20);
+		return catalogItems
+			.filter((it) => it.code.toLowerCase().includes(q) || it.name.toLowerCase().includes(q))
+			.slice(0, 20);
+	});
+
+	async function openPicker(): Promise<void> {
+		pickerOpen = !pickerOpen;
+		pickerSearch = '';
+		if (pickerOpen) await ensureCatalog();
+	}
+
+	function pickItem(it: SupportItem): void {
+		niCode = it.code;
+		niCustomItemId = null;
+		niDescription = it.name;
+		niUnit = it.unit;
+		niUnitPrice = '';
+		pickerOpen = false;
+	}
+
+	async function addItem(): Promise<void> {
+		if (!shift) return;
+		itemError = null;
+		const qty = Number(niQuantity) || 0;
+		if (qty <= 0) {
+			itemError = 'Quantity must be greater than zero.';
+			return;
+		}
+		if (niDescription.trim() === '') {
+			itemError = 'A description is required.';
+			return;
+		}
+		const coded = niCode.trim() !== '';
+		const input: LineItemInput = {
+			supportItemId: null,
+			customItemId: niCustomItemId,
+			catalogVersionId: null,
+			code: coded ? niCode.trim() : '',
+			description: niDescription.trim(),
+			serviceDate: fDate,
+			unit: niUnit,
+			startTime: unitClass(niUnit) === 'time' ? niStart : '',
+			endTime: unitClass(niUnit) === 'time' ? niEnd : '',
+			quantity: qty,
+			unitPrice: coded ? 0 : Number(niUnitPrice) || 0,
+			gstFree: true,
+			sortOrder: items.length
+		};
+		itemsBusy = true;
+		try {
+			await shiftsApi.addItem(shift.id, input);
+			await loadItems(shift.id);
+			resetDraft();
+		} catch (err) {
+			itemError = err instanceof Error ? err.message : 'Failed to add item.';
+		} finally {
+			itemsBusy = false;
+		}
+	}
+
+	function money(n: number): string {
+		return (Number.isFinite(n) ? n : 0).toFixed(2);
 	}
 
 	async function submit(e: SubmitEvent): Promise<void> {
@@ -118,16 +250,10 @@
 			return;
 		}
 		// Recording a scheduled shift advances it to recorded.
-		const nextStatus: ShiftStatus =
-			recording && fStatus === 'scheduled' ? 'recorded' : fStatus;
+		const nextStatus: ShiftStatus = recording && fStatus === 'scheduled' ? 'recorded' : fStatus;
 		const input: ShiftInput = {
 			participantId: Number(fParticipantId),
 			serviceDate: fDate,
-			startTime: fStart,
-			endTime: fEnd,
-			hours: Number(fHours) || 0,
-			km: Number(fKm) || 0,
-			measures: buildMeasures(),
 			note: fNote,
 			tags: shift?.tags ?? [],
 			status: nextStatus
@@ -152,8 +278,8 @@
 <Modal bind:open {title}>
 	<form class="space-y-3" onsubmit={submit}>
 		<p class="text-xs text-gray-500">
-			Semi-structured: time &amp; participant are structured; note is free text; measures map to
-			catalogue codes.
+			Date &amp; participant are structured; the note is free text. Add billable line items below
+			(or let AI divide the note into them).
 		</p>
 
 		<div class="grid grid-cols-2 gap-3">
@@ -181,86 +307,6 @@
 			</label>
 		</div>
 
-		<div class="grid grid-cols-3 gap-3">
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Start</span>
-				<input
-					type="time"
-					bind:value={fStart}
-					oninput={onTimeInput}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">End</span>
-				<input
-					type="time"
-					bind:value={fEnd}
-					oninput={onTimeInput}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Hours</span>
-				<input
-					type="number"
-					step="0.25"
-					min="0"
-					bind:value={fHours}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-		</div>
-
-		<div>
-			<span class="mb-1 block text-sm font-medium">Measures</span>
-			<div class="flex items-center gap-2">
-				<span class="w-24 text-sm text-gray-500">Distance</span>
-				<input
-					type="number"
-					min="0"
-					bind:value={fKm}
-					class="w-28 rounded border border-gray-300 px-2 py-1 text-sm"
-				/>
-				<span class="text-sm text-gray-500">km → Transport</span>
-			</div>
-			{#each extraMeasures as m, i (i)}
-				<div class="mt-2 flex items-center gap-2">
-					<input
-						placeholder="measure name"
-						bind:value={m.label}
-						class="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
-					/>
-					<input
-						type="number"
-						placeholder="value"
-						bind:value={m.value}
-						class="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
-					/>
-					<input
-						placeholder="unit"
-						bind:value={m.unit}
-						class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-					/>
-					<button
-						type="button"
-						onclick={() => removeMeasure(i)}
-						aria-label="Remove measure"
-						class="text-red-600 hover:underline"
-					>
-						✕
-					</button>
-				</div>
-			{/each}
-			<button
-				type="button"
-				onclick={addMeasure}
-				class="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-			>
-				+ add measure
-			</button>
-		</div>
-
 		<label class="block">
 			<span class="mb-1 block text-sm font-medium">Note</span>
 			<textarea
@@ -269,6 +315,176 @@
 				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 			></textarea>
 		</label>
+
+		{#if editing && shift}
+			<div class="rounded border border-gray-200 p-3">
+				<div class="mb-2 flex items-center justify-between">
+					<span class="text-sm font-medium">Line items</span>
+					<button
+						type="button"
+						onclick={divideAI}
+						disabled={itemsBusy}
+						class="rounded border border-indigo-300 px-3 py-1 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+					>
+						{itemsBusy ? 'Working…' : 'Divide with AI'}
+					</button>
+				</div>
+
+				{#if itemError}
+					<p class="mb-2 text-sm text-red-600">{itemError}</p>
+				{/if}
+
+				{#each items as it (it.id)}
+					<div class="flex items-center gap-2 border-b border-gray-100 py-1.5 text-sm last:border-0">
+						<span class="flex-1">
+							{#if it.code}<span class="font-mono text-xs text-gray-500">{it.code}</span> {/if}
+							{it.description}
+						</span>
+						<span class="text-gray-500">{it.quantity} {it.unit}</span>
+						<span class="w-20 text-right">${money(it.lineTotal)}</span>
+						{#if it.invoiceId === null}
+							<button
+								type="button"
+								onclick={() => removeItem(it.id)}
+								disabled={itemsBusy}
+								class="text-red-600 hover:underline disabled:opacity-50"
+								aria-label="Remove item"
+							>
+								✕
+							</button>
+						{:else}
+							<span class="text-xs text-gray-400" title="Billed — linked to an invoice">billed</span>
+						{/if}
+					</div>
+				{:else}
+					<p class="text-sm text-gray-500">No items yet.</p>
+				{/each}
+
+				<!-- Add-item draft row -->
+				<div class="mt-3 space-y-2 rounded bg-gray-50 p-2">
+					<div class="flex gap-1">
+						<input
+							type="text"
+							bind:value={niCode}
+							placeholder="NDIS code (optional)"
+							class="w-44 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+						/>
+						<button
+							type="button"
+							onclick={openPicker}
+							class="shrink-0 rounded border border-gray-300 px-2 text-xs hover:bg-white"
+						>
+							Find
+						</button>
+						<input
+							type="text"
+							bind:value={niDescription}
+							placeholder="Description"
+							class="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+						/>
+					</div>
+
+					{#if pickerOpen}
+						<div class="rounded border border-gray-200 bg-white p-2">
+							<input
+								type="text"
+								bind:value={pickerSearch}
+								placeholder="Search by code or name"
+								class="mb-2 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+							/>
+							{#if !catalogLoaded}
+								<p class="text-xs text-gray-500">Loading catalogue…</p>
+							{:else if catalogItems.length === 0}
+								<p class="text-xs text-gray-500">No catalogue loaded.</p>
+							{:else}
+								<ul class="max-h-40 overflow-auto text-sm">
+									{#each pickerResults as it (it.id)}
+										<li>
+											<button
+												type="button"
+												onclick={() => pickItem(it)}
+												class="w-full rounded px-2 py-1 text-left hover:bg-gray-50"
+											>
+												<span class="font-mono text-xs">{it.code}</span> — {it.name}
+											</button>
+										</li>
+									{:else}
+										<li class="px-2 py-1 text-xs text-gray-500">No matches.</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+					{/if}
+
+					<div class="flex flex-wrap items-end gap-2">
+						<label class="block">
+							<span class="mb-0.5 block text-xs text-gray-500">Unit</span>
+							<input
+								type="text"
+								bind:value={niUnit}
+								placeholder="H, KM, EA…"
+								class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+							/>
+						</label>
+						{#if unitClass(niUnit) === 'time'}
+							<label class="block">
+								<span class="mb-0.5 block text-xs text-gray-500">Start</span>
+								<input
+									type="time"
+									bind:value={niStart}
+									oninput={onDraftTime}
+									class="rounded border border-gray-300 px-2 py-1 text-sm"
+								/>
+							</label>
+							<label class="block">
+								<span class="mb-0.5 block text-xs text-gray-500">End</span>
+								<input
+									type="time"
+									bind:value={niEnd}
+									oninput={onDraftTime}
+									class="rounded border border-gray-300 px-2 py-1 text-sm"
+								/>
+							</label>
+						{/if}
+						<label class="block">
+							<span class="mb-0.5 block text-xs text-gray-500">Qty</span>
+							<input
+								type="number"
+								step="any"
+								min="0"
+								bind:value={niQuantity}
+								class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+							/>
+						</label>
+						{#if niCode.trim() === ''}
+							<label class="block">
+								<span class="mb-0.5 block text-xs text-gray-500">Unit price</span>
+								<input
+									type="number"
+									step="any"
+									min="0"
+									bind:value={niUnitPrice}
+									class="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+								/>
+							</label>
+						{/if}
+						<button
+							type="button"
+							onclick={addItem}
+							disabled={itemsBusy}
+							class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-white disabled:opacity-50"
+						>
+							Add item
+						</button>
+					</div>
+					{#if niCode.trim() !== ''}
+						<p class="text-xs text-gray-400">Coded lines are priced from the NDIS catalogue on save.</p>
+					{/if}
+				</div>
+			</div>
+		{:else}
+			<p class="text-xs text-gray-400">Save the shift first, then re-open it to add line items.</p>
+		{/if}
 
 		{#if error}
 			<p class="text-sm text-red-600">{error}</p>
