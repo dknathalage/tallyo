@@ -1,7 +1,5 @@
 package agent
 
-import "strings"
-
 // SystemPrompt returns the hardened system prompt for the Tallyo NDIS invoicing
 // agent. It enforces tenant confinement, untrusted-content handling, write-gate
 // approval, tool-only operation, and role constraints.
@@ -34,15 +32,4 @@ Providers record the support they delivered to a participant as dated shifts (ho
 ## Accuracy and Validation
 
 Be accurate and concise. Surface NDIS validation errors plainly — do not hide or minimise them. When line items fail validation, report exactly which items failed and why. Never invent support item codes, prices, or participant details. If you are uncertain about a value, say so and ask.`
-}
-
-// wrapUntrusted fences arbitrary record text so the model treats it as data
-// rather than instructions. Any occurrence of the closing delimiter inside body
-// is neutralised so a malicious note cannot break out of the fence.
-func wrapUntrusted(label, body string) string {
-	// Neutralise any attempt to inject the closing tag by replacing the
-	// less-than sign of "</untrusted-content" with its XML character reference.
-	// This preserves the body's readable content while preventing fence escape.
-	sanitised := strings.ReplaceAll(body, "</untrusted-content", "&lt;/untrusted-content")
-	return "<untrusted-content source=\"" + label + "\">\n" + sanitised + "\n</untrusted-content>"
 }

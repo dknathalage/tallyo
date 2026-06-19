@@ -7,9 +7,6 @@ import "github.com/dknathalage/tallyo/internal/agent/llm"
 // simply window the most recent messages (rule 2: bounded).
 const maxHistoryMessages = 40
 
-// requestMaxTokens is the per-turn output token ceiling for the model.
-const requestMaxTokens = 64000
-
 // buildRequest assembles an llm.Request for a turn. It windows history to the
 // last maxHistoryMessages messages, exposes every tool (meta included so the
 // model can see propose_plan), and forces the named tool when force != "".
