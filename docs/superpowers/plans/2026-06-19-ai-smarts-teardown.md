@@ -430,15 +430,41 @@ git commit -m "feat(agent): draft-invoice Smart (gather → propose → apply, b
 
 ---
 
-## Task 5: `SmartsHandler` — HTTP surface for both Smarts
+## Task 5: `SmartsHandler` + `Smarts.ImportShifts` — HTTP surface for both Smarts
 
-Re-home the kept handlers onto a struct that holds only the `Smarts` service + `enabled`, with no harness types.
+**This task is PURELY ADDITIVE plus relocating shared free symbols.** It must NOT remove the old `AgentHandler.DraftInvoiceFromShifts`/`AgentHandler.ImportShifts` methods — `server.go` still routes to them until Task 6, so removing them would break the build. The old `AgentHandler` and its chat handlers stay intact and are deleted wholesale in Task 7.
+
+Key constraint: `detach` and `shiftDedupKey` are **free functions** and `draftInvoiceRequest`/`importShiftsRequest` are **types**, all currently in `agent_handler.go`. We RELOCATE them (cut → paste) into the new smart files so they survive Task 7's deletion of `agent_handler.go`. Because everything is one package, the old chat handlers and old methods still resolve them after the move — no duplication, no breakage. `guard`/`existingShiftKeys` are `AgentHandler` *methods*; do NOT move those — give the new types their own copies (different receiver = no conflict), and the old ones die with `agent_handler.go` in Task 7.
 
 **Files:**
-- Create: `internal/agent/smarts_handler.go`
-- Modify: `internal/agent/agent_handler.go` (remove `DraftInvoiceFromShifts`, `ImportShifts`, `existingShiftKeys`, `guard`, `detach`, `shiftDedupKey`, request structs — they move; the rest of `agent_handler.go` dies in Task 7)
+- Modify: `internal/agent/deps.go` (extend `ShiftWorker` with `Create`)
+- Create: `internal/agent/smart_import_shifts.go` (the `Smarts.ImportShifts` method + relocated `shiftDedupKey` + a `Smarts.existingShiftKeys`)
+- Create: `internal/agent/smarts_handler.go` (`SmartsHandler` + both HTTP handlers + a `SmartsHandler.guard` + relocated `detach` + relocated request structs)
+- Modify: `internal/agent/agent_handler.go` (ONLY: cut out the relocated free funcs `detach`, `shiftDedupKey` and the relocated structs `draftInvoiceRequest`, `importShiftsRequest`; leave everything else — including the old `DraftInvoiceFromShifts`/`ImportShifts`/`guard`/`existingShiftKeys` — untouched)
 
-- [ ] **Step 1: Create `smarts_handler.go`** with the struct, constructor, and both handlers. Move `guard`, `detach`, `existingShiftKeys`, `shiftDedupKey`, `draftInvoiceRequest`, `importShiftsRequest` here verbatim (cut from `agent_handler.go`).
+- [ ] **Step 1: Extend `ShiftWorker` in `deps.go`.** Add a creator interface and embed it so `Smarts.shifts` can create shifts (the import path needs `Create`). `*shift.Service` already satisfies it; no call-site changes elsewhere.
+
+```go
+// ShiftCreator is satisfied by *shift.Service; the import-shifts Smart creates
+// recorded shifts from extracted drafts.
+type ShiftCreator interface {
+	Create(ctx context.Context, in shift.ShiftInput) (*shift.Shift, error)
+}
+
+// ShiftWorker composes the shift reads/writes the Smarts use.
+type ShiftWorker interface {
+	ShiftLister
+	ShiftDrafter
+	ShiftCreator
+}
+```
+
+Verify `shift.Service.Create` has exactly this signature first; match it.
+
+- [ ] **Step 2: `Smarts.ImportShifts` in `smart_import_shifts.go`.** Port the body of the old `AgentHandler.ImportShifts` as a service method:
+  `func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text string) ([]*shift.Shift, error)` — call `ExtractShifts(ctx, s.client, s.cfg.Model, s.cfg.EffortFor(), text)`, dedup against existing recorded shifts (port `existingShiftKeys` as `(s *Smarts) existingShiftKeys(...)` using `s.shifts.ListParticipant`), create survivors via `s.shifts.Create(...)`. **Relocate the free func `shiftDedupKey`** here (cut from `agent_handler.go`). Return the created shifts or a wrapped error (no HTTP concerns here).
+
+- [ ] **Step 3: `smarts_handler.go`** — the struct + constructor:
 
 ```go
 type SmartsHandler struct {
@@ -453,23 +479,26 @@ func NewSmartsHandler(s *Smarts, enabled bool) *SmartsHandler {
 	return &SmartsHandler{smarts: s, enabled: enabled}
 }
 ```
+Add `(h *SmartsHandler) guard(w, r) (tenantID, userID int64, ok bool)` — a copy of `AgentHandler.guard`'s logic (checks `h.enabled` → 503, pulls tenant/user from `reqctx`). **Relocate the free func `detach`** here (cut from `agent_handler.go`).
+- `(h *SmartsHandler) DraftInvoiceFromShifts(w, r)`: `guard` → `httpx.ParseID(r)` → decode `draftInvoiceRequest{from,to}` → validate non-empty → `ctx,cancel := context.WithTimeout(detach(tid,uid), 5*time.Minute)` → `inv, err := h.smarts.DraftInvoiceFromShifts(ctx, pid, from, to)` → on err `slog.Error(...)` + `httpx.WriteError(w, http.StatusBadGateway, "couldn't produce a valid invoice from these shifts")`; on success `httpx.WriteJSON(w, http.StatusCreated, inv)`.
+- `(h *SmartsHandler) ImportShifts(w, r)`: `guard` → decode `importShiftsRequest{participantId,text}` → validate → `ctx,cancel := context.WithTimeout(detach(tid,uid), 2*time.Minute)` → `created, err := h.smarts.ImportShifts(ctx, pid, text)` → on err `slog.Error(...)` + `httpx.WriteError(w, http.StatusBadGateway, "could not extract shifts from the timesheet")`; on success `httpx.WriteJSON(w, http.StatusCreated, created)`.
+- **Relocate the structs** `draftInvoiceRequest`, `importShiftsRequest` here (cut from `agent_handler.go`).
 
-- [ ] **Step 2: `DraftInvoiceFromShifts` handler** — guard → `ParseID` → decode `{from,to}` → `s.smarts.DraftInvoiceFromShifts(ctx, pid, from, to)` → on error `slog.Error` + `httpx.WriteError(w, 502, "couldn't produce a valid invoice from these shifts")`; on success `httpx.WriteJSON(w, 201, inv)`. Use a `detach(...)` context with a 5-minute timeout (matching the old handler).
+- [ ] **Step 4: Trim `agent_handler.go`** — cut ONLY the four relocated symbols (`detach`, `shiftDedupKey`, `draftInvoiceRequest`, `importShiftsRequest`). Do NOT remove any method. The old `DraftInvoiceFromShifts`/`ImportShifts`/`guard`/`existingShiftKeys`/chat handlers still reference `detach`/`shiftDedupKey`/the structs — now resolved in-package from the new files.
 
-- [ ] **Step 3: `ImportShifts` handler** — move the existing body verbatim, but read model/effort from `h.smarts.cfg` and the client from `h.smarts.client`, and the shift service from `h.smarts.shifts` (it satisfies the create call via the concrete `*shift.Service` — see note). The dedup helpers are now methods/funcs in this file.
+- [ ] **Step 5: Build + the agent tests.**
 
-> Note: `ImportShifts` calls `h.shifts.Create(ctx, shift.ShiftInput{...})`, which `ShiftWorker` does not expose. Add a `ShiftCreator` interface (`Create(ctx, shift.ShiftInput) (*shift.Shift, error)`) to `deps.go` and have `Smarts` hold the concrete `*shift.Service` OR extend `ShiftWorker`. Simplest: give `Smarts` a `shiftSvc *shift.Service` field used by `ImportShifts`/gather, and keep the `ShiftWorker` interface for the pure helpers. Decide during implementation; keep the interface surface minimal.
+Run: `CGO_ENABLED=0 go build ./...` (MUST pass — whole module, incl. `server.go` still using old `AgentHandler`)
+Run: `go test ./internal/agent/ -run 'Invoice|Draft|Import|Extract' -v` (MUST pass)
+Then `gofmt -w` the touched files.
 
-- [ ] **Step 4: Build.**
+> If the build fails with a duplicate declaration, you copied instead of moved a free func/struct — delete the original. If it fails with "undefined", you removed something still referenced — restore it.
 
-Run: `CGO_ENABLED=0 go build ./...`
-Expected: PASS — `agent_handler.go` still compiles (its remaining chat handlers are untouched; the moved funcs are gone from it).
-
-- [ ] **Step 5: Commit.**
+- [ ] **Step 6: Commit.**
 
 ```bash
-git add internal/agent/smarts_handler.go internal/agent/agent_handler.go
-git commit -m "feat(agent): SmartsHandler hosts draft-invoice + import-shifts Smarts"
+git add internal/agent/deps.go internal/agent/smart_import_shifts.go internal/agent/smarts_handler.go internal/agent/agent_handler.go
+git commit -m "feat(agent): SmartsHandler + Smarts.ImportShifts (additive; relocate shared helpers)"
 ```
 
 ---
@@ -540,6 +569,12 @@ git rm agent.go agent_test.go permission.go permission_test.go plan.go plan_test
 ```
 
 > `tools_test.go` (`NewRegistry`/`Tool{}`), `tools_invoice_create_test.go` (`NewCreateInvoiceTool(...).Handler`), `tools_shifts_test.go` (`NewListParticipantShiftsTool*`/`.Handler`) all exercise deleted machinery — delete them. The deterministic invoice behaviors they covered are now under `applyDraftInvoice` (Task 3) and the draft-Smart test (Task 4); `tools_invoice_shifts_test.go` was repointed at `applyDraftInvoice` in Task 3 and stays. `extract_test.go` (if present) stays — it tests the kept Smart.
+
+- [ ] **Step 1b: Delete the `internal/app` tests that exercise the old harness.** `internal/app/agent_test.go` and `internal/app/shift_import_test.go` build the old `agent.AgentHandler`/`agent.NewAgent` directly and will not compile once the types are gone:
+```bash
+git rm internal/app/agent_test.go internal/app/shift_import_test.go
+```
+(The kept Smart behaviors are covered by `internal/agent` tests; the import-shift HTTP path loses app-level coverage — acceptable, flagged for the final review.)
 
 - [ ] **Step 2: Strip `Tool` wrappers.** In `tools_invoice.go` delete `NewListInvoicesTool`, `NewCreateInvoiceTool`, `NewCreateInvoiceToolForShifts`, `newCreateInvoiceTool`, `newCreateInvoiceToolShifts`, `NewInvoiceRestoreFunc`/`InvoiceRestoreFunc`. In `tools_shifts.go` delete the `New*Tool` funcs and the `shiftView` plumbing that only served them — but KEEP the candidate-resolution helper the gather reuses (moved/kept in Task 4). If either file is now empty, `git rm` it.
 
