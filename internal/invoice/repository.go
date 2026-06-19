@@ -551,12 +551,21 @@ func (r *InvoicesRepo) UpdateStatus(ctx context.Context, tenantID, id int64, sta
 	})
 }
 
-// Delete removes an invoice (line items cascade) and writes one audit row.
+// Delete removes an invoice and writes one audit row. Shift items are unlinked
+// (invoice_id→NULL) BEFORE the delete so the line_items.invoice_id ON DELETE
+// CASCADE removes only shift-less manual lines; shift items survive (shift_id
+// intact) and return to their shift. Unlink + cascade are atomic in one tx.
 func (r *InvoicesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
-		if e := gen.New(tx).DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
+		q := gen.New(tx)
+		if e := q.UnlinkShiftItemsFromInvoice(ctx, gen.UnlinkShiftItemsFromInvoiceParams{
+			TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true},
+		}); e != nil {
+			return fmt.Errorf("unlink shift items: %w", e)
+		}
+		if e := q.DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return nil
@@ -571,6 +580,11 @@ func (r *InvoicesRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
+			if e := q.UnlinkShiftItemsFromInvoice(ctx, gen.UnlinkShiftItemsFromInvoiceParams{
+				TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true},
+			}); e != nil {
+				return fmt.Errorf("unlink shift items %d: %w", id, e)
+			}
 			if e := q.DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
 				return fmt.Errorf("delete %d: %w", id, e)
 			}

@@ -200,8 +200,18 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // BulkDelete removes several invoices, then broadcasts a single bulk event.
+// Like Delete, each invoice's shifts are first reverted to 'recorded' (NULL
+// invoice_id) so bulk-deleted work returns to the unbilled pool rather than
+// being orphaned at status 'drafted'.
 func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
+	if s.shifts != nil {
+		for i := range ids { // bounded by len(ids)
+			if err := s.shifts.ClearForInvoice(ctx, tenantID, ids[i]); err != nil {
+				return err
+			}
+		}
+	}
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
