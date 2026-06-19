@@ -390,3 +390,22 @@ export interface ShiftSuggestion {
 	to: string;
 	count: number;
 }
+
+/**
+ * DataTable server-side query params. `filters` maps a column key to its encoded
+ * value — a "contains" string for text, a comma-joined set for enum, or a
+ * range key like "start.from" → ISO date. crud.query prefixes each with `f.`.
+ */
+export interface ListParams {
+	sort?: string;
+	dir?: 'asc' | 'desc';
+	page?: number;
+	limit?: number;
+	filters?: Record<string, string>;
+}
+
+/** One page of a server-side list query plus the unpaginated total. */
+export interface ListResult<T> {
+	rows: T[];
+	total: number;
+}
