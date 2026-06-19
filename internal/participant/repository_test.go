@@ -9,8 +9,10 @@ import (
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/google/uuid"
+	"net/url"
 )
 
 // newTestDB opens a fresh migrated in-temp SQLite DB.
@@ -186,6 +188,62 @@ func TestParticipantBulkDelete(t *testing.T) {
 	if len(list) != 1 || list[0].ID != c.ID {
 		t.Fatalf("after bulk delete = %+v, want only Carol (id=%d)", list, c.ID)
 	}
+}
+
+// TestParticipantQuery exercises the listquery-backed Query: enum filter, sort
+// direction, paging, and the total count (which ignores pagination).
+func TestParticipantQuery(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "T")
+	repo := NewParticipants(conn)
+	ctx := context.Background()
+
+	for _, n := range []struct {
+		name, mgmt string
+	}{{"Amy", "plan"}, {"Bob", "self"}, {"Cara", "plan"}, {"Dan", "plan"}} {
+		if _, err := repo.Create(ctx, tid, ParticipantInput{Name: n.name, MgmtType: n.mgmt}); err != nil {
+			t.Fatalf("Create %s: %v", n.name, err)
+		}
+	}
+
+	// Filter mgmt=plan (3 rows), sort name desc, limit 2 page 1.
+	c := listquery.Build(mustVals(t, "f.mgmt=plan&sort=name&dir=desc&limit=2&page=1"), ParticipantCols)
+	rows, total, err := repo.Query(ctx, tid, c)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("total = %d, want 3 (plan-managed)", total)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("page len = %d, want 2", len(rows))
+	}
+	if rows[0].Name != "Dan" || rows[1].Name != "Cara" {
+		t.Fatalf("desc page = [%q,%q], want [Dan,Cara]", rows[0].Name, rows[1].Name)
+	}
+
+	// Page 2 returns the remaining plan-managed row (Amy).
+	c2 := listquery.Build(mustVals(t, "f.mgmt=plan&sort=name&dir=desc&limit=2&page=2"), ParticipantCols)
+	rows2, _, err := repo.Query(ctx, tid, c2)
+	if err != nil || len(rows2) != 1 || rows2[0].Name != "Amy" {
+		t.Fatalf("page 2 = %+v err=%v, want [Amy]", rows2, err)
+	}
+
+	// Text filter on name.
+	c3 := listquery.Build(mustVals(t, "f.name=ar"), ParticipantCols)
+	rows3, total3, err := repo.Query(ctx, tid, c3)
+	if err != nil || total3 != 1 || len(rows3) != 1 || rows3[0].Name != "Cara" {
+		t.Fatalf("name contains 'ar' = %+v total=%d err=%v, want [Cara]", rows3, total3, err)
+	}
+}
+
+func mustVals(t *testing.T, raw string) url.Values {
+	t.Helper()
+	v, err := url.ParseQuery(raw)
+	if err != nil {
+		t.Fatalf("parse query: %v", err)
+	}
+	return v
 }
 
 // TestParticipantListPlain exercises the no-search List path (toParticipantList),

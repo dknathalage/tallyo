@@ -4,9 +4,17 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
+
+// QueryResult is one page of participants plus the total matching the filter
+// (before pagination). rows is never null in JSON.
+type QueryResult struct {
+	Rows  []*Participant `json:"rows"`
+	Total int64          `json:"total"`
+}
 
 // Service orchestrates participant reads/writes and publishes change events
 // after a successful commit. It resolves the caller's tenant from the request
@@ -28,6 +36,19 @@ func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 func (s *Service) List(ctx context.Context, search string) ([]*Participant, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID, search)
+}
+
+// Query returns a page of participants for the given listquery clause.
+func (s *Service) Query(ctx context.Context, c listquery.Clause) (QueryResult, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	rows, total, err := s.repo.Query(ctx, tenantID, c)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	if rows == nil {
+		rows = []*Participant{}
+	}
+	return QueryResult{Rows: rows, Total: total}, nil
 }
 
 // Get returns a single participant by id, or (nil, nil) when not found.

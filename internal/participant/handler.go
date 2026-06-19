@@ -2,8 +2,11 @@ package participant
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,15 +34,40 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Delete("/participants/{id}", h.Delete)
 }
 
-// List returns participants, optionally filtered by the ?search= query param.
+// List returns participants. With DataTable query params (sort/page/limit/f.*)
+// it returns a paged {rows,total}; otherwise it keeps the legacy ?search= array
+// for callers not yet migrated.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	search := r.URL.Query().Get("search")
-	participants, err := h.svc.List(r.Context(), search)
+	q := r.URL.Query()
+	if isListQuery(q) {
+		c := listquery.Build(q, ParticipantCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
+	participants, err := h.svc.List(r.Context(), q.Get("search"))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, participants)
+}
+
+// isListQuery is true when the request carries DataTable query params.
+func isListQuery(q url.Values) bool {
+	if q.Has("sort") || q.Has("page") || q.Has("limit") {
+		return true
+	}
+	for k := range q {
+		if strings.HasPrefix(k, "f.") {
+			return true
+		}
+	}
+	return false
 }
 
 // Get returns a single participant by id, or 404 when not found.

@@ -14,8 +14,26 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/google/uuid"
 )
+
+// participantListSelect mirrors the ListParticipants sqlc query body up to the
+// WHERE. Keep in sync with internal/db/queries/participants.sql.
+const participantListSelect = `SELECT p.*, pm.name AS plan_manager_name
+FROM participants p
+LEFT JOIN plan_managers pm ON p.plan_manager_id = pm.id AND pm.tenant_id = p.tenant_id
+WHERE p.tenant_id = ?`
+
+// ParticipantCols is the listquery allowlist for participants.
+var ParticipantCols = listquery.Spec{
+	"name":  {Col: "p.name", Filter: listquery.Text},
+	"ndis":  {Col: "p.ndis_number", Filter: listquery.Text},
+	"email": {Col: "p.email", Filter: listquery.Text},
+	"mgmt":  {Col: "p.mgmt_type", Filter: listquery.Enum},
+	"start": {Col: "p.plan_start", Filter: listquery.Date},
+	"pm":    {Col: "pm.name", Filter: listquery.Text},
+}
 
 // Participant is the domain view of a row in the participants table. Nullable
 // columns are unwrapped to plain strings (""); the plan_manager FK to *int64
@@ -96,6 +114,43 @@ func (r *ParticipantsRepo) List(ctx context.Context, tenantID int64, search stri
 		out = append(out, toParticipantSearch(rows[i]))
 	}
 	return out, nil
+}
+
+// Query returns one page of participants plus the total row count for the
+// filter (ignoring pagination). The clause is built by listquery from an
+// allowlisted spec, so its Where/Order fragments are injection-safe.
+func (r *ParticipantsRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*Participant, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, errors.New("query participants: tenant id required")
+	}
+	var total int64
+	countSQL := "SELECT count(*) FROM (" + participantListSelect + c.Where + ")"
+	countArgs := append([]any{tenantID}, c.CountArgs()...)
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count participants: %w", err)
+	}
+	sqlText := participantListSelect + c.Where + c.Order + c.Limit
+	pageArgs := append([]any{tenantID}, c.Args...)
+	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query participants: %w", err)
+	}
+	defer rows.Close()
+	out := make([]*Participant, 0, 50)
+	for rows.Next() { // bounded by LIMIT in the query
+		var f participantFields
+		var tenant int64
+		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.name, &f.ndisNumber, &f.planStart,
+			&f.planEnd, &f.mgmtType, &f.planManagerID, &f.email, &f.phone, &f.address,
+			&f.metadata, &f.createdAt, &f.updatedAt, &f.planManagerName); err != nil {
+			return nil, 0, fmt.Errorf("scan participant: %w", err)
+		}
+		out = append(out, mapParticipantFields(f))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("query participants: %w", err)
+	}
+	return out, total, nil
 }
 
 // Get returns the tenant's participant with resolved plan-manager name, or
