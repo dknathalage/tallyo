@@ -25,14 +25,17 @@ FROM participants p
 LEFT JOIN plan_managers pm ON p.plan_manager_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ?`
 
-// ParticipantCols is the listquery allowlist for participants.
+// ParticipantCols is the listquery allowlist for participants. Keys match the
+// JSON field names so the frontend column key drives filter, sort, display, and
+// drawer-edit with one identifier.
 var ParticipantCols = listquery.Spec{
-	"name":  {Col: "p.name", Filter: listquery.Text},
-	"ndis":  {Col: "p.ndis_number", Filter: listquery.Text},
-	"email": {Col: "p.email", Filter: listquery.Text},
-	"mgmt":  {Col: "p.mgmt_type", Filter: listquery.Enum},
-	"start": {Col: "p.plan_start", Filter: listquery.Date},
-	"pm":    {Col: "pm.name", Filter: listquery.Text},
+	"name":            {Col: "p.name", Filter: listquery.Text},
+	"ndisNumber":      {Col: "p.ndis_number", Filter: listquery.Text},
+	"email":           {Col: "p.email", Filter: listquery.Text},
+	"mgmtType":        {Col: "p.mgmt_type", Filter: listquery.Enum},
+	"planStart":       {Col: "p.plan_start", Filter: listquery.Date},
+	"planEnd":         {Col: "p.plan_end", Filter: listquery.Date},
+	"planManagerName": {Col: "pm.name", Filter: listquery.Text},
 }
 
 // Participant is the domain view of a row in the participants table. Nullable

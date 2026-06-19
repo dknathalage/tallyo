@@ -206,8 +206,8 @@ func TestParticipantQuery(t *testing.T) {
 		}
 	}
 
-	// Filter mgmt=plan (3 rows), sort name desc, limit 2 page 1.
-	c := listquery.Build(mustVals(t, "f.mgmt=plan&sort=name&dir=desc&limit=2&page=1"), ParticipantCols)
+	// Filter mgmtType=plan (3 rows), sort name desc, limit 2 page 1.
+	c := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=1"), ParticipantCols)
 	rows, total, err := repo.Query(ctx, tid, c)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -223,7 +223,7 @@ func TestParticipantQuery(t *testing.T) {
 	}
 
 	// Page 2 returns the remaining plan-managed row (Amy).
-	c2 := listquery.Build(mustVals(t, "f.mgmt=plan&sort=name&dir=desc&limit=2&page=2"), ParticipantCols)
+	c2 := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=2"), ParticipantCols)
 	rows2, _, err := repo.Query(ctx, tid, c2)
 	if err != nil || len(rows2) != 1 || rows2[0].Name != "Amy" {
 		t.Fatalf("page 2 = %+v err=%v, want [Amy]", rows2, err)
