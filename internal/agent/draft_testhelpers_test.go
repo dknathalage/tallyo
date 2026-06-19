@@ -1,10 +1,10 @@
 package agent
 
-// Shared seeding helpers for the draft-invoice Smarts tests
-// (smart_draft_invoice_test.go and tools_invoice_shifts_test.go). They reproduce
-// the reference nursing-note fixture — participant "Tania Hangevelled", a FY26
-// catalogue carrying the two reference support items, and the four-day timesheet
-// (referenceWeek) — as a tenant + participant + catalogue plus recorded shifts.
+// Shared seeding helpers for the divide-shift Smarts tests
+// (smart_divide_shift_test.go). They reproduce the reference nursing-note
+// fixture — participant "Tania Hangevelled", a FY26 catalogue carrying the two
+// reference support items, and the four-day timesheet (referenceWeek) — as a
+// tenant + participant + catalogue plus recorded note-only shifts.
 
 import (
 	"context"
@@ -118,23 +118,20 @@ func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, participantID int6
 	return c, tenantID, p.ID
 }
 
-// seedReferenceShifts inserts the four nursing-note days as recorded shifts for
-// the participant, mirroring referenceWeek (km/hours per day) with a free-text
-// note.
-func seedReferenceShifts(t *testing.T, shifts *shift.Service, ctx context.Context, participantID int64) {
+// seedReferenceShift inserts ONE nursing-note day as a recorded note-only shift
+// (post-unification a shift carries no hours/km — those live on its line items)
+// and returns the created shift. The note carries the activity narrative so the
+// divide Smart has something to ground against.
+func seedReferenceShift(t *testing.T, shifts *shift.Service, ctx context.Context, participantID int64, serviceDate string) *shift.Shift {
 	t.Helper()
-	for i := range referenceWeek { // bounded by len(referenceWeek)
-		d := referenceWeek[i]
-		_, err := shifts.Create(ctx, shift.ShiftInput{
-			ParticipantID: participantID,
-			ServiceDate:   d.date,
-			Hours:         d.hr,
-			Km:            d.km,
-			Note:          "Supported Tania with self care and community access.",
-			Status:        "recorded",
-		})
-		if err != nil {
-			t.Fatalf("seed shift %s: %v", d.date, err)
-		}
+	sh, err := shifts.Create(ctx, shift.ShiftInput{
+		ParticipantID: participantID,
+		ServiceDate:   serviceDate,
+		Note:          "Supported Tania with self care and community access.",
+		Status:        "recorded",
+	})
+	if err != nil {
+		t.Fatalf("seed shift %s: %v", serviceDate, err)
 	}
+	return sh
 }

@@ -8,9 +8,9 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 )
 
-// maxToolTurns bounds the propose loop's model turns. The model may call the
+// maxToolTurns bounds a propose loop's model turns. The model may call the
 // read-only search_catalogue tool several times to ground its codes before it
-// emits create_invoice; the final turn forces create_invoice so the loop always
+// emits its commit tool; the final turn forces the commit tool so the loop always
 // terminates with a proposal or a clear error (rule 2).
 const maxToolTurns = 8
 
@@ -34,59 +34,69 @@ type catalogueMatchView struct {
 	PriceCap *float64 `json:"priceCap"`
 }
 
-// proposeInvoice runs the draft Smart's grounding loop: the model may call the
+// proposeDivide runs the divide Smart's grounding loop: the model may call the
 // read-only search_catalogue tool (bounded by maxToolTurns) to find the right
-// NDIS codes itself, then emits create_invoice. It returns the decoded proposal.
-// This is a Smart-internal loop over READ-ONLY tools — no persistence, no
-// approval gate, no conversation that outlives the call. The app hands the model
-// the capability to ground itself, not a precomputed answer.
-func (s *Smarts) proposeInvoice(ctx context.Context, system, userContent string) (createInvoiceInput, error) {
-	var zero createInvoiceInput
+// NDIS codes itself, then emits divide_shift. It returns the decoded proposal.
+func (s *Smarts) proposeDivide(ctx context.Context, system, userContent string) (divideShiftInput, error) {
+	commit := llm.ToolDef{Name: "divide_shift", Description: "Emit the line items for this shift. Call exactly once, when you have resolved every code.", InputSchema: json.RawMessage(divideShiftSchema)}
+	raw, err := s.proposeWithCommit(ctx, system, userContent, commit)
+	if err != nil {
+		return divideShiftInput{}, err
+	}
+	var out divideShiftInput
+	if e := json.Unmarshal(raw, &out); e != nil {
+		return divideShiftInput{}, fmt.Errorf("propose divide: decode divide_shift: %w", e)
+	}
+	return out, nil
+}
+
+// proposeWithCommit drives a bounded grounding loop: the model may call the
+// read-only search_catalogue tool to ground its codes, then must call the given
+// commit tool exactly once. It returns the raw input of that commit tool_use.
+// This is a Smart-internal loop over READ-ONLY tools plus the commit — no
+// persistence, no approval gate, no conversation that outlives the call. The app
+// hands the model the capability to ground itself, not a precomputed answer.
+func (s *Smarts) proposeWithCommit(ctx context.Context, system, userContent string, commit llm.ToolDef) (json.RawMessage, error) {
 	tools := []llm.ToolDef{
 		{Name: "search_catalogue", Description: "Search the NDIS support-item catalogue for a service date. Returns matching items (code, name, unit, priceCap). Use it to find the correct code for an activity before billing it — never guess a code.", InputSchema: json.RawMessage(searchCatalogueSchema)},
-		{Name: "create_invoice", Description: "Emit the final invoice covering every recorded shift. Call exactly once, when you have resolved every code.", InputSchema: json.RawMessage(createInvoiceSchema)},
+		commit,
 	}
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: []llm.Block{{Type: llm.BlockText, Text: userContent}}}}
 
 	for turn := 0; turn < maxToolTurns; turn++ { // bounded
 		choice := llm.ToolChoice{} // auto: the model decides to search or commit
 		if turn == maxToolTurns-1 {
-			choice = llm.ToolChoice{ForceTool: "create_invoice"} // final turn: commit
+			choice = llm.ToolChoice{ForceTool: commit.Name} // final turn: commit
 		}
 		resp, err := s.client.CreateMessage(ctx, llm.Request{
 			System: system, Tools: tools, ToolChoice: choice, Messages: msgs,
 			MaxTokens: requestMaxTokens, Model: s.cfg.Model, Effort: s.cfg.EffortFor(),
 		})
 		if err != nil {
-			return zero, fmt.Errorf("propose invoice: model call: %w", err)
+			return nil, fmt.Errorf("propose: model call: %w", err)
 		}
 		if resp == nil {
-			return zero, fmt.Errorf("propose invoice: nil response")
+			return nil, fmt.Errorf("propose: nil response")
 		}
 		uses := toolUseBlocks(resp.Content)
 		if len(uses) == 0 {
 			// A refusal or a truncated turn won't recover by nudging — fail fast
 			// rather than burn the remaining turns.
 			if resp.StopReason == llm.StopRefusal || resp.StopReason == llm.StopMaxTok {
-				return zero, fmt.Errorf("propose invoice: model stopped (%s) without proposing an invoice", resp.StopReason)
+				return nil, fmt.Errorf("propose: model stopped (%s) without committing", resp.StopReason)
 			}
 			// Model answered in prose; record it and nudge it back to the tools.
 			msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: resp.Content})
 			msgs = append(msgs, llm.Message{Role: llm.RoleUser, Content: []llm.Block{{Type: llm.BlockText,
-				Text: "Use search_catalogue to find any codes you still need, then call create_invoice."}}})
+				Text: "Use search_catalogue to find any codes you still need, then call " + commit.Name + "."}}})
 			continue
 		}
 		// If the model committed, return immediately — don't run searches we'd
-		// discard (we terminate on create_invoice).
+		// discard (we terminate on the commit tool).
 		for i := range uses { // bounded by len(uses)
-			if uses[i].ToolName != "create_invoice" {
-				continue
+			if uses[i].ToolName == commit.Name {
+				return uses[i].Input, nil
 			}
-			var out createInvoiceInput
-			if e := json.Unmarshal(uses[i].Input, &out); e != nil {
-				return zero, fmt.Errorf("propose invoice: decode create_invoice: %w", e)
-			}
-			return out, nil
 		}
 		// Replay the assistant turn (text + tool_use; thinking degrades to text),
 		// then answer every tool_use with a matching tool_result.
@@ -102,7 +112,7 @@ func (s *Smarts) proposeInvoice(ctx context.Context, system, userContent string)
 		}
 		msgs = append(msgs, llm.Message{Role: llm.RoleUser, ToolResults: results})
 	}
-	return zero, fmt.Errorf("propose invoice: model did not call create_invoice within %d turns", maxToolTurns)
+	return nil, fmt.Errorf("propose: model did not call %s within %d turns", commit.Name, maxToolTurns)
 }
 
 // runSearchCatalogue executes one search_catalogue tool call against the live

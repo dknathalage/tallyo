@@ -16,17 +16,16 @@ const requestMaxTokens = 64000
 type Smarts struct {
 	cfg     Config
 	client  llm.Client
-	invoice InvoiceCreator
 	shifts  ShiftWorker
 	catalog CatalogueSearcher
 }
 
 // NewSmarts constructs the Smarts service. A nil dependency is a programmer error.
-func NewSmarts(cfg Config, client llm.Client, inv InvoiceCreator, shifts ShiftWorker, catalog CatalogueSearcher) *Smarts {
-	if client == nil || inv == nil || shifts == nil || catalog == nil {
-		panic("agent: NewSmarts requires non-nil client, invoice, shifts, catalog")
+func NewSmarts(cfg Config, client llm.Client, shifts ShiftWorker, catalog CatalogueSearcher) *Smarts {
+	if client == nil || shifts == nil || catalog == nil {
+		panic("agent: NewSmarts requires non-nil client, shifts, catalog")
 	}
-	return &Smarts{cfg: cfg, client: client, invoice: inv, shifts: shifts, catalog: catalog}
+	return &Smarts{cfg: cfg, client: client, shifts: shifts, catalog: catalog}
 }
 
 // wrapUntrusted fences arbitrary record text so the model treats it as data

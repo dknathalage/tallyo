@@ -5,26 +5,14 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/catalog"
-	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/shift"
 )
 
-// InvoiceCreator is satisfied by *invoice.Service; it covers the write tool
-// that creates an invoice with catalogue-authoritative pricing.
-type InvoiceCreator interface {
-	CreateWithCatalogPricing(ctx context.Context, in invoice.InvoiceInput, items []billing.LineItemInput) (*invoice.Invoice, error)
-}
-
 // ShiftLister is satisfied by *shift.Service; it covers the tool that lists a
-// participant's recorded shifts in an optional date range.
+// participant's shifts in an optional date range (used by the import-shifts
+// dedup path).
 type ShiftLister interface {
 	ListParticipant(ctx context.Context, participantID int64, from, to string) ([]*shift.Shift, error)
-}
-
-// ShiftDrafter is satisfied by *shift.Service; it covers the post-create step
-// that links covered shifts to the new invoice (status → drafted).
-type ShiftDrafter interface {
-	MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []int64) error
 }
 
 // ShiftCreator is satisfied by *shift.Service; the import-shifts Smart creates
@@ -33,13 +21,28 @@ type ShiftCreator interface {
 	Create(ctx context.Context, in shift.ShiftInput) (*shift.Shift, error)
 }
 
-// ShiftWorker composes ShiftLister, ShiftDrafter and ShiftCreator; it is the
-// interface used by the create_invoice tool on the shifts lifecycle path, the
-// list_participant_shifts tool, and the import-shifts Smart.
+// ShiftReader is satisfied by *shift.Service; the divide Smart loads ONE shift's
+// note + service date to divide it into line items.
+type ShiftReader interface {
+	Get(ctx context.Context, id int64) (*shift.Shift, error)
+}
+
+// ShiftItemWriter is satisfied by *shift.Service; the divide Smart persists each
+// proposed line on the shift (AddItem prices coded lines from the catalogue) and
+// clears the prior unbilled items so a re-divide is idempotent.
+type ShiftItemWriter interface {
+	AddItem(ctx context.Context, shiftID int64, in billing.LineItemInput) (*billing.LineItem, error)
+	ClearUnbilledItems(ctx context.Context, shiftID int64) error
+}
+
+// ShiftWorker composes ShiftLister, ShiftCreator, ShiftReader and ShiftItemWriter;
+// it is the interface used by the import-shifts Smart (list/create) and the
+// divide Smart (read/write items).
 type ShiftWorker interface {
 	ShiftLister
-	ShiftDrafter
 	ShiftCreator
+	ShiftReader
+	ShiftItemWriter
 }
 
 // CatalogueSearcher is satisfied by *catalog.Service; it covers the
