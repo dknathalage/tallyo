@@ -10,18 +10,36 @@ import (
 	"database/sql"
 )
 
+const countShiftItems = `-- name: CountShiftItems :one
+SELECT COUNT(*) FROM line_items WHERE tenant_id = ? AND shift_id = ? AND invoice_id IS NULL
+`
+
+type CountShiftItemsParams struct {
+	TenantID int64         `json:"tenant_id"`
+	ShiftID  sql.NullInt64 `json:"shift_id"`
+}
+
+func (q *Queries) CountShiftItems(ctx context.Context, arg CountShiftItemsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countShiftItems, arg.TenantID, arg.ShiftID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createLineItem = `-- name: CreateLineItem :one
 INSERT INTO line_items (
-    uuid, tenant_id, invoice_id, support_item_id, custom_item_id, catalog_version_id,
-    code, description, service_date, unit, quantity, unit_price, gst_free, line_total, sort_order
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, quantity, unit_price, gst_free, line_total, sort_order
+    uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id,
+    catalog_version_id, code, description, service_date, unit, start_time,
+    end_time, quantity, unit_price, gst_free, line_total, sort_order
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order
 `
 
 type CreateLineItemParams struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
-	InvoiceID        int64          `json:"invoice_id"`
+	ShiftID          sql.NullInt64  `json:"shift_id"`
+	InvoiceID        sql.NullInt64  `json:"invoice_id"`
 	SupportItemID    sql.NullInt64  `json:"support_item_id"`
 	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
 	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
@@ -29,6 +47,8 @@ type CreateLineItemParams struct {
 	Description      string         `json:"description"`
 	ServiceDate      sql.NullString `json:"service_date"`
 	Unit             sql.NullString `json:"unit"`
+	StartTime        sql.NullString `json:"start_time"`
+	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
 	GstFree          int64          `json:"gst_free"`
@@ -40,6 +60,7 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 	row := q.db.QueryRowContext(ctx, createLineItem,
 		arg.Uuid,
 		arg.TenantID,
+		arg.ShiftID,
 		arg.InvoiceID,
 		arg.SupportItemID,
 		arg.CustomItemID,
@@ -48,6 +69,8 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 		arg.Description,
 		arg.ServiceDate,
 		arg.Unit,
+		arg.StartTime,
+		arg.EndTime,
 		arg.Quantity,
 		arg.UnitPrice,
 		arg.GstFree,
@@ -59,6 +82,7 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 		&i.ID,
 		&i.Uuid,
 		&i.TenantID,
+		&i.ShiftID,
 		&i.InvoiceID,
 		&i.SupportItemID,
 		&i.CustomItemID,
@@ -67,6 +91,8 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 		&i.Description,
 		&i.ServiceDate,
 		&i.Unit,
+		&i.StartTime,
+		&i.EndTime,
 		&i.Quantity,
 		&i.UnitPrice,
 		&i.GstFree,
@@ -81,8 +107,8 @@ DELETE FROM line_items WHERE tenant_id = ? AND invoice_id = ?
 `
 
 type DeleteLineItemsForInvoiceParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	InvoiceID int64 `json:"invoice_id"`
+	TenantID  int64         `json:"tenant_id"`
+	InvoiceID sql.NullInt64 `json:"invoice_id"`
 }
 
 func (q *Queries) DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error {
@@ -90,17 +116,103 @@ func (q *Queries) DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineI
 	return err
 }
 
-const listLineItems = `-- name: ListLineItems :many
-SELECT id, uuid, tenant_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, quantity, unit_price, gst_free, line_total, sort_order FROM line_items WHERE tenant_id = ? AND invoice_id = ? ORDER BY sort_order, id
+const deleteShiftLineItem = `-- name: DeleteShiftLineItem :exec
+DELETE FROM line_items WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
 `
 
-type ListLineItemsParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	InvoiceID int64 `json:"invoice_id"`
+type DeleteShiftLineItemParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
 }
 
-func (q *Queries) ListLineItems(ctx context.Context, arg ListLineItemsParams) ([]LineItem, error) {
-	rows, err := q.db.QueryContext(ctx, listLineItems, arg.TenantID, arg.InvoiceID)
+func (q *Queries) DeleteShiftLineItem(ctx context.Context, arg DeleteShiftLineItemParams) error {
+	_, err := q.db.ExecContext(ctx, deleteShiftLineItem, arg.TenantID, arg.ID)
+	return err
+}
+
+const deleteUnbilledItemsForShift = `-- name: DeleteUnbilledItemsForShift :exec
+DELETE FROM line_items WHERE tenant_id = ? AND shift_id = ? AND invoice_id IS NULL
+`
+
+type DeleteUnbilledItemsForShiftParams struct {
+	TenantID int64         `json:"tenant_id"`
+	ShiftID  sql.NullInt64 `json:"shift_id"`
+}
+
+func (q *Queries) DeleteUnbilledItemsForShift(ctx context.Context, arg DeleteUnbilledItemsForShiftParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUnbilledItemsForShift, arg.TenantID, arg.ShiftID)
+	return err
+}
+
+const getLineItem = `-- name: GetLineItem :one
+SELECT id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order FROM line_items WHERE tenant_id = ? AND id = ?
+`
+
+type GetLineItemParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) GetLineItem(ctx context.Context, arg GetLineItemParams) (LineItem, error) {
+	row := q.db.QueryRowContext(ctx, getLineItem, arg.TenantID, arg.ID)
+	var i LineItem
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.ShiftID,
+		&i.InvoiceID,
+		&i.SupportItemID,
+		&i.CustomItemID,
+		&i.CatalogVersionID,
+		&i.Code,
+		&i.Description,
+		&i.ServiceDate,
+		&i.Unit,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Quantity,
+		&i.UnitPrice,
+		&i.GstFree,
+		&i.LineTotal,
+		&i.SortOrder,
+	)
+	return i, err
+}
+
+const linkShiftItemsToInvoice = `-- name: LinkShiftItemsToInvoice :exec
+UPDATE line_items SET invoice_id = ?, sort_order = ?
+WHERE tenant_id = ? AND shift_id = ? AND invoice_id IS NULL
+`
+
+type LinkShiftItemsToInvoiceParams struct {
+	InvoiceID sql.NullInt64 `json:"invoice_id"`
+	SortOrder sql.NullInt64 `json:"sort_order"`
+	TenantID  int64         `json:"tenant_id"`
+	ShiftID   sql.NullInt64 `json:"shift_id"`
+}
+
+func (q *Queries) LinkShiftItemsToInvoice(ctx context.Context, arg LinkShiftItemsToInvoiceParams) error {
+	_, err := q.db.ExecContext(ctx, linkShiftItemsToInvoice,
+		arg.InvoiceID,
+		arg.SortOrder,
+		arg.TenantID,
+		arg.ShiftID,
+	)
+	return err
+}
+
+const listLineItemsForInvoice = `-- name: ListLineItemsForInvoice :many
+SELECT id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order FROM line_items WHERE tenant_id = ? AND invoice_id = ? ORDER BY sort_order, id
+`
+
+type ListLineItemsForInvoiceParams struct {
+	TenantID  int64         `json:"tenant_id"`
+	InvoiceID sql.NullInt64 `json:"invoice_id"`
+}
+
+func (q *Queries) ListLineItemsForInvoice(ctx context.Context, arg ListLineItemsForInvoiceParams) ([]LineItem, error) {
+	rows, err := q.db.QueryContext(ctx, listLineItemsForInvoice, arg.TenantID, arg.InvoiceID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +224,7 @@ func (q *Queries) ListLineItems(ctx context.Context, arg ListLineItemsParams) ([
 			&i.ID,
 			&i.Uuid,
 			&i.TenantID,
+			&i.ShiftID,
 			&i.InvoiceID,
 			&i.SupportItemID,
 			&i.CustomItemID,
@@ -120,6 +233,8 @@ func (q *Queries) ListLineItems(ctx context.Context, arg ListLineItemsParams) ([
 			&i.Description,
 			&i.ServiceDate,
 			&i.Unit,
+			&i.StartTime,
+			&i.EndTime,
 			&i.Quantity,
 			&i.UnitPrice,
 			&i.GstFree,
@@ -137,4 +252,157 @@ func (q *Queries) ListLineItems(ctx context.Context, arg ListLineItemsParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const listLineItemsForShift = `-- name: ListLineItemsForShift :many
+SELECT id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order FROM line_items WHERE tenant_id = ? AND shift_id = ? ORDER BY id
+`
+
+type ListLineItemsForShiftParams struct {
+	TenantID int64         `json:"tenant_id"`
+	ShiftID  sql.NullInt64 `json:"shift_id"`
+}
+
+func (q *Queries) ListLineItemsForShift(ctx context.Context, arg ListLineItemsForShiftParams) ([]LineItem, error) {
+	rows, err := q.db.QueryContext(ctx, listLineItemsForShift, arg.TenantID, arg.ShiftID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LineItem
+	for rows.Next() {
+		var i LineItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.TenantID,
+			&i.ShiftID,
+			&i.InvoiceID,
+			&i.SupportItemID,
+			&i.CustomItemID,
+			&i.CatalogVersionID,
+			&i.Code,
+			&i.Description,
+			&i.ServiceDate,
+			&i.Unit,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.GstFree,
+			&i.LineTotal,
+			&i.SortOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const restampUnbilledShiftItems = `-- name: RestampUnbilledShiftItems :exec
+UPDATE line_items SET service_date = ?
+WHERE tenant_id = ? AND shift_id = ? AND invoice_id IS NULL
+`
+
+type RestampUnbilledShiftItemsParams struct {
+	ServiceDate sql.NullString `json:"service_date"`
+	TenantID    int64          `json:"tenant_id"`
+	ShiftID     sql.NullInt64  `json:"shift_id"`
+}
+
+func (q *Queries) RestampUnbilledShiftItems(ctx context.Context, arg RestampUnbilledShiftItemsParams) error {
+	_, err := q.db.ExecContext(ctx, restampUnbilledShiftItems, arg.ServiceDate, arg.TenantID, arg.ShiftID)
+	return err
+}
+
+const unlinkShiftItemsFromInvoice = `-- name: UnlinkShiftItemsFromInvoice :exec
+UPDATE line_items SET invoice_id = NULL, sort_order = 0
+WHERE tenant_id = ? AND invoice_id = ? AND shift_id IS NOT NULL
+`
+
+type UnlinkShiftItemsFromInvoiceParams struct {
+	TenantID  int64         `json:"tenant_id"`
+	InvoiceID sql.NullInt64 `json:"invoice_id"`
+}
+
+func (q *Queries) UnlinkShiftItemsFromInvoice(ctx context.Context, arg UnlinkShiftItemsFromInvoiceParams) error {
+	_, err := q.db.ExecContext(ctx, unlinkShiftItemsFromInvoice, arg.TenantID, arg.InvoiceID)
+	return err
+}
+
+const updateShiftLineItem = `-- name: UpdateShiftLineItem :one
+UPDATE line_items SET
+    support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
+    description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
+    quantity = ?, unit_price = ?, gst_free = ?, line_total = ?
+WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
+RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order
+`
+
+type UpdateShiftLineItemParams struct {
+	SupportItemID    sql.NullInt64  `json:"support_item_id"`
+	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
+	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
+	Code             sql.NullString `json:"code"`
+	Description      string         `json:"description"`
+	ServiceDate      sql.NullString `json:"service_date"`
+	Unit             sql.NullString `json:"unit"`
+	StartTime        sql.NullString `json:"start_time"`
+	EndTime          sql.NullString `json:"end_time"`
+	Quantity         float64        `json:"quantity"`
+	UnitPrice        float64        `json:"unit_price"`
+	GstFree          int64          `json:"gst_free"`
+	LineTotal        float64        `json:"line_total"`
+	TenantID         int64          `json:"tenant_id"`
+	ID               int64          `json:"id"`
+}
+
+func (q *Queries) UpdateShiftLineItem(ctx context.Context, arg UpdateShiftLineItemParams) (LineItem, error) {
+	row := q.db.QueryRowContext(ctx, updateShiftLineItem,
+		arg.SupportItemID,
+		arg.CustomItemID,
+		arg.CatalogVersionID,
+		arg.Code,
+		arg.Description,
+		arg.ServiceDate,
+		arg.Unit,
+		arg.StartTime,
+		arg.EndTime,
+		arg.Quantity,
+		arg.UnitPrice,
+		arg.GstFree,
+		arg.LineTotal,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i LineItem
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.ShiftID,
+		&i.InvoiceID,
+		&i.SupportItemID,
+		&i.CustomItemID,
+		&i.CatalogVersionID,
+		&i.Code,
+		&i.Description,
+		&i.ServiceDate,
+		&i.Unit,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Quantity,
+		&i.UnitPrice,
+		&i.GstFree,
+		&i.LineTotal,
+		&i.SortOrder,
+	)
+	return i, err
 }

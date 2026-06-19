@@ -30,15 +30,14 @@ SELECT * FROM shifts WHERE tenant_id = ? AND id = ?;
 
 -- name: CreateShift :one
 INSERT INTO shifts (
-    uuid, tenant_id, participant_id, service_date, start_time, end_time,
-    hours, km, measures, note, tags, status, author_user_id, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    uuid, tenant_id, participant_id, service_date, note, tags, status,
+    author_user_id, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateShift :one
 UPDATE shifts SET
-    service_date = ?, start_time = ?, end_time = ?, hours = ?, km = ?,
-    measures = ?, note = ?, tags = ?, status = ?, updated_at = ?
+    service_date = ?, note = ?, tags = ?, status = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?
 RETURNING *;
 

@@ -141,7 +141,8 @@ type LineItem struct {
 	ID               int64          `json:"id"`
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
-	InvoiceID        int64          `json:"invoice_id"`
+	ShiftID          sql.NullInt64  `json:"shift_id"`
+	InvoiceID        sql.NullInt64  `json:"invoice_id"`
 	SupportItemID    sql.NullInt64  `json:"support_item_id"`
 	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
 	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
@@ -149,6 +150,8 @@ type LineItem struct {
 	Description      string         `json:"description"`
 	ServiceDate      sql.NullString `json:"service_date"`
 	Unit             sql.NullString `json:"unit"`
+	StartTime        sql.NullString `json:"start_time"`
+	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
 	GstFree          int64          `json:"gst_free"`
@@ -230,11 +233,6 @@ type Shift struct {
 	TenantID      int64         `json:"tenant_id"`
 	ParticipantID int64         `json:"participant_id"`
 	ServiceDate   string        `json:"service_date"`
-	StartTime     string        `json:"start_time"`
-	EndTime       string        `json:"end_time"`
-	Hours         float64       `json:"hours"`
-	Km            float64       `json:"km"`
-	Measures      string        `json:"measures"`
 	Note          string        `json:"note"`
 	Tags          string        `json:"tags"`
 	Status        string        `json:"status"`

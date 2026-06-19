@@ -28,10 +28,10 @@ func (q *Queries) ClearShiftsForInvoice(ctx context.Context, arg ClearShiftsForI
 
 const createShift = `-- name: CreateShift :one
 INSERT INTO shifts (
-    uuid, tenant_id, participant_id, service_date, start_time, end_time,
-    hours, km, measures, note, tags, status, author_user_id, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at
+    uuid, tenant_id, participant_id, service_date, note, tags, status,
+    author_user_id, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at
 `
 
 type CreateShiftParams struct {
@@ -39,11 +39,6 @@ type CreateShiftParams struct {
 	TenantID      int64         `json:"tenant_id"`
 	ParticipantID int64         `json:"participant_id"`
 	ServiceDate   string        `json:"service_date"`
-	StartTime     string        `json:"start_time"`
-	EndTime       string        `json:"end_time"`
-	Hours         float64       `json:"hours"`
-	Km            float64       `json:"km"`
-	Measures      string        `json:"measures"`
 	Note          string        `json:"note"`
 	Tags          string        `json:"tags"`
 	Status        string        `json:"status"`
@@ -58,11 +53,6 @@ func (q *Queries) CreateShift(ctx context.Context, arg CreateShiftParams) (Shift
 		arg.TenantID,
 		arg.ParticipantID,
 		arg.ServiceDate,
-		arg.StartTime,
-		arg.EndTime,
-		arg.Hours,
-		arg.Km,
-		arg.Measures,
 		arg.Note,
 		arg.Tags,
 		arg.Status,
@@ -77,11 +67,6 @@ func (q *Queries) CreateShift(ctx context.Context, arg CreateShiftParams) (Shift
 		&i.TenantID,
 		&i.ParticipantID,
 		&i.ServiceDate,
-		&i.StartTime,
-		&i.EndTime,
-		&i.Hours,
-		&i.Km,
-		&i.Measures,
 		&i.Note,
 		&i.Tags,
 		&i.Status,
@@ -108,7 +93,7 @@ func (q *Queries) DeleteShift(ctx context.Context, arg DeleteShiftParams) error 
 }
 
 const getShift = `-- name: GetShift :one
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? AND id = ?
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? AND id = ?
 `
 
 type GetShiftParams struct {
@@ -125,11 +110,6 @@ func (q *Queries) GetShift(ctx context.Context, arg GetShiftParams) (Shift, erro
 		&i.TenantID,
 		&i.ParticipantID,
 		&i.ServiceDate,
-		&i.StartTime,
-		&i.EndTime,
-		&i.Hours,
-		&i.Km,
-		&i.Measures,
 		&i.Note,
 		&i.Tags,
 		&i.Status,
@@ -142,7 +122,7 @@ func (q *Queries) GetShift(ctx context.Context, arg GetShiftParams) (Shift, erro
 }
 
 const listRecordedUnbilledByParticipant = `-- name: ListRecordedUnbilledByParticipant :many
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts
 WHERE tenant_id = ? AND participant_id = ? AND status = 'recorded' AND invoice_id IS NULL
 ORDER BY service_date, id
 `
@@ -167,11 +147,6 @@ func (q *Queries) ListRecordedUnbilledByParticipant(ctx context.Context, arg Lis
 			&i.TenantID,
 			&i.ParticipantID,
 			&i.ServiceDate,
-			&i.StartTime,
-			&i.EndTime,
-			&i.Hours,
-			&i.Km,
-			&i.Measures,
 			&i.Note,
 			&i.Tags,
 			&i.Status,
@@ -194,7 +169,7 @@ func (q *Queries) ListRecordedUnbilledByParticipant(ctx context.Context, arg Lis
 }
 
 const listScheduledShifts = `-- name: ListScheduledShifts :many
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? AND status = 'scheduled' ORDER BY service_date, id
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? AND status = 'scheduled' ORDER BY service_date, id
 `
 
 func (q *Queries) ListScheduledShifts(ctx context.Context, tenantID int64) ([]Shift, error) {
@@ -212,11 +187,6 @@ func (q *Queries) ListScheduledShifts(ctx context.Context, tenantID int64) ([]Sh
 			&i.TenantID,
 			&i.ParticipantID,
 			&i.ServiceDate,
-			&i.StartTime,
-			&i.EndTime,
-			&i.Hours,
-			&i.Km,
-			&i.Measures,
 			&i.Note,
 			&i.Tags,
 			&i.Status,
@@ -240,7 +210,7 @@ func (q *Queries) ListScheduledShifts(ctx context.Context, tenantID int64) ([]Sh
 
 const listShifts = `-- name: ListShifts :many
 
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? ORDER BY service_date DESC, id DESC
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? ORDER BY service_date DESC, id DESC
 `
 
 // Shifts: the delivered-support unit (tenant-scoped). See migration 00004_shifts.sql.
@@ -259,11 +229,6 @@ func (q *Queries) ListShifts(ctx context.Context, tenantID int64) ([]Shift, erro
 			&i.TenantID,
 			&i.ParticipantID,
 			&i.ServiceDate,
-			&i.StartTime,
-			&i.EndTime,
-			&i.Hours,
-			&i.Km,
-			&i.Measures,
 			&i.Note,
 			&i.Tags,
 			&i.Status,
@@ -286,7 +251,7 @@ func (q *Queries) ListShifts(ctx context.Context, tenantID int64) ([]Shift, erro
 }
 
 const listShiftsByParticipant = `-- name: ListShiftsByParticipant :many
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts
 WHERE tenant_id = ? AND participant_id = ?
 ORDER BY service_date, id
 `
@@ -311,11 +276,6 @@ func (q *Queries) ListShiftsByParticipant(ctx context.Context, arg ListShiftsByP
 			&i.TenantID,
 			&i.ParticipantID,
 			&i.ServiceDate,
-			&i.StartTime,
-			&i.EndTime,
-			&i.Hours,
-			&i.Km,
-			&i.Measures,
 			&i.Note,
 			&i.Tags,
 			&i.Status,
@@ -338,7 +298,7 @@ func (q *Queries) ListShiftsByParticipant(ctx context.Context, arg ListShiftsByP
 }
 
 const listShiftsByParticipantRange = `-- name: ListShiftsByParticipantRange :many
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts
 WHERE tenant_id = ? AND participant_id = ?
   AND service_date >= ? AND service_date <= ?
 ORDER BY service_date, id
@@ -371,11 +331,6 @@ func (q *Queries) ListShiftsByParticipantRange(ctx context.Context, arg ListShif
 			&i.TenantID,
 			&i.ParticipantID,
 			&i.ServiceDate,
-			&i.StartTime,
-			&i.EndTime,
-			&i.Hours,
-			&i.Km,
-			&i.Measures,
 			&i.Note,
 			&i.Tags,
 			&i.Status,
@@ -398,7 +353,7 @@ func (q *Queries) ListShiftsByParticipantRange(ctx context.Context, arg ListShif
 }
 
 const listShiftsByStatus = `-- name: ListShiftsByStatus :many
-SELECT id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? AND status = ? ORDER BY service_date, id
+SELECT id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at FROM shifts WHERE tenant_id = ? AND status = ? ORDER BY service_date, id
 `
 
 type ListShiftsByStatusParams struct {
@@ -421,11 +376,6 @@ func (q *Queries) ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatus
 			&i.TenantID,
 			&i.ParticipantID,
 			&i.ServiceDate,
-			&i.StartTime,
-			&i.EndTime,
-			&i.Hours,
-			&i.Km,
-			&i.Measures,
 			&i.Note,
 			&i.Tags,
 			&i.Status,
@@ -535,35 +485,24 @@ func (q *Queries) SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoi
 
 const updateShift = `-- name: UpdateShift :one
 UPDATE shifts SET
-    service_date = ?, start_time = ?, end_time = ?, hours = ?, km = ?,
-    measures = ?, note = ?, tags = ?, status = ?, updated_at = ?
+    service_date = ?, note = ?, tags = ?, status = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?
-RETURNING id, uuid, tenant_id, participant_id, service_date, start_time, end_time, hours, km, measures, note, tags, status, invoice_id, author_user_id, created_at, updated_at
+RETURNING id, uuid, tenant_id, participant_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at
 `
 
 type UpdateShiftParams struct {
-	ServiceDate string  `json:"service_date"`
-	StartTime   string  `json:"start_time"`
-	EndTime     string  `json:"end_time"`
-	Hours       float64 `json:"hours"`
-	Km          float64 `json:"km"`
-	Measures    string  `json:"measures"`
-	Note        string  `json:"note"`
-	Tags        string  `json:"tags"`
-	Status      string  `json:"status"`
-	UpdatedAt   string  `json:"updated_at"`
-	TenantID    int64   `json:"tenant_id"`
-	ID          int64   `json:"id"`
+	ServiceDate string `json:"service_date"`
+	Note        string `json:"note"`
+	Tags        string `json:"tags"`
+	Status      string `json:"status"`
+	UpdatedAt   string `json:"updated_at"`
+	TenantID    int64  `json:"tenant_id"`
+	ID          int64  `json:"id"`
 }
 
 func (q *Queries) UpdateShift(ctx context.Context, arg UpdateShiftParams) (Shift, error) {
 	row := q.db.QueryRowContext(ctx, updateShift,
 		arg.ServiceDate,
-		arg.StartTime,
-		arg.EndTime,
-		arg.Hours,
-		arg.Km,
-		arg.Measures,
 		arg.Note,
 		arg.Tags,
 		arg.Status,
@@ -578,11 +517,6 @@ func (q *Queries) UpdateShift(ctx context.Context, arg UpdateShiftParams) (Shift
 		&i.TenantID,
 		&i.ParticipantID,
 		&i.ServiceDate,
-		&i.StartTime,
-		&i.EndTime,
-		&i.Hours,
-		&i.Km,
-		&i.Measures,
 		&i.Note,
 		&i.Tags,
 		&i.Status,

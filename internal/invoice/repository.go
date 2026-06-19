@@ -224,7 +224,8 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
-			InvoiceID:        invoiceID,
+			ShiftID:          sql.NullInt64{}, // invoice lines from this path are not shift items
+			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
 			SupportItemID:    db.NullID(it.SupportItemID),
 			CustomItemID:     db.NullID(it.CustomItemID),
 			CatalogVersionID: db.NullID(it.CatalogVersionID),
@@ -232,6 +233,8 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 			Description:      it.Description,
 			ServiceDate:      db.NzMaybe(it.ServiceDate),
 			Unit:             db.NzMaybe(it.Unit),
+			StartTime:        db.NzMaybe(it.StartTime),
+			EndTime:          db.NzMaybe(it.EndTime),
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
 			GstFree:          db.B2i(it.GstFree),
@@ -257,7 +260,7 @@ func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, e
 		return nil, fmt.Errorf("get invoice: %w", err)
 	}
 	inv := toInvoiceFromRow(invoiceFieldsFromGet(row))
-	rows, err := q.ListLineItems(ctx, gen.ListLineItemsParams{TenantID: tenantID, InvoiceID: id})
+	rows, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true}})
 	if err != nil {
 		return nil, fmt.Errorf("list line items: %w", err)
 	}
@@ -342,7 +345,7 @@ func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in Invoic
 		if _, e := q.UpdateInvoice(ctx, updateInvoiceParams(tenantID, in, items, existing.Number, id)); e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		if e := q.DeleteLineItemsForInvoice(ctx, gen.DeleteLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: id}); e != nil {
+		if e := q.DeleteLineItemsForInvoice(ctx, gen.DeleteLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true}}); e != nil {
 			return fmt.Errorf("clear items: %w", e)
 		}
 		return InsertLineItems(ctx, q, tenantID, id, items)
@@ -630,29 +633,9 @@ func invoiceFieldsFromParticipant(r gen.ListParticipantInvoicesRow) invoiceField
 func mapLineItems(rows []gen.LineItem) []*billing.LineItem {
 	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		out = append(out, toLineItem(rows[i]))
+		out = append(out, billing.LineItemFromRow(rows[i]))
 	}
 	return out
-}
-
-// toLineItem maps one generated line item to the domain shape.
-func toLineItem(row gen.LineItem) *billing.LineItem {
-	return &billing.LineItem{
-		ID:               row.ID,
-		UUID:             row.Uuid,
-		SupportItemID:    db.PtrID(row.SupportItemID),
-		CustomItemID:     db.PtrID(row.CustomItemID),
-		CatalogVersionID: db.PtrID(row.CatalogVersionID),
-		Code:             row.Code.String,
-		Description:      row.Description,
-		ServiceDate:      row.ServiceDate.String,
-		Unit:             row.Unit.String,
-		Quantity:         row.Quantity,
-		UnitPrice:        row.UnitPrice,
-		GstFree:          row.GstFree == 1,
-		LineTotal:        row.LineTotal,
-		SortOrder:        row.SortOrder.Int64,
-	}
 }
 
 // orDefault returns s when non-empty, otherwise def.
