@@ -85,6 +85,43 @@ Cost: wipes dev data (participants, the 4 shifts). Re-create the participant + r
 
 ## Sequencing when picked up
 1. New branch off `main` (e.g. `feat/catalogue-travel-fix`).
-2. Bug A code fix + test (gather surfaces `01_799` and ABT; system prompt guides km→provider-travel).
-3. Recreate dev DB (Bug B) and re-test the draft end-to-end (km billed, priced, draft opens).
+2. Draft-Smart redesign (supersedes the minimal Bug A fix) — see next section.
+3. Recreate dev DB (Bug B) and re-test the draft end-to-end (km billed, priced, narrative descriptions, draft opens).
 4. (Optional, deployed) idempotent `00007` national re-seed migration.
+
+---
+
+# Draft-Smart Redesign — agent grounds itself; line items carry the service narrative
+
+Two requirements surfaced in live testing. They supersede the "swap the hardcoded km search term" minimal fix above.
+
+## Requirement 1 — no hardcoded domain mappings (agent figures out the codes)
+`shiftCandidates` hardcodes "km → search 'transport'", "hours → search 'self-care'". That is the **application bending to the domain**: every new activity/measure needs another hand-coded rule, and it hands the model a wrong/narrow candidate set (the live failure). The app should provide the model the **capability to ground itself** against the live catalogue (a read-only search) and the **guardrails** it can't bypass (deterministic pricing/coverage/validation) — not pre-chewed answers.
+
+## Requirement 2 — line items describe the service provided (like the legacy data)
+Legacy invoices have narrative line descriptions taken from the shift note, e.g.:
+> "Washed dishes and dried them. Cleaned the kitchen. Changed bed liners… Made her tinctures for legs using the herbs."
+> "Drove her and dad for a doctor's appointment and after to do shopping. Drove back home and helped her with cooking."
+
+The narrative lives in `shift.Note`. Today the model emits a bare code and the validator backfills the description with the **catalogue item name** (`internal/billing/validation.go:356`: `if line.Description == "" { line.Description = item.Name }`) — discarding the narrative. The validator only backfills when blank, so a **model-written description is preserved** — we just need the model to write it.
+
+## Corrected architecture
+- **gather** → per unbilled shift in range: `serviceDate`, `hours`, `km`, and **`Note`** (fenced via `wrapUntrusted`). NO curated candidate codes.
+- **propose** → a **bounded read-tool loop** (NOT a single forced call): expose a read-only `search_catalogue(query, serviceDate)` tool; the model searches for the codes it needs (mapping each activity it reads in the note/measures), then emits `create_invoice`. Bounded by a tool-call cap (e.g. ≤6) + `maxDraftRetries`. Still one button, no chat, no approval gate, no persistence — a Smart-internal loop over **read-only** tools, not the conversational harness.
+- **per-line description** → the model writes each line's `Description` from the **relevant part of the note** — DECISION: **the model splits the narrative** (self-care line ← the care text; provider-travel line ← the driving text). `createInvoiceSchema` already has `description`.
+- **apply** → unchanged deterministic pricing/coverage/linking. Model still cannot misprice or write.
+
+## Code changes (when implemented)
+- `internal/agent/tools_shifts.go` — DELETE the hardcoded `shiftCandidates` km/hours→search-term mapping. Gather no longer pre-resolves candidates.
+- `internal/agent/propose.go` — add a variant supporting a **bounded tool loop**: model emits a `search_catalogue` tool_use → run it, feed the result back as a tool_result → repeat until it emits `create_invoice` or the bound is hit. Read-only tools only; no conversation/step/checkpoint state.
+- Re-expose **`search_catalogue`** as a plain read-only function the propose loop invokes (it was deleted with the harness). Thread the **tenant zone** so the model sees real price caps, matching apply-time pricing.
+- `internal/agent/smart_draft_invoice.go` — gather includes `Note`; `draftInvoiceSystem` instructs: read each shift's note, map each activity to the correct NDIS code via `search_catalogue`, write each line's `description` from the note's relevant part, bill driven km as **Provider travel `01_799`** per km unless the note clearly indicates participant transport (**Activity Based Transport**), pass `from`/`to`.
+- Tests (deterministic): a fake LLM scripted to emit a `search_catalogue` call then a `create_invoice` with narrative descriptions; assert lines carry note-derived descriptions + correct codes; assert coverage + pricing pass against seeded national prices.
+
+## Skill correction — `designing-ai-smarts`
+"One forced tool call, no lookups" was too rigid. **A Smart's propose step may use READ-ONLY tools in a bounded loop to ground the model against live data** — still a Smart (one button, deterministic apply, editable draft, no chat/approval/persistence). The real anti-pattern is **hardcoding domain answers into the gather** (precomputed candidate codes) to avoid giving the model lookup capability. Give capability + guardrails, not pre-chewed answers.
+
+## Open nuances (non-blocking)
+- Bound the search budget (≤N tool calls/attempt) to keep it bounded (rule 2) and one-shot-ish.
+- `01_799_*` has per-category variants; any has the same per-km cap, so price is fine; category-correct variant selection is a refinement.
+- Confirm custom (non-coded) lines also retain a narrative description.
