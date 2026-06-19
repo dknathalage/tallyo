@@ -15,13 +15,13 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/catalog"
-	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/shift"
 )
 
 // stubShiftWorker is an in-memory ShiftWorker for ImportShifts tests. existing is
-// returned (filtered to nothing — the whole slice) by ListParticipant; created
-// records every Create; createErr makes Create fail.
+// returned (the whole slice) by ListParticipant; created records every Create;
+// createErr makes Create fail. The item-writer/reader methods are unused by
+// ImportShifts and satisfy the interface only.
 type stubShiftWorker struct {
 	existing  []*shift.Shift
 	created   []*shift.Shift
@@ -33,7 +33,13 @@ func (s *stubShiftWorker) ListParticipant(_ context.Context, _ int64, _, _ strin
 	return s.existing, nil
 }
 
-func (s *stubShiftWorker) MarkDrafted(_ context.Context, _ int64, _ []int64) error { return nil }
+func (s *stubShiftWorker) Get(_ context.Context, _ int64) (*shift.Shift, error) { return nil, nil }
+
+func (s *stubShiftWorker) AddItem(_ context.Context, _ int64, _ billing.LineItemInput) (*billing.LineItem, error) {
+	return nil, fmt.Errorf("not used")
+}
+
+func (s *stubShiftWorker) ClearUnbilledItems(_ context.Context, _ int64) error { return nil }
 
 func (s *stubShiftWorker) Create(_ context.Context, in shift.ShiftInput) (*shift.Shift, error) {
 	if s.createErr != nil {
@@ -44,10 +50,6 @@ func (s *stubShiftWorker) Create(_ context.Context, in shift.ShiftInput) (*shift
 		ID:            s.nextID,
 		ParticipantID: in.ParticipantID,
 		ServiceDate:   in.ServiceDate,
-		StartTime:     in.StartTime,
-		EndTime:       in.EndTime,
-		Hours:         in.Hours,
-		Km:            in.Km,
 		Note:          in.Note,
 		Status:        in.Status,
 	}
@@ -55,14 +57,8 @@ func (s *stubShiftWorker) Create(_ context.Context, in shift.ShiftInput) (*shift
 	return sh, nil
 }
 
-// stubInvoiceCreator / stubCatalogueSearcher satisfy NewSmarts' non-nil
-// requirement; ImportShifts never calls them.
-type stubInvoiceCreator struct{}
-
-func (stubInvoiceCreator) CreateWithCatalogPricing(_ context.Context, _ invoice.InvoiceInput, _ []billing.LineItemInput) (*invoice.Invoice, error) {
-	return nil, fmt.Errorf("not used")
-}
-
+// stubCatalogueSearcher satisfies NewSmarts' non-nil requirement; ImportShifts
+// never calls it.
 type stubCatalogueSearcher struct{}
 
 func (stubCatalogueSearcher) SearchForDate(_ context.Context, _, _, _ string, _ int) ([]*catalog.CatalogMatch, error) {
@@ -75,7 +71,7 @@ func newImportSmarts(t *testing.T, drafts []ShiftDraft, worker *stubShiftWorker)
 	t.Helper()
 	fake := llm.NewFake(emitShiftsResponse(t, drafts))
 	cfg := Config{APIKey: "sk-x", Model: "model-x", Effort: "high"}.WithDefaults()
-	return NewSmarts(cfg, fake, stubInvoiceCreator{}, worker, stubCatalogueSearcher{})
+	return NewSmarts(cfg, fake, worker, stubCatalogueSearcher{})
 }
 
 // TestImportShiftsReimportIdempotent: a draft matching an already-recorded shift
@@ -85,7 +81,7 @@ func TestImportShiftsReimportIdempotent(t *testing.T) {
 		{ParticipantName: "Tania", ServiceDate: "2026-06-09", StartTime: "9am", EndTime: "4pm", Hours: 7.0, Km: 36},
 	}
 	worker := &stubShiftWorker{existing: []*shift.Shift{
-		{ID: 1, ServiceDate: "2026-06-09", StartTime: "9am", EndTime: "4pm", Hours: 7.0, Km: 36},
+		{ID: 1, ServiceDate: "2026-06-09"},
 	}}
 	s := newImportSmarts(t, drafts, worker)
 

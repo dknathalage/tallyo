@@ -37,7 +37,7 @@ func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text str
 	created := make([]*shift.Shift, 0, len(drafts))
 	for i := range drafts { // bounded by len(drafts)
 		d := drafts[i]
-		key := shiftDedupKey(d.ServiceDate, d.StartTime, d.EndTime, d.Hours, d.Km)
+		key := shiftDedupKey(d.ServiceDate)
 		if _, dup := seen[key]; dup {
 			continue // already recorded (or an in-batch duplicate)
 		}
@@ -45,11 +45,7 @@ func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text str
 		sh, e := s.shifts.Create(ctx, shift.ShiftInput{
 			ParticipantID: participantID,
 			ServiceDate:   d.ServiceDate,
-			StartTime:     d.StartTime,
-			EndTime:       d.EndTime,
-			Hours:         d.Hours,
-			Km:            d.Km,
-			Note:          d.Note,
+			Note:          composeNote(d.Note, d.Hours, d.Km),
 			Status:        "recorded",
 		})
 		if e != nil {
@@ -82,16 +78,40 @@ func (s *Smarts) existingShiftKeys(ctx context.Context, participantID int64, dra
 		return nil, fmt.Errorf("list existing shifts: %w", err)
 	}
 	for i := range existing { // bounded by len(existing)
-		sh := existing[i]
-		keys[shiftDedupKey(sh.ServiceDate, sh.StartTime, sh.EndTime, sh.Hours, sh.Km)] = struct{}{}
+		keys[shiftDedupKey(existing[i].ServiceDate)] = struct{}{}
 	}
 	return keys, nil
 }
 
+// composeNote folds the extracted hours/km quantities into the shift note so a
+// later DivideShift (or the user) can recover them — post-unification a shift
+// carries no hours/km columns. A summary like "[support 7.0h; travel 36km]" is
+// appended only for the non-zero quantities; with neither, the note is returned
+// unchanged.
+func composeNote(note string, hours, km float64) string {
+	note = strings.TrimSpace(note)
+	parts := make([]string, 0, 2)
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("support %.1fh", hours))
+	}
+	if km > 0 {
+		parts = append(parts, fmt.Sprintf("travel %.0fkm", km))
+	}
+	if len(parts) == 0 {
+		return note
+	}
+	summary := "[" + strings.Join(parts, "; ") + "]"
+	if note == "" {
+		return summary
+	}
+	return note + " " + summary
+}
+
 // shiftDedupKey is the natural identity of a shift for import idempotency:
-// service date, start/end time (as written) and the billable hours/km. The free
-// note is deliberately excluded — model re-extractions can reword it, which would
-// defeat dedup — while date+times+quantities pin the same delivered shift.
-func shiftDedupKey(serviceDate, startTime, endTime string, hours, km float64) string {
-	return fmt.Sprintf("%s\x1f%s\x1f%s\x1f%.3f\x1f%.3f", serviceDate, startTime, endTime, hours, km)
+// post-unification a shift carries no times/quantities (those moved onto line
+// items), so the service date pins the same delivered shift. The free note is
+// deliberately excluded — model re-extractions can reword it, which would defeat
+// dedup.
+func shiftDedupKey(serviceDate string) string {
+	return serviceDate
 }
