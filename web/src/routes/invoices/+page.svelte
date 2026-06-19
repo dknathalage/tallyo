@@ -126,6 +126,8 @@
 			description: row.description,
 			serviceDate: row.serviceDate,
 			unit: row.unit,
+			startTime: '',
+			endTime: '',
 			quantity: Number(row.quantity),
 			unitPrice: Number(row.unitPrice),
 			gstFree: row.gstFree,

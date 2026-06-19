@@ -8,11 +8,12 @@ vi.mock('./client', async (importOriginal) => {
 		apiGet: vi.fn(),
 		apiPost: vi.fn(),
 		apiPut: vi.fn(),
+		apiPatch: vi.fn(),
 		apiDelete: vi.fn()
 	};
 });
 
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
 import {
 	listAll,
 	listForParticipant,
@@ -23,13 +24,19 @@ import {
 	remove,
 	setStatus,
 	importShifts,
-	draftInvoice
+	draftFromShifts,
+	listItems,
+	addItem,
+	updateItem,
+	deleteItem,
+	divideShift
 } from './shifts';
-import type { Shift, ShiftInput } from './types';
+import type { Shift, ShiftInput, LineItem, LineItemInput } from './types';
 
 const mockApiGet = vi.mocked(apiGet);
 const mockApiPost = vi.mocked(apiPost);
 const mockApiPut = vi.mocked(apiPut);
+const mockApiPatch = vi.mocked(apiPatch);
 const mockApiDelete = vi.mocked(apiDelete);
 
 const fakeShift: Shift = {
@@ -37,11 +44,6 @@ const fakeShift: Shift = {
 	uuid: 'shift-uuid',
 	participantId: 3,
 	serviceDate: '2026-06-10',
-	startTime: '09:00',
-	endTime: '15:00',
-	hours: 6,
-	km: 20,
-	measures: [],
 	note: 'cleaning, laundry',
 	tags: [],
 	status: 'recorded',
@@ -54,15 +56,28 @@ const fakeShift: Shift = {
 const fakeInput: ShiftInput = {
 	participantId: 3,
 	serviceDate: '2026-06-10',
-	startTime: '09:00',
-	endTime: '15:00',
-	hours: 6,
-	km: 20,
-	measures: [],
 	note: 'cleaning, laundry',
 	tags: [],
 	status: 'recorded'
 };
+
+const fakeItemInput: LineItemInput = {
+	supportItemId: null,
+	customItemId: null,
+	catalogVersionId: null,
+	code: '01_011_0107_1_1',
+	description: 'self-care',
+	serviceDate: '2026-06-10',
+	unit: 'H',
+	startTime: '',
+	endTime: '',
+	quantity: 7,
+	unitPrice: 0,
+	gstFree: true,
+	sortOrder: 0
+};
+
+const fakeItem = { id: 11, ...fakeItemInput, lineTotal: 0 } as unknown as LineItem;
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -174,23 +189,54 @@ describe('importShifts', () => {
 	});
 });
 
-describe('draftInvoice', () => {
-	it('posts {from, to} to /api/participants/3/draft-invoice', async () => {
-		const inv = { id: 9 } as unknown;
-		mockApiPost.mockResolvedValue(inv);
-		await draftInvoice(3, '2026-06-01', '2026-06-30');
-		expect(mockApiPost).toHaveBeenCalledWith('/api/participants/3/draft-invoice', {
-			from: '2026-06-01',
-			to: '2026-06-30'
+describe('draftFromShifts', () => {
+	it('posts {shiftIds} to /api/invoices/draft-from-shifts', async () => {
+		mockApiPost.mockResolvedValue({ id: 9 } as unknown);
+		await draftFromShifts([5, 6]);
+		expect(mockApiPost).toHaveBeenCalledWith('/api/invoices/draft-from-shifts', {
+			shiftIds: [5, 6]
 		});
 	});
 
-	it('throws when from/to missing', async () => {
-		await expect(draftInvoice(3, '', '2026-06-30')).rejects.toThrow();
+	it('throws on an empty shiftIds list', async () => {
+		await expect(draftFromShifts([])).rejects.toThrow();
 	});
 
 	it('throws when apiPost resolves null', async () => {
 		mockApiPost.mockResolvedValue(null);
-		await expect(draftInvoice(3, '2026-06-01', '2026-06-30')).rejects.toThrow();
+		await expect(draftFromShifts([5])).rejects.toThrow();
+	});
+});
+
+describe('shift items', () => {
+	it('listItems gets /api/shifts/5/items and coalesces null to []', async () => {
+		mockApiGet.mockResolvedValue(null);
+		expect(await listItems(5)).toEqual([]);
+		expect(mockApiGet).toHaveBeenCalledWith('/api/shifts/5/items');
+	});
+
+	it('addItem posts to /api/shifts/5/items', async () => {
+		mockApiPost.mockResolvedValue(fakeItem);
+		const result = await addItem(5, fakeItemInput);
+		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts/5/items', fakeItemInput);
+		expect(result).toEqual(fakeItem);
+	});
+
+	it('updateItem patches /api/shifts/5/items/11', async () => {
+		mockApiPatch.mockResolvedValue(fakeItem);
+		await updateItem(5, 11, fakeItemInput);
+		expect(mockApiPatch).toHaveBeenCalledWith('/api/shifts/5/items/11', fakeItemInput);
+	});
+
+	it('deleteItem deletes /api/shifts/5/items/11', async () => {
+		mockApiDelete.mockResolvedValue(null);
+		await deleteItem(5, 11);
+		expect(mockApiDelete).toHaveBeenCalledWith('/api/shifts/5/items/11');
+	});
+
+	it('divideShift posts to /api/shifts/5/divide and coalesces null to []', async () => {
+		mockApiPost.mockResolvedValue(null);
+		expect(await divideShift(5)).toEqual([]);
+		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts/5/divide', {});
 	});
 });

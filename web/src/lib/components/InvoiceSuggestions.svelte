@@ -27,7 +27,7 @@
 		error = null;
 		drafting = s.participantId;
 		try {
-			const inv = await shiftsApi.draftInvoice(s.participantId, s.from, s.to);
+			const inv = await shiftsApi.draftFromShifts(s.ids);
 			await goto(`/invoices/${inv.id}`);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to draft the invoice.';

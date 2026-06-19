@@ -164,6 +164,8 @@ export interface SupportItemPrice {
 export interface LineItem {
 	id: number;
 	uuid: string;
+	shiftId: number | null;
+	invoiceId: number | null;
 	supportItemId: number | null;
 	customItemId: number | null;
 	catalogVersionId: number | null;
@@ -171,6 +173,8 @@ export interface LineItem {
 	description: string;
 	serviceDate: string;
 	unit: string;
+	startTime: string;
+	endTime: string;
 	quantity: number;
 	unitPrice: number;
 	gstFree: boolean;
@@ -188,6 +192,8 @@ export interface LineItemInput {
 	description: string;
 	serviceDate: string;
 	unit: string;
+	startTime: string;
+	endTime: string;
 	quantity: number;
 	unitPrice: number;
 	gstFree: boolean;
@@ -349,24 +355,11 @@ export interface ValidationDetail {
 
 export type ShiftStatus = 'scheduled' | 'recorded' | 'drafted' | 'sent' | 'paid';
 
-/** One semi-structured measure attached to a shift (maps to a catalogue code). */
-export interface ShiftMeasure {
-	label: string;
-	value: number;
-	unit: string;
-	code: string;
-}
-
 export interface Shift {
 	id: number;
 	uuid: string;
 	participantId: number;
 	serviceDate: string;
-	startTime: string;
-	endTime: string;
-	hours: number;
-	km: number;
-	measures: ShiftMeasure[];
 	note: string;
 	tags: string[];
 	status: ShiftStatus;
@@ -379,11 +372,6 @@ export interface Shift {
 export interface ShiftInput {
 	participantId: number;
 	serviceDate: string;
-	startTime: string;
-	endTime: string;
-	hours: number;
-	km: number;
-	measures: ShiftMeasure[];
 	note: string;
 	tags: string[];
 	status: ShiftStatus;

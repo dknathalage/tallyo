@@ -1,5 +1,13 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { Shift, ShiftInput, ShiftStatus, ShiftSuggestion, Invoice } from './types';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
+import type {
+	Shift,
+	ShiftInput,
+	ShiftStatus,
+	ShiftSuggestion,
+	Invoice,
+	LineItem,
+	LineItemInput
+} from './types';
 
 // NOTE: apiGet/apiPost/apiPut return Promise<T | null> (null on 401-redirect or
 // 204). This module unwraps the contract the way crud.ts does: list calls fall
@@ -104,22 +112,72 @@ export async function importShifts(participantId: number, text: string): Promise
 }
 
 /**
- * Draft an invoice from a participant's recorded shifts in the [from, to]
- * inclusive range (AI, auto-approved). Returns the created Invoice (201).
+ * Draft one invoice from a set of recorded shifts (deterministic link of their
+ * already-priced items — no AI). All shifts must share one participant and each
+ * must carry at least one item. Returns the created Invoice (201).
  */
-export async function draftInvoice(
-	participantId: number,
-	from: string,
-	to: string
-): Promise<Invoice> {
-	if (!Number.isInteger(participantId) || participantId <= 0) {
-		throw new Error(`shifts.draftInvoice: participantId must be positive, got ${participantId}`);
-	}
-	if (from.length === 0 || to.length === 0) {
-		throw new Error('shifts.draftInvoice: from and to are required');
+export async function draftFromShifts(shiftIds: number[]): Promise<Invoice> {
+	if (shiftIds.length === 0) {
+		throw new Error('shifts.draftFromShifts: shiftIds is required');
 	}
 	return must(
-		await apiPost<Invoice>(`/api/participants/${participantId}/draft-invoice`, { from, to }),
-		'shifts draftInvoice'
+		await apiPost<Invoice>('/api/invoices/draft-from-shifts', { shiftIds }),
+		'shifts draftFromShifts'
 	);
+}
+
+/** List a shift's line items (billed + unbilled), [] when none. */
+export async function listItems(shiftId: number): Promise<LineItem[]> {
+	if (!Number.isInteger(shiftId) || shiftId <= 0) {
+		throw new Error(`shifts.listItems: shiftId must be positive, got ${shiftId}`);
+	}
+	return (await apiGet<LineItem[]>(`/api/shifts/${shiftId}/items`)) ?? [];
+}
+
+/** Add one line item to a shift (server prices it). Returns the item (201). */
+export async function addItem(shiftId: number, input: LineItemInput): Promise<LineItem> {
+	if (!Number.isInteger(shiftId) || shiftId <= 0) {
+		throw new Error(`shifts.addItem: shiftId must be positive, got ${shiftId}`);
+	}
+	return must(await apiPost<LineItem>(`/api/shifts/${shiftId}/items`, input), 'shifts addItem');
+}
+
+/** Update one unbilled item on a shift. Returns the item. */
+export async function updateItem(
+	shiftId: number,
+	itemId: number,
+	input: LineItemInput
+): Promise<LineItem> {
+	if (!Number.isInteger(shiftId) || shiftId <= 0) {
+		throw new Error(`shifts.updateItem: shiftId must be positive, got ${shiftId}`);
+	}
+	if (!Number.isInteger(itemId) || itemId <= 0) {
+		throw new Error(`shifts.updateItem: itemId must be positive, got ${itemId}`);
+	}
+	return must(
+		await apiPatch<LineItem>(`/api/shifts/${shiftId}/items/${itemId}`, input),
+		'shifts updateItem'
+	);
+}
+
+/** Delete one unbilled item from a shift (204). */
+export async function deleteItem(shiftId: number, itemId: number): Promise<void> {
+	if (!Number.isInteger(shiftId) || shiftId <= 0) {
+		throw new Error(`shifts.deleteItem: shiftId must be positive, got ${shiftId}`);
+	}
+	if (!Number.isInteger(itemId) || itemId <= 0) {
+		throw new Error(`shifts.deleteItem: itemId must be positive, got ${itemId}`);
+	}
+	await apiDelete<void>(`/api/shifts/${shiftId}/items/${itemId}`);
+}
+
+/**
+ * Divide a shift's note into priced catalogue line items via AI (idempotent —
+ * replaces the shift's unbilled items). Returns the shift's items.
+ */
+export async function divideShift(shiftId: number): Promise<LineItem[]> {
+	if (!Number.isInteger(shiftId) || shiftId <= 0) {
+		throw new Error(`shifts.divideShift: shiftId must be positive, got ${shiftId}`);
+	}
+	return (await apiPost<LineItem[]>(`/api/shifts/${shiftId}/divide`, {})) ?? [];
 }
