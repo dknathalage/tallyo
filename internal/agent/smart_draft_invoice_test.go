@@ -89,6 +89,43 @@ func TestDraftInvoiceFromShiftsRetrySucceeds(t *testing.T) {
 	if fake.Calls() != 2 {
 		t.Fatalf("expected 2 model calls (one retry); got %d", fake.Calls())
 	}
+
+	// Every covered shift in range must now be linked to the new invoice
+	// (billCoveredShifts → MarkDrafted swallows errors, so assert the effect).
+	recs, err := s.shifts.ListParticipant(ctx, pid, "2026-06-09", "2026-06-12")
+	if err != nil {
+		t.Fatalf("list shifts: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("no shifts seeded in range")
+	}
+	for i := range recs {
+		if recs[i].InvoiceID == nil || *recs[i].InvoiceID != got.ID {
+			t.Fatalf("shift %s not linked to invoice %d (invoiceId=%v)", recs[i].ServiceDate, got.ID, recs[i].InvoiceID)
+		}
+	}
+}
+
+// TestDraftInvoiceFromShiftsRetriesEmptyItems proves an empty-items proposal is
+// recoverable (errors.Is errRecoverableDraft) and re-proposed, not treated as
+// fatal: attempt 1 has no items, attempt 2 is the correct full draft.
+func TestDraftInvoiceFromShiftsRetriesEmptyItems(t *testing.T) {
+	s, fake, _, ctx, pid := draftFixture(t)
+	fake.SetResponses(
+		toolUse("create_invoice", draftInput(t, nil)),
+		toolUse("create_invoice", draftInput(t, fullCodedLines())),
+	)
+
+	got, err := s.DraftInvoiceFromShifts(ctx, pid, "2026-06-09", "2026-06-12")
+	if err != nil {
+		t.Fatalf("DraftInvoiceFromShifts: %v", err)
+	}
+	if got == nil || got.ID <= 0 {
+		t.Fatalf("want a persisted invoice with a positive id; got %+v", got)
+	}
+	if fake.Calls() != 2 {
+		t.Fatalf("expected 2 model calls (empty-items retried); got %d", fake.Calls())
+	}
 }
 
 // TestDraftInvoiceFromShiftsRetryExhausted scripts two failing attempts and
@@ -107,6 +144,9 @@ func TestDraftInvoiceFromShiftsRetryExhausted(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "could not produce a valid invoice") {
 		t.Fatalf("error %q should mention it could not produce a valid invoice", err.Error())
+	}
+	if fake.Calls() != maxDraftRetries+1 {
+		t.Fatalf("expected %d model calls (loop bound); got %d", maxDraftRetries+1, fake.Calls())
 	}
 	assertNoInvoice(t, inv, ctx)
 }

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -14,6 +15,12 @@ import (
 // maxDraftRetries bounds the model re-proposals after a recoverable validation
 // failure. The Smart makes at most maxDraftRetries+1 proposal attempts.
 const maxDraftRetries = 2
+
+// errRecoverableDraft tags a draft-apply failure the model can plausibly fix on
+// retry (empty items, a zero quantity, a coverage gap, or an NDIS-validation
+// failure). applyDraftInvoice wraps those errors with it so DraftInvoiceFromShifts
+// can decide via errors.Is whether to re-propose rather than match on wording.
+var errRecoverableDraft = errors.New("recoverable draft proposal")
 
 // draftInvoiceSystem instructs the model to map a participant's recorded shifts
 // to NDIS catalogue codes and emit ONE create_invoice call. It is a single
@@ -93,18 +100,18 @@ func (s *Smarts) applyDraftInvoice(ctx context.Context, in createInvoiceInput) (
 		return nil, fmt.Errorf("draft invoice: participantId must be a positive integer")
 	}
 	if len(in.Items) == 0 {
-		return nil, fmt.Errorf("draft invoice: at least one line item is required")
+		return nil, fmt.Errorf("draft invoice: at least one line item is required: %w", errRecoverableDraft)
 	}
 	for i := range in.Items { // bounded by len(in.Items)
 		it := in.Items[i]
 		if it.Code != "" && it.Quantity <= 0 {
-			return nil, fmt.Errorf("draft invoice: line %d (code %q) needs a quantity greater than 0", i, it.Code)
+			return nil, fmt.Errorf("draft invoice: line %d (code %q) needs a quantity greater than 0: %w", i, it.Code, errRecoverableDraft)
 		}
 	}
 
 	coverFrom, coverTo := in.From, in.To
 	if err := verifyShiftsCovered(ctx, s.shifts, in.ParticipantID, in.Items, coverFrom, coverTo); err != nil {
-		return nil, err // already prefixed; recoverable (coverage gap)
+		return nil, fmt.Errorf("%w: %w", err, errRecoverableDraft) // already prefixed; recoverable (coverage gap)
 	}
 
 	header := invoice.InvoiceInput{
@@ -117,7 +124,7 @@ func (s *Smarts) applyDraftInvoice(ctx context.Context, in createInvoiceInput) (
 	created, err := s.invoice.CreateWithCatalogPricing(ctx, header, in.Items)
 	if err != nil {
 		if ve, ok := billing.AsValidationError(err); ok {
-			return nil, fmt.Errorf("draft invoice: invoice failed NDIS validation: %s", ve.Error())
+			return nil, fmt.Errorf("draft invoice: invoice failed NDIS validation: %s: %w", ve.Error(), errRecoverableDraft)
 		}
 		return nil, fmt.Errorf("draft invoice: %w", err)
 	}
@@ -279,14 +286,11 @@ func (s *Smarts) DraftInvoiceFromShifts(ctx context.Context, participantID int64
 }
 
 // recoverableDraftErr reports whether the model can plausibly fix err on retry.
-// The substrings track the messages applyDraftInvoice / verifyShiftsCovered
-// actually emit: the NDIS validation failure, the coverage-gap message, and the
-// per-line quantity check.
+// applyDraftInvoice tags every model-fixable failure with errRecoverableDraft,
+// so this is an errors.Is check rather than a wording match: a propose transport
+// error or a non-validation persist error stays fatal.
 func recoverableDraftErr(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "failed NDIS validation") ||
-		strings.Contains(msg, "does not cover every recorded shift") ||
-		strings.Contains(msg, "needs a quantity greater than 0")
+	return errors.Is(err, errRecoverableDraft)
 }
 
 // gatherShiftContext renders a compact, deterministic, model-facing block of the
@@ -311,11 +315,11 @@ func (s *Smarts) gatherShiftContext(ctx context.Context, participantID int64, fr
 		cands := shiftCandidates(ctx, s.catalog, sh)
 		for j := range cands { // bounded by len(cands) (≤4)
 			c := cands[j]
-			cap := "n/a"
+			capStr := "n/a"
 			if c.PriceCap != nil {
-				cap = fmt.Sprintf("%.2f", *c.PriceCap)
+				capStr = fmt.Sprintf("%.2f", *c.PriceCap)
 			}
-			fmt.Fprintf(&b, "  candidate: code=%s unit=%s priceCap=%s\n", c.Code, c.Unit, cap)
+			fmt.Fprintf(&b, "  candidate: code=%s unit=%s priceCap=%s\n", c.Code, c.Unit, capStr)
 		}
 	}
 	if count == 0 {
