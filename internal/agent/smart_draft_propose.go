@@ -65,24 +65,35 @@ func (s *Smarts) proposeInvoice(ctx context.Context, system, userContent string)
 		}
 		uses := toolUseBlocks(resp.Content)
 		if len(uses) == 0 {
+			// A refusal or a truncated turn won't recover by nudging — fail fast
+			// rather than burn the remaining turns.
+			if resp.StopReason == llm.StopRefusal || resp.StopReason == llm.StopMaxTok {
+				return zero, fmt.Errorf("propose invoice: model stopped (%s) without proposing an invoice", resp.StopReason)
+			}
 			// Model answered in prose; record it and nudge it back to the tools.
 			msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: resp.Content})
 			msgs = append(msgs, llm.Message{Role: llm.RoleUser, Content: []llm.Block{{Type: llm.BlockText,
 				Text: "Use search_catalogue to find any codes you still need, then call create_invoice."}}})
 			continue
 		}
-		// Replay the assistant turn (text + tool_use; thinking degrades to text).
+		// If the model committed, return immediately — don't run searches we'd
+		// discard (we terminate on create_invoice).
+		for i := range uses { // bounded by len(uses)
+			if uses[i].ToolName != "create_invoice" {
+				continue
+			}
+			var out createInvoiceInput
+			if e := json.Unmarshal(uses[i].Input, &out); e != nil {
+				return zero, fmt.Errorf("propose invoice: decode create_invoice: %w", e)
+			}
+			return out, nil
+		}
+		// Replay the assistant turn (text + tool_use; thinking degrades to text),
+		// then answer every tool_use with a matching tool_result.
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: resp.Content})
 		results := make([]llm.ToolResult, 0, len(uses))
 		for i := range uses { // bounded by len(uses)
 			u := uses[i]
-			if u.ToolName == "create_invoice" {
-				var out createInvoiceInput
-				if e := json.Unmarshal(u.Input, &out); e != nil {
-					return zero, fmt.Errorf("propose invoice: decode create_invoice: %w", e)
-				}
-				return out, nil
-			}
 			if u.ToolName == "search_catalogue" {
 				results = append(results, s.runSearchCatalogue(ctx, u))
 				continue

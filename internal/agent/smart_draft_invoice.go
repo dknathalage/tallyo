@@ -271,6 +271,8 @@ func (s *Smarts) DraftInvoiceFromShifts(ctx context.Context, participantID int64
 		if lastErr != "" {
 			content = base + "\n\nYour previous attempt failed:\n" + lastErr + "\nFix it and emit create_invoice again."
 		}
+		// proposeInvoice itself runs a bounded tool loop (≤ maxToolTurns model
+		// calls); the worst case per draft is (maxDraftRetries+1) × maxToolTurns.
 		proposal, pErr := s.proposeInvoice(ctx, draftInvoiceSystem, content)
 		if pErr != nil {
 			return nil, pErr
