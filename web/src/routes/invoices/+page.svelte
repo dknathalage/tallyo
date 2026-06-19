@@ -365,14 +365,6 @@
 				<p class="text-sm text-gray-500">NDIS-compliant invoices with price-cap validation.</p>
 			</div>
 			<div class="flex items-center gap-2">
-				<a
-					href="/api/export/invoices"
-					target="_blank"
-					rel="noopener"
-					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-				>
-					Export CSV
-				</a>
 				<button
 					type="button"
 					onclick={openCreate}
@@ -563,14 +555,6 @@
 										<option value={s}>{s}</option>
 									{/each}
 								</select>
-								<a
-									href={'/api/invoices/' + inv.id + '/pdf'}
-									target="_blank"
-									rel="noopener"
-									class="mr-2 text-blue-600 hover:underline"
-								>
-									PDF
-								</a>
 								<button
 									type="button"
 									onclick={() => togglePayments(inv.id)}

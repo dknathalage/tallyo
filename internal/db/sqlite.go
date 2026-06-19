@@ -10,16 +10,12 @@ import (
 )
 
 // DataDir resolves the application data directory.
-// DATA_DIR env overrides; otherwise os.UserConfigDir()/Tallyo.
+// DATA_DIR env overrides; otherwise ./data relative to the working directory.
 func DataDir() (string, error) {
 	if override := os.Getenv("DATA_DIR"); override != "" {
 		return override, nil
 	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve user config dir: %w", err)
-	}
-	return filepath.Join(base, "Tallyo"), nil
+	return "data", nil
 }
 
 // Open opens a modernc SQLite connection at path and applies pragmas.

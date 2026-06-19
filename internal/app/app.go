@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -26,7 +27,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/estimate"
-	"github.com/dknathalage/tallyo/internal/export"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
@@ -42,10 +42,11 @@ import (
 // is called.
 type Config struct {
 	Port         int
-	DataDir      string // empty → resolved from OS app-data dir
+	DataDir      string // empty → DATA_DIR env, else ./data
 	SecureCookie bool
 	LogLevel     string
 	LogFormat    string
+	FeatureAgent bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
 }
 
 // EnvOr returns the value of env var key, or def when it is unset/empty. Used
@@ -56,6 +57,20 @@ func EnvOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// EnvBool returns the boolean value of env var key, or def when it is
+// unset/empty or unparseable. Accepts 1/t/T/TRUE/true/0/f/false (ParseBool).
+func EnvBool(key string, def bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }
 
 // parseLevel maps a textual level (case-insensitive) to slog.Level, defaulting
@@ -105,7 +120,9 @@ func Run(cfg Config, version string) error {
 			slog.String("value", e))
 	}
 	agentCfg = agentCfg.WithDefaults()
-	if !agentCfg.Enabled() {
+	if !cfg.FeatureAgent {
+		logger.Warn("agent disabled: TALLYO_FEATURE_AGENT off")
+	} else if !agentCfg.Enabled() {
 		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
 	}
 	logger.Info("agent model configured",
@@ -159,7 +176,7 @@ func Run(cfg Config, version string) error {
 	// through to the SPA catch-all (200 index.html).
 	var smartsHandler *agent.SmartsHandler
 	var shiftDivider shift.ShiftDivider // nil when AI is disabled → /divide 503s
-	if agentCfg.APIKey != "" {
+	if cfg.FeatureAgent && agentCfg.APIKey != "" {
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
 		smarts := agent.NewSmarts(agentCfg, llmClient, shiftSvc, supportCatalogSvc)
 		smartsHandler = agent.NewSmartsHandler(smarts, true)
@@ -197,8 +214,12 @@ func Run(cfg Config, version string) error {
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),
-		Export:          export.NewHandler(customItemSvc, invoiceSvc, estimateSvc),
 		Smarts:          smartsHandler,
+		// agent is "on" only when both the gate and the API key allow it, so the
+		// SPA hides AI affordances that would otherwise 503.
+		Features: map[string]bool{
+			"agent": cfg.FeatureAgent && agentCfg.APIKey != "",
+		},
 	}
 
 	server := NewServer(deps)

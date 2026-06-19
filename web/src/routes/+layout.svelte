@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { session } from '$lib/stores/session.svelte';
+	import { features } from '$lib/stores/features.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
@@ -25,8 +26,12 @@
 	async function bootstrap(): Promise<void> {
 		try {
 			const me = await session.refresh();
-			if (me === null && !isPublic(page.url.pathname)) {
-				await goto('/login');
+			if (me === null) {
+				if (!isPublic(page.url.pathname)) {
+					await goto('/login');
+				}
+			} else {
+				await features.load();
 			}
 		} catch {
 			// Network/parse failure — render anyway so public pages still work.

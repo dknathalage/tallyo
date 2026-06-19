@@ -2,6 +2,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
 	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
+	import { features } from '$lib/stores/features.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import { hoursBetween, todayISO } from '$lib/shifts/format';
 	import type {
@@ -320,14 +321,16 @@
 			<div class="rounded border border-gray-200 p-3">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm font-medium">Line items</span>
-					<button
-						type="button"
-						onclick={divideAI}
-						disabled={itemsBusy}
-						class="rounded border border-indigo-300 px-3 py-1 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-					>
-						{itemsBusy ? 'Working…' : 'Divide with AI'}
-					</button>
+					{#if features.agent}
+						<button
+							type="button"
+							onclick={divideAI}
+							disabled={itemsBusy}
+							class="rounded border border-indigo-300 px-3 py-1 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+						>
+							{itemsBusy ? 'Working…' : 'Divide with AI'}
+						</button>
+					{/if}
 				</div>
 
 				{#if itemError}

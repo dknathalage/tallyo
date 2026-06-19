@@ -300,14 +300,6 @@
 				<p class="text-sm text-gray-500">Quote NDIS work before invoicing.</p>
 			</div>
 			<div class="flex items-center gap-2">
-				<a
-					href="/api/export/estimates"
-					target="_blank"
-					rel="noopener"
-					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-				>
-					Export CSV
-				</a>
 				<button
 					type="button"
 					onclick={openCreate}
@@ -483,14 +475,6 @@
 										<option value={s}>{s}</option>
 									{/each}
 								</select>
-								<a
-									href={'/api/estimates/' + est.id + '/pdf'}
-									target="_blank"
-									rel="noopener"
-									class="mr-2 text-blue-600 hover:underline"
-								>
-									PDF
-								</a>
 								<button
 									type="button"
 									onclick={() => convert(est.id)}

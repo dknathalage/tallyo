@@ -15,7 +15,7 @@ var version = "dev"
 
 func main() {
 	port := flag.Int("port", 8080, "HTTP listen port")
-	dataDir := flag.String("data-dir", "", "data directory for the SQLite database (default: OS app data dir)")
+	dataDir := flag.String("data-dir", "", "data directory for the SQLite database (default: DATA_DIR env, else ./data)")
 	secureCookie := flag.Bool("secure-cookie", false, "mark the session cookie Secure (HTTPS only)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	logLevel := flag.String("log-level", app.EnvOr("LOG_LEVEL", "info"), "log level: debug|info|warn|error")
@@ -33,6 +33,7 @@ func main() {
 		SecureCookie: *secureCookie,
 		LogLevel:     *logLevel,
 		LogFormat:    *logFormat,
+		FeatureAgent: app.EnvBool("TALLYO_FEATURE_AGENT", true),
 	}
 
 	if err := app.Run(cfg, version); err != nil {

@@ -122,14 +122,6 @@
 			</div>
 			<div class="text-right">
 				<div class="text-xl font-bold">{money(invoice.total)}</div>
-				<a
-					href={`/api/invoices/${invoice.id}/pdf`}
-					target="_blank"
-					rel="noopener"
-					class="text-sm text-blue-600 hover:underline"
-				>
-					PDF
-				</a>
 			</div>
 		</div>
 

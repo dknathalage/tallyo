@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
+	import { features } from '$lib/stores/features.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
@@ -165,35 +166,39 @@
 	<!-- Quick add (paste timesheet → import) -->
 	<section class="rounded-lg border border-gray-200 bg-white p-4">
 		<h2 class="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">Quick add</h2>
-		<div class="mb-2 max-w-xs">
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Participant</span>
-				<select
-					bind:value={importParticipant}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				>
-					<option value="">— select —</option>
-					{#each participants.items as p (p.id)}
-						<option value={String(p.id)}>{p.name}</option>
-					{/each}
-				</select>
-			</label>
-		</div>
-		<textarea
-			bind:value={importText}
-			rows="3"
-			placeholder="Paste a worker's timesheet — AI extracts shifts, fills time/note, auto-tags catalogue codes."
-			class="w-full rounded border border-gray-300 px-3 py-2 font-mono text-sm"
-		></textarea>
+		{#if features.agent}
+			<div class="mb-2 max-w-xs">
+				<label class="block">
+					<span class="mb-1 block text-sm font-medium">Participant</span>
+					<select
+						bind:value={importParticipant}
+						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					>
+						<option value="">— select —</option>
+						{#each participants.items as p (p.id)}
+							<option value={String(p.id)}>{p.name}</option>
+						{/each}
+					</select>
+				</label>
+			</div>
+			<textarea
+				bind:value={importText}
+				rows="3"
+				placeholder="Paste a worker's timesheet — AI extracts shifts, fills time/note, auto-tags catalogue codes."
+				class="w-full rounded border border-gray-300 px-3 py-2 font-mono text-sm"
+			></textarea>
+		{/if}
 		<div class="mt-2 flex flex-wrap items-center gap-3">
-			<button
-				type="button"
-				onclick={runImport}
-				disabled={importing}
-				class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-			>
-				{importing ? 'Extracting…' : 'Extract shifts'}
-			</button>
+			{#if features.agent}
+				<button
+					type="button"
+					onclick={runImport}
+					disabled={importing}
+					class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+				>
+					{importing ? 'Extracting…' : 'Extract shifts'}
+				</button>
+			{/if}
 			<button
 				type="button"
 				onclick={openAdHoc}
