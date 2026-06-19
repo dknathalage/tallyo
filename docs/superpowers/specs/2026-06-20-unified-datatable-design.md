@@ -203,9 +203,19 @@ are rejected or bound, never interpolated.
 ### Why not sqlc here
 
 sqlc generates static queries and cannot express dynamic WHERE/ORDER/LIMIT. The
-base SELECT stays hand-written per slice (it already is, for enrichment joins);
-`listquery` only appends safe, parameterized clauses. The rest of the codebase
-keeps using sqlc as today.
+rest of the codebase keeps using sqlc as today; `listquery` only appends safe,
+parameterized clauses to a base SELECT.
+
+**Base SELECT source — implementation decision for the plan.** The existing
+enrichment SELECTs are *not* free-standing constants today: they live in
+`internal/db/queries/*.sql` and sqlc compiles them to Go (e.g. `ListParticipants`
+in `internal/db/queries/participants.sql`). `listquery` needs the SELECT body as a
+string it can append clauses to, which sqlc's generated functions don't expose.
+Recommended default (lowest churn): the slice repository holds the base SELECT
+body (the `SELECT … FROM … JOIN …` up to but excluding `WHERE/ORDER/LIMIT`) as a
+small **constant string**, kept in sync with the sqlc `List<X>` query it mirrors.
+The plan must pick this vs. a larger refactor (e.g. generating/extracting the
+SELECT body) explicitly — do not leave it to the implementer.
 
 ## Store integration
 
@@ -226,6 +236,14 @@ stays for any caller that still wants everything.
 5. Delete the per-page hand-rolled tables and drop the
    `@careswitch/svelte-data-table` dependency once nothing imports it.
 
+**ShiftTable is the highest-risk migration — front-load it in the plan.** Unlike
+the others it is not a list-page route: it's embedded in the dashboard
+(`web/src/routes/+page.svelte`) and the participant detail page
+(`participants/[id]/+page.svelte`), and it likely has no `GET /api/shifts`
+server-query endpoint shaped like the rest. Treat it as its own plan step with its
+own risk budget, not "just another list" — or explicitly defer it to a follow-up
+and keep the `@careswitch` dep until then.
+
 ## Risks / open points
 
 - **Date columns** rendered as a "window" (start–end) need a sensible filter
@@ -234,3 +252,9 @@ stays for any caller that still wants everything.
   revisit if bulk-across-pages is requested.
 - **Drawer autosave via full PUT** re-sends the whole record; fine at these sizes.
   A real PATCH is a later optimization, not needed now.
+- **Drawer save ↔ SSE feedback loop.** The drawer's own debounced PUT emits an SSE
+  entity event, which re-runs the current query — that must not stomp the field the
+  user is still editing or flicker the drawer. The plan must specify the guard:
+  e.g. while the drawer is open and dirty, the re-query updates the table behind it
+  but does not overwrite in-flight drawer field state; or suppress self-triggered
+  invalidation for the record being edited.
