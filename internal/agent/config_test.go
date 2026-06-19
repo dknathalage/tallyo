@@ -13,8 +13,8 @@ func TestConfigEnabled(t *testing.T) {
 
 func TestConfigDefaults(t *testing.T) {
 	c := Config{APIKey: "sk-x"}.WithDefaults()
-	if c.Model == "" || c.MaxIterations == 0 || c.DailyTokenBudget == 0 {
-		t.Fatalf("defaults not applied: %+v", c)
+	if c.Model == "" {
+		t.Fatalf("model default not applied: %+v", c)
 	}
 	if c.Effort != "high" {
 		t.Fatalf("unset effort must default to high, got %q", c.Effort)

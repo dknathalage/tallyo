@@ -11,9 +11,8 @@ import (
 )
 
 // emitShiftsTool is the name of the structured-output tool the model is FORCED to
-// call when turning a free-text timesheet into structured shifts. Like
-// propose_plan, its tool_use input is parsed (never executed) — it is the
-// structured output channel.
+// call when turning a free-text timesheet into structured shifts. Its tool_use
+// input is parsed (never executed) — it is the structured output channel.
 const emitShiftsTool = "emit_shifts"
 
 // emitShiftsSchema is the model-facing JSON schema the model fills when turning a
@@ -64,9 +63,9 @@ type emitShiftsOutput struct {
 }
 
 // ExtractShifts turns a free-text timesheet message into structured shift drafts
-// via a single forced-tool model call (ToolChoice.ForceTool, like the plan phase
-// forces propose_plan): it forces the emit_shifts tool, then parses and validates
-// the tool_use input. Drafts with a non-ISO service date or negative hours/km are
+// via a single forced-tool model call: ToolChoice.ForceTool forces a single
+// structured emit_shifts tool call, then parses and validates the tool_use
+// input. Drafts with a non-ISO service date or negative hours/km are
 // dropped with care; if none survive, an error is returned. The text is fenced as
 // untrusted content so the model treats it as data, never as instructions.
 func ExtractShifts(ctx context.Context, client llm.Client, model, effort, text string) ([]ShiftDraft, error) {

@@ -28,7 +28,7 @@ interfaces declared by the consumer and wired in `internal/app`.
 - `internal/app/` — composition root: resolve data dir → open DB → migrate → build
   every slice's service+handler → assemble the chi router (`server.go`: middleware,
   `/api` group, role gates, SPA catch-all) → graceful shutdown; owns the per-tenant
-  overdue+recurring sweeps and the agent sweep (`sweep.go`, launch + hourly ticker).
+  overdue+recurring sweeps (`sweep.go`, launch + hourly ticker).
   Also holds the auth/invite/signup HTTP handlers (kept here to avoid an
   `auth → httpx → auth` cycle).
 - **Platform (cross-cutting, shared by slices):**
@@ -51,7 +51,9 @@ interfaces declared by the consumer and wired in `internal/app`.
   planmanager,taxrate,businessprofile,customitem,catalog,auth,agent,export}`.
   `invoice` includes payment. `invoice` declares `ShiftLinker`; `shift` declares
   `InvoiceChecker` — these break the invoice↔shift cycle. `agent` is a consumer
-  slice (its tools take interfaces; owns the `agent_*` tables + AI harness).
+  slice exposing one-shot **Smarts** (gather → propose → apply via a forced
+  single-tool LLM call, then deterministic apply); its tools take interfaces and
+  it has no persistent agent tables.
 - `web/` — SvelteKit SPA (`src/lib/api`, `src/lib/stores`, `src/routes`); `web/embed.go` embeds `web/build`.
 
 ## Run

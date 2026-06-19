@@ -105,9 +105,6 @@ func Run(cfg Config, version string) error {
 			slog.String("value", e))
 	}
 	agentCfg = agentCfg.WithDefaults()
-	// Skip the forced plan turn by default (cuts a round-trip, restores thinking);
-	// set AGENT_SKIP_PLAN=0 to restore the plan phase + its UX preview.
-	agentCfg.SkipPlan = EnvOr("AGENT_SKIP_PLAN", "1") != "0"
 	if !agentCfg.Enabled() {
 		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
 	}
