@@ -148,6 +148,7 @@ type Querier interface {
 	UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error
 	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
+	UpdateInvoiceTotals(ctx context.Context, arg UpdateInvoiceTotalsParams) (Invoice, error)
 	UpdateParticipant(ctx context.Context, arg UpdateParticipantParams) (Participant, error)
 	UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerParams) (PlanManager, error)
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)

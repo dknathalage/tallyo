@@ -147,7 +147,7 @@ func Run(cfg Config, version string) error {
 	supportCatalogSvc := catalog.NewService(conn)
 	catalogIngestSvc := catalog.NewIngestService(conn, hub)
 	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
-	invoiceSvc := invoice.NewService(conn, hub, shift.NewShifts(conn))
+	invoiceSvc := invoice.NewService(conn, hub, shiftSvc)
 	estimateSvc := estimate.NewService(conn, hub)
 	paymentSvc := invoice.NewPaymentService(conn, hub)
 	recurringSvc := recurring.NewService(conn, hub)

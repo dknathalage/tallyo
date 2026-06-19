@@ -227,7 +227,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 func TestInvoiceTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewService(conn, hub, shift.NewShifts(conn))
+	svc := NewService(conn, hub, shift.NewService(conn, hub, NewInvoices(conn)))
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
 	partA := seedParticipant(t, conn, tenantA, "Jane")

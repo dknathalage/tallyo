@@ -175,6 +175,147 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 	return nil
 }
 
+// draftShiftItem holds the validated facts about one shift that DraftFromShifts
+// needs: its participant and the number of unbilled items it carries.
+type draftShiftItem struct {
+	shiftID       int64
+	participantID int64
+	itemCount     int64
+}
+
+// validateDraftShifts reads each shift (no writes) and enforces the draft
+// preconditions: the shift exists for the tenant, is status 'recorded' with no
+// invoice yet, carries at least one unbilled item (G5), and every shift shares
+// one participant. Returns the shared participant id and the per-shift facts.
+func (r *InvoicesRepo) validateDraftShifts(ctx context.Context, tenantID int64, shiftIDs []int64) (int64, []draftShiftItem, error) {
+	if len(shiftIDs) == 0 {
+		return 0, nil, errors.New("draft from shifts: at least one shift is required")
+	}
+	q := gen.New(r.db)
+	var participantID int64
+	facts := make([]draftShiftItem, 0, len(shiftIDs))
+	for i := range shiftIDs { // bounded by len(shiftIDs)
+		sh, err := q.GetShift(ctx, gen.GetShiftParams{TenantID: tenantID, ID: shiftIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil, fmt.Errorf("draft from shifts: shift %d not found", shiftIDs[i])
+		}
+		if err != nil {
+			return 0, nil, fmt.Errorf("draft from shifts: load shift %d: %w", shiftIDs[i], err)
+		}
+		if sh.Status != "recorded" || sh.InvoiceID.Valid {
+			return 0, nil, fmt.Errorf("draft from shifts: shift %d is not recorded+unbilled", shiftIDs[i])
+		}
+		if i == 0 {
+			participantID = sh.ParticipantID
+		} else if sh.ParticipantID != participantID {
+			return 0, nil, errors.New("draft from shifts: all shifts must share one participant")
+		}
+		n, err := q.CountShiftItems(ctx, gen.CountShiftItemsParams{TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftIDs[i], Valid: true}})
+		if err != nil {
+			return 0, nil, fmt.Errorf("draft from shifts: count items %d: %w", shiftIDs[i], err)
+		}
+		if n == 0 {
+			return 0, nil, fmt.Errorf("draft from shifts: shift %d has no items", shiftIDs[i])
+		}
+		facts = append(facts, draftShiftItem{shiftID: shiftIDs[i], participantID: sh.ParticipantID, itemCount: n})
+	}
+	return participantID, facts, nil
+}
+
+// DraftFromShifts creates a draft invoice header for participantID, links every
+// validated shift's unbilled items onto it, and persists totals computed from
+// the now-linked lines — all in ONE numbering-retried transaction. The shifts
+// table is NOT written here; the caller advances the shifts to 'drafted'
+// afterwards (a separate, post-commit step), mirroring Delete↔ClearForInvoice.
+func (r *InvoicesRepo) DraftFromShifts(ctx context.Context, tenantID, participantID int64, facts []draftShiftItem) (*Invoice, error) {
+	if tenantID == 0 || participantID == 0 {
+		return nil, errors.New("draft from shifts: tenant and participant id required")
+	}
+	in := InvoiceInput{ParticipantID: participantID, Status: "draft"}
+	now := time.Now().UTC().Format("2006-01-02")
+	in.IssueDate = now
+	in.DueDate = now
+	r.fillSnapshots(ctx, tenantID, &in)
+
+	var newID int64
+	err := numbering.WithRetry(ctx, 10, func() error {
+		return r.draftTx(ctx, tenantID, in, facts, &newID)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("draft from shifts: %w", err)
+	}
+	return r.Get(ctx, tenantID, newID)
+}
+
+// draftTx runs one draft attempt: allocate the number, insert a zero-total
+// header, link each shift's items (assigning a sort_order base), recompute
+// totals from the linked lines, persist them, and audit — all in one tx.
+func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceInput, facts []draftShiftItem, newID *int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := gen.New(tx)
+	num, err := NextInvoiceNumber(ctx, q, tenantID)
+	if err != nil {
+		return err
+	}
+	inv, err := q.CreateInvoice(ctx, createInvoiceParams(tenantID, in, nil, num))
+	if err != nil {
+		return err
+	}
+	var sortBase int64
+	for i := range facts { // bounded by len(facts)
+		if e := q.LinkShiftItemsToInvoice(ctx, gen.LinkShiftItemsToInvoiceParams{
+			InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true},
+			SortOrder: sql.NullInt64{Int64: sortBase, Valid: true},
+			TenantID:  tenantID,
+			ShiftID:   sql.NullInt64{Int64: facts[i].shiftID, Valid: true},
+		}); e != nil {
+			return fmt.Errorf("link shift %d: %w", facts[i].shiftID, e)
+		}
+		sortBase += facts[i].itemCount
+	}
+	lines, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{
+		TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("list linked lines: %w", err)
+	}
+	totals := totalsFromRows(lines)
+	if _, e := q.UpdateInvoiceTotals(ctx, gen.UpdateInvoiceTotalsParams{
+		Subtotal: totals.Subtotal, Tax: totals.Tax, Total: totals.Total,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339), TenantID: tenantID, ID: inv.ID,
+	}); e != nil {
+		return fmt.Errorf("update totals: %w", e)
+	}
+	if e := audit.Log(ctx, tx, audit.Entry{
+		EntityType: "invoice", EntityID: inv.ID, Action: "create",
+		Changes: audit.Changes(map[string]any{"number": num, "draftedFromShifts": len(facts)}),
+	}); e != nil {
+		return e
+	}
+	if e := tx.Commit(); e != nil {
+		return e
+	}
+	*newID = inv.ID
+	return nil
+}
+
+// totalsFromRows sums line totals from already-priced line_items rows. Tax is 0
+// (NDIS GST-free lines carry no tax; gst-bearing lines already fold tax into
+// their unit price upstream — same as the human invoice path).
+func totalsFromRows(rows []gen.LineItem) billing.Totals {
+	var subtotal float64
+	for i := range rows { // bounded by len(rows)
+		subtotal += billing.Round2(rows[i].LineTotal)
+	}
+	subtotal = billing.Round2(subtotal)
+	return billing.Totals{Subtotal: subtotal, Tax: 0, Total: subtotal}
+}
+
 // NextInvoiceNumber allocates the next per-tenant invoice number ("INV-NNNN").
 // Exported so that estimate and recurring repositories can reuse it.
 func NextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (string, error) {

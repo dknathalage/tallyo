@@ -42,7 +42,7 @@ func newExportServer(t *testing.T) *httptest.Server {
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	expH := export.NewHandler(
 		customItemSvc,
-		invoice.NewService(conn, hub, shift.NewShifts(conn)),
+		invoice.NewService(conn, hub, shift.NewService(conn, hub, invoice.NewInvoices(conn))),
 		estimate.NewService(conn, hub),
 	)
 

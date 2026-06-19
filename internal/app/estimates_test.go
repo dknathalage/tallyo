@@ -28,7 +28,7 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
 	estH := estimate.NewHandler(estimate.NewService(conn, hub))
-	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewShifts(conn)))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewService(conn, hub, invoice.NewInvoices(conn))))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()

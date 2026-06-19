@@ -565,3 +565,51 @@ func (q *Queries) UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStat
 	)
 	return err
 }
+
+const updateInvoiceTotals = `-- name: UpdateInvoiceTotals :one
+UPDATE invoices SET subtotal = ?, tax = ?, total = ?, updated_at = ?
+WHERE tenant_id = ? AND id = ?
+RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+`
+
+type UpdateInvoiceTotalsParams struct {
+	Subtotal  float64 `json:"subtotal"`
+	Tax       float64 `json:"tax"`
+	Total     float64 `json:"total"`
+	UpdatedAt string  `json:"updated_at"`
+	TenantID  int64   `json:"tenant_id"`
+	ID        int64   `json:"id"`
+}
+
+func (q *Queries) UpdateInvoiceTotals(ctx context.Context, arg UpdateInvoiceTotalsParams) (Invoice, error) {
+	row := q.db.QueryRowContext(ctx, updateInvoiceTotals,
+		arg.Subtotal,
+		arg.Tax,
+		arg.Total,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i Invoice
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.Number,
+		&i.ParticipantID,
+		&i.PlanManagerID,
+		&i.Status,
+		&i.IssueDate,
+		&i.DueDate,
+		&i.Subtotal,
+		&i.Tax,
+		&i.Total,
+		&i.Notes,
+		&i.BusinessSnapshot,
+		&i.ClientSnapshot,
+		&i.PayerSnapshot,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

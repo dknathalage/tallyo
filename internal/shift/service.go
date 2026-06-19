@@ -240,6 +240,19 @@ func (s *Service) MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []i
 	return nil
 }
 
+// SetStatusForInvoice advances every shift linked to an invoice to status (the
+// invoice→shift cascade on 'sent'/'paid'). It satisfies invoice.ShiftLinker;
+// tenantID is supplied by the caller (the invoice service's request scope).
+func (s *Service) SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error {
+	return s.repo.SetStatusForInvoice(ctx, tenantID, invoiceID, status)
+}
+
+// ClearForInvoice reverts every shift linked to an invoice back to 'recorded'
+// with a NULL invoice_id (invoice delete). It satisfies invoice.ShiftLinker.
+func (s *Service) ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error {
+	return s.repo.ClearForInvoice(ctx, tenantID, invoiceID)
+}
+
 // ListItems returns a shift's line items (billed + unbilled).
 func (s *Service) ListItems(ctx context.Context, shiftID int64) ([]*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)

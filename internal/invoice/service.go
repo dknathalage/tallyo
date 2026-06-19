@@ -16,6 +16,10 @@ import (
 type ShiftLinker interface {
 	SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error
 	ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error
+	// MarkDrafted links the given recorded shifts to invoiceID and advances them
+	// to status 'drafted'. Called by DraftFromShifts AFTER the invoice + its
+	// linked lines are committed, so the shift→invoice reference is satisfiable.
+	MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []int64) error
 }
 
 // Service orchestrates invoice reads/writes and publishes change events
@@ -106,6 +110,32 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 		return nil, err
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
+	return inv, nil
+}
+
+// DraftFromShifts drafts a new invoice from N recorded, unbilled shifts — pure
+// deterministic linking, no model, no re-pricing (the items are already priced
+// on each shift). Shifts must share one participant and each carry at least one
+// item (G5). The invoice and its linked lines commit atomically; only AFTER that
+// commit are the shifts advanced to 'drafted' (via the ShiftLinker, a separate
+// tx), so the shift→invoice reference and MarkDrafted's existence check hold.
+func (s *Service) DraftFromShifts(ctx context.Context, shiftIDs []int64) (*Invoice, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	participantID, facts, err := s.repo.validateDraftShifts(ctx, tenantID, shiftIDs)
+	if err != nil {
+		return nil, err
+	}
+	inv, err := s.repo.DraftFromShifts(ctx, tenantID, participantID, facts)
+	if err != nil {
+		return nil, err
+	}
+	if s.shifts != nil {
+		if err := s.shifts.MarkDrafted(ctx, inv.ID, shiftIDs); err != nil {
+			return nil, err
+		}
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "bill"})
 	return inv, nil
 }
 

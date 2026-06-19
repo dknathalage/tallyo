@@ -25,7 +25,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
-	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewShifts(conn)))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewService(conn, hub, invoice.NewInvoices(conn))))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()

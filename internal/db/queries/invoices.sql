@@ -44,6 +44,11 @@ RETURNING *;
 -- name: UpdateInvoiceStatus :exec
 UPDATE invoices SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?;
 
+-- name: UpdateInvoiceTotals :one
+UPDATE invoices SET subtotal = ?, tax = ?, total = ?, updated_at = ?
+WHERE tenant_id = ? AND id = ?
+RETURNING *;
+
 -- name: DeleteInvoice :exec
 DELETE FROM invoices WHERE tenant_id = ? AND id = ?;
 

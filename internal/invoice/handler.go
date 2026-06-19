@@ -29,6 +29,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/invoices", h.List)
 	r.Post("/invoices", h.Create)
+	r.Post("/invoices/draft-from-shifts", h.DraftFromShifts)
 	r.Post("/invoices/bulk-delete", h.BulkDelete)
 	r.Post("/invoices/bulk-status", h.BulkStatus)
 	r.Get("/invoices/{id}", h.Get)
@@ -135,6 +136,29 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, inv)
+}
+
+// DraftFromShifts drafts one invoice from the posted recorded shift ids. An
+// empty list or a validation failure (mixed participants, an empty shift, a
+// non-recorded shift) → 400.
+func (h *Handler) DraftFromShifts(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ShiftIds []int64 `json:"shiftIds"`
+	}
+	if err := httpx.DecodeJSON(r, &body); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if len(body.ShiftIds) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "at least one shift is required")
+		return
+	}
+	inv, err := h.svc.DraftFromShifts(r.Context(), body.ShiftIds)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, inv)
