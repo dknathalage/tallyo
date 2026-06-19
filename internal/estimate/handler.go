@@ -7,6 +7,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/go-chi/chi/v5"
 )
@@ -77,6 +78,16 @@ func parseIDFromString(s string) (int64, bool) {
 // params. Unlike invoices there is no read-time overdue sweep.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if listquery.IsListQuery(q) {
+		c := listquery.Build(q, EstimateCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
 	if pid := q.Get("participantId"); pid != "" {
 		participantID, ok := parseIDFromString(pid)
 		if !ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
@@ -26,6 +27,20 @@ func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 func (s *Service) List(ctx context.Context) ([]*TaxRate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID)
+}
+
+// Query returns a page of tax rates for the given listquery clause. Rows is
+// never null in JSON.
+func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Result[*TaxRate], error) {
+	tenantID := reqctx.MustTenant(ctx)
+	rows, total, err := s.repo.Query(ctx, tenantID, c)
+	if err != nil {
+		return listquery.Result[*TaxRate]{}, err
+	}
+	if rows == nil {
+		rows = []*TaxRate{}
+	}
+	return listquery.Result[*TaxRate]{Rows: rows, Total: total}, nil
 }
 
 func (s *Service) Get(ctx context.Context, id int64) (*TaxRate, error) {

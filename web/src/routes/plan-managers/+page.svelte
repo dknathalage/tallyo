@@ -1,42 +1,43 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { planManagers } from '$lib/stores/planManagers.svelte';
-	import type { PlanManager } from '$lib/api/types';
+	import Modal from '$lib/components/Modal.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
+	import type { Column, RowAction } from '$lib/components/datatable';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import type { PlanManager, PlanManagerInput } from '$lib/api/types';
 
-	// New-item form fields.
+	// New-plan-manager form fields.
 	let newName = $state('');
 	let newEmail = $state('');
 	let newPhone = $state('');
 	let newAddress = $state('');
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
+	let showForm = $state(false);
 
-	// Client-side search (generic store has no query support).
-	let search = $state('');
-	const filtered = $derived.by<PlanManager[]>(() => {
-		const q = search.trim().toLowerCase();
-		if (q === '') return planManagers.items;
-		return planManagers.items.filter(
-			(p) =>
-				p.name.toLowerCase().includes(q) ||
-				p.email.toLowerCase().includes(q) ||
-				p.phone.toLowerCase().includes(q)
-		);
-	});
-
-	// Inline edit state.
-	let editId = $state<number | null>(null);
-	let editName = $state('');
-	let editEmail = $state('');
-	let editPhone = $state('');
-	let editAddress = $state('');
-	let rowError = $state<string | null>(null);
-	let busy = $state(false);
+	function openCreate(): void {
+		resetNew();
+		formError = null;
+		showForm = true;
+	}
+	function cancelCreate(): void {
+		resetNew();
+		formError = null;
+		showForm = false;
+	}
 
 	onMount(() => {
 		planManagers.ensureSubscribed();
-		void planManagers.load();
+		void planManagers.query({ page: 1, limit: 50 });
 	});
+
+	function resetNew(): void {
+		newName = '';
+		newEmail = '';
+		newPhone = '';
+		newAddress = '';
+	}
 
 	async function createManager(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
@@ -50,11 +51,8 @@
 				address: newAddress,
 				metadata: ''
 			});
-			newName = '';
-			newEmail = '';
-			newPhone = '';
-			newAddress = '';
-			await planManagers.load();
+			resetNew();
+			showForm = false;
 		} catch (err) {
 			formError = err instanceof Error ? err.message : 'Failed to create plan manager.';
 		} finally {
@@ -62,219 +60,93 @@
 		}
 	}
 
-	function startEdit(pm: PlanManager): void {
-		rowError = null;
-		editId = pm.id;
-		editName = pm.name;
-		editEmail = pm.email;
-		editPhone = pm.phone;
-		editAddress = pm.address;
+	// DataTable column definitions. Keys match PlanManager JSON fields (and the
+	// server allowlist), so one key drives filter, sort, display, and drawer edit.
+	const columns: Column<PlanManager>[] = [
+		{ key: 'name', label: 'Name', sortable: true, filter: 'text' },
+		{ key: 'email', label: 'Email', sortable: true, filter: 'text' },
+		{ key: 'phone', label: 'Phone', sortable: true, filter: 'text' },
+		{ key: 'address', label: 'Address', sortable: true, filter: 'text' }
+	];
+
+	// Map a (possibly drawer-edited) PlanManager back to its writable input.
+	function toInput(p: PlanManager): PlanManagerInput {
+		return {
+			name: p.name,
+			email: p.email,
+			phone: p.phone,
+			address: p.address,
+			metadata: p.metadata
+		};
 	}
 
-	function cancelEdit(): void {
-		editId = null;
-		rowError = null;
-	}
-
-	async function saveEdit(pm: PlanManager): Promise<void> {
-		rowError = null;
-		busy = true;
-		try {
-			await planManagers.crud.update(pm.id, {
-				name: editName,
-				email: editEmail,
-				phone: editPhone,
-				address: editAddress,
-				metadata: pm.metadata
-			});
-			editId = null;
-			await planManagers.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to update plan manager.';
-		} finally {
-			busy = false;
+	const rowActions: RowAction<PlanManager>[] = [
+		{
+			label: 'Delete',
+			icon: Trash2,
+			danger: true,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await planManagers.crud.remove(r.id); // bounded by selection
+			}
 		}
-	}
-
-	async function removeManager(id: number): Promise<void> {
-		rowError = null;
-		busy = true;
-		try {
-			await planManagers.crud.remove(id);
-			await planManagers.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to delete plan manager.';
-		} finally {
-			busy = false;
-		}
-	}
+	];
 </script>
 
-<div class="space-y-8">
+<div class="space-y-6">
 	<section>
-		<h1 class="mb-1 text-xl font-semibold">Plan managers</h1>
-		<p class="mb-6 text-sm text-gray-500">
-			NDIS plan-management organisations you invoice on behalf of participants.
-		</p>
+		<div class="mb-2">
+			<h1 class="mb-1 text-xl font-semibold">Plan managers</h1>
+			<p class="text-sm text-gray-500">
+				NDIS plan-management organisations you invoice on behalf of participants.
+			</p>
+		</div>
 
-		<form class="flex max-w-3xl flex-wrap items-end gap-3" onsubmit={createManager}>
-			<label class="flex-1">
-				<span class="mb-1 block text-sm font-medium">Name</span>
-				<input
-					type="text"
-					bind:value={newName}
-					required
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="flex-1">
-				<span class="mb-1 block text-sm font-medium">Email</span>
-				<input
-					type="email"
-					bind:value={newEmail}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="flex-1">
-				<span class="mb-1 block text-sm font-medium">Phone</span>
-				<input
-					type="text"
-					bind:value={newPhone}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="flex-1">
-				<span class="mb-1 block text-sm font-medium">Address</span>
-				<input
-					type="text"
-					bind:value={newAddress}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<button
-				type="submit"
-				disabled={creating}
-				class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-			>
-				{creating ? 'Adding…' : 'Add'}
-			</button>
-		</form>
-
-		{#if formError}
-			<p class="mt-3 text-sm text-red-600">{formError}</p>
-		{/if}
+		<Modal bind:open={showForm} title="New plan manager">
+			<form class="grid grid-cols-2 gap-3" onsubmit={createManager}>
+				<label class="col-span-1">
+					<span class="mb-1 block text-sm font-medium">Name</span>
+					<input type="text" bind:value={newName} required class="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+				</label>
+				<label class="col-span-1">
+					<span class="mb-1 block text-sm font-medium">Email</span>
+					<input type="email" bind:value={newEmail} class="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+				</label>
+				<label class="col-span-1">
+					<span class="mb-1 block text-sm font-medium">Phone</span>
+					<input type="text" bind:value={newPhone} class="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+				</label>
+				<label class="col-span-1">
+					<span class="mb-1 block text-sm font-medium">Address</span>
+					<input type="text" bind:value={newAddress} class="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
+				</label>
+				{#if formError}
+					<p class="col-span-2 text-sm text-red-600">{formError}</p>
+				{/if}
+				<div class="col-span-2 flex gap-2">
+					<button type="submit" disabled={creating} class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+						{creating ? 'Adding…' : 'Add plan manager'}
+					</button>
+					<button type="button" onclick={cancelCreate} class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
+				</div>
+			</form>
+		</Modal>
 	</section>
 
 	<section>
-		<label class="mb-4 block max-w-sm">
-			<span class="mb-1 block text-sm font-medium">Search</span>
-			<input
-				type="text"
-				bind:value={search}
-				placeholder="Filter by name, email, or phone"
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-			/>
-		</label>
-
-		{#if planManagers.loading}
-			<p class="text-sm text-gray-500">Loading…</p>
-		{/if}
 		{#if planManagers.error}
-			<p class="text-sm text-red-600">{planManagers.error}</p>
-		{/if}
-		{#if rowError}
-			<p class="mb-3 text-sm text-red-600">{rowError}</p>
+			<p class="mb-3 text-sm text-red-600">{planManagers.error}</p>
 		{/if}
 
-		<div class="overflow-hidden rounded border border-gray-200 bg-white">
-			<table class="w-full text-sm">
-				<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
-					<tr>
-						<th class="px-3 py-2 font-medium">Name</th>
-						<th class="px-3 py-2 font-medium">Email</th>
-						<th class="px-3 py-2 font-medium">Phone</th>
-						<th class="px-3 py-2 font-medium">Address</th>
-						<th class="px-3 py-2 font-medium text-right">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filtered as pm (pm.id)}
-						<tr class="border-b border-gray-100 last:border-0">
-							{#if editId === pm.id}
-								<td class="px-3 py-2">
-									<input
-										type="text"
-										bind:value={editName}
-										class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-									/>
-								</td>
-								<td class="px-3 py-2">
-									<input
-										type="email"
-										bind:value={editEmail}
-										class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-									/>
-								</td>
-								<td class="px-3 py-2">
-									<input
-										type="text"
-										bind:value={editPhone}
-										class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-									/>
-								</td>
-								<td class="px-3 py-2">
-									<input
-										type="text"
-										bind:value={editAddress}
-										class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-									/>
-								</td>
-								<td class="px-3 py-2 text-right whitespace-nowrap">
-									<button
-										type="button"
-										disabled={busy}
-										onclick={() => saveEdit(pm)}
-										class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
-									>
-										Save
-									</button>
-									<button type="button" onclick={cancelEdit} class="text-gray-500 hover:underline">
-										Cancel
-									</button>
-								</td>
-							{:else}
-								<td class="px-3 py-2 font-medium">{pm.name}</td>
-								<td class="px-3 py-2 text-gray-600">{pm.email || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{pm.phone || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{pm.address || '—'}</td>
-								<td class="px-3 py-2 text-right whitespace-nowrap">
-									<button
-										type="button"
-										onclick={() => startEdit(pm)}
-										class="mr-2 text-gray-900 hover:underline"
-									>
-										Edit
-									</button>
-									<button
-										type="button"
-										disabled={busy}
-										onclick={() => removeManager(pm.id)}
-										class="text-red-600 hover:underline disabled:opacity-50"
-									>
-										Delete
-									</button>
-								</td>
-							{/if}
-						</tr>
-					{:else}
-						<tr>
-							<td colspan="5" class="px-3 py-6 text-center text-gray-500">
-								No plan managers found.
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+		<DataTable
+			title="Plan managers"
+			{columns}
+			store={planManagers}
+			{rowActions}
+			onNew={openCreate}
+			onRowSave={async (row) => {
+				await planManagers.crud.update(row.id, toInput(row));
+			}}
+		/>
 	</section>
 </div>

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,9 +32,21 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Delete("/custom-items/{id}", h.Delete)
 }
 
-// List returns custom items; ?search= switches to a name search.
+// List returns custom items. DataTable query params switch to a paged
+// {rows,total}; otherwise ?search= switches to a name search.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	search := r.URL.Query().Get("search")
+	q := r.URL.Query()
+	if listquery.IsListQuery(q) {
+		c := listquery.Build(q, CustomItemCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
+	search := q.Get("search")
 	var (
 		items []*CustomItem
 		err   error

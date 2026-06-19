@@ -19,9 +19,30 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/invoice"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
 )
+
+// recurringListSelect mirrors the ListRecurringTemplates sqlc query body up to
+// the WHERE. Keep in sync with internal/db/queries/recurring_templates.sql.
+// tenant_id is the only bound parameter before the listquery clause args.
+const recurringListSelect = `SELECT r.*, p.name AS participant_name
+FROM recurring_templates r
+LEFT JOIN participants p ON r.participant_id = p.id AND p.tenant_id = r.tenant_id
+WHERE r.tenant_id = ?`
+
+// RecurringCols is the listquery allowlist for recurring templates. Keys match
+// the JSON field names so the frontend column key drives filter, sort, and
+// display with one identifier.
+var RecurringCols = listquery.Spec{
+	"name":            {Col: "r.name", Filter: listquery.Text},
+	"participantName": {Col: "p.name", Filter: listquery.Text},
+	"frequency":       {Col: "r.frequency", Filter: listquery.Enum},
+	"nextDue":         {Col: "r.next_due", Filter: listquery.Date},
+	"isActive":        {Col: "r.is_active", Filter: listquery.Enum},
+	"taxRate":         {Col: "r.tax_rate", Filter: listquery.Number},
+}
 
 // RecurringTemplate is the domain view of a recurring invoice template. Line
 // items are stored as a JSON string column and unmarshalled into the slice.
@@ -136,6 +157,47 @@ func (r *Repo) List(ctx context.Context, tenantID int64, activeOnly bool) ([]*Re
 		out = append(out, listRowToTemplate(rows[i]))
 	}
 	return out, nil
+}
+
+// Query returns one page of templates plus the total row count for the filter
+// (ignoring pagination). The clause is built by listquery from an allowlisted
+// spec, so its Where/Order fragments are injection-safe. Default order is by
+// next_due ascending.
+func (r *Repo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*RecurringTemplate, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, errors.New("query recurring: tenant id required")
+	}
+	var total int64
+	countSQL := "SELECT count(*) FROM (" + recurringListSelect + c.Where + ")"
+	countArgs := append([]any{tenantID}, c.CountArgs()...)
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count recurring: %w", err)
+	}
+	order := c.Order
+	if order == "" {
+		order = " ORDER BY r.next_due"
+	}
+	sqlText := recurringListSelect + c.Where + order + c.Limit
+	pageArgs := append([]any{tenantID}, c.Args...)
+	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query recurring: %w", err)
+	}
+	defer rows.Close()
+	out := make([]*RecurringTemplate, 0, 50)
+	for rows.Next() { // bounded by LIMIT in the query
+		var i gen.ListRecurringTemplatesRow
+		if err := rows.Scan(&i.ID, &i.Uuid, &i.TenantID, &i.ParticipantID, &i.PlanManagerID,
+			&i.Name, &i.Frequency, &i.NextDue, &i.LineItems, &i.TaxRate, &i.Notes,
+			&i.IsActive, &i.CreatedAt, &i.UpdatedAt, &i.ParticipantName); err != nil {
+			return nil, 0, fmt.Errorf("scan recurring: %w", err)
+		}
+		out = append(out, listRowToTemplate(i))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("query recurring: %w", err)
+	}
+	return out, total, nil
 }
 
 // Get returns the template (with participant name and line items), or (nil, nil)

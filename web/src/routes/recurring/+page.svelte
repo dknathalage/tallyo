@@ -4,6 +4,9 @@
 	import { participants } from '$lib/stores/participants.svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
 	import { apiPost } from '$lib/api/client';
+	import DataTable from '$lib/components/DataTable.svelte';
+	import type { Column, RowAction } from '$lib/components/datatable';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { RecurringTemplate, RecurringFrequency, RecurringLine, Invoice } from '$lib/api/types';
 
 	// A draft line-item row used by the editor.
@@ -23,16 +26,6 @@
 		return v.toFixed(2);
 	}
 
-	// Client-side search.
-	let search = $state('');
-	const filtered = $derived.by<RecurringTemplate[]>(() => {
-		const q = search.trim().toLowerCase();
-		if (q === '') return recurring.items;
-		return recurring.items.filter(
-			(t) => t.name.toLowerCase().includes(q) || t.participantName.toLowerCase().includes(q)
-		);
-	});
-
 	// Form state (shared by create + edit).
 	let showForm = $state(false);
 	let editId = $state<number | null>(null);
@@ -48,7 +41,6 @@
 	let formError = $state<string | null>(null);
 	let rowError = $state<string | null>(null);
 	let message = $state<string | null>(null);
-	let busy = $state(false);
 
 	// Selected tax-rate percent (recurring stores only a number, no taxRateId).
 	const previewTaxRate = $derived.by<number>(() => {
@@ -60,12 +52,85 @@
 
 	onMount(() => {
 		recurring.ensureSubscribed();
-		void recurring.load();
+		void recurring.query({ page: 1, limit: 50 });
 		participants.ensureSubscribed();
 		void participants.load();
 		taxRates.ensureSubscribed();
 		void taxRates.load();
 	});
+
+	// DataTable column definitions. Keys match RecurringTemplate JSON fields (and
+	// the server allowlist), so one key drives filter, sort, and display.
+	const columns: Column<RecurringTemplate>[] = [
+		{ key: 'name', label: 'Name', sortable: true, filter: 'text' },
+		{ key: 'participantName', label: 'Participant', sortable: true, filter: 'text' },
+		{
+			key: 'frequency',
+			label: 'Frequency',
+			sortable: true,
+			filter: 'enum',
+			values: ['weekly', 'monthly', 'quarterly']
+		},
+		{
+			key: 'nextDue',
+			label: 'Next due',
+			sortable: true,
+			filter: 'date',
+			cell: (t) => (t.nextDue ? t.nextDue.slice(0, 10) : '—')
+		},
+		{
+			key: 'taxRate',
+			label: 'Tax rate',
+			sortable: true,
+			filter: 'number',
+			cell: (t) => `${t.taxRate}%`
+		},
+		{
+			// is_active is stored as 0/1; enum filter values are the integer strings.
+			key: 'isActive',
+			label: 'Status',
+			sortable: true,
+			filter: 'enum',
+			values: ['1', '0'],
+			cell: (t) => (t.isActive ? 'Active' : 'Inactive')
+		}
+	];
+
+	// Selection-bar actions. Edit and Generate act on a single selected row (they
+	// are inherently per-template); Delete handles any number of selected rows.
+	const rowActions: RowAction<RecurringTemplate>[] = [
+		{
+			label: 'Edit',
+			bulk: true,
+			run: async (rows) => {
+				if (rows.length !== 1) {
+					rowError = 'Select exactly one template to edit.';
+					return;
+				}
+				await startEdit(rows[0].id);
+			}
+		},
+		{
+			label: 'Generate now',
+			bulk: true,
+			run: async (rows) => {
+				if (rows.length !== 1) {
+					rowError = 'Select exactly one template to generate from.';
+					return;
+				}
+				await generateNow(rows[0].id);
+			}
+		},
+		{
+			label: 'Delete',
+			icon: Trash2,
+			danger: true,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await recurring.crud.remove(r.id); // bounded by selection
+			}
+		}
+	];
 
 	function lineAmount(row: LineRow): number {
 		return (Number(row.quantity) || 0) * (Number(row.unitPrice) || 0);
@@ -145,7 +210,7 @@
 				await recurring.crud.update(editId, payload);
 			}
 			resetForm();
-			await recurring.load();
+			// The list refreshes via SSE invalidation (re-runs the active query).
 		} catch (err) {
 			formError = err instanceof Error ? err.message : 'Failed to save template.';
 		} finally {
@@ -155,7 +220,6 @@
 
 	async function startEdit(id: number): Promise<void> {
 		rowError = null;
-		busy = true;
 		try {
 			const full = await recurring.crud.get(id);
 			editId = full.id;
@@ -185,36 +249,17 @@
 			showForm = true;
 		} catch (err) {
 			rowError = err instanceof Error ? err.message : 'Failed to load template.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function remove(id: number): Promise<void> {
-		rowError = null;
-		busy = true;
-		try {
-			await recurring.crud.remove(id);
-			await recurring.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to delete template.';
-		} finally {
-			busy = false;
 		}
 	}
 
 	async function generateNow(id: number): Promise<void> {
 		rowError = null;
 		message = null;
-		busy = true;
 		try {
 			const inv = await apiPost<Invoice>('/api/recurring/' + id + '/generate', {});
 			message = inv !== null ? 'Generated invoice ' + inv.number : 'Generated invoice.';
-			await recurring.load();
 		} catch (err) {
 			rowError = err instanceof Error ? err.message : 'Failed to generate invoice.';
-		} finally {
-			busy = false;
 		}
 	}
 </script>
@@ -421,21 +466,8 @@
 	</section>
 
 	<section>
-		<label class="mb-4 block max-w-sm">
-			<span class="mb-1 block text-sm font-medium">Search</span>
-			<input
-				type="text"
-				bind:value={search}
-				placeholder="Filter by name or participant"
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-			/>
-		</label>
-
-		{#if recurring.loading}
-			<p class="text-sm text-gray-500">Loading…</p>
-		{/if}
 		{#if recurring.error}
-			<p class="text-sm text-red-600">{recurring.error}</p>
+			<p class="mb-3 text-sm text-red-600">{recurring.error}</p>
 		{/if}
 		{#if rowError}
 			<p class="mb-3 text-sm text-red-600">{rowError}</p>
@@ -444,72 +476,12 @@
 			<p class="mb-3 text-sm text-green-700">{message}</p>
 		{/if}
 
-		<div class="overflow-hidden rounded border border-gray-200 bg-white">
-			<table class="w-full text-sm">
-				<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
-					<tr>
-						<th class="px-3 py-2 font-medium">Name</th>
-						<th class="px-3 py-2 font-medium">Participant</th>
-						<th class="px-3 py-2 font-medium">Frequency</th>
-						<th class="px-3 py-2 font-medium">Next due</th>
-						<th class="px-3 py-2 font-medium">Status</th>
-						<th class="px-3 py-2 font-medium text-right">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filtered as t (t.id)}
-						<tr class="border-b border-gray-100 last:border-0">
-							<td class="px-3 py-2 font-medium">{t.name}</td>
-							<td class="px-3 py-2 text-gray-600">{t.participantName || '—'}</td>
-							<td class="px-3 py-2 text-gray-600 capitalize">{t.frequency}</td>
-							<td class="px-3 py-2 text-gray-600">
-								{t.nextDue ? t.nextDue.slice(0, 10) : '—'}
-							</td>
-							<td class="px-3 py-2">
-								<span
-									class="inline-block rounded px-2 py-0.5 text-xs font-medium {t.isActive
-										? 'bg-green-100 text-green-800'
-										: 'bg-gray-100 text-gray-700'}"
-								>
-									{t.isActive ? 'Active' : 'Inactive'}
-								</span>
-							</td>
-							<td class="px-3 py-2 text-right whitespace-nowrap">
-								<button
-									type="button"
-									onclick={() => generateNow(t.id)}
-									disabled={busy}
-									class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
-								>
-									Generate now
-								</button>
-								<button
-									type="button"
-									onclick={() => startEdit(t.id)}
-									disabled={busy}
-									class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
-								>
-									Edit
-								</button>
-								<button
-									type="button"
-									onclick={() => remove(t.id)}
-									disabled={busy}
-									class="text-red-600 hover:underline disabled:opacity-50"
-								>
-									Delete
-								</button>
-							</td>
-						</tr>
-					{:else}
-						<tr>
-							<td colspan="6" class="px-3 py-6 text-center text-gray-500">
-								No recurring templates found.
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+		<DataTable
+			title="Recurring"
+			{columns}
+			store={recurring}
+			{rowActions}
+			onNew={openCreate}
+		/>
 	</section>
 </div>

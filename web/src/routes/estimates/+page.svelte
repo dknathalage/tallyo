@@ -4,9 +4,17 @@
 	import { participants } from '$lib/stores/participants.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
-	import { apiPost, ApiError } from '$lib/api/client';
+	import { ApiError, apiPost } from '$lib/api/client';
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
+	import DataTable from '$lib/components/DataTable.svelte';
+	import type { Column, RowAction } from '$lib/components/datatable';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import FileOutput from '@lucide/svelte/icons/file-output';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Check from '@lucide/svelte/icons/check';
+	import Ban from '@lucide/svelte/icons/ban';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type {
 		Estimate,
 		EstimateStatus,
@@ -14,38 +22,38 @@
 		ValidationDetail
 	} from '$lib/api/types';
 
-	interface ConvertResult {
-		invoiceId: number;
-		invoiceNumber: string;
-		estimateNumber: string;
-	}
-
-	const STATUSES: EstimateStatus[] = ['draft', 'accepted', 'declined', 'converted'];
-
-	function statusClass(status: string): string {
-		switch (status) {
-			case 'accepted':
-				return 'bg-green-100 text-green-800';
-			case 'converted':
-				return 'bg-blue-100 text-blue-800';
-			case 'declined':
-				return 'bg-red-100 text-red-800';
-			default:
-				return 'bg-gray-100 text-gray-700';
-		}
-	}
-
 	function money(n: number): string {
 		const v = Number.isFinite(n) ? n : 0;
 		return v.toFixed(2);
 	}
 
-	// List filter.
-	let selectedStatus = $state<'all' | EstimateStatus>('all');
-	const filtered = $derived.by<Estimate[]>(() => {
-		if (selectedStatus === 'all') return estimates.items;
-		return estimates.items.filter((est) => est.status === selectedStatus);
-	});
+	// DataTable column definitions. Keys match Estimate JSON fields (and the
+	// server allowlist), so one key drives filter, sort and display.
+	const columns: Column<Estimate>[] = [
+		{ key: 'number', label: 'Number', sortable: true, filter: 'text' },
+		{ key: 'participantName', label: 'Participant', sortable: true, filter: 'text' },
+		{
+			key: 'issueDate',
+			label: 'Issued',
+			sortable: true,
+			filter: 'date',
+			cell: (e) => (e.issueDate ? e.issueDate.slice(0, 10) : '—')
+		},
+		{
+			key: 'total',
+			label: 'Total',
+			sortable: true,
+			filter: 'number',
+			cell: (e) => money(e.total)
+		},
+		{
+			key: 'status',
+			label: 'Status',
+			sortable: true,
+			filter: 'enum',
+			values: ['draft', 'accepted', 'declined', 'converted']
+		}
+	];
 
 	// Form state (shared by create + edit).
 	let showForm = $state(false);
@@ -59,8 +67,102 @@
 	let saving = $state(false);
 	let formError = $state<string | null>(null);
 	let rowError = $state<string | null>(null);
-	let convertMsg = $state<string | null>(null);
-	let busy = $state(false);
+
+	// Load a full estimate (with line items) into the shared form for editing.
+	async function startEdit(id: number): Promise<void> {
+		rowError = null;
+		try {
+			const full = await estimates.crud.get(id);
+			editId = full.id;
+			formParticipantId = full.participantId === null ? '' : String(full.participantId);
+			formIssueDate = full.issueDate ? full.issueDate.slice(0, 10) : '';
+			formValidUntil = full.validUntil ? full.validUntil.slice(0, 10) : '';
+			formNotes = full.notes;
+			validationDetails = [];
+			lines = full.lineItems
+				.slice()
+				.sort((a, b) => a.sortOrder - b.sortOrder)
+				.map((li) => ({
+					kind: (li.customItemId === null && li.code !== '' ? 'support' : 'custom') as
+						| 'support'
+						| 'custom',
+					customItemId: li.customItemId,
+					catalogVersionId: li.catalogVersionId,
+					code: li.code,
+					description: li.description,
+					serviceDate: li.serviceDate ? li.serviceDate.slice(0, 10) : '',
+					unit: li.unit,
+					quantity: li.quantity,
+					unitPrice: li.unitPrice,
+					gstFree: li.gstFree,
+					sortOrder: li.sortOrder
+				}));
+			formError = null;
+			showForm = true;
+		} catch (err) {
+			rowError = err instanceof Error ? err.message : 'Failed to load estimate.';
+		}
+	}
+
+	// Table actions. Edit operates on the first selected row; the rest loop over
+	// the selection. Mutations refresh via the SSE estimate event re-running the
+	// active query.
+	const rowActions: RowAction<Estimate>[] = [
+		{
+			label: 'Edit',
+			icon: Pencil,
+			bulk: true,
+			run: async (rows) => {
+				if (rows.length > 0) await startEdit(rows[0].id);
+			}
+		},
+		{
+			label: 'Convert to invoice',
+			icon: FileOutput,
+			bulk: true,
+			run: async (rows) => {
+				rowError = null;
+				try {
+					for (const r of rows) await apiPost(`/api/estimates/${r.id}/convert`, {});
+				} catch (err) {
+					rowError = err instanceof Error ? err.message : 'Failed to convert estimate.';
+				}
+			}
+		},
+		{
+			label: 'Duplicate',
+			icon: Copy,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await apiPost(`/api/estimates/${r.id}/duplicate`, {});
+			}
+		},
+		{
+			label: 'Accept',
+			icon: Check,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await apiPost(`/api/estimates/${r.id}/status`, { status: 'accepted' });
+			}
+		},
+		{
+			label: 'Decline',
+			icon: Ban,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await apiPost(`/api/estimates/${r.id}/status`, { status: 'declined' });
+			}
+		},
+		{
+			label: 'Delete',
+			icon: Trash2,
+			danger: true,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await estimates.crud.remove(r.id);
+			}
+		}
+	];
 
 	const subtotalPreview = $derived.by<number>(() => {
 		let sum = 0;
@@ -74,7 +176,7 @@
 
 	onMount(() => {
 		estimates.ensureSubscribed();
-		void estimates.load();
+		void estimates.query({ page: 1, limit: 50 });
 		participants.ensureSubscribed();
 		void participants.load();
 		customItems.ensureSubscribed();
@@ -166,7 +268,6 @@
 				await estimates.crud.update(editId, payload);
 			}
 			resetForm();
-			await estimates.load();
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 422) {
 				validationDetails = err.details;
@@ -179,117 +280,6 @@
 		}
 	}
 
-	async function startEdit(id: number): Promise<void> {
-		rowError = null;
-		busy = true;
-		try {
-			const full = await estimates.crud.get(id);
-			editId = full.id;
-			formParticipantId = full.participantId === null ? '' : String(full.participantId);
-			formIssueDate = full.issueDate ? full.issueDate.slice(0, 10) : '';
-			formValidUntil = full.validUntil ? full.validUntil.slice(0, 10) : '';
-			formNotes = full.notes;
-			validationDetails = [];
-			lines = full.lineItems
-				.slice()
-				.sort((a, b) => a.sortOrder - b.sortOrder)
-				.map((li) => ({
-					kind: (li.customItemId === null && li.code !== '' ? 'support' : 'custom') as
-						| 'support'
-						| 'custom',
-					customItemId: li.customItemId,
-					catalogVersionId: li.catalogVersionId,
-					code: li.code,
-					description: li.description,
-					serviceDate: li.serviceDate ? li.serviceDate.slice(0, 10) : '',
-					unit: li.unit,
-					quantity: li.quantity,
-					unitPrice: li.unitPrice,
-					gstFree: li.gstFree,
-					sortOrder: li.sortOrder
-				}));
-			if (lines.length === 0) {
-				lines = [
-					{
-						kind: 'support',
-						customItemId: null,
-						catalogVersionId: null,
-						code: '',
-						description: '',
-						serviceDate: new Date().toISOString().slice(0, 10),
-						unit: '',
-						quantity: 1,
-						unitPrice: 0,
-						gstFree: true,
-						sortOrder: 0
-					}
-				];
-			}
-			formError = null;
-			showForm = true;
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to load estimate.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function changeStatus(id: number, status: string): Promise<void> {
-		if (status === '') return;
-		rowError = null;
-		busy = true;
-		try {
-			await apiPost('/api/estimates/' + id + '/status', { status });
-			await estimates.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to update status.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function duplicate(id: number): Promise<void> {
-		rowError = null;
-		busy = true;
-		try {
-			await apiPost('/api/estimates/' + id + '/duplicate', {});
-			await estimates.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to duplicate estimate.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function convert(id: number): Promise<void> {
-		rowError = null;
-		convertMsg = null;
-		busy = true;
-		try {
-			const result = await apiPost<ConvertResult>('/api/estimates/' + id + '/convert', {});
-			if (result !== null) {
-				convertMsg = `Converted to invoice ${result.invoiceNumber}.`;
-			}
-			await estimates.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to convert estimate.';
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function remove(id: number): Promise<void> {
-		rowError = null;
-		busy = true;
-		try {
-			await estimates.crud.remove(id);
-			await estimates.load();
-		} catch (err) {
-			rowError = err instanceof Error ? err.message : 'Failed to delete estimate.';
-		} finally {
-			busy = false;
-		}
-	}
 </script>
 
 <div class="space-y-8">
@@ -396,126 +386,13 @@
 	</section>
 
 	<section>
-		<div class="mb-4 flex flex-wrap items-center gap-2">
-			<span class="text-sm font-medium">Filter:</span>
-			<button
-				type="button"
-				onclick={() => (selectedStatus = 'all')}
-				class="rounded px-3 py-1 text-sm {selectedStatus === 'all'
-					? 'bg-gray-900 text-white'
-					: 'border border-gray-300 hover:bg-gray-50'}"
-			>
-				All
-			</button>
-			{#each STATUSES as s (s)}
-				<button
-					type="button"
-					onclick={() => (selectedStatus = s)}
-					class="rounded px-3 py-1 text-sm capitalize {selectedStatus === s
-						? 'bg-gray-900 text-white'
-						: 'border border-gray-300 hover:bg-gray-50'}"
-				>
-					{s}
-				</button>
-			{/each}
-		</div>
-
-		{#if estimates.loading}
-			<p class="text-sm text-gray-500">Loading…</p>
-		{/if}
 		{#if estimates.error}
-			<p class="text-sm text-red-600">{estimates.error}</p>
+			<p class="mb-3 text-sm text-red-600">{estimates.error}</p>
 		{/if}
 		{#if rowError}
 			<p class="mb-3 text-sm text-red-600">{rowError}</p>
 		{/if}
-		{#if convertMsg}
-			<p class="mb-3 text-sm text-green-700">{convertMsg}</p>
-		{/if}
 
-		<div class="overflow-hidden rounded border border-gray-200 bg-white">
-			<table class="w-full text-sm">
-				<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
-					<tr>
-						<th class="px-3 py-2 font-medium">Number</th>
-						<th class="px-3 py-2 font-medium">Participant</th>
-						<th class="px-3 py-2 font-medium">Issued</th>
-						<th class="px-3 py-2 font-medium text-right">Total</th>
-						<th class="px-3 py-2 font-medium">Status</th>
-						<th class="px-3 py-2 font-medium text-right">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filtered as est (est.id)}
-						<tr class="border-b border-gray-100 last:border-0">
-							<td class="px-3 py-2 font-medium">{est.number}</td>
-							<td class="px-3 py-2 text-gray-600">{est.participantName || '—'}</td>
-							<td class="px-3 py-2 text-gray-600">
-								{est.issueDate ? est.issueDate.slice(0, 10) : '—'}
-							</td>
-							<td class="px-3 py-2 text-right">{money(est.total)}</td>
-							<td class="px-3 py-2">
-								<span
-									class="inline-block rounded px-2 py-0.5 text-xs font-medium capitalize {statusClass(
-										est.status
-									)}"
-								>
-									{est.status}
-								</span>
-							</td>
-							<td class="px-3 py-2 text-right whitespace-nowrap">
-								<select
-									value={est.status}
-									disabled={busy}
-									onchange={(e) => changeStatus(est.id, e.currentTarget.value)}
-									class="mr-2 rounded border border-gray-300 px-1 py-1 text-xs disabled:opacity-50"
-									aria-label="Change status"
-								>
-									{#each STATUSES as s (s)}
-										<option value={s}>{s}</option>
-									{/each}
-								</select>
-								<button
-									type="button"
-									onclick={() => convert(est.id)}
-									disabled={busy}
-									class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
-								>
-									Convert
-								</button>
-								<button
-									type="button"
-									onclick={() => startEdit(est.id)}
-									disabled={busy}
-									class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
-								>
-									Edit
-								</button>
-								<button
-									type="button"
-									onclick={() => duplicate(est.id)}
-									disabled={busy}
-									class="mr-2 text-gray-900 hover:underline disabled:opacity-50"
-								>
-									Duplicate
-								</button>
-								<button
-									type="button"
-									onclick={() => remove(est.id)}
-									disabled={busy}
-									class="text-red-600 hover:underline disabled:opacity-50"
-								>
-									Delete
-								</button>
-							</td>
-						</tr>
-					{:else}
-						<tr>
-							<td colspan="6" class="px-3 py-6 text-center text-gray-500">No estimates found.</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+		<DataTable title="Estimates" {columns} store={estimates} {rowActions} onNew={openCreate} />
 	</section>
 </div>

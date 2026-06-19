@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,10 +32,22 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Delete("/plan-managers/{id}", h.Delete)
 }
 
-// List returns plan managers, optionally filtered by the ?search= query param.
+// List returns plan managers. With DataTable query params (sort/page/limit/f.*)
+// it returns a paged {rows,total}; otherwise it keeps the legacy ?search= array
+// for callers not yet migrated.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	search := r.URL.Query().Get("search")
-	managers, err := h.svc.List(r.Context(), search)
+	q := r.URL.Query()
+	if listquery.IsListQuery(q) {
+		c := listquery.Build(q, PlanManagerCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
+	managers, err := h.svc.List(r.Context(), q.Get("search"))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return

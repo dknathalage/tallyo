@@ -14,8 +14,22 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/google/uuid"
 )
+
+// taxRateListSelect is the base SELECT for paged tax-rate queries; listquery
+// appends a safe WHERE/ORDER/LIMIT tail after the mandatory tenant filter.
+const taxRateListSelect = `SELECT * FROM tax_rates WHERE tenant_id = ?`
+
+// TaxRateCols is the listquery allowlist for tax rates. Keys match the JSON
+// field names so the frontend column key drives filter, sort, and display with
+// one identifier. "isDefault" is sort-only (None).
+var TaxRateCols = listquery.Spec{
+	"name":      {Col: "name", Filter: listquery.Text},
+	"rate":      {Col: "rate", Filter: listquery.Number},
+	"isDefault": {Col: "is_default", Filter: listquery.None},
+}
 
 // TaxRate is the domain view of a row in the tax_rates table.
 type TaxRate struct {
@@ -64,6 +78,47 @@ func (r *TaxRatesRepo) List(ctx context.Context, tenantID int64) ([]*TaxRate, er
 		out = append(out, toTaxRate(rows[i]))
 	}
 	return out, nil
+}
+
+// Query returns one page of tax rates plus the total row count for the filter
+// (ignoring pagination). The clause is built by listquery from an allowlisted
+// spec, so its Where/Order fragments are injection-safe.
+func (r *TaxRatesRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*TaxRate, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, errors.New("query tax rates: tenant id required")
+	}
+	var total int64
+	countSQL := "SELECT count(*) FROM (" + taxRateListSelect + c.Where + ")"
+	countArgs := append([]any{tenantID}, c.CountArgs()...)
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count tax rates: %w", err)
+	}
+	order := c.Order
+	if order == "" {
+		order = " ORDER BY is_default DESC, name"
+	}
+	sqlText := taxRateListSelect + c.Where + order + c.Limit
+	pageArgs := append([]any{tenantID}, c.Args...)
+	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query tax rates: %w", err)
+	}
+	defer rows.Close()
+	out := make([]*TaxRate, 0, 50)
+	for rows.Next() { // bounded by LIMIT in the query
+		var t TaxRate
+		var tenant, isDefault int64
+		if err := rows.Scan(&t.ID, &t.UUID, &tenant, &t.Name, &t.Rate,
+			&isDefault, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scan tax rate: %w", err)
+		}
+		t.IsDefault = isDefault == 1
+		out = append(out, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("query tax rates: %w", err)
+	}
+	return out, total, nil
 }
 
 // Get returns the tenant's tax rate, or (nil, nil) when none matches.

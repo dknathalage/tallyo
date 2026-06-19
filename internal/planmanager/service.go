@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
@@ -26,6 +27,20 @@ func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 func (s *Service) List(ctx context.Context, search string) ([]*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID, search)
+}
+
+// Query returns a page of plan managers for the given listquery clause. Rows is
+// never null so it serializes as [] not null.
+func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Result[*PlanManager], error) {
+	tenantID := reqctx.MustTenant(ctx)
+	rows, total, err := s.repo.Query(ctx, tenantID, c)
+	if err != nil {
+		return listquery.Result[*PlanManager]{}, err
+	}
+	if rows == nil {
+		rows = []*PlanManager{}
+	}
+	return listquery.Result[*PlanManager]{Rows: rows, Total: total}, nil
 }
 
 func (s *Service) Get(ctx context.Context, id int64) (*PlanManager, error) {

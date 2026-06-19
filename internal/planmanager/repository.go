@@ -14,8 +14,21 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/google/uuid"
 )
+
+// planManagerListSelect is the base SELECT for the listquery-driven Query path.
+// listquery splices its safe WHERE/ORDER/LIMIT fragments after the tenant filter.
+const planManagerListSelect = `SELECT * FROM plan_managers WHERE tenant_id = ?`
+
+// PlanManagerCols is the listquery allowlist for plan managers. Keys match the
+// JSON field names so the frontend column key drives filter, sort, and display.
+var PlanManagerCols = listquery.Spec{
+	"name":  {Col: "name", Filter: listquery.Text},
+	"email": {Col: "email", Filter: listquery.Text},
+	"phone": {Col: "phone", Filter: listquery.Text},
+}
 
 // PlanManager is the domain view of a row in the plan_managers table. All
 // nullable columns are unwrapped to plain strings ("" when absent).
@@ -87,6 +100,46 @@ func (r *PlanManagersRepo) Get(ctx context.Context, tenantID, id int64) (*PlanMa
 		return nil, fmt.Errorf("get plan manager: %w", err)
 	}
 	return toPlanManager(row), nil
+}
+
+// Query returns one page of plan managers plus the total row count for the
+// filter (ignoring pagination). The clause is built by listquery from an
+// allowlisted spec, so its Where/Order fragments are injection-safe.
+func (r *PlanManagersRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*PlanManager, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, errors.New("query plan managers: tenant id required")
+	}
+	var total int64
+	countSQL := "SELECT count(*) FROM (" + planManagerListSelect + c.Where + ")"
+	countArgs := append([]any{tenantID}, c.CountArgs()...)
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count plan managers: %w", err)
+	}
+	order := c.Order
+	if order == "" {
+		order = " ORDER BY name"
+	}
+	sqlText := planManagerListSelect + c.Where + order + c.Limit
+	pageArgs := append([]any{tenantID}, c.Args...)
+	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query plan managers: %w", err)
+	}
+	defer rows.Close()
+	out := make([]*PlanManager, 0, 50)
+	for rows.Next() { // bounded by LIMIT in the query
+		var row gen.PlanManager
+		var tenant int64
+		if err := rows.Scan(&row.ID, &row.Uuid, &tenant, &row.Name, &row.Email,
+			&row.Phone, &row.Address, &row.Metadata, &row.CreatedAt, &row.UpdatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scan plan manager: %w", err)
+		}
+		out = append(out, toPlanManager(row))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("query plan managers: %w", err)
+	}
+	return out, total, nil
 }
 
 // Create inserts a plan manager and writes one audit row, atomically.

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -30,8 +31,20 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Delete("/tax-rates/{id}", h.Delete)
 }
 
-// List returns every tax rate (always a JSON array, never null).
+// List returns tax rates. With DataTable query params (sort/page/limit/f.*) it
+// returns a paged {rows,total}; otherwise it keeps the legacy full JSON array.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if listquery.IsListQuery(q) {
+		c := listquery.Build(q, TaxRateCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
 	rates, err := h.svc.List(r.Context())
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")

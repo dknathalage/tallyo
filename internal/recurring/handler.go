@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,9 +32,22 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/recurring/{id}/generate", h.Generate)
 }
 
-// List returns templates. ?active=true (or 1) returns only active templates.
+// List returns templates. With DataTable query params (sort/page/limit/f.*) it
+// returns a paged {rows,total}; otherwise it keeps the legacy array, where
+// ?active=true (or 1) returns only active templates.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	active := r.URL.Query().Get("active")
+	q := r.URL.Query()
+	if listquery.IsListQuery(q) {
+		c := listquery.Build(q, RecurringCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
+	active := q.Get("active")
 	activeOnly := active == "true" || active == "1"
 	tpls, err := h.svc.List(r.Context(), activeOnly)
 	if err != nil {

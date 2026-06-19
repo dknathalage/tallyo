@@ -142,3 +142,24 @@ func (c Clause) CountArgs() []any {
 	}
 	return c.Args[:len(c.Args)-2]
 }
+
+// IsListQuery reports whether a request carries DataTable query params (and so
+// should return a paged {rows,total} rather than a legacy full array).
+func IsListQuery(q url.Values) bool {
+	if q.Has("sort") || q.Has("page") || q.Has("limit") {
+		return true
+	}
+	for k := range q {
+		if strings.HasPrefix(k, "f.") {
+			return true
+		}
+	}
+	return false
+}
+
+// Result is one page of a list query plus the unpaginated total. Rows must be
+// non-nil so it serializes as [] not null.
+type Result[T any] struct {
+	Rows  []T   `json:"rows"`
+	Total int64 `json:"total"`
+}

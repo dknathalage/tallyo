@@ -6,6 +6,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/pdf"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
@@ -69,6 +70,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.LoggerFrom(r.Context()).Error("overdue sweep on list failed", slog.Any("error", err))
 	}
 	q := r.URL.Query()
+	if listquery.IsListQuery(q) {
+		c := listquery.Build(q, InvoiceCols)
+		res, err := h.svc.Query(r.Context(), c)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
 	if pid := q.Get("participantId"); pid != "" {
 		participantID, ok := parseIDFromString(pid)
 		if !ok {

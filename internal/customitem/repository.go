@@ -10,8 +10,23 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/google/uuid"
 )
+
+// customItemListSelect mirrors the ListCustomItems sqlc query body up to the
+// WHERE. Keep in sync with internal/db/queries/custom_items.sql.
+const customItemListSelect = `SELECT * FROM custom_items WHERE tenant_id = ?`
+
+// CustomItemCols is the listquery allowlist for custom items. Keys match the
+// JSON field names so the frontend column key drives filter, sort, display, and
+// drawer-edit with one identifier.
+var CustomItemCols = listquery.Spec{
+	"name":    {Col: "name", Filter: listquery.Text},
+	"rate":    {Col: "rate", Filter: listquery.Number},
+	"unit":    {Col: "unit", Filter: listquery.Text},
+	"gstFree": {Col: "gst_free", Filter: listquery.None},
+}
 
 // CustomItem is the domain view of a row in the custom_items table.
 type CustomItem struct {
@@ -56,6 +71,66 @@ func (r *Repo) List(ctx context.Context, tenantID int64) ([]*CustomItem, error) 
 		return nil, fmt.Errorf("list custom items: %w", err)
 	}
 	return mapCustomItems(rows), nil
+}
+
+// Query returns one page of custom items plus the total row count for the
+// filter (ignoring pagination). The clause is built by listquery from an
+// allowlisted spec, so its Where/Order fragments are injection-safe.
+func (r *Repo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*CustomItem, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, errors.New("query custom items: tenant id required")
+	}
+	var total int64
+	countSQL := "SELECT count(*) FROM (" + customItemListSelect + c.Where + ")"
+	countArgs := append([]any{tenantID}, c.CountArgs()...)
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count custom items: %w", err)
+	}
+	order := c.Order
+	if order == "" {
+		order = " ORDER BY name"
+	}
+	sqlText := customItemListSelect + c.Where + order + c.Limit
+	pageArgs := append([]any{tenantID}, c.Args...)
+	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query custom items: %w", err)
+	}
+	defer rows.Close()
+	out := make([]*CustomItem, 0, 50)
+	for rows.Next() { // bounded by LIMIT in the query
+		var (
+			id        int64
+			uuid      string
+			tenant    int64
+			name      string
+			rate      float64
+			unit      sql.NullString
+			gstFree   int64
+			metadata  sql.NullString
+			createdAt string
+			updatedAt string
+		)
+		if err := rows.Scan(&id, &uuid, &tenant, &name, &rate, &unit,
+			&gstFree, &metadata, &createdAt, &updatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scan custom item: %w", err)
+		}
+		out = append(out, &CustomItem{
+			ID:        id,
+			UUID:      uuid,
+			Name:      name,
+			Rate:      rate,
+			Unit:      unit.String,
+			GstFree:   gstFree == 1,
+			Metadata:  metadata.String,
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("query custom items: %w", err)
+	}
+	return out, total, nil
 }
 
 // Search filters the tenant's custom items whose name matches the term (LIKE).

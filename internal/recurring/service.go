@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/dknathalage/tallyo/internal/invoice"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
@@ -28,6 +29,20 @@ func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 func (s *Service) List(ctx context.Context, activeOnly bool) ([]*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID, activeOnly)
+}
+
+// Query returns a page of templates for the given listquery clause. Rows is
+// never nil so it serializes as [] not null.
+func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Result[*RecurringTemplate], error) {
+	tenantID := reqctx.MustTenant(ctx)
+	rows, total, err := s.repo.Query(ctx, tenantID, c)
+	if err != nil {
+		return listquery.Result[*RecurringTemplate]{}, err
+	}
+	if rows == nil {
+		rows = []*RecurringTemplate{}
+	}
+	return listquery.Result[*RecurringTemplate]{Rows: rows, Total: total}, nil
 }
 
 // Get returns a single template, or (nil, nil) when absent.

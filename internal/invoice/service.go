@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
@@ -49,6 +50,20 @@ func NewService(db *sql.DB, hub *realtime.Hub, shifts ShiftLinker) *Service {
 func (s *Service) List(ctx context.Context) ([]*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID)
+}
+
+// Query returns a page of invoices for the given listquery clause. Rows is
+// non-nil so it serializes as [] not null.
+func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Result[*Invoice], error) {
+	tenantID := reqctx.MustTenant(ctx)
+	rows, total, err := s.repo.Query(ctx, tenantID, c)
+	if err != nil {
+		return listquery.Result[*Invoice]{}, err
+	}
+	if rows == nil {
+		rows = []*Invoice{}
+	}
+	return listquery.Result[*Invoice]{Rows: rows, Total: total}, nil
 }
 
 func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Invoice, error) {

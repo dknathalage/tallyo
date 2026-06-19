@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
@@ -26,6 +27,20 @@ func NewService(db *sql.DB, hub *realtime.Hub) *Service {
 func (s *Service) List(ctx context.Context) ([]*CustomItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.List(ctx, tenantID)
+}
+
+// Query returns a page of custom items for the given listquery clause. Rows is
+// always non-nil so it serializes as [] not null.
+func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Result[*CustomItem], error) {
+	tenantID := reqctx.MustTenant(ctx)
+	rows, total, err := s.repo.Query(ctx, tenantID, c)
+	if err != nil {
+		return listquery.Result[*CustomItem]{}, err
+	}
+	if rows == nil {
+		rows = []*CustomItem{}
+	}
+	return listquery.Result[*CustomItem]{Rows: rows, Total: total}, nil
 }
 
 func (s *Service) Search(ctx context.Context, q string) ([]*CustomItem, error) {

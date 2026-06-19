@@ -28,9 +28,29 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/numbering"
 	"github.com/google/uuid"
 )
+
+// invoiceListSelect mirrors the ListInvoices sqlc query body up to the WHERE.
+// Keep in sync with internal/db/queries/invoices.sql. The tenant filter is the
+// FIRST and ONLY ? in the base; listquery's c.Where is appended as " AND ...".
+const invoiceListSelect = `SELECT i.*, p.name AS participant_name
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+WHERE i.tenant_id = ?`
+
+// InvoiceCols is the listquery allowlist for invoices. Keys match the JSON field
+// names so the frontend column key drives filter, sort and display with one
+// identifier. Invoices are a read-only document list (no drawer edit).
+var InvoiceCols = listquery.Spec{
+	"number":          {Col: "i.number", Filter: listquery.Text},
+	"participantName": {Col: "p.name", Filter: listquery.Text},
+	"status":          {Col: "i.status", Filter: listquery.Enum},
+	"issueDate":       {Col: "i.issue_date", Filter: listquery.Date},
+	"total":           {Col: "i.total", Filter: listquery.Number},
+}
 
 // Invoice is the domain view of an invoice with its resolved participant name
 // and embedded line items.
@@ -426,6 +446,49 @@ func (r *InvoicesRepo) List(ctx context.Context, tenantID int64) ([]*Invoice, er
 		out = append(out, toInvoiceFromRow(invoiceFieldsFromList(rows[i])))
 	}
 	return out, nil
+}
+
+// Query returns one page of invoices (header only) plus the total row count for
+// the filter (ignoring pagination). The clause is built by listquery from an
+// allowlisted spec, so its Where/Order fragments are injection-safe. Default
+// order (no sort requested) is newest first, matching ListInvoices.
+func (r *InvoicesRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*Invoice, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, errors.New("query invoices: tenant id required")
+	}
+	var total int64
+	countSQL := "SELECT count(*) FROM (" + invoiceListSelect + c.Where + ")"
+	countArgs := append([]any{tenantID}, c.CountArgs()...)
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count invoices: %w", err)
+	}
+	order := c.Order
+	if order == "" {
+		order = " ORDER BY i.created_at DESC"
+	}
+	sqlText := invoiceListSelect + c.Where + order + c.Limit
+	pageArgs := append([]any{tenantID}, c.Args...)
+	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query invoices: %w", err)
+	}
+	defer rows.Close()
+	out := make([]*Invoice, 0, 50)
+	for rows.Next() { // bounded by LIMIT in the query
+		var f invoiceFields
+		var tenant int64
+		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.participantID,
+			&f.planManagerID, &f.status, &f.issueDate, &f.dueDate, &f.subtotal,
+			&f.tax, &f.total, &f.notes, &f.businessSnap, &f.clientSnap, &f.payerSnap,
+			&f.createdAt, &f.updatedAt, &f.participantName); err != nil {
+			return nil, 0, fmt.Errorf("scan invoice: %w", err)
+		}
+		out = append(out, toInvoiceFromRow(f))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("query invoices: %w", err)
+	}
+	return out, total, nil
 }
 
 // ListByStatus returns the tenant's invoices with the given status.
