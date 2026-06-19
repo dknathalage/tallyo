@@ -252,6 +252,15 @@ func (r *CatalogRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFi
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		now := time.Now().UTC().Format(time.RFC3339)
+		// Close any currently-open version the day before the new one takes effect
+		// so date-windows never overlap: historical service dates keep resolving to
+		// the version effective then, and only the new version stays open-ended.
+		// Existing invoices are unaffected — their prices are pinned per line.
+		if prevTo := dayBefore(effectiveFrom); prevTo != "" {
+			if e := q.CloseOpenCatalogVersions(ctx, sql.NullString{String: prevTo, Valid: true}); e != nil {
+				return fmt.Errorf("close prior versions: %w", e)
+			}
+		}
 		ver, e := q.CreateCatalogVersion(ctx, gen.CreateCatalogVersionParams{
 			Uuid:           uuid.NewString(),
 			Label:          label,
@@ -310,6 +319,17 @@ func (r *CatalogRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFi
 		return nil, fmt.Errorf("ingest catalogue: %w", err)
 	}
 	return &result, nil
+}
+
+// dayBefore returns the ISO date one day before the given YYYY-MM-DD date, or ""
+// when the input is not a parseable date (in which case the caller skips closing
+// prior versions rather than writing a bad boundary).
+func dayBefore(isoDate string) string {
+	t, err := time.Parse("2006-01-02", isoDate)
+	if err != nil {
+		return ""
+	}
+	return t.AddDate(0, 0, -1).Format("2006-01-02")
 }
 
 func toCatalogVersion(row gen.CatalogVersion) *CatalogVersion {

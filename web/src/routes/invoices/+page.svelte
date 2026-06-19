@@ -100,6 +100,7 @@
 			{
 				kind: 'support',
 				customItemId: null,
+				catalogVersionId: null,
 				code: '',
 				description: '',
 				serviceDate: today,
@@ -117,7 +118,10 @@
 		const items: LineItemInput[] = lines.map((row, i) => ({
 			supportItemId: null,
 			customItemId: row.kind === 'custom' ? row.customItemId : null,
-			catalogVersionId: null,
+			// Carry the pinned version for existing support lines so the server
+			// re-validates against their original catalogue version (frozen price);
+			// new lines have null → priced from the current version.
+			catalogVersionId: row.kind === 'support' ? row.catalogVersionId : null,
 			code: row.kind === 'support' ? row.code : '',
 			description: row.description,
 			serviceDate: row.serviceDate,
@@ -191,6 +195,7 @@
 						| 'support'
 						| 'custom',
 					customItemId: li.customItemId,
+					catalogVersionId: li.catalogVersionId,
 					code: li.code,
 					description: li.description,
 					serviceDate: li.serviceDate ? li.serviceDate.slice(0, 10) : '',
@@ -205,6 +210,7 @@
 					{
 						kind: 'support',
 						customItemId: null,
+						catalogVersionId: null,
 						code: '',
 						description: '',
 						serviceDate: new Date().toISOString().slice(0, 10),

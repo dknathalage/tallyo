@@ -14,6 +14,10 @@ type Querier interface {
 	ClearDefaultTaxRates(ctx context.Context, tenantID int64) error
 	ClearShiftsForInvoice(ctx context.Context, arg ClearShiftsForInvoiceParams) error
 	CloseCatalogVersion(ctx context.Context, arg CloseCatalogVersionParams) error
+	// Close every still-open (effective_to IS NULL) version. Called when a new
+	// version is ingested so date-windows never overlap and historical service dates
+	// resolve to the version that was effective then.
+	CloseOpenCatalogVersions(ctx context.Context, effectiveTo sql.NullString) error
 	CountSupportItems(ctx context.Context, catalogVersionID int64) (int64, error)
 	CountUsers(ctx context.Context, tenantID int64) (int64, error)
 	CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error)

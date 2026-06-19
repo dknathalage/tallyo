@@ -30,5 +30,11 @@ RETURNING *;
 -- name: CloseCatalogVersion :exec
 UPDATE catalog_versions SET effective_to = ? WHERE id = ?;
 
+-- name: CloseOpenCatalogVersions :exec
+-- Close every still-open (effective_to IS NULL) version. Called when a new
+-- version is ingested so date-windows never overlap and historical service dates
+-- resolve to the version that was effective then.
+UPDATE catalog_versions SET effective_to = ? WHERE effective_to IS NULL;
+
 -- name: DeleteCatalogVersion :exec
 DELETE FROM catalog_versions WHERE id = ?;

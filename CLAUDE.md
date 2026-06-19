@@ -90,6 +90,25 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `os.UserConfigDir()/Tal
 - Migrations are embedded and run on startup (`internal/db/migrate.go`). Add a new migration as `internal/db/migrations/NNNNN_*.sql` then `sqlc generate`.
 - DB file in the data dir (default `~/Library/Application Support/Tallyo/tallyo-go.db` on macOS); `DATA_DIR` / `--data-dir` override.
 
+### NDIS catalogue (versioned, seeded by migration)
+
+- The NDIS Support Catalogue is loaded as a **generated SQL migration**, not at
+  runtime. Each catalogue release is its own `catalog_versions` row; ingesting a
+  newer one never mutates prior versions, and prices are pinned per invoice line
+  (`catalog_version_id` on `line_items`) so existing invoices are never re-priced.
+- To add/refresh a catalogue, drop the XLSX in `data/catalogue/` and regenerate:
+  ```bash
+  go run ./internal/tools/cataloguegen \
+    -xlsx "data/catalogue/NDIS Support Catalogue 2025-26.xlsx" \
+    -label 2025-26 -effective-from 2025-07-01 \
+    -out internal/db/migrations/00006_catalogue_2025_26.sql
+  ```
+  Use the next free migration number + the release's label/effective-from. The
+  generator reuses `catalog.ParseXLSX` (same mapping as the admin upload path) and
+  emits deterministic UUIDs, so re-running yields a clean diff. Commit the `.sql`;
+  it loads on startup. The live admin upload (`POST /api/support-catalog/versions`)
+  also creates a new version and auto-closes the prior one's effective window.
+
 ## Coding Rules (NASA Power of 10, adapted)
 
 Apply to all new and modified code. Adapted from JPL's "Power of Ten" for safety-critical C; reinterpreted for **Go** (backend) and TypeScript/Svelte (frontend). For Go: `return fmt.Errorf(...)` instead of `throw`; `go vet`/`staticcheck`/`gofmt` clean instead of the TS/svelte-check/ESLint gate in rule 10; check every error return (no `_`-discards on fallible calls) for rule 7.

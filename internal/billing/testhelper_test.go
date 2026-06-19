@@ -28,6 +28,11 @@ func newTestDB(t *testing.T) *sql.DB {
 	if err := appdb.Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
+	// Migrations seed the real NDIS catalogue (00006); these tests assert against
+	// their OWN seeded versions, so start from a clean catalogue.
+	if _, err := conn.Exec("DELETE FROM catalog_versions"); err != nil {
+		t.Fatalf("clear catalogue: %v", err)
+	}
 	return conn
 }
 

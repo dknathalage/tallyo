@@ -156,9 +156,6 @@ const (
 // AFTER the commit succeeds (spec §5). Catalogue is GLOBAL so the event is
 // broadcast to all subscribers.
 func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effectiveFrom, sourceFilename string) (*IngestSummary, error) {
-	if len(data) == 0 {
-		return nil, fmt.Errorf("ingest: empty file")
-	}
 	if label == "" {
 		return nil, fmt.Errorf("ingest: label required")
 	}
@@ -166,31 +163,9 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 		return nil, fmt.Errorf("ingest: effective_from required")
 	}
 
-	headers, rows, err := importer.ParseRows(data, "xlsx", "", 1)
-	if err != nil {
-		return nil, fmt.Errorf("ingest: parse: %w", err)
-	}
-
-	// Build a normalised header→original-key index so cell lookups tolerate
-	// case/whitespace differences in the source file.
-	norm := make(map[string]string, len(headers))
-	for i := range headers { // bounded by len(headers)
-		norm[normaliseHeader(headers[i])] = headers[i]
-	}
-
-	required := []string{colCode, colName}
-	for i := range required { // bounded by len(required)
-		if _, ok := norm[required[i]]; !ok {
-			return nil, fmt.Errorf("ingest: missing required column %q", required[i])
-		}
-	}
-
-	items, err := buildIngestItems(rows, norm)
+	items, err := ParseXLSX(data)
 	if err != nil {
 		return nil, fmt.Errorf("ingest: %w", err)
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("ingest: no data rows parsed")
 	}
 
 	res, err := s.repo.Ingest(ctx, label, effectiveFrom, sourceFilename, items)
@@ -210,6 +185,45 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 		ItemCount:     res.ItemCount,
 		PriceCount:    res.PriceCount,
 	}, nil
+}
+
+// ParseXLSX parses fixed-format NDIS Support Catalogue XLSX bytes into the
+// IngestItem domain values that repo.Ingest persists. The whole upload is
+// rejected (no partial state) when a required column is missing or zero data
+// rows parse. Shared by the HTTP ingest path (IngestXLSX) and the build-time
+// migration generator (internal/tools/cataloguegen) so both use identical
+// column mapping.
+func ParseXLSX(data []byte) ([]IngestItem, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty file")
+	}
+	headers, rows, err := importer.ParseRows(data, "xlsx", "", 1)
+	if err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
+	}
+
+	// Build a normalised header→original-key index so cell lookups tolerate
+	// case/whitespace differences in the source file.
+	norm := make(map[string]string, len(headers))
+	for i := range headers { // bounded by len(headers)
+		norm[normaliseHeader(headers[i])] = headers[i]
+	}
+
+	required := []string{colCode, colName}
+	for i := range required { // bounded by len(required)
+		if _, ok := norm[required[i]]; !ok {
+			return nil, fmt.Errorf("missing required column %q", required[i])
+		}
+	}
+
+	items, err := buildIngestItems(rows, norm)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("no data rows parsed")
+	}
+	return items, nil
 }
 
 // buildIngestItems maps parsed rows to IngestItem values, skipping rows with a
@@ -238,7 +252,10 @@ func buildIngestItems(rows []map[string]string, norm map[string]string) ([]Inges
 			Unit:              cell(row, colUnit),
 			SupportCategory:   cell(row, colCategory),
 			RegistrationGroup: cell(row, colRegGroup),
-			Prices:            zonePrices(row, norm),
+			// NDIS supports are GST-free by default (matches the gst_free DEFAULT 1
+			// column); the standard catalogue export carries no taxable column.
+			GstFree: true,
+			Prices:  zonePrices(row, norm),
 		}
 		out = append(out, it)
 	}

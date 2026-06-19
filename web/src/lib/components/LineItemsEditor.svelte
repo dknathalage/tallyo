@@ -9,6 +9,10 @@
 	export interface EditorLine {
 		kind: 'support' | 'custom';
 		customItemId: number | null;
+		// Pinned NDIS catalogue version for an EXISTING support line; null for a new
+		// line (the server then prices it from the current version). Carried on edit
+		// so re-validation never re-prices an existing line against a newer version.
+		catalogVersionId: number | null;
 		code: string;
 		description: string;
 		serviceDate: string;
@@ -98,6 +102,7 @@
 		lines.push({
 			kind: 'support',
 			customItemId: null,
+			catalogVersionId: null,
 			code: '',
 			description: '',
 			serviceDate: new Date().toISOString().slice(0, 10),
@@ -114,6 +119,7 @@
 		lines.push({
 			kind: 'custom',
 			customItemId: null,
+			catalogVersionId: null,
 			code: '',
 			description: '',
 			serviceDate: '',

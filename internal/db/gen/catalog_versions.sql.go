@@ -24,6 +24,18 @@ func (q *Queries) CloseCatalogVersion(ctx context.Context, arg CloseCatalogVersi
 	return err
 }
 
+const closeOpenCatalogVersions = `-- name: CloseOpenCatalogVersions :exec
+UPDATE catalog_versions SET effective_to = ? WHERE effective_to IS NULL
+`
+
+// Close every still-open (effective_to IS NULL) version. Called when a new
+// version is ingested so date-windows never overlap and historical service dates
+// resolve to the version that was effective then.
+func (q *Queries) CloseOpenCatalogVersions(ctx context.Context, effectiveTo sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, closeOpenCatalogVersions, effectiveTo)
+	return err
+}
+
 const createCatalogVersion = `-- name: CreateCatalogVersion :one
 INSERT INTO catalog_versions (uuid, label, effective_from, effective_to, source_filename, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
