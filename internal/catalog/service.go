@@ -200,7 +200,7 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 // IngestItem domain values that repo.Ingest persists. The whole upload is
 // rejected (no partial state) when a required column is missing or zero data
 // rows parse. Shared by the HTTP ingest path (IngestXLSX) and the build-time
-// migration generator (internal/tools/cataloguegen) so both use identical
+// migration generator (cmd/cataloguegen) so both use identical
 // column mapping.
 func ParseXLSX(data []byte) ([]IngestItem, error) {
 	if len(data) == 0 {

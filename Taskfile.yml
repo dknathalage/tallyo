@@ -1,107 +1,67 @@
 version: "3"
 
-dotenv: ['.env']
+dotenv: [".env"]
 
 vars:
-  BINARY: tallyo
-  PORT: '{{.PORT | default "8080"}}'
+  BINARY: bin/tallyo
 
 tasks:
   default:
-    desc: List available tasks
     cmds:
       - task --list
     silent: true
 
-  # ---- Build ----
-
-  web:
-    desc: Build the SvelteKit SPA (emits web/build, embedded by the Go build)
-    dir: web
-    cmds:
-      - npm install
-      - npm run build
-
   build:
-    desc: Build the cgo-free single binary (builds the SPA first)
-    deps: [web]
+    desc: Build the cgo-free single binary (SPA first)
     cmds:
-      - CGO_ENABLED=0 go build -o {{.BINARY}} .
-
-  build:go:
-    desc: Build the Go binary only (assumes web/build already exists)
-    cmds:
-      - CGO_ENABLED=0 go build -o {{.BINARY}} .
-
-  # ---- Run ----
-
-  run:
-    desc: Run the server on the LAN (builds the SPA first). Override port with PORT=...
-    deps: [web]
-    cmds:
-      - 'echo "Reachable on this machine and your local network: http://$(ipconfig getifaddr en0 2>/dev/null || hostname):{{.PORT}}"'
-      # The server binds 0.0.0.0:{{.PORT}}, so it is reachable from other devices on the LAN.
-      - go run . --port {{.PORT}}
+      - task: build:web
+      - task: build:go
 
   dev:
-    desc: Frontend dev with hot reload, exposed on the LAN (Vite proxies /api to :8080)
-    dir: web
-    cmds:
-      # --host binds 0.0.0.0 so phones/other machines on the LAN can load the dev server.
-      - npm run dev -- --host
-
-  # ---- Quality gate ----
+    desc: Run backend + frontend (hot reload, LAN-exposed)
+    deps: [dev:go, dev:web]
 
   test:
-    desc: Run Go tests
-    cmds:
-      - go test ./...
-
-  test:race:
-    desc: Run Go tests with the race detector (full gate)
+    desc: Run Go tests (-race)
     cmds:
       - go test -race ./...
 
-  vet:
-    desc: go vet
+  lint:
+    desc: Full quality gate (vet, gofmt, test, svelte-check)
     cmds:
       - go vet ./...
-
-  fmt:
-    desc: Format Go sources
-    cmds:
-      - gofmt -w .
-
-  fmt:check:
-    desc: Check Go formatting (fails if any file needs gofmt)
-    cmds:
       - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
-
-  check:
-    desc: svelte-check (0 errors / 0 warnings)
-    dir: web
-    cmds:
-      - npm run check
-
-  lint:
-    desc: Run the full backend + frontend quality gate
-    cmds:
-      - task: vet
-      - task: fmt:check
-      - task: test:race
-      - task: check
-
-  # ---- Codegen ----
+      - go test -race ./...
+      - npm --prefix web run check
 
   sqlc:
     desc: Regenerate internal/db/gen from queries/*.sql
     cmds:
       - '"$(go env GOPATH)/bin/sqlc" generate'
 
-  # ---- Housekeeping ----
-
   clean:
     desc: Remove build artifacts
     cmds:
-      - rm -f {{.BINARY}}
+      - rm -rf bin
       - rm -rf web/build
+
+  # --- internal helpers (hidden from --list) ---
+
+  build:web:
+    dir: web
+    cmds:
+      - npm install
+      - npm run build
+
+  build:go:
+    cmds:
+      - CGO_ENABLED=0 go build -o {{.BINARY}} ./cmd/tallyo
+
+  dev:go:
+    cmds:
+      - go run ./cmd/tallyo
+
+  dev:web:
+    dir: web
+    cmds:
+      - npm run dev -- --host

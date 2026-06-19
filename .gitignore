@@ -1,6 +1,5 @@
 # Go build binaries
-/tallyo
-/cmd/tallyo/tallyo
+/bin/
 
 # SQLite databases
 *.db

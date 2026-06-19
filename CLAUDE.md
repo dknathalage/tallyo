@@ -2,18 +2,18 @@
 
 Self-hosted, source-available (AGPL-3.0) invoice management web app — Go backend (chi + SQLite/modernc + sqlc) serving an embedded SvelteKit SPA.
 
-> **Architecture note.** This was rewritten from an Electron + SvelteKit desktop app to a **single-binary Go web service** serving an embedded SvelteKit SPA. The Go implementation lives at the repo root (`main.go`, `internal/`, `web/`); the legacy Electron/SvelteKit tree (`src/`, `electron/`, `drizzle/`, root `package.json`) is **superseded** and slated for removal. Design/plan docs: `docs/superpowers/{specs,plans}/`.
+> **Architecture note.** This was rewritten from an Electron + SvelteKit desktop app to a **single-binary Go web service** serving an embedded SvelteKit SPA. The Go implementation lives at the repo root (`cmd/`, `internal/`, `web/`); the legacy Electron/SvelteKit tree (`src/`, `electron/`, `drizzle/`, root `package.json`) is **superseded** and slated for removal. Design/plan docs: `docs/superpowers/{specs,plans}/`.
 
 ## Tech Stack
 
-- **Backend:** Go 1.26 — root `main.go` `serve` command (single binary). chi v5 router, REST JSON API.
+- **Backend:** Go 1.26 — `cmd/tallyo` `serve` command (single binary). chi v5 router, REST JSON API.
 - **Database:** SQLite via **modernc.org/sqlite** (pure-Go, no cgo) + **sqlc** (typed queries) + **goose** (embedded migrations, run on startup). `_txlock=immediate` DSN.
 - **Auth:** email/password (bcrypt), server-side cookie sessions via `alexedwards/scs/v2` (SQLite-backed). Single-org, multi-user; first-run setup + manual invite links.
 - **Realtime:** Server-Sent Events (`/api/events`) — an in-process hub broadcasts entity-change events; the SPA refetches into Svelte runes.
 - **Frontend:** SvelteKit + `@sveltejs/adapter-static` (SPA, `200.html` fallback), Svelte 5 runes, Tailwind CSS 4, built and embedded via `//go:embed`.
 - **PDF:** `johnfercher/maroto/v2` (pure-Go). **Import/Export:** stdlib `encoding/csv` + `xuri/excelize/v2` (pure-Go).
 - **Testing:** Go stdlib `testing`; `svelte-check` + Vitest for the frontend.
-- **License:** AGPL-3.0 (verbatim, copyleft) — `LICENSE`. The binary is **cgo-free** (`CGO_ENABLED=0 go build .`).
+- **License:** AGPL-3.0 (verbatim, copyleft) — `LICENSE`. The binary is **cgo-free** (`CGO_ENABLED=0 go build ./cmd/tallyo`).
 
 ## Project Layout
 
@@ -24,7 +24,7 @@ shared platform packages, never on each other directly — cross-domain reads go
 through the central `db/gen`; cross-domain writes/behaviour go through small
 interfaces declared by the consumer and wired in `internal/app`.
 
-- `main.go` (repo root, ~40 lines) — parses flags, then calls `app.Run`.
+- `cmd/tallyo/main.go` (~40 lines) — parses flags, then calls `app.Run`. (`cmd/cataloguegen` is the dev-time catalogue migration generator.)
 - `internal/app/` — composition root: resolve data dir → open DB → migrate → build
   every slice's service+handler → assemble the chi router (`server.go`: middleware,
   `/api` group, role gates, SPA catch-all) → graceful shutdown; owns the per-tenant
@@ -62,7 +62,7 @@ interfaces declared by the consumer and wired in `internal/app`.
 # Build the SPA first (the Go build embeds web/build):
 cd web && npm install && npm run build && cd ..
 # Run the server (single binary):
-go run . --port 8080            # or: go build -o tallyo . && ./tallyo
+go run ./cmd/tallyo --port 8080  # or: go build -o bin/tallyo ./cmd/tallyo && ./bin/tallyo
 # Frontend dev with hot reload (Vite proxies /api → :8080):
 cd web && npm run dev
 ```
@@ -72,7 +72,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `os.UserConfigDir()/Tal
 
 - `go test ./...` — Go tests (add `-race` for the full gate).
 - `go vet ./...` ; `gofmt -l .` — must be clean.
-- `CGO_ENABLED=0 go build .` — verify the cgo-free single binary.
+- `CGO_ENABLED=0 go build ./cmd/tallyo` — verify the cgo-free single binary.
 - `"$(go env GOPATH)/bin/sqlc" generate` — regenerate `internal/db/gen` from `queries/*.sql`.
 - `cd web && npm run check` — svelte-check (0 errors / 0 warnings) ; `npm run build` — emit `web/build`.
 
@@ -101,7 +101,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `os.UserConfigDir()/Tal
   (`catalog_version_id` on `line_items`) so existing invoices are never re-priced.
 - To add/refresh a catalogue, drop the XLSX in `data/catalogue/` and regenerate:
   ```bash
-  go run ./internal/tools/cataloguegen \
+  go run ./cmd/cataloguegen \
     -xlsx "data/catalogue/NDIS Support Catalogue 2025-26.xlsx" \
     -label 2025-26 -effective-from 2025-07-01 \
     -out internal/db/migrations/00006_catalogue_2025_26.sql
