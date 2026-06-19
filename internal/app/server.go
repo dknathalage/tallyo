@@ -104,11 +104,11 @@ type Deps struct {
 	// /api/export.
 	Export *export.Handler
 
-	// Agent, when non-nil, serves the auth-gated AI agent routes under
-	// /api/agent: conversation create/list, message history, async message
-	// send, permission decisions, checkpoint revert, and the per-conversation
-	// SSE stream. Every route 503s when the agent is disabled.
-	Agent *agent.AgentHandler
+	// Smarts, when non-nil, serves the two auth-gated one-shot AI "Smart"
+	// routes: draft-invoice-from-shifts (POST /api/participants/{id}/draft-invoice)
+	// and shift import (POST /api/shifts/import). Both routes 503 when the AI is
+	// disabled.
+	Smarts *agent.SmartsHandler
 }
 
 // Server wraps the configured chi router.
@@ -156,7 +156,7 @@ func NewServer(deps Deps) *Server {
 		}
 		// Authenticated /api group. Only registered when there is at least one
 		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Agent != nil {
+		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Smarts != nil {
 			api.Group(func(pr chi.Router) {
 				pr.Use(httpx.RequireAuth(deps.Session, deps.Users, deps.Tenants))
 				if deps.Auth != nil {
@@ -210,16 +210,9 @@ func NewServer(deps Deps) *Server {
 					pr.Get("/export/invoices", deps.Export.Invoices)
 					pr.Get("/export/estimates", deps.Export.Estimates)
 				}
-				if deps.Agent != nil {
-					pr.Post("/agent/conversations", deps.Agent.CreateConversation)
-					pr.Get("/agent/conversations", deps.Agent.ListConversations)
-					pr.Get("/agent/conversations/{id}/messages", deps.Agent.ListMessages)
-					pr.Post("/agent/conversations/{id}/messages", deps.Agent.SendMessage)
-					pr.Get("/agent/conversations/{id}/stream", deps.Agent.Stream)
-					pr.Post("/participants/{id}/draft-invoice", deps.Agent.DraftInvoiceFromShifts)
-					pr.Post("/shifts/import", deps.Agent.ImportShifts)
-					pr.Post("/agent/steps/{id}/decision", deps.Agent.Decide)
-					pr.Post("/agent/checkpoints/{id}/revert", deps.Agent.Revert)
+				if deps.Smarts != nil {
+					pr.Post("/participants/{id}/draft-invoice", deps.Smarts.DraftInvoiceFromShifts)
+					pr.Post("/shifts/import", deps.Smarts.ImportShifts)
 				}
 			})
 		}

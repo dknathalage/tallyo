@@ -155,34 +155,18 @@ func Run(cfg Config, version string) error {
 	paymentSvc := invoice.NewPaymentService(conn, hub)
 	recurringSvc := recurring.NewService(conn, hub)
 
-	// AI agent (optional): the full service is only constructed when
-	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired
-	// (BUG 3): when disabled it is a guard-only handler (nil agent/budget,
-	// enabled=false) so /api/agent/* routes are registered and return a clean 503
-	// instead of falling through to the SPA catch-all (200 index.html). agentSvc
-	// stays nil when disabled → the sweeper skips SweepExpired.
-	var agentHandler *agent.AgentHandler
-	var agentSvc *agent.Agent
-	if agentCfg.Enabled() {
-		agentStore := agent.NewStore(conn)
-		agentEvents := agent.NewEvents()
-		agentReg := agent.NewRegistry()
-		agentCP := agent.NewCheckpoint(agentStore, conn)
-		agentReg.Register(agent.NewListInvoicesTool(invoiceSvc))
-		// Shifts lifecycle is the billing source of truth: there is exactly one
-		// create_invoice tool, the shift-completeness-verified variant.
-		agentReg.Register(agent.NewCreateInvoiceToolForShifts(invoiceSvc, shiftSvc, agentCP))
-		agentReg.Register(agent.NewListParticipantShiftsToolWithCatalog(shiftSvc, supportCatalogSvc))
-		agentReg.Register(agent.NewSearchCatalogueTool(supportCatalogSvc))
-		agentBudget := agent.NewBudgetWallClock(agentStore, agentCfg)
+	// AI "Smarts" (optional): the service is only constructed when
+	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired:
+	// when disabled it is a guard-only handler (nil smarts, enabled=false) so the
+	// Smart routes are registered and return a clean 503 instead of falling
+	// through to the SPA catch-all (200 index.html).
+	var smartsHandler *agent.SmartsHandler
+	if agentCfg.APIKey != "" {
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
-		agentSvc = agent.NewAgent(agentCfg, llmClient, agentStore, agentReg, agentCP, agentEvents).
-			WithBudget(agentBudget).
-			WithRestore(agent.InvoiceRestoreFunc(invoiceSvc))
-		agentHandler = agent.NewAgentHandler(agentSvc, agentBudget, true).
-			WithShiftImport(shiftSvc, llmClient, agentCfg)
+		smarts := agent.NewSmarts(agentCfg, llmClient, invoiceSvc, shiftSvc, supportCatalogSvc)
+		smartsHandler = agent.NewSmartsHandler(smarts, true)
 	} else {
-		agentHandler = agent.NewAgentHandler(nil, nil, false)
+		smartsHandler = agent.NewSmartsHandler(nil, false)
 	}
 
 	assets, err := fs.Sub(tallyoweb.Build, "build")
@@ -215,7 +199,7 @@ func Run(cfg Config, version string) error {
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),
 		Export:          export.NewHandler(customItemSvc, invoiceSvc, estimateSvc),
-		Agent:           agentHandler,
+		Smarts:          smartsHandler,
 	}
 
 	server := NewServer(deps)
@@ -234,9 +218,9 @@ func Run(cfg Config, version string) error {
 	// Run one per-tenant sweep at startup, then keep a background sweeper running
 	// on an hourly tick. The done channel stops the goroutine on shutdown so it
 	// does not leak.
-	runSweepOnce(invoiceSvc, recurringSvc, agentSvc, logger)
+	runSweepOnce(invoiceSvc, recurringSvc, logger)
 	overdueDone := make(chan struct{})
-	go runSweeper(invoiceSvc, recurringSvc, agentSvc, logger, overdueDone)
+	go runSweeper(invoiceSvc, recurringSvc, logger, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)

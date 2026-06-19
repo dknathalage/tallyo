@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -23,7 +22,7 @@ const overdueSweepInterval = 1 * time.Hour
 //
 // A failure for one tenant is logged and the sweep continues with the next, so
 // one tenant's data problem cannot stall every other tenant's sweep.
-func runSweepOnce(inv *invoice.Service, rec *recurring.Service, ag *agent.Agent, logger *slog.Logger) {
+func runSweepOnce(inv *invoice.Service, rec *recurring.Service, logger *slog.Logger) {
 	tenantIDs, err := inv.ActiveTenantIDs(context.Background())
 	if err != nil {
 		logger.Error("sweep: list active tenants failed", slog.Any("error", err))
@@ -43,18 +42,11 @@ func runSweepOnce(inv *invoice.Service, rec *recurring.Service, ag *agent.Agent,
 			logger.Info("recurring sweep", slog.Int64("tenant_id", tid), slog.Int("generated", len(gens)))
 		}
 	}
-	// Agent expired-step + retention sweep (global, not per-tenant). nil when the
-	// AI agent is disabled. A failure is logged and does not abort the sweep.
-	if ag != nil {
-		if err := ag.SweepExpired(context.Background()); err != nil {
-			logger.Error("agent sweep failed", slog.Any("error", err))
-		}
-	}
 }
 
 // runSweeper runs the per-tenant sweeps on each tick until done is closed. It
 // owns its single ticker and stops cleanly, so it never leaks a goroutine.
-func runSweeper(inv *invoice.Service, rec *recurring.Service, ag *agent.Agent, logger *slog.Logger, done <-chan struct{}) {
+func runSweeper(inv *invoice.Service, rec *recurring.Service, logger *slog.Logger, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -62,7 +54,7 @@ func runSweeper(inv *invoice.Service, rec *recurring.Service, ag *agent.Agent, l
 		case <-done:
 			return
 		case <-ticker.C:
-			runSweepOnce(inv, rec, ag, logger)
+			runSweepOnce(inv, rec, logger)
 		}
 	}
 }
