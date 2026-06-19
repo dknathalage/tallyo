@@ -20,14 +20,6 @@ func money(v float64) string {
 	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
-// boolStr renders a bool as "true"/"false" for CSV/XLSX cells.
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
-
 // CatalogCSV renders the tenant's custom items to CSV with a fixed header. A nil
 // slice yields a header-only document.
 func CatalogCSV(items []*customitem.CustomItem) ([]byte, error) {
@@ -40,7 +32,7 @@ func CatalogCSV(items []*customitem.CustomItem) ([]byte, error) {
 		if it == nil {
 			continue
 		}
-		rec := []string{it.Name, money(it.Rate), it.Unit, boolStr(it.GstFree)}
+		rec := []string{it.Name, money(it.Rate), it.Unit, strconv.FormatBool(it.GstFree)}
 		if err := w.Write(rec); err != nil {
 			return nil, fmt.Errorf("write row: %w", err)
 		}

@@ -19,14 +19,6 @@ export interface User {
 export interface EmailTenant {
 	tenantId: number;
 	tenantName: string;
-	tenantUuid: string;
-}
-
-/** 409 body when an email is registered in more than one tenant. */
-export interface TenantRequired {
-	error: string;
-	tenantRequired: true;
-	tenants: EmailTenant[];
 }
 
 export interface SignupInput {

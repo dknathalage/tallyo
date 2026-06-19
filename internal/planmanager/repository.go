@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -68,7 +69,7 @@ func (r *PlanManagersRepo) List(ctx context.Context, tenantID int64, search stri
 	rows, err := q.SearchPlanManagers(ctx, gen.SearchPlanManagersParams{
 		TenantID: tenantID,
 		Name:     like,
-		Email:    nz(like),
+		Email:    db.Nz(like),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search plan managers: %w", err)
@@ -108,10 +109,10 @@ func (r *PlanManagersRepo) Create(ctx context.Context, tenantID int64, in PlanMa
 			Uuid:      uuid.NewString(),
 			TenantID:  tenantID,
 			Name:      in.Name,
-			Email:     nz(in.Email),
-			Phone:     nz(in.Phone),
-			Address:   nz(in.Address),
-			Metadata:  nz(metadata),
+			Email:     db.Nz(in.Email),
+			Phone:     db.Nz(in.Phone),
+			Address:   db.Nz(in.Address),
+			Metadata:  db.Nz(metadata),
 			CreatedAt: now,
 			UpdatedAt: now,
 		})
@@ -154,10 +155,10 @@ func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in Pl
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).UpdatePlanManager(ctx, gen.UpdatePlanManagerParams{
 			Name:      in.Name,
-			Email:     nz(in.Email),
-			Phone:     nz(in.Phone),
-			Address:   nz(in.Address),
-			Metadata:  nz(metadata),
+			Email:     db.Nz(in.Email),
+			Phone:     db.Nz(in.Phone),
+			Address:   db.Nz(in.Address),
+			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
 			ID:        id,
@@ -239,9 +240,4 @@ func toPlanManager(row gen.PlanManager) *PlanManager {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
-}
-
-// nz wraps a string into a valid sql.NullString. Used for optional string columns.
-func nz(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: true}
 }

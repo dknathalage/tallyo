@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -84,8 +85,8 @@ func (r *ParticipantsRepo) List(ctx context.Context, tenantID int64, search stri
 	rows, err := q.SearchParticipants(ctx, gen.SearchParticipantsParams{
 		TenantID:   tenantID,
 		Name:       like,
-		Email:      nz(like),
-		NdisNumber: nz(like),
+		Email:      db.Nz(like),
+		NdisNumber: db.Nz(like),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search participants: %w", err)
@@ -135,15 +136,15 @@ func (r *ParticipantsRepo) Create(ctx context.Context, tenantID int64, in Partic
 			Uuid:          uuid.NewString(),
 			TenantID:      tenantID,
 			Name:          in.Name,
-			NdisNumber:    nzMaybe(in.NDISNumber),
-			PlanStart:     nzMaybe(in.PlanStart),
-			PlanEnd:       nzMaybe(in.PlanEnd),
+			NdisNumber:    db.NzMaybe(in.NDISNumber),
+			PlanStart:     db.NzMaybe(in.PlanStart),
+			PlanEnd:       db.NzMaybe(in.PlanEnd),
 			MgmtType:      mgmtType,
-			PlanManagerID: nullID(in.PlanManagerID),
-			Email:         nzMaybe(in.Email),
-			Phone:         nzMaybe(in.Phone),
-			Address:       nzMaybe(in.Address),
-			Metadata:      nz(metadata),
+			PlanManagerID: db.NullID(in.PlanManagerID),
+			Email:         db.NzMaybe(in.Email),
+			Phone:         db.NzMaybe(in.Phone),
+			Address:       db.NzMaybe(in.Address),
+			Metadata:      db.Nz(metadata),
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
@@ -189,15 +190,15 @@ func (r *ParticipantsRepo) Update(ctx context.Context, tenantID, id int64, in Pa
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, e := gen.New(tx).UpdateParticipant(ctx, gen.UpdateParticipantParams{
 			Name:          in.Name,
-			NdisNumber:    nzMaybe(in.NDISNumber),
-			PlanStart:     nzMaybe(in.PlanStart),
-			PlanEnd:       nzMaybe(in.PlanEnd),
+			NdisNumber:    db.NzMaybe(in.NDISNumber),
+			PlanStart:     db.NzMaybe(in.PlanStart),
+			PlanEnd:       db.NzMaybe(in.PlanEnd),
 			MgmtType:      mgmtType,
-			PlanManagerID: nullID(in.PlanManagerID),
-			Email:         nzMaybe(in.Email),
-			Phone:         nzMaybe(in.Phone),
-			Address:       nzMaybe(in.Address),
-			Metadata:      nz(metadata),
+			PlanManagerID: db.NullID(in.PlanManagerID),
+			Email:         db.NzMaybe(in.Email),
+			Phone:         db.NzMaybe(in.Phone),
+			Address:       db.NzMaybe(in.Address),
+			Metadata:      db.Nz(metadata),
 			UpdatedAt:     now,
 			TenantID:      tenantID,
 			ID:            id,
@@ -256,37 +257,6 @@ func (r *ParticipantsRepo) BulkDelete(ctx context.Context, tenantID int64, ids [
 	})
 }
 
-// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
-func nullID(p *int64) sql.NullInt64 {
-	if p == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *p, Valid: true}
-}
-
-// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
-func ptrID(n sql.NullInt64) *int64 {
-	if !n.Valid {
-		return nil
-	}
-	v := n.Int64
-	return &v
-}
-
-// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
-// the string is empty, and valid otherwise. Used for genuinely optional columns.
-func nzMaybe(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
-}
-
-// nz wraps a string into a valid sql.NullString.
-func nz(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: true}
-}
-
 // participantFields is the shared, flat shape of every participants join row
 // (List, Search and Get produce identical structs under distinct gen names).
 type participantFields struct {
@@ -309,7 +279,7 @@ func mapParticipantFields(f participantFields) *Participant {
 		PlanStart:       f.planStart.String,
 		PlanEnd:         f.planEnd.String,
 		MgmtType:        f.mgmtType,
-		PlanManagerID:   ptrID(f.planManagerID),
+		PlanManagerID:   db.PtrID(f.planManagerID),
 		PlanManagerName: f.planManagerName.String,
 		Email:           f.email.String,
 		Phone:           f.phone.String,

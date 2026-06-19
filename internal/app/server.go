@@ -23,92 +23,33 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Deps holds the dependencies required to build the HTTP server. It is
-// intentionally minimal for now; later tasks add more services and the realtime
-// hub. Assets is the embedded SPA build sub-FS and is required.
+// Deps holds the dependencies required to build the HTTP server. Every field is
+// populated by the composition root (see app.go); Assets is the only one whose
+// absence is fatal (NewServer panics). The handler fields self-register their
+// routes under /api — public ones (Signup/Auth/Invites) outside the auth group,
+// the rest inside it.
 type Deps struct {
-	// Assets is the file system serving the built SPA (index/200.html, _app/...).
-	Assets fs.FS
-
-	// Signup, when non-nil, serves the public self-serve tenant signup route.
-	Signup *SignupHandler
-
-	// Session, when non-nil, wraps the router so sessions load and save per
-	// request. Required for the authenticated routes below to function.
-	Session *scs.SessionManager
-
-	// Users backs the auth-guard's user-exists recheck. Required when Auth is set.
-	Users *auth.UsersRepo
-
-	// Tenants backs the auth-guard's suspended-tenant recheck. Required when
-	// any authenticated route is registered.
-	Tenants *auth.TenantsRepo
-
-	// Auth, when non-nil, serves login/logout/me under /api.
-	Auth *AuthHandler
-
-	// Invites, when non-nil, serves invite creation (owner-only) plus public
-	// invite validation and acceptance under /api.
-	Invites *InviteHandler
-
-	// Events, when non-nil, serves the auth-gated SSE stream at GET /api/events.
-	Events *realtime.EventsHandler
-
-	// BusinessProfile, when non-nil, serves the auth-gated GET/PUT singleton
-	// business profile at /api/business-profile.
-	BusinessProfile *businessprofile.Handler
-
-	// PlanManagers, when non-nil, serves the auth-gated plan-manager CRUD plus
-	// bulk-delete routes under /api/plan-managers.
-	PlanManagers *planmanager.Handler
-
-	// TaxRates, when non-nil, serves the auth-gated tax-rate CRUD routes under
-	// /api/tax-rates.
-	TaxRates *taxrate.Handler
-
-	// Participants, when non-nil, serves the auth-gated participant CRUD plus
-	// bulk-delete routes under /api/participants.
-	Participants *participant.Handler
-
-	// CustomItems, when non-nil, serves the auth-gated per-tenant custom-item
-	// CRUD plus bulk-delete routes under /api/custom-items.
-	CustomItems *customitem.Handler
-
-	// SupportCatalog, when non-nil, serves the auth-gated read-only GLOBAL NDIS
-	// Support Catalogue routes under /api/support-catalog.
-	SupportCatalog *catalog.Handler
-
-	// Invoices, when non-nil, serves the auth-gated invoice CRUD, status,
-	// bulk routes, plus the per-participant stats route under /api.
-	Invoices *invoice.Handler
-
-	// Shifts, when non-nil, serves the auth-gated shift lifecycle routes: the
-	// per-participant shift list under /api/participants/{id}/shifts, the
-	// tenant-wide list, billing suggestions and to-record prompts, plus shift
-	// CRUD and the status-transition route under /api/shifts.
-	Shifts *shift.Handler
-
-	// Estimates, when non-nil, serves the auth-gated estimate CRUD, status,
-	// duplicate, bulk, and convert-to-invoice routes under /api/estimates.
-	Estimates *estimate.Handler
-
-	// Payments, when non-nil, serves the auth-gated per-invoice payment list
-	// and create routes plus payment deletion under /api.
-	Payments *invoice.PaymentHandler
-
-	// Recurring, when non-nil, serves the auth-gated recurring-template CRUD
-	// plus the generate route under /api/recurring.
-	Recurring *recurring.Handler
-
-	// Export, when non-nil, serves the auth-gated CSV/Excel export routes under
-	// /api/export.
-	Export *export.Handler
-
-	// Smarts, when non-nil, serves the two auth-gated one-shot AI "Smart"
-	// routes: draft-invoice-from-shifts (POST /api/participants/{id}/draft-invoice)
-	// and shift import (POST /api/shifts/import). Both routes 503 when the AI is
-	// disabled.
-	Smarts *agent.SmartsHandler
+	Assets          fs.FS                    // embedded SPA build sub-FS (index/200.html, _app/...)
+	Signup          *SignupHandler           // public self-serve tenant signup
+	Session         *scs.SessionManager      // loads/saves the session per request
+	Users           *auth.UsersRepo          // backs the auth-guard's user-exists recheck
+	Tenants         *auth.TenantsRepo        // backs the auth-guard's suspended-tenant recheck
+	Auth            *AuthHandler             // login/logout/me
+	Invites         *InviteHandler           // invite create (owner-only) + public validate/accept
+	Events          *realtime.EventsHandler  // SSE stream at GET /api/events
+	BusinessProfile *businessprofile.Handler // singleton business profile
+	PlanManagers    *planmanager.Handler     // plan-manager CRUD + bulk-delete
+	TaxRates        *taxrate.Handler         // tax-rate CRUD
+	Participants    *participant.Handler     // participant CRUD + bulk-delete
+	CustomItems     *customitem.Handler      // per-tenant custom-item CRUD + bulk-delete
+	SupportCatalog  *catalog.Handler         // read-only global NDIS catalogue (+ admin ingest)
+	Invoices        *invoice.Handler         // invoice CRUD, status, bulk, per-participant stats
+	Shifts          *shift.Handler           // shift lifecycle, billing suggestions, CRUD
+	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert
+	Payments        *invoice.PaymentHandler  // per-invoice payment list/create + delete
+	Recurring       *recurring.Handler       // recurring-template CRUD + generate
+	Export          *export.Handler          // CSV/Excel export routes
+	Smarts          *agent.SmartsHandler     // one-shot AI "Smart" routes (503 when AI disabled)
 }
 
 // Server wraps the configured chi router.
@@ -128,7 +69,8 @@ func NewServer(deps Deps) *Server {
 	r.Use(httpx.Recover)
 	r.Use(httpx.RequestLogger)
 	// LoadAndSave must wrap any route that reads or writes the session. It is
-	// harmless on session-free routes (/healthz, SPA).
+	// harmless on session-free routes (/healthz, SPA). Guarded so the static-only
+	// NewServer construction used in unit tests works without a session manager.
 	if deps.Session != nil {
 		r.Use(deps.Session.LoadAndSave)
 	}
@@ -140,6 +82,8 @@ func NewServer(deps Deps) *Server {
 	})
 
 	// /api subrouter, mounted before the SPA catch-all so it takes precedence.
+	// The per-field nil guards let tests build NewServer with a subset of deps
+	// (a handler's Routes() is called at registration time, so a nil one panics).
 	r.Route("/api", func(api chi.Router) {
 		if deps.Signup != nil {
 			api.Post("/signup", deps.Signup.Signup)
@@ -154,68 +98,67 @@ func NewServer(deps Deps) *Server {
 			api.Get("/invites/{token}", deps.Invites.Validate)
 			api.Post("/invites/{token}/accept", deps.Invites.Accept)
 		}
-		// Authenticated /api group. Only registered when there is at least one
-		// protected route, since RequireAuth requires non-nil Session and Users.
-		if deps.Auth != nil || deps.Invites != nil || deps.Events != nil || deps.BusinessProfile != nil || deps.PlanManagers != nil || deps.TaxRates != nil || deps.Participants != nil || deps.CustomItems != nil || deps.SupportCatalog != nil || deps.Invoices != nil || deps.Shifts != nil || deps.Estimates != nil || deps.Payments != nil || deps.Recurring != nil || deps.Export != nil || deps.Smarts != nil {
-			api.Group(func(pr chi.Router) {
-				pr.Use(httpx.RequireAuth(deps.Session, deps.Users, deps.Tenants))
-				if deps.Auth != nil {
-					pr.Get("/auth/me", deps.Auth.Me)
-				}
-				if deps.Invites != nil {
-					// User management is owner/admin only (spec §3.2).
-					pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
-				}
-				if deps.Events != nil {
-					pr.Get("/events", deps.Events.Stream)
-				}
-				if deps.BusinessProfile != nil {
-					deps.BusinessProfile.Routes(pr)
-				}
-				if deps.PlanManagers != nil {
-					deps.PlanManagers.Routes(pr)
-				}
-				if deps.TaxRates != nil {
-					deps.TaxRates.Routes(pr)
-				}
-				if deps.Participants != nil {
-					deps.Participants.Routes(pr)
-				}
-				if deps.CustomItems != nil {
-					deps.CustomItems.Routes(pr)
-				}
-				// SupportCatalog is the GLOBAL NDIS catalogue. Reads are open to
-				// any authenticated tenant user; the XLSX ingest (write) is gated
-				// to platform admins (spec §5).
-				if deps.SupportCatalog != nil {
-					deps.SupportCatalog.Routes(pr)
-				}
-				if deps.Invoices != nil {
-					deps.Invoices.Routes(pr)
-				}
-				if deps.Shifts != nil {
-					deps.Shifts.Routes(pr)
-				}
-				if deps.Estimates != nil {
-					deps.Estimates.Routes(pr)
-				}
-				if deps.Payments != nil {
-					deps.Payments.Routes(pr)
-				}
-				if deps.Recurring != nil {
-					deps.Recurring.Routes(pr)
-				}
-				if deps.Export != nil {
-					pr.Get("/export/catalog", deps.Export.Catalog)
-					pr.Get("/export/invoices", deps.Export.Invoices)
-					pr.Get("/export/estimates", deps.Export.Estimates)
-				}
-				if deps.Smarts != nil {
-					pr.Post("/participants/{id}/draft-invoice", deps.Smarts.DraftInvoiceFromShifts)
-					pr.Post("/shifts/import", deps.Smarts.ImportShifts)
-				}
-			})
+		if deps.Session == nil {
+			return // no authenticated routes without a session manager
 		}
+		api.Group(func(pr chi.Router) {
+			pr.Use(httpx.RequireAuth(deps.Session, deps.Users, deps.Tenants))
+			if deps.Auth != nil {
+				pr.Get("/auth/me", deps.Auth.Me)
+			}
+			if deps.Invites != nil {
+				// User management is owner/admin only (spec §3.2).
+				pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
+			}
+			if deps.Events != nil {
+				pr.Get("/events", deps.Events.Stream)
+			}
+			if deps.BusinessProfile != nil {
+				deps.BusinessProfile.Routes(pr)
+			}
+			if deps.PlanManagers != nil {
+				deps.PlanManagers.Routes(pr)
+			}
+			if deps.TaxRates != nil {
+				deps.TaxRates.Routes(pr)
+			}
+			if deps.Participants != nil {
+				deps.Participants.Routes(pr)
+			}
+			if deps.CustomItems != nil {
+				deps.CustomItems.Routes(pr)
+			}
+			// SupportCatalog is the GLOBAL NDIS catalogue. Reads are open to
+			// any authenticated tenant user; the XLSX ingest (write) is gated
+			// to platform admins (spec §5).
+			if deps.SupportCatalog != nil {
+				deps.SupportCatalog.Routes(pr)
+			}
+			if deps.Invoices != nil {
+				deps.Invoices.Routes(pr)
+			}
+			if deps.Shifts != nil {
+				deps.Shifts.Routes(pr)
+			}
+			if deps.Estimates != nil {
+				deps.Estimates.Routes(pr)
+			}
+			if deps.Payments != nil {
+				deps.Payments.Routes(pr)
+			}
+			if deps.Recurring != nil {
+				deps.Recurring.Routes(pr)
+			}
+			if deps.Export != nil {
+				pr.Get("/export/catalog", deps.Export.Catalog)
+				pr.Get("/export/invoices", deps.Export.Invoices)
+				pr.Get("/export/estimates", deps.Export.Estimates)
+			}
+			if deps.Smarts != nil {
+				pr.Post("/participants/{id}/draft-invoice", deps.Smarts.DraftInvoiceFromShifts)
+				pr.Post("/shifts/import", deps.Smarts.ImportShifts)
+			}
+		})
 	})
 
 	// SPA static handler must be registered last as the catch-all so that

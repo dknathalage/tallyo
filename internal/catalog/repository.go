@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"strings"
 	"time"
 
@@ -266,7 +267,7 @@ func (r *CatalogRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFi
 			Label:          label,
 			EffectiveFrom:  effectiveFrom,
 			EffectiveTo:    sql.NullString{},
-			SourceFilename: nzMaybe(sourceFilename),
+			SourceFilename: db.NzMaybe(sourceFilename),
 			CreatedAt:      now,
 		})
 		if e != nil {
@@ -281,11 +282,11 @@ func (r *CatalogRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFi
 				CatalogVersionID:  ver.ID,
 				Code:              it.Code,
 				Name:              it.Name,
-				Unit:              nzMaybe(it.Unit),
-				SupportCategory:   nzMaybe(it.SupportCategory),
-				RegistrationGroup: nzMaybe(it.RegistrationGroup),
-				ClaimType:         nzMaybe(it.ClaimType),
-				GstFree:           b2i(it.GstFree),
+				Unit:              db.NzMaybe(it.Unit),
+				SupportCategory:   db.NzMaybe(it.SupportCategory),
+				RegistrationGroup: db.NzMaybe(it.RegistrationGroup),
+				ClaimType:         db.NzMaybe(it.ClaimType),
+				GstFree:           db.B2i(it.GstFree),
 				Metadata:          sql.NullString{String: "{}", Valid: true},
 			})
 			if e != nil {
@@ -372,21 +373,4 @@ func toSupportItemPrice(row gen.SupportItemPrice) *SupportItemPrice {
 		Zone:          row.Zone,
 		PriceCap:      cap,
 	}
-}
-
-// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
-// the string is empty, and valid otherwise.
-func nzMaybe(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
 }

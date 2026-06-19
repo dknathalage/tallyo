@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -255,17 +256,12 @@ func (r *UsersRepo) Delete(ctx context.Context, tenantID, id int64) error {
 func (r *UsersRepo) TouchLastLogin(ctx context.Context, id int64) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := gen.New(r.db).TouchLastLogin(ctx, gen.TouchLastLoginParams{
-		LastLoginAt: nz(now),
+		LastLoginAt: db.Nz(now),
 		ID:          id,
 	}); err != nil {
 		return fmt.Errorf("touch last login: %w", err)
 	}
 	return nil
-}
-
-// nz wraps a string into a valid sql.NullString.
-func nz(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: true}
 }
 
 // bi maps a Go bool to the SQLite 0/1 integer convention.

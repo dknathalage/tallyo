@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -114,7 +115,7 @@ func (r *TaxRatesRepo) Create(ctx context.Context, tenantID int64, in TaxRateInp
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Rate:      in.Rate,
-			IsDefault: b2i(in.IsDefault),
+			IsDefault: db.B2i(in.IsDefault),
 			CreatedAt: now,
 			UpdatedAt: now,
 		})
@@ -155,7 +156,7 @@ func (r *TaxRatesRepo) Update(ctx context.Context, tenantID, id int64, in TaxRat
 		t, e := q.UpdateTaxRate(ctx, gen.UpdateTaxRateParams{
 			Name:      in.Name,
 			Rate:      in.Rate,
-			IsDefault: b2i(in.IsDefault),
+			IsDefault: db.B2i(in.IsDefault),
 			UpdatedAt: now,
 			TenantID:  tenantID,
 			ID:        id,
@@ -195,14 +196,6 @@ func (r *TaxRatesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 		}
 		return nil
 	})
-}
-
-// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
 }
 
 // toTaxRate maps a generated row to the domain TaxRate.

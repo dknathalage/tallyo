@@ -62,10 +62,6 @@ func TestFromSDK_ToolUseBlock(t *testing.T) {
 	if gotInput["amount"] != 42 {
 		t.Fatalf("tool input = %v, want amount=42", gotInput)
 	}
-	if got.Usage.InputTokens != 10 || got.Usage.OutputTokens != 20 ||
-		got.Usage.CacheReadTokens != 3 || got.Usage.CacheWriteTokens != 4 {
-		t.Fatalf("Usage = %+v", got.Usage)
-	}
 }
 
 // (b) refusal stop reason maps to StopRefusal.

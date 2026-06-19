@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -73,9 +74,9 @@ func (r *PaymentsRepo) Create(ctx context.Context, tenantID int64, in PaymentInp
 			InvoiceID: in.InvoiceID,
 			Amount:    in.Amount,
 			PaidAt:    in.PaidAt,
-			Method:    nzMaybe(in.Method),
-			Reference: nzMaybe(in.Reference),
-			Notes:     nzMaybe(in.Notes),
+			Method:    db.NzMaybe(in.Method),
+			Reference: db.NzMaybe(in.Reference),
+			Notes:     db.NzMaybe(in.Notes),
 			CreatedAt: now,
 			UpdatedAt: now,
 		})

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -103,9 +104,9 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in CustomItemInput) (
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Rate:      in.Rate,
-			Unit:      nzMaybe(in.Unit),
-			GstFree:   b2i(in.GstFree),
-			Metadata:  nz(metadata),
+			Unit:      db.NzMaybe(in.Unit),
+			GstFree:   db.B2i(in.GstFree),
+			Metadata:  db.Nz(metadata),
 			CreatedAt: now,
 			UpdatedAt: now,
 		})
@@ -149,9 +150,9 @@ func (r *Repo) Update(ctx context.Context, tenantID, id int64, in CustomItemInpu
 		c, e := gen.New(tx).UpdateCustomItem(ctx, gen.UpdateCustomItemParams{
 			Name:      in.Name,
 			Rate:      in.Rate,
-			Unit:      nzMaybe(in.Unit),
-			GstFree:   b2i(in.GstFree),
-			Metadata:  nz(metadata),
+			Unit:      db.NzMaybe(in.Unit),
+			GstFree:   db.B2i(in.GstFree),
+			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
 			ID:        id,
@@ -231,22 +232,4 @@ func toCustomItem(row gen.CustomItem) *CustomItem {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
-}
-
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-func nz(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: true}
-}
-
-func nzMaybe(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
 }

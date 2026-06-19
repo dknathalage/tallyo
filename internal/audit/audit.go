@@ -22,7 +22,6 @@ type Entry struct {
 	Action     string
 	Changes    string // JSON; defaults to "{}"
 	Context    string
-	BatchID    string
 }
 
 // Log writes one audit row. Every DB mutation must call this.
@@ -43,16 +42,12 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	if changes == "" {
 		changes = "{}"
 	}
-	var batch any
-	if e.BatchID != "" {
-		batch = e.BatchID
-	}
 	tenant := nullInt64(reqctx.TenantFrom(ctx))
 	user := nullInt64(reqctx.UserFrom(ctx))
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO audit_log (uuid, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uuid.NewString(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context, batch,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		uuid.NewString(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context,
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {

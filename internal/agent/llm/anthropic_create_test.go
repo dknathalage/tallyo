@@ -221,9 +221,6 @@ func TestCreateMessage_StreamSuccess(t *testing.T) {
 	if len(resp.Content) != 1 || resp.Content[0].Text != "hello from stream" {
 		t.Fatalf("Content = %+v, want single text block", resp.Content)
 	}
-	if resp.Usage.InputTokens != 5 || resp.Usage.OutputTokens != 7 {
-		t.Errorf("Usage = %+v, want input=5 output=7", resp.Usage)
-	}
 }
 
 // CreateMessage surfaces a transport/stream error from the server.

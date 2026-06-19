@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -186,19 +187,19 @@ func createEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 		Uuid:               uuid.NewString(),
 		TenantID:           tenantID,
 		Number:             num,
-		ParticipantID:      nullID(&in.ParticipantID),
-		PlanManagerID:      nullID(in.PlanManagerID),
+		ParticipantID:      db.NullID(&in.ParticipantID),
+		PlanManagerID:      db.NullID(in.PlanManagerID),
 		Status:             orDefault(in.Status, "draft"),
 		IssueDate:          in.IssueDate,
 		ValidUntil:         in.ValidUntil,
 		Subtotal:           t.Subtotal,
 		Tax:                t.Tax,
 		Total:              t.Total,
-		Notes:              nzMaybe(in.Notes),
+		Notes:              db.NzMaybe(in.Notes),
 		ConvertedInvoiceID: sql.NullInt64{},
-		BusinessSnapshot:   nzMaybe(in.BusinessSnapshot),
-		ClientSnapshot:     nzMaybe(in.ClientSnapshot),
-		PayerSnapshot:      nzMaybe(in.PayerSnapshot),
+		BusinessSnapshot:   db.NzMaybe(in.BusinessSnapshot),
+		ClientSnapshot:     db.NzMaybe(in.ClientSnapshot),
+		PayerSnapshot:      db.NzMaybe(in.PayerSnapshot),
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
@@ -212,16 +213,16 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
 			EstimateID:       estimateID,
-			SupportItemID:    nullID(it.SupportItemID),
-			CustomItemID:     nullID(it.CustomItemID),
-			CatalogVersionID: nullID(it.CatalogVersionID),
-			Code:             nzMaybe(it.Code),
+			SupportItemID:    db.NullID(it.SupportItemID),
+			CustomItemID:     db.NullID(it.CustomItemID),
+			CatalogVersionID: db.NullID(it.CatalogVersionID),
+			Code:             db.NzMaybe(it.Code),
 			Description:      it.Description,
-			ServiceDate:      nzMaybe(it.ServiceDate),
-			Unit:             nzMaybe(it.Unit),
+			ServiceDate:      db.NzMaybe(it.ServiceDate),
+			Unit:             db.NzMaybe(it.Unit),
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
-			GstFree:          b2i(it.GstFree),
+			GstFree:          db.B2i(it.GstFree),
 			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
@@ -353,18 +354,18 @@ func updateEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateEstimateParams{
 		Number:           number,
-		ParticipantID:    nullID(&in.ParticipantID),
-		PlanManagerID:    nullID(in.PlanManagerID),
+		ParticipantID:    db.NullID(&in.ParticipantID),
+		PlanManagerID:    db.NullID(in.PlanManagerID),
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
 		ValidUntil:       in.ValidUntil,
 		Subtotal:         t.Subtotal,
 		Tax:              t.Tax,
 		Total:            t.Total,
-		Notes:            nzMaybe(in.Notes),
-		BusinessSnapshot: nzMaybe(in.BusinessSnapshot),
-		ClientSnapshot:   nzMaybe(in.ClientSnapshot),
-		PayerSnapshot:    nzMaybe(in.PayerSnapshot),
+		Notes:            db.NzMaybe(in.Notes),
+		BusinessSnapshot: db.NzMaybe(in.BusinessSnapshot),
+		ClientSnapshot:   db.NzMaybe(in.ClientSnapshot),
+		PayerSnapshot:    db.NzMaybe(in.PayerSnapshot),
 		UpdatedAt:        now,
 		TenantID:         tenantID,
 		ID:               id,
@@ -562,17 +563,17 @@ func buildInvoiceFromEstimate(tenantID int64, est *Estimate, num string) gen.Cre
 		TenantID:         tenantID,
 		Number:           num,
 		ParticipantID:    participantID,
-		PlanManagerID:    nullID(est.PlanManagerID),
+		PlanManagerID:    db.NullID(est.PlanManagerID),
 		Status:           "draft",
 		IssueDate:        est.IssueDate,
 		DueDate:          est.ValidUntil,
 		Subtotal:         est.Subtotal,
 		Tax:              est.Tax,
 		Total:            est.Total,
-		Notes:            nzMaybe(est.Notes),
-		BusinessSnapshot: nzMaybe(est.BusinessSnapshot),
-		ClientSnapshot:   nzMaybe(est.ClientSnapshot),
-		PayerSnapshot:    nzMaybe(est.PayerSnapshot),
+		Notes:            db.NzMaybe(est.Notes),
+		BusinessSnapshot: db.NzMaybe(est.BusinessSnapshot),
+		ClientSnapshot:   db.NzMaybe(est.ClientSnapshot),
+		PayerSnapshot:    db.NzMaybe(est.PayerSnapshot),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -586,16 +587,16 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
 			InvoiceID:        invoiceID,
-			SupportItemID:    nullID(it.SupportItemID),
-			CustomItemID:     nullID(it.CustomItemID),
-			CatalogVersionID: nullID(it.CatalogVersionID),
-			Code:             nzMaybe(it.Code),
+			SupportItemID:    db.NullID(it.SupportItemID),
+			CustomItemID:     db.NullID(it.CustomItemID),
+			CatalogVersionID: db.NullID(it.CatalogVersionID),
+			Code:             db.NzMaybe(it.Code),
 			Description:      it.Description,
-			ServiceDate:      nzMaybe(it.ServiceDate),
-			Unit:             nzMaybe(it.Unit),
+			ServiceDate:      db.NzMaybe(it.ServiceDate),
+			Unit:             db.NzMaybe(it.Unit),
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
-			GstFree:          b2i(it.GstFree),
+			GstFree:          db.B2i(it.GstFree),
 			LineTotal:        it.LineTotal,
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
@@ -649,9 +650,9 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 		ID:                 f.id,
 		UUID:               f.uuid,
 		Number:             f.number,
-		ParticipantID:      ptrID(f.participantID),
+		ParticipantID:      db.PtrID(f.participantID),
 		ParticipantName:    f.participantName.String,
-		PlanManagerID:      ptrID(f.planManagerID),
+		PlanManagerID:      db.PtrID(f.planManagerID),
 		Status:             f.status,
 		IssueDate:          f.issueDate,
 		ValidUntil:         f.validUntil,
@@ -659,7 +660,7 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 		Tax:                f.tax,
 		Total:              f.total,
 		Notes:              f.notes.String,
-		ConvertedInvoiceID: ptrID(f.convertedInvoiceID),
+		ConvertedInvoiceID: db.PtrID(f.convertedInvoiceID),
 		BusinessSnapshot:   f.businessSnap.String,
 		ClientSnapshot:     f.clientSnap.String,
 		PayerSnapshot:      f.payerSnap.String,
@@ -732,9 +733,9 @@ func toEstimateLineItem(row gen.EstimateLineItem) *billing.LineItem {
 	return &billing.LineItem{
 		ID:               row.ID,
 		UUID:             row.Uuid,
-		SupportItemID:    ptrID(row.SupportItemID),
-		CustomItemID:     ptrID(row.CustomItemID),
-		CatalogVersionID: ptrID(row.CatalogVersionID),
+		SupportItemID:    db.PtrID(row.SupportItemID),
+		CustomItemID:     db.PtrID(row.CustomItemID),
+		CatalogVersionID: db.PtrID(row.CatalogVersionID),
 		Code:             row.Code.String,
 		Description:      row.Description,
 		ServiceDate:      row.ServiceDate.String,
@@ -745,40 +746,6 @@ func toEstimateLineItem(row gen.EstimateLineItem) *billing.LineItem {
 		LineTotal:        row.LineTotal,
 		SortOrder:        row.SortOrder.Int64,
 	}
-}
-
-// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
-func nullID(p *int64) sql.NullInt64 {
-	if p == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *p, Valid: true}
-}
-
-// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
-func ptrID(n sql.NullInt64) *int64 {
-	if !n.Valid {
-		return nil
-	}
-	v := n.Int64
-	return &v
-}
-
-// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
-// the string is empty, and valid otherwise.
-func nzMaybe(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
 }
 
 // orDefault returns s when non-empty, otherwise def.

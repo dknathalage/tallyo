@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -129,7 +130,7 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 			Note:          in.Note,
 			Tags:          tags,
 			Status:        status,
-			AuthorUserID:  nullID(authorUserID),
+			AuthorUserID:  db.NullID(authorUserID),
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
@@ -492,8 +493,8 @@ func toShift(r gen.Shift) (*Shift, error) {
 		Note:          r.Note,
 		Tags:          tags,
 		Status:        r.Status,
-		InvoiceID:     ptrID(r.InvoiceID),
-		AuthorUserID:  ptrID(r.AuthorUserID),
+		InvoiceID:     db.PtrID(r.InvoiceID),
+		AuthorUserID:  db.PtrID(r.AuthorUserID),
 		CreatedAt:     r.CreatedAt,
 		UpdatedAt:     r.UpdatedAt,
 	}, nil
@@ -518,21 +519,4 @@ func validISODate(s string) bool {
 	}
 	_, err := time.Parse("2006-01-02", s)
 	return err == nil
-}
-
-// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
-func nullID(p *int64) sql.NullInt64 {
-	if p == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *p, Valid: true}
-}
-
-// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
-func ptrID(n sql.NullInt64) *int64 {
-	if !n.Valid {
-		return nil
-	}
-	v := n.Int64
-	return &v
 }

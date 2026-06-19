@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -138,19 +139,14 @@ func buildParams(tenantID int64, id string, in BusinessProfileInput) gen.UpsertB
 		TenantID:        tenantID,
 		Uuid:            id,
 		Name:            in.Name,
-		Email:           nz(in.Email),
-		Phone:           nz(in.Phone),
-		Address:         nz(in.Address),
+		Email:           db.Nz(in.Email),
+		Phone:           db.Nz(in.Phone),
+		Address:         db.Nz(in.Address),
 		Zone:            zone,
-		Logo:            nz(in.Logo),
-		Metadata:        nz(metadata),
-		DefaultCurrency: nz(currency),
+		Logo:            db.Nz(in.Logo),
+		Metadata:        db.Nz(metadata),
+		DefaultCurrency: db.Nz(currency),
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-}
-
-// nz wraps a string into a valid sql.NullString.
-func nz(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: true}
 }

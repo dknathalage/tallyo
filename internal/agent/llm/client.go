@@ -73,17 +73,9 @@ type Request struct {
 	Effort     string // "high"
 }
 
-type Usage struct {
-	InputTokens      int64
-	OutputTokens     int64
-	CacheReadTokens  int64
-	CacheWriteTokens int64
-}
-
 type Response struct {
 	StopReason string
 	Content    []Block
-	Usage      Usage
 }
 
 // Client is the single dependency the agent loop has on the model provider.

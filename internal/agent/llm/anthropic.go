@@ -203,12 +203,6 @@ func fromSDK(m *anthropic.Message) *Response {
 	resp := &Response{
 		StopReason: mapStopReason(m.StopReason),
 		Content:    make([]Block, 0, len(m.Content)),
-		Usage: Usage{
-			InputTokens:      m.Usage.InputTokens,
-			OutputTokens:     m.Usage.OutputTokens,
-			CacheReadTokens:  m.Usage.CacheReadInputTokens,
-			CacheWriteTokens: m.Usage.CacheCreationInputTokens,
-		},
 	}
 	for _, b := range m.Content {
 		switch v := b.AsAny().(type) {

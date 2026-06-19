@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"strings"
 	"time"
 
@@ -154,7 +155,7 @@ func (r *InvitesRepo) MarkAccepted(ctx context.Context, token string) error {
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		if err := gen.New(tx).MarkInviteAccepted(ctx, gen.MarkInviteAcceptedParams{
-			AcceptedAt: nz(now),
+			AcceptedAt: db.Nz(now),
 			Token:      token,
 		}); err != nil {
 			return fmt.Errorf("update: %w", err)
@@ -198,7 +199,7 @@ func (r *InvitesRepo) Accept(ctx context.Context, token, name, passwordHash stri
 			return fmt.Errorf("create user: %w", e)
 		}
 		created = u
-		if e := q.MarkInviteAccepted(ctx, gen.MarkInviteAcceptedParams{AcceptedAt: nz(now), Token: token}); e != nil {
+		if e := q.MarkInviteAccepted(ctx, gen.MarkInviteAcceptedParams{AcceptedAt: db.Nz(now), Token: token}); e != nil {
 			return fmt.Errorf("mark accepted: %w", e)
 		}
 		return audit.Log(ctx, tx, audit.Entry{

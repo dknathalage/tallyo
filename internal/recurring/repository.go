@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
@@ -169,15 +170,15 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*
 		tpl, e := gen.New(tx).CreateRecurringTemplate(ctx, gen.CreateRecurringTemplateParams{
 			Uuid:          uuid.NewString(),
 			TenantID:      tenantID,
-			ParticipantID: nullID(in.ParticipantID),
-			PlanManagerID: nullID(in.PlanManagerID),
+			ParticipantID: db.NullID(in.ParticipantID),
+			PlanManagerID: db.NullID(in.PlanManagerID),
 			Name:          in.Name,
 			Frequency:     in.Frequency,
 			NextDue:       in.NextDue,
 			LineItems:     lineItemsJSON,
 			TaxRate:       in.TaxRate,
 			Notes:         in.Notes,
-			IsActive:      b2i(in.IsActive),
+			IsActive:      db.B2i(in.IsActive),
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
@@ -214,15 +215,15 @@ func (r *Repo) Update(ctx context.Context, tenantID, id int64, in RecurringInput
 		EntityType: "recurring_template", EntityID: id, Action: "update",
 	}, func(tx *sql.Tx) error {
 		_, e := gen.New(tx).UpdateRecurringTemplate(ctx, gen.UpdateRecurringTemplateParams{
-			ParticipantID: nullID(in.ParticipantID),
-			PlanManagerID: nullID(in.PlanManagerID),
+			ParticipantID: db.NullID(in.ParticipantID),
+			PlanManagerID: db.NullID(in.PlanManagerID),
 			Name:          in.Name,
 			Frequency:     in.Frequency,
 			NextDue:       in.NextDue,
 			LineItems:     lineItemsJSON,
 			TaxRate:       in.TaxRate,
 			Notes:         in.Notes,
-			IsActive:      b2i(in.IsActive),
+			IsActive:      db.B2i(in.IsActive),
 			UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 			TenantID:      tenantID,
 			ID:            id,
@@ -375,17 +376,17 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []bill
 		TenantID:         tenantID,
 		Number:           num,
 		ParticipantID:    pid,
-		PlanManagerID:    nullID(tpl.PlanManagerID),
+		PlanManagerID:    db.NullID(tpl.PlanManagerID),
 		Status:           "draft",
 		IssueDate:        today,
 		DueDate:          today,
 		Subtotal:         t.Subtotal,
 		Tax:              t.Tax,
 		Total:            t.Total,
-		Notes:            nzMaybe(tpl.Notes),
-		BusinessSnapshot: nzMaybe(snaps.business),
-		ClientSnapshot:   nzMaybe(snaps.client),
-		PayerSnapshot:    nzMaybe(snaps.payer),
+		Notes:            db.NzMaybe(tpl.Notes),
+		BusinessSnapshot: db.NzMaybe(snaps.business),
+		ClientSnapshot:   db.NzMaybe(snaps.client),
+		PayerSnapshot:    db.NzMaybe(snaps.payer),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -470,8 +471,8 @@ func parseLines(lines []*RecurringLine) []billing.LineItemInput {
 
 func listRowToTemplate(r gen.ListRecurringTemplatesRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, ParticipantID: ptrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
-		PlanManagerID: ptrID(r.PlanManagerID),
+		ID: r.ID, UUID: r.Uuid, ParticipantID: db.PtrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
+		PlanManagerID: db.PtrID(r.PlanManagerID),
 		Name:          r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
@@ -480,8 +481,8 @@ func listRowToTemplate(r gen.ListRecurringTemplatesRow) *RecurringTemplate {
 
 func activeRowToTemplate(r gen.ListActiveRecurringTemplatesRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, ParticipantID: ptrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
-		PlanManagerID: ptrID(r.PlanManagerID),
+		ID: r.ID, UUID: r.Uuid, ParticipantID: db.PtrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
+		PlanManagerID: db.PtrID(r.PlanManagerID),
 		Name:          r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
@@ -490,44 +491,10 @@ func activeRowToTemplate(r gen.ListActiveRecurringTemplatesRow) *RecurringTempla
 
 func getRowToTemplate(r gen.GetRecurringTemplateRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, ParticipantID: ptrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
-		PlanManagerID: ptrID(r.PlanManagerID),
+		ID: r.ID, UUID: r.Uuid, ParticipantID: db.PtrID(r.ParticipantID), ParticipantName: r.ParticipantName.String,
+		PlanManagerID: db.PtrID(r.PlanManagerID),
 		Name:          r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
 		IsActive: r.IsActive != 0, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
-}
-
-// b2i maps a bool to the int64 column convention (true -> 1, false -> 0).
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// nullID wraps an optional id into a sql.NullInt64 (invalid when nil).
-func nullID(p *int64) sql.NullInt64 {
-	if p == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *p, Valid: true}
-}
-
-// ptrID unwraps a sql.NullInt64 into a *int64 (nil when invalid).
-func ptrID(n sql.NullInt64) *int64 {
-	if !n.Valid {
-		return nil
-	}
-	v := n.Int64
-	return &v
-}
-
-// nzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
-// the string is empty, and valid otherwise.
-func nzMaybe(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
 }
