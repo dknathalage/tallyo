@@ -33,6 +33,16 @@ describe('createAutosave', () => {
 		expect(create).toHaveBeenCalledWith({ name: 'b' });
 	});
 
+	it('updates (never creates) when seeded with an existing id', async () => {
+		const create = vi.fn(async (p: Payload) => ({ id: 99, ...p }));
+		const update = vi.fn(async (id: number, p: Payload) => ({ id, ...p }));
+		const a = createAutosave<Payload, Row>({ initialId: 42, create, update, delay: 400 });
+		a.schedule({ name: 'x' });
+		await vi.runAllTimersAsync();
+		expect(create).not.toHaveBeenCalled();
+		expect(update).toHaveBeenCalledWith(42, { name: 'x' });
+	});
+
 	it('creates once, then updates with the captured id', async () => {
 		const { a, create, update, created } = harness();
 		a.schedule({ name: 'a' });

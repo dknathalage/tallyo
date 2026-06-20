@@ -77,6 +77,8 @@
 	// ── Autosave wiring ─────────────────────────────────────────────────────────
 	let saveState = $state<SaveState>('idle');
 	const autosave = createAutosave<TInput, T>({
+		// svelte-ignore state_referenced_locally -- id is fixed for this editor's life (the route remounts when it changes); seeding once is correct.
+		initialId: id === 'new' ? null : id,
 		create: (input) => crud.create(input),
 		update: (existingId, input) => crud.update(existingId, input),
 		onState: (s) => (saveState = s),

@@ -1,6 +1,8 @@
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export interface AutosaveOptions<T, R extends { id: number }> {
+	/** Existing record id when editing; null/undefined for a brand-new record. */
+	initialId?: number | null;
 	/** Persist a brand-new record; resolves to the created entity (carrying its id). */
 	create: (payload: T) => Promise<R>;
 	/** Persist an update to an already-created record. */
@@ -35,7 +37,7 @@ export function createAutosave<T, R extends { id: number }>(
 	opts: AutosaveOptions<T, R>
 ): Autosave<T> {
 	const delay = opts.delay ?? 400;
-	let id: number | null = null; // null until the first create resolves
+	let id: number | null = opts.initialId ?? null; // existing id, or null until first create
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let saving = false;
 	let pending: T | null = null; // latest payload awaiting a flush
