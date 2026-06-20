@@ -669,7 +669,7 @@ Repeat Task 5 for each. Read each list page first to copy its exact columns, `to
 
 - [ ] **Step 2 (plan-managers):** Same for `web/src/routes/plan-managers/+page.svelte`. Commit `feat(web): plan-managers autosaving edit page`.
 
-- [ ] **Step 3 (recurring):** Same for `web/src/routes/recurring/+page.svelte`. Note: recurring currently edits via a form modal with a `rowActions` "Edit" button — remove that Edit action (row click replaces it); keep any non-edit row actions. Commit `feat(web): recurring autosaving edit page`.
+- [ ] ~~**Step 3 (recurring):**~~ **RECLASSIFIED as a rich entity — moved to Task 7.** During implementation, `RecurringInput` proved to be non-flat: it carries `lineItems: RecurringLine[]` (array editor), plus `participantId` and `taxRate` which are **id→name relational selects** (the old form maps numeric id → display name/rate). `EntityEditor`'s `select` only supports `values: string[]` where value === label, so relational selects and the line-item array are not representable by the flat form. Recurring is migrated in Task 7 alongside the other rich entities.
 
 - [ ] **Step 4: Full type-check + tests**
 
@@ -680,7 +680,9 @@ Expected: 0 errors / 0 warnings; autosave tests pass. All four simple CRUD entit
 
 ## Task 7: Migrate rich entities (invoices → estimates → participants)
 
-Rich entities have sections a flat form can't hold (line items, payments, PDF actions; a participant's shifts). They compose `EntityEditor` for the flat header fields and pass everything else through the `extras` snippet. **Do one entity at a time, verify, then commit before starting the next.**
+Rich entities have sections a flat form can't hold (line items, payments, PDF actions; a participant's shifts; recurring's line-item template + relational participant/tax-rate selects). They compose `EntityEditor` for the flat header fields and pass everything else through the `extras` snippet. **Do one entity at a time, verify, then commit before starting the next.**
+
+**Known `EntityEditor` limitation (discovered in Task 6):** the built-in `select` only renders `values: string[]` (option value === label). **Relational selects** (id→name, e.g. participant or tax-rate dropdowns) are NOT supported by the flat field renderer. For rich entities, render such fields inside the `extras` snippet with their own controls + `crud.update` calls (mark those columns `input: 'readonly'` or omit them from `columns` so the flat renderer skips them). Recurring additionally needs a line-item array editor in `extras`.
 
 **Process per rich entity:**
 
