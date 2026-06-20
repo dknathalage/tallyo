@@ -176,7 +176,7 @@
 <div class="space-y-3">
 	{#if selected.size > 0}
 		<div
-			class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
+			class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm"
 		>
 			<span class="font-medium text-gray-700">{selected.size} selected</span>
 			<button
@@ -196,11 +196,11 @@
 			</button>
 		</div>
 	{/if}
-	<div class="overflow-x-auto rounded border border-gray-200 bg-white">
+	<div class="max-h-80 overflow-auto rounded border border-gray-200 bg-white">
 		<table class="w-full text-sm">
-			<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
+			<thead class="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 				<tr>
-					<th class="px-3 py-2">
+					<th class="px-3 py-1.5">
 						<input
 							type="checkbox"
 							checked={allVisibleSelected}
@@ -211,7 +211,7 @@
 					</th>
 					{#each table.columns as column (column.id)}
 						{#if table.isSortable(column.id)}
-							<th class="px-3 py-2 font-medium {column.id === 'hours' || column.id === 'km' ? 'text-right' : ''}">
+							<th class="px-3 py-1.5 font-medium {column.id === 'hours' || column.id === 'km' ? 'text-right' : ''}">
 								<button
 									type="button"
 									onclick={() => table.toggleSort(column.id)}
@@ -222,7 +222,7 @@
 								</button>
 							</th>
 						{:else}
-							<th class="px-3 py-2 font-medium">{column.name}</th>
+							<th class="px-3 py-1.5 font-medium">{column.name}</th>
 						{/if}
 					{/each}
 				</tr>
@@ -289,7 +289,7 @@
 						class:bg-blue-50={selected.has(row.id)}
 						onclick={() => onopen?.(row.shift)}
 					>
-						<td class="px-3 py-2">
+						<td class="px-3 py-1.5">
 							<input
 								type="checkbox"
 								checked={selected.has(row.id)}
@@ -299,16 +299,16 @@
 								class="align-middle"
 							/>
 						</td>
-						<td class="px-3 py-2 whitespace-nowrap">{dowDate(row.date)}</td>
-						<td class="px-3 py-2">{row.participant}</td>
-						<td class="max-w-[18rem] px-3 py-2 text-gray-600">
+						<td class="px-3 py-1.5 whitespace-nowrap">{dowDate(row.date)}</td>
+						<td class="px-3 py-1.5">{row.participant}</td>
+						<td class="max-w-[18rem] px-3 py-1.5 text-gray-600">
 							{#if row.note}
 								{row.note}
 							{:else}
 								<span class="text-gray-400">— not recorded —</span>
 							{/if}
 						</td>
-						<td class="px-3 py-2">
+						<td class="px-3 py-1.5">
 							{#each row.shift.tags as tag (tag)}
 								<span
 									class="mr-1 mb-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200"
@@ -317,7 +317,7 @@
 								</span>
 							{/each}
 						</td>
-						<td class="px-3 py-2">
+						<td class="px-3 py-1.5">
 							<span
 								class="inline-block rounded px-2 py-0.5 text-xs font-semibold whitespace-nowrap {statusBadgeClass(
 									row.status

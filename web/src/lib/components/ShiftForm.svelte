@@ -38,7 +38,7 @@
 	}: Props = $props();
 
 	const editing = $derived(shift !== null);
-	const title = $derived(recording ? 'Record shift' : editing ? 'Edit shift' : 'Ad-hoc shift');
+	const title = $derived(recording ? 'Record shift' : editing ? 'Edit shift' : 'Add shift');
 	const saveLabel = $derived(recording ? 'Save recording' : editing ? 'Save' : 'Add');
 
 	// Form fields. Re-seeded whenever the modal opens (the form is reused).
