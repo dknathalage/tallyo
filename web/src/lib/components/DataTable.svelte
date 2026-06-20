@@ -6,7 +6,7 @@
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import X from '@lucide/svelte/icons/x';
-	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import { goto } from '$app/navigation';
 
 	type Store = {
 		rows: T[];
@@ -20,22 +20,14 @@
 		columns: Column<T>[];
 		store: Store;
 		rowActions?: RowAction<T>[];
-		onNew?: () => void;
-		onRowSave?: (row: T) => Promise<void>;
-		detailHref?: (row: T) => string | null;
+		/** Row click target, e.g. (r) => `/tax-rates/${r.id}`. */
+		rowHref: (row: T) => string;
+		/** "+ New" target, e.g. '/tax-rates/new'. */
+		newHref: string;
 		pageSize?: number;
 	};
 
-	let {
-		title,
-		columns,
-		store,
-		rowActions = [],
-		onNew,
-		onRowSave,
-		detailHref,
-		pageSize = 50
-	}: Props = $props();
+	let { title, columns, store, rowActions = [], rowHref, newHref, pageSize = 50 }: Props = $props();
 
 	// Per-column filter state. Reassigned (not mutated) so runes react.
 	type FState =
@@ -202,38 +194,6 @@
 	const selectedRows = $derived(rows.filter((r) => selected.has(r.id)));
 	const allChecked = $derived(rows.length > 0 && rows.every((r) => selected.has(r.id)));
 
-	// ── Drawer (Notion-style peek + autosave) ─────────────────────────────────
-	let drawerRow = $state<T | null>(null);
-	// draft holds the editable copy; indexing a generic by string requires a cast.
-	let draft = $state<Record<string, unknown>>({});
-	let saveState = $state<'' | 'saving' | 'saved'>('');
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-	function openDrawer(row: T): void {
-		drawerRow = row;
-		draft = { ...(row as Record<string, unknown>) };
-		saveState = '';
-	}
-	function closeDrawer(): void {
-		drawerRow = null;
-		if (saveTimer) clearTimeout(saveTimer);
-	}
-	function editField(key: string, value: unknown): void {
-		draft = { ...draft, [key]: value };
-		if (!onRowSave) return;
-		saveState = 'saving';
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => {
-			void onRowSave(draft as T)
-				.then(() => {
-					saveState = 'saved';
-				})
-				.catch(() => {
-					saveState = '';
-				});
-		}, 400);
-	}
-
 	// ── Cell + display helpers ────────────────────────────────────────────────
 	function cellText(col: Column<T>, row: T): string {
 		if (col.cell) return col.cell(row);
@@ -245,15 +205,14 @@
 	function onWindowClick(e: MouseEvent): void {
 		const t = e.target as HTMLElement;
 		if (openMenu && !t.closest('.dt-menu') && !t.closest('.dt-head')) openMenu = null;
-		if (selected.size && !t.closest('.dt-card') && !t.closest('.dt-drawer')) clearSelection();
+		if (selected.size && !t.closest('.dt-card')) clearSelection();
 	}
 	function onWindowKey(e: KeyboardEvent): void {
 		const typing =
 			e.target instanceof HTMLElement &&
 			(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA');
 		if (e.key === 'Escape') {
-			if (drawerRow) closeDrawer();
-			else if (openMenu) openMenu = null;
+			if (openMenu) openMenu = null;
 			else if (selected.size) clearSelection();
 			return;
 		}
@@ -303,11 +262,11 @@
 					<X class="size-3.5" />
 				</button>
 			</div>
-		{:else if onNew}
+		{:else}
 			<button
 				type="button"
 				class="ml-auto inline-flex items-center gap-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-gray-800"
-				onclick={onNew}
+				onclick={() => goto(newHref)}
 			>
 				<Plus class="size-3.5" /> New
 			</button>
@@ -393,7 +352,7 @@
 			{#each rows as row, idx (row.id)}
 				<tr
 					class="cursor-pointer border-t border-gray-100 {selected.has(row.id) ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}"
-					onclick={() => openDrawer(row)}
+					onclick={() => goto(rowHref(row))}
 				>
 					<td class="w-9 px-3 py-2 text-center">
 						<input
@@ -437,46 +396,3 @@
 		</span>
 	</div>
 </div>
-
-<!-- peek drawer -->
-{#if drawerRow}
-	<div class="dt-drawer fixed right-0 top-0 z-50 h-screen w-[420px] overflow-y-auto border-l border-gray-200 bg-white p-6 shadow-2xl">
-		<div class="mb-3 flex items-center justify-between text-xs text-gray-400">
-			<span>{title}</span>
-			<button type="button" class="hover:text-gray-900" onclick={closeDrawer} aria-label="Close">✕ close</button>
-		</div>
-		<h3 class="text-base font-semibold text-gray-900">{cellText(columns[0], drawerRow)}</h3>
-		<div class="mb-3 h-3.5 text-[11px] text-green-600">
-			{#if saveState === 'saving'}saving…{:else if saveState === 'saved'}✓ saved{/if}
-		</div>
-
-		{#each columns as col (col.key)}
-			<div class="mb-3.5">
-				<div class="mb-1 text-[11px] uppercase tracking-wide text-gray-400">{col.label}</div>
-				{#if col.filter === 'enum'}
-					<select
-						class="w-full rounded border border-gray-200 px-2.5 py-1.5 text-sm"
-						value={String(draft[col.key] ?? '')}
-						disabled={!onRowSave}
-						onchange={(e) => editField(col.key, e.currentTarget.value)}
-					>
-						{#each col.values ?? [] as opt (opt)}<option value={opt}>{opt}</option>{/each}
-					</select>
-				{:else}
-					<input
-						class="w-full rounded border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-						value={String(draft[col.key] ?? '')}
-						disabled={!onRowSave}
-						oninput={(e) => editField(col.key, e.currentTarget.value)}
-					/>
-				{/if}
-			</div>
-		{/each}
-
-		{#if detailHref && detailHref(drawerRow)}
-			<a href={detailHref(drawerRow)} class="mt-1.5 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
-				<ExternalLink class="size-3.5" /> Open full page
-			</a>
-		{/if}
-	</div>
-{/if}
