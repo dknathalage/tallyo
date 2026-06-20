@@ -103,21 +103,40 @@
 		const n = Number(v);
 		return Number.isFinite(n) ? n : 0;
 	}
+
+	// Manual save — a safety net beside the debounced autosave. Forces the current
+	// (valid) draft to persist immediately rather than waiting for the debounce.
+	function saveNow(): void {
+		if (!draft) return;
+		if (Object.values(errors).some((e) => e)) return;
+		autosave.schedule(toInput(draft));
+		autosave.flush();
+	}
 </script>
 
 <div class="space-y-5">
 	<div class="flex items-center justify-between">
 		<a href={backHref} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
-		<span class="h-4 text-xs">
-			{#if saveState === 'saving'}<span class="text-gray-400">saving…</span>
-			{:else if saveState === 'saved'}<span class="text-green-600">✓ saved</span>
-			{:else if saveState === 'error'}
-				<span class="text-red-600"
-					>⚠ error ·
-					<button type="button" class="underline" onclick={() => autosave.retry()}>retry</button>
-				</span>
-			{/if}
-		</span>
+		<div class="flex items-center gap-3">
+			<span class="h-4 text-xs">
+				{#if saveState === 'saving'}<span class="text-gray-400">saving…</span>
+				{:else if saveState === 'saved'}<span class="text-green-600">✓ saved</span>
+				{:else if saveState === 'error'}
+					<span class="text-red-600"
+						>⚠ error ·
+						<button type="button" class="underline" onclick={() => autosave.retry()}>retry</button>
+					</span>
+				{/if}
+			</span>
+			<button
+				type="button"
+				onclick={saveNow}
+				disabled={!draft || saveState === 'saving'}
+				class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+			>
+				Save
+			</button>
+		</div>
 	</div>
 
 	<h1 class="text-xl font-semibold">{recordId === 'new' ? `New ${title}` : title}</h1>
