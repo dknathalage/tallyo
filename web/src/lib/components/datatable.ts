@@ -3,6 +3,9 @@ import type { Component } from 'svelte';
 /** How a column is filtered (and which menu control it renders). */
 export type FilterType = 'text' | 'enum' | 'date' | 'number';
 
+/** How a column renders in the EntityEditor form. Inferred from `filter` when omitted. */
+export type EditInput = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox' | 'readonly';
+
 /**
  * A DataTable column. `key` is the server-side allowlisted identifier (used for
  * sort + `f.<key>` filters). `cell` returns the plain-text display value (no
@@ -15,6 +18,8 @@ export interface Column<T> {
 	filter?: FilterType;
 	values?: string[]; // enum options
 	cell?: (row: T) => string;
+	/** Edit-page input kind. Omit to infer from `filter`. Use 'readonly' for derived/non-editable columns. */
+	input?: EditInput;
 }
 
 /**
