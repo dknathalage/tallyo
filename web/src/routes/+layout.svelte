@@ -54,7 +54,6 @@
 
 	import type { Icon as IconType } from '@lucide/svelte';
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
-	import CalendarDays from '@lucide/svelte/icons/calendar-days';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Users from '@lucide/svelte/icons/users';
 	import BookOpen from '@lucide/svelte/icons/book-open';
@@ -73,11 +72,6 @@
 			icon: LayoutGrid,
 			children: [{ href: '/', label: 'Shifts' }]
 		},
-//		{
-//			label: 'Calendar',
-//			icon: CalendarDays,
-//			children: [{ href: '/calendar', label: 'Calendar' }]
-//		},
 		{
 			label: 'Participants',
 			icon: Users,

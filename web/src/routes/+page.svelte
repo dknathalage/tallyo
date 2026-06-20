@@ -6,11 +6,42 @@
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
+	import Calendar from '$lib/components/Calendar.svelte';
 	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
 	import { shortDate, statusLabel, todayISO } from '$lib/shifts/format';
 	import type { Shift, ShiftStatus } from '$lib/api/types';
 
 	const STAGES: ShiftStatus[] = ['scheduled', 'recorded', 'drafted', 'sent', 'paid'];
+
+	const MONTH_NAMES = [
+		'January', 'February', 'March', 'April', 'May', 'June',
+		'July', 'August', 'September', 'October', 'November', 'December'
+	];
+
+	// Table ⇆ Calendar view toggle.
+	let view = $state<'table' | 'calendar'>('table');
+
+	// Calendar view month — seeded from today.
+	let viewYear = $state(Number(todayISO().slice(0, 4)));
+	let viewMonth = $state(Number(todayISO().slice(5, 7)) - 1); // 0-based
+	const month = $derived(`${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`);
+
+	function prevMonth(): void {
+		if (viewMonth === 0) {
+			viewMonth = 11;
+			viewYear -= 1;
+		} else viewMonth -= 1;
+	}
+	function nextMonth(): void {
+		if (viewMonth === 11) {
+			viewMonth = 0;
+			viewYear += 1;
+		} else viewMonth += 1;
+	}
+	function thisMonth(): void {
+		viewYear = Number(todayISO().slice(0, 4));
+		viewMonth = Number(todayISO().slice(5, 7)) - 1;
+	}
 
 	onMount(() => {
 		shifts.ensureSubscribed();
@@ -44,16 +75,27 @@
 	let formOpen = $state(false);
 	let formShift = $state<Shift | null>(null);
 	let formRecording = $state(false);
+	let formDate = $state('');
 
 	function openAdHoc(): void {
 		formShift = null;
 		formRecording = false;
+		formDate = '';
 		formOpen = true;
 	}
 
 	function openRecord(shift: Shift): void {
 		formShift = shift;
 		formRecording = shift.status === 'scheduled';
+		formDate = '';
+		formOpen = true;
+	}
+
+	// Calendar day click → ad-hoc shift pre-dated to that day.
+	function openDay(dateISO: string): void {
+		formShift = null;
+		formRecording = false;
+		formDate = dateISO;
 		formOpen = true;
 	}
 
@@ -219,16 +261,47 @@
 	<!-- AI invoice suggestions -->
 	<InvoiceSuggestions suggestions={shifts.suggestions} nameFor={participantName} />
 
-	<!-- Shift table -->
+	<!-- Shift table / calendar -->
 	<section>
+		<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+			<div class="inline-flex rounded border border-gray-300 p-0.5 text-sm">
+				<button
+					type="button"
+					onclick={() => (view = 'table')}
+					class="rounded px-3 py-1 {view === 'table' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}"
+				>Table</button>
+				<button
+					type="button"
+					onclick={() => (view = 'calendar')}
+					class="rounded px-3 py-1 {view === 'calendar' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}"
+				>Calendar</button>
+			</div>
+			{#if view === 'calendar'}
+				<div class="flex items-center gap-2">
+					<span class="text-sm font-medium">{MONTH_NAMES[viewMonth]} {viewYear}</span>
+					<button type="button" onclick={prevMonth} class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" aria-label="Previous month">←</button>
+					<button type="button" onclick={thisMonth} class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Today</button>
+					<button type="button" onclick={nextMonth} class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" aria-label="Next month">→</button>
+				</div>
+			{/if}
+		</div>
+
 		{#if shifts.loading && shifts.items.length === 0}
 			<p class="text-sm text-gray-500">Loading…</p>
-		{:else}
+		{:else if view === 'table'}
 			<ShiftTable shifts={shifts.items} {participantName} onopen={openRecord} ondelete={deleteShifts} />
+			<p class="mt-2 text-xs text-gray-500">
+				Status pipeline: scheduled → recorded → drafted → sent → paid.
+			</p>
+		{:else}
+			<div class="rounded-lg border border-gray-200 bg-white p-3">
+				<Calendar shifts={shifts.items} nameFor={participantName} {month} onaddday={openDay} onopen={openRecord} />
+			</div>
+			<p class="mt-2 text-xs text-gray-500">
+				Amber dashed = scheduled (click to record) · blue recorded · slate drafted · teal sent ·
+				green paid. Click any day to add an ad-hoc shift.
+			</p>
 		{/if}
-		<p class="mt-2 text-xs text-gray-500">
-			Status pipeline: scheduled → recorded → drafted → sent → paid.
-		</p>
 	</section>
 </div>
 
@@ -236,5 +309,6 @@
 	bind:open={formOpen}
 	shift={formShift}
 	recording={formRecording}
+	presetDate={formDate}
 	onsaved={onShiftSaved}
 />
