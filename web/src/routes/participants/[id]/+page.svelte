@@ -133,16 +133,18 @@
 	}
 </script>
 
-<EntityEditor
-	title="Participant"
-	columns={flatCols}
-	crud={participants.crud}
-	id={idParam}
-	{toInput}
-	{validate}
-	backHref="/participants"
-	{extras}
-/>
+{#key idParam}
+	<EntityEditor
+		title="Participant"
+		columns={flatCols}
+		crud={participants.crud}
+		id={idParam}
+		{toInput}
+		{validate}
+		backHref="/participants"
+		{extras}
+	/>
+{/key}
 
 {#snippet extras(row: Participant)}
 	{#if row.id > 0}

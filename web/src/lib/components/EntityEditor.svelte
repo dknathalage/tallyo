@@ -55,7 +55,7 @@
 	// ── Load / seed draft ──────────────────────────────────────────────────────
 	let draft = $state<T | null>(null);
 	let loadError = $state<string | null>(null);
-	// svelte-ignore state_referenced_locally -- recordId seeds from the prop once; onCreated then owns it independently.
+	// svelte-ignore state_referenced_locally -- the seed is intentional: this component is remounted by a {#key} on the route id, so re-seeding on an id change is handled by remount, not by reactivity here. onCreated then owns recordId independently.
 	let recordId = $state<number | 'new'>(id);
 
 	async function init(): Promise<void> {
@@ -77,7 +77,7 @@
 	// ── Autosave wiring ─────────────────────────────────────────────────────────
 	let saveState = $state<SaveState>('idle');
 	const autosave = createAutosave<TInput, T>({
-		// svelte-ignore state_referenced_locally -- id is fixed for this editor's life (the route remounts when it changes); seeding once is correct.
+		// svelte-ignore state_referenced_locally -- the seed is intentional: this component is remounted by a {#key} on the route id, so re-seeding on an id change is handled by remount, not by reactivity here. Seeding once is correct.
 		initialId: id === 'new' ? null : id,
 		create: (input) => crud.create(input),
 		update: (existingId, input) => crud.update(existingId, input),
@@ -85,6 +85,8 @@
 		onCreated: (newId) => {
 			recordId = newId;
 			replaceState(`${backHref}/${newId}`, {});
+			// Patch the draft so id-dependent dependents (e.g. participant shifts gated on id > 0) see the new id immediately.
+			if (draft) draft = { ...draft, id: newId };
 		}
 	});
 	onDestroy(() => autosave.dispose());

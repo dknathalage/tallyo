@@ -23,12 +23,14 @@
 	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
 </script>
 
-<EntityEditor
-	title="Tax rate"
-	{columns}
-	crud={taxRates.crud}
-	id={idParam}
-	{toInput}
-	{validate}
-	backHref="/tax-rates"
-/>
+{#key idParam}
+	<EntityEditor
+		title="Tax rate"
+		{columns}
+		crud={taxRates.crud}
+		id={idParam}
+		{toInput}
+		{validate}
+		backHref="/tax-rates"
+	/>
+{/key}

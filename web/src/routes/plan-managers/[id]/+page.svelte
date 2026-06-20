@@ -24,12 +24,14 @@
 	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
 </script>
 
-<EntityEditor
-	title="Plan manager"
-	{columns}
-	crud={planManagers.crud}
-	id={idParam}
-	{toInput}
-	{validate}
-	backHref="/plan-managers"
-/>
+{#key idParam}
+	<EntityEditor
+		title="Plan manager"
+		{columns}
+		crud={planManagers.crud}
+		id={idParam}
+		{toInput}
+		{validate}
+		backHref="/plan-managers"
+	/>
+{/key}

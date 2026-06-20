@@ -258,100 +258,102 @@
 	);
 </script>
 
-{#if idParam === 'new'}
-	<div class="space-y-5">
-		<a href="/invoices" class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
-		<h1 class="text-xl font-semibold">New invoice</h1>
+{#key idParam}
+	{#if idParam === 'new'}
+		<div class="space-y-5">
+			<a href="/invoices" class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
+			<h1 class="text-xl font-semibold">New invoice</h1>
 
-		<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitCreate}>
-			<div class="grid grid-cols-2 gap-3">
-				<label class="col-span-1">
-					<span class="mb-1 block text-sm font-medium">Participant</span>
-					<select
-						bind:value={formParticipantId}
-						required
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+			<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitCreate}>
+				<div class="grid grid-cols-2 gap-3">
+					<label class="col-span-1">
+						<span class="mb-1 block text-sm font-medium">Participant</span>
+						<select
+							bind:value={formParticipantId}
+							required
+							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						>
+							<option value="">— select —</option>
+							{#each participants.items as p (p.id)}
+								<option value={String(p.id)}>{p.name}</option>
+							{/each}
+						</select>
+					</label>
+					<div class="col-span-1"></div>
+					<label class="col-span-1">
+						<span class="mb-1 block text-sm font-medium">Issue date</span>
+						<input
+							type="date"
+							bind:value={formIssueDate}
+							required
+							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label class="col-span-1">
+						<span class="mb-1 block text-sm font-medium">Due date</span>
+						<input
+							type="date"
+							bind:value={formDueDate}
+							required
+							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label class="col-span-2">
+						<span class="mb-1 block text-sm font-medium">Notes</span>
+						<input
+							type="text"
+							bind:value={formNotes}
+							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+				</div>
+
+				<LineItemsEditor bind:lines details={validationDetails} />
+
+				<div class="flex justify-end">
+					<dl class="w-56 space-y-1 text-sm">
+						<div class="flex justify-between">
+							<dt class="text-gray-500">Subtotal (preview)</dt>
+							<dd>{money(subtotalPreview)}</dd>
+						</div>
+						<p class="text-xs text-gray-400">Tax + total are calculated on save.</p>
+					</dl>
+				</div>
+
+				{#if formError}
+					<p class="text-sm text-red-600">{formError}</p>
+				{/if}
+
+				<div class="flex gap-2">
+					<button
+						type="submit"
+						disabled={saving}
+						class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
 					>
-						<option value="">— select —</option>
-						{#each participants.items as p (p.id)}
-							<option value={String(p.id)}>{p.name}</option>
-						{/each}
-					</select>
-				</label>
-				<div class="col-span-1"></div>
-				<label class="col-span-1">
-					<span class="mb-1 block text-sm font-medium">Issue date</span>
-					<input
-						type="date"
-						bind:value={formIssueDate}
-						required
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					/>
-				</label>
-				<label class="col-span-1">
-					<span class="mb-1 block text-sm font-medium">Due date</span>
-					<input
-						type="date"
-						bind:value={formDueDate}
-						required
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					/>
-				</label>
-				<label class="col-span-2">
-					<span class="mb-1 block text-sm font-medium">Notes</span>
-					<input
-						type="text"
-						bind:value={formNotes}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					/>
-				</label>
-			</div>
-
-			<LineItemsEditor bind:lines details={validationDetails} />
-
-			<div class="flex justify-end">
-				<dl class="w-56 space-y-1 text-sm">
-					<div class="flex justify-between">
-						<dt class="text-gray-500">Subtotal (preview)</dt>
-						<dd>{money(subtotalPreview)}</dd>
-					</div>
-					<p class="text-xs text-gray-400">Tax + total are calculated on save.</p>
-				</dl>
-			</div>
-
-			{#if formError}
-				<p class="text-sm text-red-600">{formError}</p>
-			{/if}
-
-			<div class="flex gap-2">
-				<button
-					type="submit"
-					disabled={saving}
-					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-				>
-					{saving ? 'Saving…' : 'Create invoice'}
-				</button>
-				<a
-					href="/invoices"
-					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-				>
-					Cancel
-				</a>
-			</div>
-		</form>
-	</div>
-{:else}
-	<EntityEditor
-		title="Invoice"
-		{columns}
-		crud={invoiceStore.crud}
-		id={idParam}
-		{toInput}
-		{validate}
-		backHref="/invoices"
-		{extras}
-	/>
-{/if}
+						{saving ? 'Saving…' : 'Create invoice'}
+					</button>
+					<a
+						href="/invoices"
+						class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+					>
+						Cancel
+					</a>
+				</div>
+			</form>
+		</div>
+	{:else}
+		<EntityEditor
+			title="Invoice"
+			{columns}
+			crud={invoiceStore.crud}
+			id={idParam}
+			{toInput}
+			{validate}
+			backHref="/invoices"
+			{extras}
+		/>
+	{/if}
+{/key}
 
 {#snippet extras(row: Invoice)}
 	<div class="space-y-6">

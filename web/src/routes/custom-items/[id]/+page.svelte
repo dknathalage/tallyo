@@ -24,13 +24,15 @@
 	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
 </script>
 
-<EntityEditor
-	title="Custom item"
-	{columns}
-	crud={customItems.crud}
-	id={idParam}
-	{toInput}
-	{validate}
-	blank={{ gstFree: true }}
-	backHref="/custom-items"
-/>
+{#key idParam}
+	<EntityEditor
+		title="Custom item"
+		{columns}
+		crud={customItems.crud}
+		id={idParam}
+		{toInput}
+		{validate}
+		blank={{ gstFree: true }}
+		backHref="/custom-items"
+	/>
+{/key}
