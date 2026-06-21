@@ -62,6 +62,70 @@ Rationale for users/invites/sessions in control: login is global
 (`POST /api/auth/login`, no tenant in URL) and must resolve email → tenant
 before any tenant DB is known. Sessions (scs) want a single `*sql.DB`.
 
+## Entity-relationship diagram
+
+Mermaid can't draw a box around a group, so the two databases are shown as two
+diagrams. **Solid lines = real FK constraints** (same file, enforced). The
+cross-DB references between them are **logical only** — no FK constraint, listed
+separately below.
+
+### control.db
+
+```mermaid
+erDiagram
+    tenants ||--o{ users : has
+    tenants ||--o{ invites : has
+    users ||--o{ invites : "created_by"
+    catalog_versions ||--o{ support_items : contains
+    support_items ||--o{ support_item_prices : "priced by zone"
+    users ||--o{ audit_log_global : "actor"
+    sessions {
+        text token
+    }
+```
+
+`audit_log_global` is the control-DB `audit_log` (global admin actions only —
+catalogue upload, tenant create/suspend). `sessions` is the scs store, keyed by
+token, unrelated to other tables.
+
+### tenant-&lt;id&gt;.db (one per tenant)
+
+```mermaid
+erDiagram
+    plan_managers |o--o{ participants : manages
+    participants  ||--o{ invoices : "billed for"
+    plan_managers |o--o{ invoices : "bills via"
+    participants  ||--o{ estimates : "quoted for"
+    plan_managers |o--o{ estimates : "quoted via"
+    participants  ||--o{ shifts : "supported in"
+    invoices      ||--o{ line_items : has
+    invoices      ||--o{ payments : receives
+    invoices      |o--o{ estimates : "converted from"
+    estimates     ||--o{ estimate_line_items : has
+    shifts        |o--o{ line_items : "billable items"
+    custom_items  |o--o{ line_items : "custom line"
+    custom_items  |o--o{ estimate_line_items : "custom line"
+    business_profile {
+        text uuid
+    }
+    tax_rates {
+        text uuid
+    }
+    recurring_templates }o--|| participants : "templates"
+```
+
+`business_profile` (1:1 per file) and `tax_rates` stand alone within the tenant
+file. `recurring_templates` also references `plan_managers`.
+
+### Cross-DB logical references (no FK — validated in app)
+
+| From (tenant file) | To (control.db) | Stored as |
+|---|---|---|
+| every tenant table `.tenant_id` | `tenants.id` | int (redundant; file already scopes) |
+| `line_items` / `estimate_line_items` `.support_item_id` | `support_items` | **UUID** |
+| `line_items` / `estimate_line_items` `.catalog_version_id` | `catalog_versions` | **UUID** |
+| `audit_log.user_id`, `shifts.author_user_id`, … | `users` | control user id, **non-authoritative**, resolved app-side for display |
+
 ## Schema changes (minimal diff)
 
 Tenant tables stay otherwise identical — the only change is removing FK
@@ -77,10 +141,23 @@ constraints that point at tables **not present in the tenant file** (with
   **UUID** (control-DB integer ids are meaningless across files), FK dropped,
   existence validated in app at write time. Display fields are already
   snapshotted on the line.
+- `audit_log.tenant_id REFERENCES tenants(id)` **and** `audit_log.user_id
+  REFERENCES users(id)` → **both FKs dropped** (neither target table exists in
+  the tenant file; with `foreign_keys=ON` an audited insert would otherwise
+  fail). Columns kept: `tenant_id` stays as a redundant guard; `user_id` keeps
+  the control-DB user id as a **non-authoritative** display reference (resolved
+  app-side from control — it is a cross-file id, not an enforced FK). The same
+  applies to any tenant table with `author_user_id REFERENCES users(id)`
+  (e.g. `shifts`) — drop the FK, keep the column.
 - Same-DB FKs are **kept**: `invoice_id`, `estimate_id`, `custom_item_id`,
-  `participant_id`, `plan_manager_id`, etc. all reference tenant-local tables.
+  `participant_id`, `plan_manager_id`, `shift_id`, etc. all reference
+  tenant-local tables.
 
-`audit_log.tenant_id` in the tenant file is redundant but kept (zero-diff).
+The `audit_log` table **shape** stays identical across both files (one sqlc
+`AuditLog` model); only the FK clauses differ between the control-dir and
+tenant-dir DDL — goose creates each physical copy from its own dir, so this is
+fine. Carry the `idx_audit_entity` / `idx_audit_batch` indexes into the tenant
+DDL (the `tenant_id` index becomes low-cardinality but is harmless).
 
 ### Integer PKs are file-local after the split
 
@@ -187,8 +264,10 @@ tenants (tenant row with no usable file, or file with no row).
 - **Realtime hub:** unchanged — global singleton, routed by `Event.TenantID`.
 - **Sessions:** scs `sqlite3store` on `control.db`. Behaviour unchanged.
 - **Audit:** tenant mutations write `audit_log` in the tenant DB (`audit.WithTx`
-  is tx-scoped and rides the tenant tx). Global admin actions write the control
-  `audit_log`.
+  is tx-scoped and rides the tenant tx); the tenant copy has the `tenants`/`users`
+  FKs dropped (see Schema changes) so inserts succeed, and `user_id` is stored
+  as a non-authoritative control reference. Global admin actions write the
+  control `audit_log` (FKs intact there).
 
 ### 6. Per-tenant ops (the payoff)
 

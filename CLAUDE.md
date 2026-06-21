@@ -88,7 +88,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 ## Database
 
-- **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema.
+- **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema. The Mermaid ERD in the DB-per-tenant design ([`docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`](docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md)) is the authority for the control-DB vs tenant-DB split — update both ERDs together when a migration moves a table between databases or changes a relationship.
 - SQLite (modernc.org/sqlite, pure-Go) + sqlc + goose. WAL, `foreign_keys=ON`, `busy_timeout=5000`, `_txlock=immediate` (all mutations take the write lock at BEGIN).
 - Migrations are embedded and run on startup (`internal/db/migrate.go`). Add a new migration as `internal/db/migrations/NNNNN_*.sql` then `sqlc generate`.
 - DB file in the data dir (default `./data/tallyo-go.db` relative to the working dir); `DATA_DIR` / `--data-dir` override.
