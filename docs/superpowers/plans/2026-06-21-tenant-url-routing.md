@@ -37,50 +37,53 @@
 
 # PHASE 1 — Backend: tenant from URL
 
-## Task 1.1: `GetUserByTenantEmail` query + repo method
+## Task 1.1: `TenantsRepo.GetByUUID` wrapper (member lookup already exists)
 
-**Files:** `internal/db/queries/users.sql`, `internal/auth/users.go`, regen `internal/db/gen`.
+**No new user query needed.** `UsersRepo.GetByEmail(ctx, tenantID, email) (*User, error)`
+already exists (`internal/auth/users.go:102`), returns the full row with `Role`/
+`IsPlatformAdmin`, and returns `(nil, nil)` on no-rows — exactly what
+`ResolveTenant` needs for membership+role. Use it directly. (Do NOT add
+`GetUserByTenantEmail`.)
 
-- [ ] **Step 1:** Add to `internal/db/queries/users.sql`:
-```sql
--- name: GetUserByTenantEmail :one
-SELECT * FROM users WHERE tenant_id = ? AND email = ?;
-```
-- [ ] **Step 2:** Regenerate: `"$(go env GOPATH)/bin/sqlc" generate` (run from repo root). Expect `internal/db/gen/users.sql.go` to gain `GetUserByTenantEmail`.
-- [ ] **Step 3:** Add a repo wrapper in `internal/auth/users.go` next to `GetByID`:
+What IS missing: a `TenantsRepo` wrapper over the existing `GetTenantByUUID` sqlc
+query (`internal/db/queries/tenants.sql:9`). Add it.
+
+**Files:** `internal/auth/` (the file holding `TenantsRepo`, alongside `Status`).
+
+- [ ] **Step 1:** Add a method returning the tenant row (incl. status) by uuid, mirroring the existing `Status`/`GetByID`-style wrappers:
 ```go
-// GetByTenantEmail resolves the user row (with role) for an email within a
-// tenant. Returns (nil, nil) when the email has no account in that tenant —
-// the caller treats that as "not a member" (403).
-func (r *UsersRepo) GetByTenantEmail(ctx context.Context, tenantID int64, email string) (*User, error) {
-	row, err := gen.New(r.db).GetUserByTenantEmail(ctx, gen.GetUserByTenantEmailParams{TenantID: tenantID, Email: email})
+// GetByUUID resolves a tenant by its public UUID. Returns (nil, nil) when no
+// tenant has that uuid (caller → 404).
+func (r *TenantsRepo) GetByUUID(ctx context.Context, uuid string) (*Tenant, error) {
+	row, err := gen.New(r.db).GetTenantByUUID(ctx, uuid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get user by tenant+email: %w", err)
+		return nil, fmt.Errorf("get tenant by uuid: %w", err)
 	}
-	u := toUser(row) // reuse whatever mapping GetByID uses (match its conversion)
-	return &u, nil
+	t := toTenant(row) // match the existing tenant row→struct conversion in this file
+	return &t, nil
 }
 ```
-Match the exact row→`*User` conversion that `GetByID` uses (copy its body). Confirm imports (`database/sql`, `errors`, `fmt`).
-- [ ] **Step 4:** `go build ./... && go vet ./...` clean.
-- [ ] **Step 5:** Commit: `git commit -am "feat(auth): query user by (tenant,email) for url-tenant resolution"`
+Match the existing tenant row→struct mapping/return-type convention in that file (it may already return a value or pointer; follow it). Confirm imports.
+- [ ] **Step 2:** `go build ./... && go vet ./...` clean.
+- [ ] **Step 3:** Commit: `git commit -am "feat(auth): TenantsRepo.GetByUUID for url-tenant resolution"`
 
-## Task 1.2: store email in the session at login
+## Task 1.2: store email in the session (login AND signup)
 
 **Files:** `internal/app/auth_handlers.go`.
 
-- [ ] **Step 1:** In the login handler where it does `h.sm.Put(... "userID" ...)` / `"tenantID"`, also `h.sm.Put(r.Context(), "email", creds... /* the resolved email */)`. Use the email the credentials were resolved for (the request email, lowercased consistently with how lookups compare). If `Credentials` lacks email, use the validated request email.
-- [ ] **Step 2:** `go build ./...` clean.
-- [ ] **Step 3:** Commit: `git commit -am "feat(auth): persist email in session for per-request tenant auth"`
+- [ ] **Step 1:** In the **login** handler where it does `h.sm.Put(... "userID" ...)` / `"tenantID"`, also `h.sm.Put(r.Context(), "email", <resolved email>)`. Use the email the credentials were resolved for, normalized (lowercased/trimmed) **consistently with how `GetByEmail` compares** — verify the existing email normalization so the session email matches what the query filters on. If `Credentials` lacks email, use the validated request email.
+- [ ] **Step 2:** Do the SAME in the **signup** handler (`Signup`, ~line 365) — it establishes a session for the new owner. Without an `email` in the session, that user's first `ResolveTenant` call 401s. Put `email` alongside the `userID`/`tenantID` it already sets.
+- [ ] **Step 3:** `go build ./...` clean.
+- [ ] **Step 4:** Commit: `git commit -am "feat(auth): persist email in session (login+signup) for per-request tenant auth"`
 
 ## Task 1.3: `ResolveTenant` middleware (TDD — security core)
 
 **Files:** `internal/httpx/middleware.go`, test `internal/httpx/resolvetenant_test.go` (or extend existing middleware test file).
 
-- [ ] **Step 1: Write failing tests.** Create `internal/httpx/resolvetenant_test.go`. Use the existing test helpers/patterns in the package (look at how the current middleware tests build an `scs` manager + fake repos; mirror them). Cover:
+- [ ] **Step 1: Write failing tests.** NOTE: `internal/httpx/` has **no existing `*_test.go`** and `RequireAuth` takes concrete `*auth.UsersRepo`/`*auth.TenantsRepo` (not fakeable). **Primary approach:** define minimal interfaces in `httpx` for exactly what `ResolveTenant` needs — e.g. `type tenantResolver interface { GetByUUID(ctx, string) (*auth.Tenant, error) }` and `type memberResolver interface { GetByEmail(ctx, int64, string) (*auth.User, error) }` (or import-free local interfaces if an `httpx→auth` import would cycle — check; if it cycles, define the interfaces over the method shapes without naming `auth` types, returning the concrete types via generics-free small structs the test can satisfy). Have `ResolveTenant` accept those interfaces; `*auth.UsersRepo`/`*auth.TenantsRepo` satisfy them in production, and the test supplies fakes. (Alternative if interfaces get awkward: write an integration test under `internal/app/` with a real migrated DB, as the `internal/app/*_test.go` suite does.) Create `internal/httpx/resolvetenant_test.go` covering:
   - member email + valid tenant UUID in URL → handler runs; `reqctx.MustTenant` == that tenant; `reqctx.UserFrom` has the per-tenant user + role.
   - email not a member of the URL tenant → **403**, handler NOT run.
   - unknown tenant UUID → **404**.
@@ -92,9 +95,9 @@ Match the exact row→`*User` conversion that `GetByID` uses (copy its body). Co
   - Add `RequireSession(sm)` — a lightweight gate: 401 unless the session has `userID` (and `email`); attach acting user id + email to context/logger. (Used by the tenant-agnostic authed group.)
   - Add `ResolveTenant(sm, users, tenants)` for the `/api/t/{tenantUUID}` group:
     1. `email := sm.GetString(ctx,"email")`; if empty → 401.
-    2. `uuid := chi.URLParam(r, "tenantUUID")`; `tenant := tenants.GetByUUID(ctx, uuid)`; not found → 404.
-    3. suspended → destroy/deny 403 (reuse current suspended logic).
-    4. `u := users.GetByTenantEmail(ctx, tenant.ID, email)`; `u == nil` → **403 "forbidden"**.
+    2. `uuid := chi.URLParam(r, "tenantUUID")`; `tenant := tenants.GetByUUID(ctx, uuid)` (Task 1.1 wrapper); nil → 404.
+    3. suspended (`tenant.Status == auth.StatusSuspended`) → destroy/deny 403 (reuse current suspended logic).
+    4. `u := users.GetByEmail(ctx, tenant.ID, email)` (EXISTING method); `u == nil` → **403 "forbidden"**.
     5. `ctx = reqctx.WithTenant(ctx, tenant.ID)`; `reqctx.WithUser(ctx, u.ID)`; `context.WithValue(ctx, userCtxKey, u)`; enrich logger with tenant_id/user_id. `next.ServeHTTP`.
   - Keep `RequireRole` unchanged — it reads `userCtxKey`, which now carries the per-tenant user/role. 
   - You may keep `RequireAuth` for now (unused after server.go rewires) or delete it in Task 1.4; don't leave it half-wired.
@@ -124,7 +127,7 @@ api.Route("/t/{tenantUUID}", func(tr chi.Router) {
 })
 ```
   Keep the same nil-guards. Public routes (signup/login/logout/invites validate+accept) stay where they are. Note `/features` + `/auth/me` are now tenant-scoped.
-- [ ] **Step 3:** Update any backend tests that hit `/api/<resource>` to use `/api/t/{uuid}/<resource>` (the `internal/app/*_test.go` suite). Use a real tenant UUID from the test's seeded tenant. This is the bulk of the churn — work through each failing test.
+- [ ] **Step 3:** Backend test rewire — this is the bulk of the churn and is NOT a string find-replace. Each `internal/app/*_test.go` (invoices, participants, shifts, estimates, payments, validation_e2e, …, ~10 files) **hand-rolls its own chi router** mounting handlers under `/api/<resource>` behind `httpx.RequireAuth`. For each: (a) rewire the test router to mount domain routes under `/api/t/{tenantUUID}` behind `RequireSession` + `ResolveTenant` (mirror the new `server.go`); (b) the shared seed helper (`seedTenantOwner` or similar) currently returns only `tenantID` — extend it to also return the tenant **UUID** (read the seeded tenant row) and ensure the test session stores `email` (so `ResolveTenant` resolves); (c) update request URLs to `/api/t/{uuid}/<resource>`. Prefer fixing the shared test helper/router-builder once so most files inherit it. Work through every failing test until `go test ./... -race` is green.
 - [ ] **Step 4:** Gate: `go test ./... -race` PASS; `go vet ./...`; `gofmt -l .` empty; `CGO_ENABLED=0 go build ./cmd/tallyo`.
 - [ ] **Step 5:** Commit: `git commit -am "feat(app): mount tenant-scoped api under /api/t/{tenantUUID}"`
 
@@ -201,7 +204,7 @@ export function t(path: string): string {
 ```
 - [ ] **Step 3:** `[tenant]/+layout.svelte`: on mount, `loadSession()`; read `page.params.tenant`; if not in `session.tenants` → `goto('/login')` (or a picker). Else `setActiveTenant(page.params.tenant)`, `loadMe()`, and `openEvents()`. On tenant param change (an `$effect` on `page.params.tenant`): `setActiveTenant(newUuid)`, `closeEvents(); openEvents()`, `loadMe()`. Render the tenant **switcher** (dropdown of `session.tenants`; selecting → `goto('/' + uuid + '/')`).
 - [ ] **Step 4:** Update ALL in-app links/`rowHref`/`newHref`/`backHref`/`goto` in the moved pages to use `t(...)` (e.g. `rowHref={(r)=>t('/invoices/'+r.id)}`, `newHref={t('/invoices/new')}`, `backHref={t('/invoices')}`). Update nav menu links in the shell layout.
-- [ ] **Step 5:** Root redirect: in the top `+layout` (or a root `+page`), if authenticated and at `/`, `goto('/' + firstTenantUuid + '/')` using `loadSession()`. Post-login redirect (`login` page) → `/{chosenTenantUuid}/`.
+- [ ] **Step 5:** **Rewrite the existing root `web/src/routes/+layout.svelte` bootstrap.** It currently calls `session.refresh()` (`/api/auth/me`) and `features.load()` (`/api/features`) in `onMount` — both are now tenant-scoped and would throw (`tenantPath: no active tenant`) / 404 before any tenant is set. Change the root bootstrap to call ONLY the agnostic `loadSession()` (`/api/auth/session`). Move `loadMe()` + `features.load()` into `[tenant]/+layout` (Step 3). Then root redirect: if authenticated and at `/`, `goto('/' + firstTenantUuid + '/')` from `loadSession()`'s tenant list. Post-login redirect (`login` page) → `/{chosenTenantUuid}/`.
 - [ ] **Step 6:** `client.ts` 401/`handleUnauthorized` + `publicPaths` still fine (login is unprefixed). Verify deep-link to `/{notMyTenant}/…` → backend 403 → client should redirect; add handling if needed (403 on tenant routes → go to a member tenant or login).
 - [ ] **Step 7:** Gate: `cd web && npm run check` 0/0; `npm run build`; `CGO_ENABLED=0 go build ./cmd/tallyo`.
 - [ ] **Step 8:** Commit.
