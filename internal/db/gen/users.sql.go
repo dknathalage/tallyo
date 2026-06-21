@@ -173,7 +173,7 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 }
 
 const listTenantsByEmail = `-- name: ListTenantsByEmail :many
-SELECT u.tenant_id, t.name AS tenant_name, t.uuid AS tenant_uuid
+SELECT u.tenant_id, t.name AS tenant_name, t.uuid AS tenant_uuid, u.role AS role
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
 WHERE u.email = ?
@@ -184,6 +184,7 @@ type ListTenantsByEmailRow struct {
 	TenantID   int64  `json:"tenant_id"`
 	TenantName string `json:"tenant_name"`
 	TenantUuid string `json:"tenant_uuid"`
+	Role       string `json:"role"`
 }
 
 func (q *Queries) ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error) {
@@ -195,7 +196,12 @@ func (q *Queries) ListTenantsByEmail(ctx context.Context, email string) ([]ListT
 	var items []ListTenantsByEmailRow
 	for rows.Next() {
 		var i ListTenantsByEmailRow
-		if err := rows.Scan(&i.TenantID, &i.TenantName, &i.TenantUuid); err != nil {
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.TenantName,
+			&i.TenantUuid,
+			&i.Role,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

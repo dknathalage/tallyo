@@ -16,7 +16,7 @@ SELECT * FROM users WHERE email = ?;
 SELECT COUNT(*) FROM users WHERE email = ?;
 
 -- name: ListTenantsByEmail :many
-SELECT u.tenant_id, t.name AS tenant_name, t.uuid AS tenant_uuid
+SELECT u.tenant_id, t.name AS tenant_name, t.uuid AS tenant_uuid, u.role AS role
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
 WHERE u.email = ?

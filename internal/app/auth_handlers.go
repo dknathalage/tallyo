@@ -172,6 +172,23 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, u)
 }
 
+// Session returns the authenticated email and the tenants it belongs to (with
+// per-tenant role). Tenant-AGNOSTIC: it powers the SPA bootstrap, the root
+// redirect, and the tenant switcher before any tenant is selected.
+func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
+	email := h.sm.GetString(r.Context(), "email")
+	if email == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	tenants, err := h.users.TenantsForEmail(r.Context(), email)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"email": email, "tenants": tenants})
+}
+
 // ============================================================================
 // InviteHandler
 // ============================================================================

@@ -162,6 +162,7 @@ type EmailTenant struct {
 	TenantID   int64  `json:"tenantId"`
 	TenantName string `json:"tenantName"`
 	TenantUUID string `json:"tenantUuid"`
+	Role       string `json:"role"`
 }
 
 // TenantsForEmail lists the tenants in which an email is registered, for the
@@ -177,6 +178,7 @@ func (r *UsersRepo) TenantsForEmail(ctx context.Context, email string) ([]EmailT
 			TenantID:   rows[i].TenantID,
 			TenantName: rows[i].TenantName,
 			TenantUUID: rows[i].TenantUuid,
+			Role:       rows[i].Role,
 		})
 	}
 	return out, nil

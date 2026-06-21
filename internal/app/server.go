@@ -100,8 +100,20 @@ func NewServer(deps Deps) *Server {
 		if deps.Session == nil {
 			return // no authenticated routes without a session manager
 		}
+		// Tenant-AGNOSTIC authed routes: a valid session (email) is enough; no
+		// tenant is resolved. Powers bootstrap + the tenant switcher.
 		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(deps.Session, deps.Users, deps.Tenants))
+			pr.Use(httpx.RequireSession(deps.Session))
+			if deps.Auth != nil {
+				pr.Get("/auth/session", deps.Auth.Session)
+			}
+		})
+		// Tenant-SCOPED routes: the {tenantUUID} segment is authorized against
+		// the session email by ResolveTenant, which attaches the per-tenant
+		// tenant id + user + role to the context.
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(deps.Session))
+			pr.Use(httpx.ResolveTenant(deps.Users, deps.Tenants))
 			if deps.Auth != nil {
 				pr.Get("/auth/me", deps.Auth.Me)
 			}
