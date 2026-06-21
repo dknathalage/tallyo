@@ -36,10 +36,11 @@ func openMigratedDB(t *testing.T, name string) *sql.DB {
 }
 
 // seedTenantOwner provisions a tenant plus its platform-admin owner
-// ("o@x.com" / "password1"). It returns the users repo, the tenant id, and the
-// owner user id. End-to-end login + httpx.RequireAuth wire the tenant into context, so
-// callers only need the owner to exist in a tenant.
-func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64) {
+// ("o@x.com" / "password1"). It returns the users repo, the tenant id, the owner
+// user id, and the tenant's public UUID. End-to-end login + RequireSession +
+// ResolveTenant wire the tenant into context from the {tenantUUID} URL segment,
+// so callers build request URLs as /api/t/<uuid>/<resource>.
+func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64, string) {
 	t.Helper()
 	users := auth.NewUsers(conn)
 	tenants := auth.NewTenants(conn)
@@ -55,26 +56,29 @@ func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64)
 	if err != nil {
 		t.Fatalf("Create owner: %v", err)
 	}
-	return users, tn.ID, owner.ID
+	return users, tn.ID, owner.ID, tn.UUID
 }
 
 // newAuthServer spins up a real httptest.Server wrapping the session middleware
-// so cookies round-trip. It returns the server, the users repo, the owner id and
-// the tenant id (the latter for tenant-scoped deletes).
-func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int64) {
+// so cookies round-trip. It returns the server, the users repo, the owner id,
+// the tenant id (for tenant-scoped deletes) and the tenant's public UUID (for
+// building /api/t/<uuid>/... request URLs).
+func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int64, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "a.db")
-	users, tenantID, ownerID := seedTenantOwner(t, conn)
+	users, tenantID, ownerID, tenantUUID := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
 		api.Post("/auth/logout", authH.Logout)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Get("/auth/me", authH.Me)
 			pr.Get("/probe", probe200)
 		})
@@ -82,7 +86,7 @@ func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int6
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, users, ownerID, tenantID
+	return srv, users, ownerID, tenantID, tenantUUID
 }
 
 func probe200(w http.ResponseWriter, _ *http.Request) {
@@ -146,7 +150,7 @@ func get(t *testing.T, c *http.Client, url string) *http.Response {
 }
 
 func TestAuthLoginWrongPassword(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, _ := newAuthServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "o@x.com", "wrong")
 	defer func() { _ = resp.Body.Close() }()
@@ -156,7 +160,7 @@ func TestAuthLoginWrongPassword(t *testing.T) {
 }
 
 func TestAuthLoginCorrectReturnsUser(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, _ := newAuthServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "o@x.com", "password1")
 	defer func() { _ = resp.Body.Close() }()
@@ -177,9 +181,9 @@ func TestAuthLoginCorrectReturnsUser(t *testing.T) {
 }
 
 func TestAuthMeWithCookie(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, uuid := newAuthServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/auth/me")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/auth/me")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("me: want 200 got %d", resp.StatusCode)
@@ -191,9 +195,9 @@ func TestAuthMeWithCookie(t *testing.T) {
 }
 
 func TestAuthMeWithoutCookie(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, uuid := newAuthServer(t)
 	c := jarClient(t) // fresh, no login
-	resp := get(t, c, srv.URL+"/api/auth/me")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/auth/me")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("me no cookie: want 401 got %d", resp.StatusCode)
@@ -201,17 +205,17 @@ func TestAuthMeWithoutCookie(t *testing.T) {
 }
 
 func TestAuthProbeGuard(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, uuid := newAuthServer(t)
 
 	anon := jarClient(t)
-	respAnon := get(t, anon, srv.URL+"/api/probe")
+	respAnon := get(t, anon, srv.URL+"/api/t/"+uuid+"/probe")
 	_ = respAnon.Body.Close()
 	if respAnon.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("probe anon: want 401 got %d", respAnon.StatusCode)
 	}
 
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/probe")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/probe")
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("probe authed: want 200 got %d", resp.StatusCode)
@@ -219,11 +223,11 @@ func TestAuthProbeGuard(t *testing.T) {
 }
 
 func TestAuthDeletedUserSessionRejected(t *testing.T) {
-	srv, users, id, tenantID := newAuthServer(t)
+	srv, users, id, tenantID, uuid := newAuthServer(t)
 	c := loggedInClient(t, srv.URL)
 
 	// Confirm the session works first.
-	resp := get(t, c, srv.URL+"/api/auth/me")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/auth/me")
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pre-delete me: want 200 got %d", resp.StatusCode)
@@ -233,16 +237,19 @@ func TestAuthDeletedUserSessionRejected(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	// Same cookie, now the user no longer exists → 401.
-	resp2 := get(t, c, srv.URL+"/api/auth/me")
+	// Same cookie. The session (userID+email) still passes RequireSession, but
+	// ResolveTenant's GetByEmail now finds no member for this tenant → 403.
+	// (Under the old tenant-in-session model the user-exists recheck returned
+	// 401; URL-tenant authorization surfaces a deleted member as 403.)
+	resp2 := get(t, c, srv.URL+"/api/t/"+uuid+"/auth/me")
 	_ = resp2.Body.Close()
-	if resp2.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("deleted-user me: want 401 got %d", resp2.StatusCode)
+	if resp2.StatusCode != http.StatusForbidden {
+		t.Fatalf("deleted-user me: want 403 got %d", resp2.StatusCode)
 	}
 }
 
 func TestAuthLogoutInvalidatesSession(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, uuid := newAuthServer(t)
 	c := loggedInClient(t, srv.URL)
 
 	req, err := http.NewRequest("POST", srv.URL+"/api/auth/logout", nil)
@@ -258,7 +265,7 @@ func TestAuthLogoutInvalidatesSession(t *testing.T) {
 		t.Fatalf("logout: want 200 got %d", resp.StatusCode)
 	}
 
-	resp2 := get(t, c, srv.URL+"/api/auth/me")
+	resp2 := get(t, c, srv.URL+"/api/t/"+uuid+"/auth/me")
 	_ = resp2.Body.Close()
 	if resp2.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("post-logout me: want 401 got %d", resp2.StatusCode)

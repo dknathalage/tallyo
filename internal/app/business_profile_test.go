@@ -14,29 +14,31 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newBusinessProfileServer wires the business-profile routes behind httpx.RequireAuth
+// newBusinessProfileServer wires the business-profile routes behind RequireSession
 // the same way production does, plus a login route so tests can authenticate.
-func newBusinessProfileServer(t *testing.T) *httptest.Server {
+func newBusinessProfileServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "bp.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	bpH := businessprofile.NewHandler(businessprofile.NewService(conn, realtime.NewHub()))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			bpH.Routes(pr)
 		})
 	})
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tenantUUID
 }
 
 // putJSON sends a PUT with a JSON body using the given client.
@@ -55,9 +57,9 @@ func putJSON(t *testing.T, c *http.Client, url, body string) *http.Response {
 }
 
 func TestBusinessProfileGetEmptyReturnsNull(t *testing.T) {
-	srv := newBusinessProfileServer(t)
+	srv, uuid := newBusinessProfileServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/business-profile")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/business-profile")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get empty: want 200 got %d", resp.StatusCode)
@@ -71,16 +73,16 @@ func TestBusinessProfileGetEmptyReturnsNull(t *testing.T) {
 }
 
 func TestBusinessProfilePutThenGetRoundTrip(t *testing.T) {
-	srv := newBusinessProfileServer(t)
+	srv, uuid := newBusinessProfileServer(t)
 	c := loggedInClient(t, srv.URL)
 
-	put := putJSON(t, c, srv.URL+"/api/business-profile", `{"name":"Acme","email":"a@b.com"}`)
+	put := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/business-profile", `{"name":"Acme","email":"a@b.com"}`)
 	_ = put.Body.Close()
 	if put.StatusCode != http.StatusOK {
 		t.Fatalf("put: want 200 got %d", put.StatusCode)
 	}
 
-	resp := get(t, c, srv.URL+"/api/business-profile")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/business-profile")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get after put: want 200 got %d", resp.StatusCode)
@@ -98,9 +100,9 @@ func TestBusinessProfilePutThenGetRoundTrip(t *testing.T) {
 }
 
 func TestBusinessProfilePutEmptyName400(t *testing.T) {
-	srv := newBusinessProfileServer(t)
+	srv, uuid := newBusinessProfileServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := putJSON(t, c, srv.URL+"/api/business-profile", `{"name":""}`)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/business-profile", `{"name":""}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty name: want 400 got %d", resp.StatusCode)
@@ -108,9 +110,9 @@ func TestBusinessProfilePutEmptyName400(t *testing.T) {
 }
 
 func TestBusinessProfileGetUnauthenticated401(t *testing.T) {
-	srv := newBusinessProfileServer(t)
+	srv, uuid := newBusinessProfileServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/business-profile")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/business-profile")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon get: want 401 got %d", resp.StatusCode)

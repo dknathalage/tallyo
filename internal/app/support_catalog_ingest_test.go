@@ -20,10 +20,10 @@ import (
 // httpx.RequireAuth + httpx.RequirePlatformAdmin. seedTenantOwner creates the "o@x.com"
 // owner as a platform admin; we additionally seed a non-admin "member" so the
 // 403 path is exercised.
-func newCatalogIngestServer(t *testing.T) *httptest.Server {
+func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "catalog_ingest.db")
-	users, tenantID, _ := seedTenantOwner(t, conn)
+	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 
 	// A non-platform-admin tenant member.
 	hash, err := auth.HashPassword("password1")
@@ -36,7 +36,8 @@ func newCatalogIngestServer(t *testing.T) *httptest.Server {
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	scH := catalog.NewHandler(
 		catalog.NewService(conn),
 		catalog.NewIngestService(conn, hub),
@@ -45,8 +46,9 @@ func newCatalogIngestServer(t *testing.T) *httptest.Server {
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Get("/support-catalog/versions", scH.ListVersions)
 			pr.With(httpx.RequirePlatformAdmin).Post("/support-catalog/versions", scH.Ingest)
 		})
@@ -54,7 +56,7 @@ func newCatalogIngestServer(t *testing.T) *httptest.Server {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tenantUUID
 }
 
 // catalogXLSXBytes builds a minimal NDIS-Support-Catalogue-shaped XLSX.
@@ -80,7 +82,7 @@ func catalogXLSXBytes(t *testing.T) []byte {
 }
 
 // uploadCatalog posts a multipart catalogue upload and returns the response.
-func uploadCatalog(t *testing.T, c *http.Client, base string, xlsx []byte, label, effectiveFrom string) *http.Response {
+func uploadCatalog(t *testing.T, c *http.Client, base, uuid string, xlsx []byte, label, effectiveFrom string) *http.Response {
 	t.Helper()
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
@@ -102,7 +104,7 @@ func uploadCatalog(t *testing.T, c *http.Client, base string, xlsx []byte, label
 	if err := w.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
-	req, err := http.NewRequest("POST", base+"/api/support-catalog/versions", &body)
+	req, err := http.NewRequest("POST", base+"/api/t/"+uuid+"/support-catalog/versions", &body)
 	if err != nil {
 		t.Fatalf("new req: %v", err)
 	}
@@ -115,9 +117,9 @@ func uploadCatalog(t *testing.T, c *http.Client, base string, xlsx []byte, label
 }
 
 func TestCatalogIngestPlatformAdminSucceeds(t *testing.T) {
-	srv := newCatalogIngestServer(t)
+	srv, uuid := newCatalogIngestServer(t)
 	c := loggedInClient(t, srv.URL) // o@x.com is a platform admin
-	resp := uploadCatalog(t, c, srv.URL, catalogXLSXBytes(t), "2025-26 v1.1", "2025-07-01")
+	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "2025-26 v1.1", "2025-07-01")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("admin upload: want 201 got %d", resp.StatusCode)
@@ -136,14 +138,14 @@ func TestCatalogIngestPlatformAdminSucceeds(t *testing.T) {
 }
 
 func TestCatalogIngestNonAdminForbidden(t *testing.T) {
-	srv := newCatalogIngestServer(t)
+	srv, uuid := newCatalogIngestServer(t)
 	c := jarClient(t)
 	lr := login(t, c, srv.URL, "member@x.com", "password1")
 	_ = lr.Body.Close()
 	if lr.StatusCode != http.StatusOK {
 		t.Fatalf("member login: want 200 got %d", lr.StatusCode)
 	}
-	resp := uploadCatalog(t, c, srv.URL, catalogXLSXBytes(t), "x", "2025-07-01")
+	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "x", "2025-07-01")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("non-admin upload: want 403 got %d", resp.StatusCode)
@@ -151,9 +153,9 @@ func TestCatalogIngestNonAdminForbidden(t *testing.T) {
 }
 
 func TestCatalogIngestUnauthenticated401(t *testing.T) {
-	srv := newCatalogIngestServer(t)
+	srv, uuid := newCatalogIngestServer(t)
 	c := jarClient(t)
-	resp := uploadCatalog(t, c, srv.URL, catalogXLSXBytes(t), "x", "2025-07-01")
+	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "x", "2025-07-01")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon upload: want 401 got %d", resp.StatusCode)
@@ -161,9 +163,9 @@ func TestCatalogIngestUnauthenticated401(t *testing.T) {
 }
 
 func TestCatalogIngestMissingFieldsRejected(t *testing.T) {
-	srv := newCatalogIngestServer(t)
+	srv, uuid := newCatalogIngestServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := uploadCatalog(t, c, srv.URL, catalogXLSXBytes(t), "", "")
+	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "", "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("missing fields: want 400 got %d", resp.StatusCode)

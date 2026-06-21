@@ -31,14 +31,15 @@ import (
 // newValidationServer wires the invoice + estimate + participant routes behind
 // httpx.RequireAuth and returns both the server and the underlying conn so the test
 // can seed a catalogue version directly.
-func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
+func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "validation_e2e.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewService(conn, hub, invoice.NewInvoices(conn))))
 	estH := estimate.NewHandler(estimate.NewService(conn, hub))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
@@ -46,8 +47,9 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
 			invH.Routes(pr)
 			pr.Post("/estimates", estH.Create)
@@ -56,7 +58,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB) {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, conn
+	return srv, conn, tenantUUID
 }
 
 // seedNationalCap inserts a one-item catalogue version priced at the given
@@ -88,7 +90,7 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 
 // createParticipantWithPlan posts a participant carrying an explicit plan window
 // and returns its id.
-func createParticipantWithPlan(t *testing.T, c *http.Client, base, planStart, planEnd string) int64 {
+func createParticipantWithPlan(t *testing.T, c *http.Client, base, uuid, planStart, planEnd string) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"name": "Plan Participant", "planStart": planStart, "planEnd": planEnd,
@@ -96,7 +98,7 @@ func createParticipantWithPlan(t *testing.T, c *http.Client, base, planStart, pl
 	if err != nil {
 		t.Fatalf("marshal participant: %v", err)
 	}
-	resp := postJSON(t, c, base+"/api/participants", string(body))
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/participants", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create participant: want 201 got %d", resp.StatusCode)
@@ -147,10 +149,10 @@ func assertValidationEnvelope(t *testing.T, resp *http.Response) {
 }
 
 func TestInvoiceCreateOverCapReturns422(t *testing.T) {
-	srv, conn := newValidationServer(t)
+	srv, conn, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
 	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
-	pid := createParticipantWithPlan(t, c, srv.URL, "2025-07-01", "2026-06-30")
+	pid := createParticipantWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
 
 	body, err := json.Marshal(map[string]any{
 		"participantId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
@@ -161,17 +163,17 @@ func TestInvoiceCreateOverCapReturns422(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/invoices", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	assertValidationEnvelope(t, resp)
 }
 
 func TestInvoiceCreateOutOfPlanReturns422(t *testing.T) {
-	srv, conn := newValidationServer(t)
+	srv, conn, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
 	// Catalogue window is wide; the participant plan ends 2025-12-31.
 	seedNationalCap(t, conn, "2025-01-01", "2026-12-31", "01_011", 100)
-	pid := createParticipantWithPlan(t, c, srv.URL, "2025-07-01", "2025-12-31")
+	pid := createParticipantWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2025-12-31")
 
 	body, err := json.Marshal(map[string]any{
 		"participantId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
@@ -183,16 +185,16 @@ func TestInvoiceCreateOutOfPlanReturns422(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/invoices", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	assertValidationEnvelope(t, resp)
 }
 
 func TestEstimateCreateOverCapReturns422(t *testing.T) {
-	srv, conn := newValidationServer(t)
+	srv, conn, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
 	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
-	pid := createParticipantWithPlan(t, c, srv.URL, "2025-07-01", "2026-06-30")
+	pid := createParticipantWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
 
 	body, err := json.Marshal(map[string]any{
 		"participantId": pid, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
@@ -203,7 +205,7 @@ func TestEstimateCreateOverCapReturns422(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/estimates", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	assertValidationEnvelope(t, resp)
 }

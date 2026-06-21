@@ -16,17 +16,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newEstimateServer wires the estimate routes behind httpx.RequireAuth, plus
+// newEstimateServer wires the estimate routes behind RequireSession+ResolveTenant, plus
 // participant creation so estimates can reference a valid participant FK, and the
 // invoice list so converted invoices can be observed.
-func newEstimateServer(t *testing.T) *httptest.Server {
+func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "estimate.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	estH := estimate.NewHandler(estimate.NewService(conn, hub))
 	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewService(conn, hub, invoice.NewInvoices(conn))))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
@@ -34,8 +35,9 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
 			invH.Routes(pr)
 			pr.Get("/estimates", estH.List)
@@ -54,13 +56,13 @@ func newEstimateServer(t *testing.T) *httptest.Server {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tenantUUID
 }
 
 // createEstimate posts a two-line estimate for the given participant and returns
 // the id. Lines total 25. The J10 validation engine computes tax from the lines
 // (no tenant default tax rate → tax 0), so the total equals the subtotal (25).
-func createEstimate(t *testing.T, c *http.Client, base string, participantID int64) int64 {
+func createEstimate(t *testing.T, c *http.Client, base, uuid string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
@@ -72,7 +74,7 @@ func createEstimate(t *testing.T, c *http.Client, base string, participantID int
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, base+"/api/estimates", string(body))
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/estimates", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create estimate: want 201 got %d", resp.StatusCode)
@@ -90,9 +92,9 @@ func createEstimate(t *testing.T, c *http.Client, base string, participantID int
 }
 
 func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
@@ -104,7 +106,7 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/estimates", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create: want 201 got %d", resp.StatusCode)
@@ -135,12 +137,12 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 }
 
 func TestEstimateGetReturnsLineItems(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/estimates/"+itoa(id))
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
@@ -159,12 +161,12 @@ func TestEstimateGetReturnsLineItems(t *testing.T) {
 }
 
 func TestEstimateStatusFlip(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/status", `{"status":"sent"}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: want 200 got %d", resp.StatusCode)
@@ -172,12 +174,12 @@ func TestEstimateStatusFlip(t *testing.T) {
 }
 
 func TestEstimateDuplicate(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/duplicate", `{}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/duplicate", `{}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("duplicate: want 201 got %d", resp.StatusCode)
@@ -194,19 +196,19 @@ func TestEstimateDuplicate(t *testing.T) {
 }
 
 func TestEstimateBulkStatusAndDelete(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	a := createEstimate(t, c, srv.URL, participantID)
-	b := createEstimate(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	a := createEstimate(t, c, srv.URL, uuid, participantID)
+	b := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	sr := postJSON(t, c, srv.URL+"/api/estimates/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
 	_ = sr.Body.Close()
 	if sr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-status: want 204 got %d", sr.StatusCode)
 	}
 
-	dr := postJSON(t, c, srv.URL+"/api/estimates/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
+	dr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
 	_ = dr.Body.Close()
 	if dr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", dr.StatusCode)
@@ -214,26 +216,26 @@ func TestEstimateBulkStatusAndDelete(t *testing.T) {
 }
 
 func TestEstimateConvert(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
 	// A draft estimate cannot be converted.
-	draftResp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/convert", `{}`)
+	draftResp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/convert", `{}`)
 	_ = draftResp.Body.Close()
 	if draftResp.StatusCode != http.StatusConflict {
 		t.Fatalf("convert draft: want 409 got %d", draftResp.StatusCode)
 	}
 
 	// Accept it, then convert.
-	sr := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/status", `{"status":"accepted"}`)
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/status", `{"status":"accepted"}`)
 	_ = sr.Body.Close()
 	if sr.StatusCode != http.StatusOK {
 		t.Fatalf("accept: want 200 got %d", sr.StatusCode)
 	}
 
-	resp := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/convert", `{}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/convert", `{}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("convert: want 200 got %d", resp.StatusCode)
@@ -257,7 +259,7 @@ func TestEstimateConvert(t *testing.T) {
 	}
 
 	// The converted invoice is now present in the invoice list.
-	lr := get(t, c, srv.URL+"/api/invoices")
+	lr := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices")
 	defer func() { _ = lr.Body.Close() }()
 	if lr.StatusCode != http.StatusOK {
 		t.Fatalf("invoice list: want 200 got %d", lr.StatusCode)
@@ -273,7 +275,7 @@ func TestEstimateConvert(t *testing.T) {
 	}
 
 	// Converting again is a conflict.
-	again := postJSON(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/convert", `{}`)
+	again := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/convert", `{}`)
 	_ = again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
 		t.Fatalf("convert again: want 409 got %d", again.StatusCode)
@@ -281,16 +283,16 @@ func TestEstimateConvert(t *testing.T) {
 }
 
 func TestEstimateCreateNoItems400(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01", "lineItems": []any{},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/estimates", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("no items: want 400 got %d", resp.StatusCode)
@@ -298,9 +300,9 @@ func TestEstimateCreateNoItems400(t *testing.T) {
 }
 
 func TestEstimateGetMissing404(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/estimates/99999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/99999")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing: want 404 got %d", resp.StatusCode)
@@ -308,9 +310,9 @@ func TestEstimateGetMissing404(t *testing.T) {
 }
 
 func TestEstimateConvertMissing404(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := postJSON(t, c, srv.URL+"/api/estimates/99999/convert", `{}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/99999/convert", `{}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("convert missing: want 404 got %d", resp.StatusCode)
@@ -318,9 +320,9 @@ func TestEstimateConvertMissing404(t *testing.T) {
 }
 
 func TestEstimateListUnauthenticated401(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/estimates")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)
@@ -328,12 +330,12 @@ func TestEstimateListUnauthenticated401(t *testing.T) {
 }
 
 func TestEstimatePdf(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createEstimate(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/estimates/"+itoa(id)+"/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pdf: want 200 got %d", resp.StatusCode)
@@ -351,9 +353,9 @@ func TestEstimatePdf(t *testing.T) {
 }
 
 func TestEstimatePdfMissing404(t *testing.T) {
-	srv := newEstimateServer(t)
+	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/estimates/99999/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/99999/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing pdf: want 404 got %d", resp.StatusCode)

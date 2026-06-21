@@ -60,12 +60,13 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 // newLoggingServer builds a server with the full httpx.Recover→httpx.RequestLogger→Session
 // chain plus an authenticated probe, so the request logger and httpx.RequireAuth
 // enrichment are exercised end to end.
-func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *auth.UsersRepo) {
+func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *auth.UsersRepo, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "log.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 
 	router := chi.NewRouter()
 	router.Use(httpx.Recover)
@@ -74,8 +75,9 @@ func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *aut
 		g.Use(sm.LoadAndSave)
 		g.Route("/api", func(api chi.Router) {
 			api.Post("/auth/login", authH.Login)
-			api.Group(func(pr chi.Router) {
-				pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+			api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+				pr.Use(httpx.RequireSession(sm))
+				pr.Use(httpx.ResolveTenant(users, tenants))
 				pr.Get("/probe", probe200)
 			})
 		})
@@ -83,7 +85,7 @@ func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *aut
 
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
-	return srv, sm, users
+	return srv, sm, users, tenantUUID
 }
 
 // findRequestRecord returns the "request" summary record for the given path.
@@ -100,7 +102,7 @@ func findRequestRecord(t *testing.T, recs []map[string]any, path string) map[str
 
 func TestRequestLoggerAttachesRequestIDAndTenantUser(t *testing.T) {
 	read := captureLogs(t)
-	srv, _, _ := newLoggingServer(t)
+	srv, _, _, uuid := newLoggingServer(t)
 
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "o@x.com", "password1")
@@ -108,13 +110,14 @@ func TestRequestLoggerAttachesRequestIDAndTenantUser(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("login: want 200 got %d", resp.StatusCode)
 	}
-	pr := get(t, c, srv.URL+"/api/probe")
+	probePath := "/api/t/" + uuid + "/probe"
+	pr := get(t, c, srv.URL+probePath)
 	_ = pr.Body.Close()
 	if pr.StatusCode != http.StatusOK {
 		t.Fatalf("probe: want 200 got %d", pr.StatusCode)
 	}
 
-	rec := findRequestRecord(t, read(), "/api/probe")
+	rec := findRequestRecord(t, read(), probePath)
 
 	for _, field := range []string{"request_id", "method", "path", "status", "duration_ms"} {
 		if _, ok := rec[field]; !ok {
@@ -135,7 +138,7 @@ func TestRequestLoggerAttachesRequestIDAndTenantUser(t *testing.T) {
 
 func TestRequestLoggerNoSecretsOnLogin(t *testing.T) {
 	read := captureLogs(t)
-	srv, _, _ := newLoggingServer(t)
+	srv, _, _, _ := newLoggingServer(t)
 
 	c := jarClient(t)
 	// Wrong password drives the warn("failed login attempt") path.

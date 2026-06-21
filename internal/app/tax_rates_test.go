@@ -13,22 +13,24 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newTaxRateServer wires the tax-rate routes behind httpx.RequireAuth the same way
+// newTaxRateServer wires the tax-rate routes behind RequireSession + ResolveTenant the same way
 // production does, plus a login route so tests can authenticate.
-func newTaxRateServer(t *testing.T) *httptest.Server {
+func newTaxRateServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "tax.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	trH := taxrate.NewHandler(taxrate.NewService(conn, realtime.NewHub()))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Get("/tax-rates", trH.List)
 			pr.Post("/tax-rates", trH.Create)
 			pr.Get("/tax-rates/{id}", trH.Get)
@@ -39,17 +41,17 @@ func newTaxRateServer(t *testing.T) *httptest.Server {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tenantUUID
 }
 
 // createTaxRate posts a tax rate and returns its id.
-func createTaxRate(t *testing.T, c *http.Client, base, name string, rate float64, isDefault bool) int64 {
+func createTaxRate(t *testing.T, c *http.Client, base, uuid, name string, rate float64, isDefault bool) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{"name": name, "rate": rate, "isDefault": isDefault})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, base+"/api/tax-rates", string(body))
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/tax-rates", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create tax rate %q: want 201 got %d", name, resp.StatusCode)
@@ -67,9 +69,9 @@ func createTaxRate(t *testing.T, c *http.Client, base, name string, rate float64
 }
 
 func TestTaxRateListEmptyReturnsArray(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/tax-rates")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
@@ -82,10 +84,10 @@ func TestTaxRateListEmptyReturnsArray(t *testing.T) {
 }
 
 func TestTaxRateCreateAndGet(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createTaxRate(t, c, srv.URL, "GST", 10, false)
-	resp := get(t, c, srv.URL+"/api/tax-rates/"+itoa(id))
+	id := createTaxRate(t, c, srv.URL, uuid, "GST", 10, false)
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
@@ -93,9 +95,9 @@ func TestTaxRateCreateAndGet(t *testing.T) {
 }
 
 func TestTaxRateGetNotFound404(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/tax-rates/99999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/99999")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing: want 404 got %d", resp.StatusCode)
@@ -103,9 +105,9 @@ func TestTaxRateGetNotFound404(t *testing.T) {
 }
 
 func TestTaxRateGetBadID400(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/tax-rates/abc")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/abc")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad id: want 400 got %d", resp.StatusCode)
@@ -113,10 +115,10 @@ func TestTaxRateGetBadID400(t *testing.T) {
 }
 
 func TestTaxRateUpdateOK(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createTaxRate(t, c, srv.URL, "GST", 10, false)
-	resp := putJSON(t, c, srv.URL+"/api/tax-rates/"+itoa(id), `{"name":"VAT","rate":20}`)
+	id := createTaxRate(t, c, srv.URL, uuid, "GST", 10, false)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+itoa(id), `{"name":"VAT","rate":20}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update: want 200 got %d", resp.StatusCode)
@@ -124,10 +126,10 @@ func TestTaxRateUpdateOK(t *testing.T) {
 }
 
 func TestTaxRateUpdateEmptyName400(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createTaxRate(t, c, srv.URL, "GST", 10, false)
-	resp := putJSON(t, c, srv.URL+"/api/tax-rates/"+itoa(id), `{"name":"","rate":1}`)
+	id := createTaxRate(t, c, srv.URL, uuid, "GST", 10, false)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+itoa(id), `{"name":"","rate":1}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty name: want 400 got %d", resp.StatusCode)
@@ -135,9 +137,9 @@ func TestTaxRateUpdateEmptyName400(t *testing.T) {
 }
 
 func TestTaxRateUpdateMissing404(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := putJSON(t, c, srv.URL+"/api/tax-rates/99999", `{"name":"X","rate":1}`)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/99999", `{"name":"X","rate":1}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("update missing: want 404 got %d", resp.StatusCode)
@@ -145,10 +147,10 @@ func TestTaxRateUpdateMissing404(t *testing.T) {
 }
 
 func TestTaxRateDelete204(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createTaxRate(t, c, srv.URL, "GST", 10, false)
-	resp := delete_(t, c, srv.URL+"/api/tax-rates/"+itoa(id))
+	id := createTaxRate(t, c, srv.URL, uuid, "GST", 10, false)
+	resp := delete_(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
@@ -156,12 +158,12 @@ func TestTaxRateDelete204(t *testing.T) {
 }
 
 func TestTaxRateExclusiveDefault(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := loggedInClient(t, srv.URL)
-	idA := createTaxRate(t, c, srv.URL, "A", 5, true)
-	idB := createTaxRate(t, c, srv.URL, "B", 10, true)
+	idA := createTaxRate(t, c, srv.URL, uuid, "A", 5, true)
+	idB := createTaxRate(t, c, srv.URL, uuid, "B", 10, true)
 
-	resp := get(t, c, srv.URL+"/api/tax-rates")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
@@ -186,9 +188,9 @@ func TestTaxRateExclusiveDefault(t *testing.T) {
 }
 
 func TestTaxRateListUnauthenticated401(t *testing.T) {
-	srv := newTaxRateServer(t)
+	srv, uuid := newTaxRateServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/tax-rates")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)

@@ -31,7 +31,7 @@ type shiftFixture struct {
 func newShiftFixture(t *testing.T) *shiftFixture {
 	t.Helper()
 	conn := openMigratedDB(t, "shift.db")
-	_, tenantID, _ := seedTenantOwner(t, conn)
+	_, tenantID, _, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	ctx := reqctx.WithTenant(context.Background(), tenantID)

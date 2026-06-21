@@ -15,24 +15,26 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newInvoiceServer wires the invoice routes behind httpx.RequireAuth, plus participant
+// newInvoiceServer wires the invoice routes behind RequireSession+ResolveTenant, plus participant
 // creation so invoices can reference a valid participant FK.
-func newInvoiceServer(t *testing.T) *httptest.Server {
+func newInvoiceServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "invoice.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	invH := invoice.NewHandler(invoice.NewService(conn, hub, shift.NewService(conn, hub, invoice.NewInvoices(conn))))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
 			pr.Get("/invoices", invH.List)
 			pr.Post("/invoices", invH.Create)
@@ -49,7 +51,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tenantUUID
 }
 
 // createInvoice posts a two-line invoice for the given participant and returns
@@ -57,7 +59,7 @@ func newInvoiceServer(t *testing.T) *httptest.Server {
 // tax from the lines (these custom lines aren't GST-free but the tenant has no
 // default tax rate → tax 0), so the client-supplied "tax" field is ignored and
 // the total equals the subtotal (25).
-func createInvoice(t *testing.T, c *http.Client, base string, participantID int64) int64 {
+func createInvoice(t *testing.T, c *http.Client, base, uuid string, participantID int64) int64 {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
@@ -69,7 +71,7 @@ func createInvoice(t *testing.T, c *http.Client, base string, participantID int6
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, base+"/api/invoices", string(body))
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/invoices", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create invoice: want 201 got %d", resp.StatusCode)
@@ -87,9 +89,9 @@ func createInvoice(t *testing.T, c *http.Client, base string, participantID int6
 }
 
 func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
@@ -101,7 +103,7 @@ func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/invoices", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create: want 201 got %d", resp.StatusCode)
@@ -138,12 +140,12 @@ func TestInvoiceCreateComputesTotalsAndSnapshots(t *testing.T) {
 }
 
 func TestInvoiceGetReturnsLineItems(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/invoices/"+itoa(id))
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+itoa(id))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
@@ -162,12 +164,12 @@ func TestInvoiceGetReturnsLineItems(t *testing.T) {
 }
 
 func TestInvoiceListReturnsArray(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	_ = createInvoice(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	_ = createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/invoices")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
@@ -184,12 +186,12 @@ func TestInvoiceListReturnsArray(t *testing.T) {
 }
 
 func TestInvoiceStatusFlip(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := postJSON(t, c, srv.URL+"/api/invoices/"+itoa(id)+"/status", `{"status":"sent"}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+itoa(id)+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: want 200 got %d", resp.StatusCode)
@@ -197,19 +199,19 @@ func TestInvoiceStatusFlip(t *testing.T) {
 }
 
 func TestInvoiceBulkStatusAndDelete(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	a := createInvoice(t, c, srv.URL, participantID)
-	b := createInvoice(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	a := createInvoice(t, c, srv.URL, uuid, participantID)
+	b := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	sr := postJSON(t, c, srv.URL+"/api/invoices/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
 	_ = sr.Body.Close()
 	if sr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-status: want 204 got %d", sr.StatusCode)
 	}
 
-	dr := postJSON(t, c, srv.URL+"/api/invoices/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
+	dr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
 	_ = dr.Body.Close()
 	if dr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", dr.StatusCode)
@@ -217,12 +219,12 @@ func TestInvoiceBulkStatusAndDelete(t *testing.T) {
 }
 
 func TestInvoiceParticipantStats(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	_ = createInvoice(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	_ = createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/participants/"+itoa(participantID)+"/stats")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+itoa(participantID)+"/stats")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("stats: want 200 got %d", resp.StatusCode)
@@ -243,16 +245,16 @@ func TestInvoiceParticipantStats(t *testing.T) {
 }
 
 func TestInvoiceCreateNoItems400(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01", "lineItems": []any{},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/invoices", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("no items: want 400 got %d", resp.StatusCode)
@@ -260,9 +262,9 @@ func TestInvoiceCreateNoItems400(t *testing.T) {
 }
 
 func TestInvoiceGetMissing404(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/invoices/99999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/99999")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing: want 404 got %d", resp.StatusCode)
@@ -270,9 +272,9 @@ func TestInvoiceGetMissing404(t *testing.T) {
 }
 
 func TestInvoiceListUnauthenticated401(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/invoices")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)
@@ -280,12 +282,12 @@ func TestInvoiceListUnauthenticated401(t *testing.T) {
 }
 
 func TestInvoicePdf(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createInvoice(t, c, srv.URL, participantID)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/invoices/"+itoa(id)+"/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+itoa(id)+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pdf: want 200 got %d", resp.StatusCode)
@@ -303,9 +305,9 @@ func TestInvoicePdf(t *testing.T) {
 }
 
 func TestInvoicePdfMissing404(t *testing.T) {
-	srv := newInvoiceServer(t)
+	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/invoices/99999/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/99999/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing pdf: want 404 got %d", resp.StatusCode)

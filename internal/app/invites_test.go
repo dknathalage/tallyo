@@ -16,10 +16,10 @@ import (
 // the same way production wires them: Create behind httpx.RequireAuth, Validate and
 // Accept public (the invitee is not logged in). It returns the server and the
 // users repo so tests can assert on created members.
-func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
+func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "i.db")
-	users, tenantID, _ := seedTenantOwner(t, conn)
+	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 	hash, err := auth.HashPassword("password1")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
@@ -29,23 +29,27 @@ func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo) {
 	}
 
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	invH := NewInviteHandler(auth.NewInvites(conn), users)
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
+		// Public invite routes: the invitee is not logged in.
 		api.Get("/invites/{token}", invH.Validate)
 		api.Post("/invites/{token}/accept", invH.Accept)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
-			pr.Post("/invites", invH.Create)
+		// Invite create is tenant-scoped + owner/admin only (matches production).
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", invH.Create)
 		})
 	})
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, users
+	return srv, users, tenantUUID
 }
 
 // postJSON posts a JSON body with the given client and returns the response.
@@ -64,10 +68,10 @@ func postJSON(t *testing.T, c *http.Client, url, body string) *http.Response {
 }
 
 // createInvite logs the owner in and creates an invite, returning its token.
-func createInvite(t *testing.T, srv *httptest.Server) string {
+func createInvite(t *testing.T, srv *httptest.Server, uuid string) string {
 	t.Helper()
 	owner := loggedInClient(t, srv.URL)
-	resp := postJSON(t, owner, srv.URL+"/api/invites", `{"email":"new@x.com","role":"member"}`)
+	resp := postJSON(t, owner, srv.URL+"/api/t/"+uuid+"/invites", `{"email":"new@x.com","role":"member"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create invite: want 201 got %d", resp.StatusCode)
@@ -89,19 +93,19 @@ func createInvite(t *testing.T, srv *httptest.Server) string {
 }
 
 func TestInviteCreateOwner201(t *testing.T) {
-	srv, _ := newInviteServer(t)
-	_ = createInvite(t, srv)
+	srv, _, uuid := newInviteServer(t)
+	_ = createInvite(t, srv, uuid)
 }
 
 func TestInviteCreateMemberForbidden(t *testing.T) {
-	srv, _ := newInviteServer(t)
+	srv, _, uuid := newInviteServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "m@x.com", "password1")
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("member login: want 200 got %d", resp.StatusCode)
 	}
-	r2 := postJSON(t, c, srv.URL+"/api/invites", `{"email":"new@x.com","role":"member"}`)
+	r2 := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invites", `{"email":"new@x.com","role":"member"}`)
 	defer func() { _ = r2.Body.Close() }()
 	if r2.StatusCode != http.StatusForbidden {
 		t.Fatalf("member create: want 403 got %d", r2.StatusCode)
@@ -109,9 +113,9 @@ func TestInviteCreateMemberForbidden(t *testing.T) {
 }
 
 func TestInviteCreateUnauthenticated(t *testing.T) {
-	srv, _ := newInviteServer(t)
+	srv, _, uuid := newInviteServer(t)
 	c := jarClient(t)
-	resp := postJSON(t, c, srv.URL+"/api/invites", `{"email":"new@x.com","role":"member"}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invites", `{"email":"new@x.com","role":"member"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon create: want 401 got %d", resp.StatusCode)
@@ -119,8 +123,8 @@ func TestInviteCreateUnauthenticated(t *testing.T) {
 }
 
 func TestInviteValidateOK(t *testing.T) {
-	srv, _ := newInviteServer(t)
-	token := createInvite(t, srv)
+	srv, _, uuid := newInviteServer(t)
+	token := createInvite(t, srv, uuid)
 	c := jarClient(t)
 	resp := get(t, c, srv.URL+"/api/invites/"+token)
 	defer func() { _ = resp.Body.Close() }()
@@ -140,7 +144,7 @@ func TestInviteValidateOK(t *testing.T) {
 }
 
 func TestInviteValidateBadToken404(t *testing.T) {
-	srv, _ := newInviteServer(t)
+	srv, _, _ := newInviteServer(t)
 	c := jarClient(t)
 	resp := get(t, c, srv.URL+"/api/invites/not-a-real-token")
 	defer func() { _ = resp.Body.Close() }()
@@ -150,8 +154,8 @@ func TestInviteValidateBadToken404(t *testing.T) {
 }
 
 func TestInviteAcceptCreatesMemberThenLogin(t *testing.T) {
-	srv, users := newInviteServer(t)
-	token := createInvite(t, srv)
+	srv, users, uuid := newInviteServer(t)
+	token := createInvite(t, srv, uuid)
 
 	c := jarClient(t)
 	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
@@ -189,8 +193,8 @@ func TestInviteAcceptCreatesMemberThenLogin(t *testing.T) {
 }
 
 func TestInviteAcceptTwiceConflict(t *testing.T) {
-	srv, _ := newInviteServer(t)
-	token := createInvite(t, srv)
+	srv, _, uuid := newInviteServer(t)
+	token := createInvite(t, srv, uuid)
 
 	c := jarClient(t)
 	r1 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
@@ -207,8 +211,8 @@ func TestInviteAcceptTwiceConflict(t *testing.T) {
 }
 
 func TestInviteAcceptShortPassword400(t *testing.T) {
-	srv, _ := newInviteServer(t)
-	token := createInvite(t, srv)
+	srv, _, uuid := newInviteServer(t)
+	token := createInvite(t, srv, uuid)
 	c := jarClient(t)
 	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"password":"short"}`)
 	defer func() { _ = resp.Body.Close() }()

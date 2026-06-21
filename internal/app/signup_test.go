@@ -27,14 +27,27 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/signup", signupH.Signup)
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, tenants))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Get("/auth/me", authH.Me)
 		})
 	})
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
 	return srv, conn, users, tenants
+}
+
+// tenantUUIDFor looks up a tenant's public UUID by its numeric id (used to build
+// /api/t/<uuid>/... URLs after signup, which only returns the numeric tenantId).
+func tenantUUIDFor(t *testing.T, conn *sql.DB, tenantID int64) string {
+	t.Helper()
+	var uuid string
+	if err := conn.QueryRowContext(t.Context(),
+		"SELECT uuid FROM tenants WHERE id = ?", tenantID).Scan(&uuid); err != nil {
+		t.Fatalf("tenant uuid lookup: %v", err)
+	}
+	return uuid
 }
 
 func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
@@ -70,7 +83,7 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 	}
 
 	// Session is established: /auth/me works with the same cookie jar.
-	me := get(t, c, srv.URL+"/api/auth/me")
+	me := get(t, c, srv.URL+"/api/t/"+tenantUUIDFor(t, conn, u.TenantID)+"/auth/me")
 	defer func() { _ = me.Body.Close() }()
 	if me.StatusCode != http.StatusOK {
 		t.Fatalf("post-signup me: want 200 got %d", me.StatusCode)
@@ -205,7 +218,7 @@ func TestLoginFailSafeAmbiguousEmail(t *testing.T) {
 }
 
 func TestLoginSingleTenantStillWorks(t *testing.T) {
-	srv, _, _, _ := newAuthServer(t)
+	srv, _, _, _, _ := newAuthServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "o@x.com", "password1")
 	defer func() { _ = resp.Body.Close() }()
@@ -247,7 +260,7 @@ func TestLoginSuspendedTenantBlocked(t *testing.T) {
 // newRoleServer wires a settings (business-profile PUT-like) probe and an invite
 // probe behind httpx.RequireRole("owner","admin") so role enforcement can be tested
 // independently of the concrete handlers.
-func newRoleServer(t *testing.T) *httptest.Server {
+func newRoleServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "role.db")
 	users := auth.NewUsers(conn)
@@ -266,19 +279,20 @@ func newRoleServer(t *testing.T) *httptest.Server {
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, tenants))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.With(httpx.RequireRole("owner", "admin")).Post("/settings", probe200)
 			pr.Get("/participants", probe200) // any role
 		})
 	})
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tn.UUID
 }
 
 func TestRoleMemberBlockedFromSettings(t *testing.T) {
-	srv := newRoleServer(t)
+	srv, uuid := newRoleServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "member@x.com", "password1")
 	_ = resp.Body.Close()
@@ -286,12 +300,12 @@ func TestRoleMemberBlockedFromSettings(t *testing.T) {
 		t.Fatalf("member login: want 200 got %d", resp.StatusCode)
 	}
 	// Member: blocked from settings (403), allowed on participants (200).
-	settings := postJSON(t, c, srv.URL+"/api/settings", `{}`)
+	settings := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/settings", `{}`)
 	_ = settings.Body.Close()
 	if settings.StatusCode != http.StatusForbidden {
 		t.Fatalf("member settings: want 403 got %d", settings.StatusCode)
 	}
-	parts := get(t, c, srv.URL+"/api/participants")
+	parts := get(t, c, srv.URL+"/api/t/"+uuid+"/participants")
 	_ = parts.Body.Close()
 	if parts.StatusCode != http.StatusOK {
 		t.Fatalf("member participants: want 200 got %d", parts.StatusCode)
@@ -299,14 +313,14 @@ func TestRoleMemberBlockedFromSettings(t *testing.T) {
 }
 
 func TestRoleOwnerAllowedOnSettings(t *testing.T) {
-	srv := newRoleServer(t)
+	srv, uuid := newRoleServer(t)
 	c := jarClient(t)
 	resp := login(t, c, srv.URL, "owner@x.com", "password1")
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("owner login: want 200 got %d", resp.StatusCode)
 	}
-	settings := postJSON(t, c, srv.URL+"/api/settings", `{}`)
+	settings := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/settings", `{}`)
 	_ = settings.Body.Close()
 	if settings.StatusCode != http.StatusOK {
 		t.Fatalf("owner settings: want 200 got %d", settings.StatusCode)

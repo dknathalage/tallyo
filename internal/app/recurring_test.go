@@ -15,24 +15,26 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newRecurringServer wires the recurring routes behind httpx.RequireAuth, plus
+// newRecurringServer wires the recurring routes behind RequireSession + ResolveTenant, plus
 // participant creation so templates can reference a valid participant FK.
-func newRecurringServer(t *testing.T) *httptest.Server {
+func newRecurringServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "recurring.db")
-	users, _, _ := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
-	authH := NewAuthHandler(sm, users, auth.NewTenants(conn))
+	tenants := auth.NewTenants(conn)
+	authH := NewAuthHandler(sm, users, tenants)
 	recH := recurring.NewHandler(recurring.NewService(conn, hub))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
 		api.Post("/auth/login", authH.Login)
-		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireAuth(sm, users, auth.NewTenants(conn)))
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
 			recH.Routes(pr)
 		})
@@ -40,7 +42,7 @@ func newRecurringServer(t *testing.T) *httptest.Server {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tenantUUID
 }
 
 // recurringBody builds a JSON template payload for the given participant.
@@ -60,9 +62,9 @@ func recurringBody(participantID int64, nextDue string) string {
 }
 
 // createRecurring posts a template and returns its id.
-func createRecurring(t *testing.T, c *http.Client, base string, participantID int64, nextDue string) int64 {
+func createRecurring(t *testing.T, c *http.Client, base, uuid string, participantID int64, nextDue string) int64 {
 	t.Helper()
-	resp := postJSON(t, c, base+"/api/recurring", recurringBody(participantID, nextDue))
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/recurring", recurringBody(participantID, nextDue))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create recurring: want 201 got %d", resp.StatusCode)
@@ -80,14 +82,14 @@ func createRecurring(t *testing.T, c *http.Client, base string, participantID in
 }
 
 func TestRecurringCRUD(t *testing.T) {
-	srv := newRecurringServer(t)
+	srv, uuid := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 
-	id := createRecurring(t, c, srv.URL, participantID, "2026-06-01")
+	id := createRecurring(t, c, srv.URL, uuid, participantID, "2026-06-01")
 
 	// List (all).
-	resp := get(t, c, srv.URL+"/api/recurring")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/recurring")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
 	}
@@ -101,14 +103,14 @@ func TestRecurringCRUD(t *testing.T) {
 	}
 
 	// List active=true.
-	resp = get(t, c, srv.URL+"/api/recurring?active=true")
+	resp = get(t, c, srv.URL+"/api/t/"+uuid+"/recurring?active=true")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list active: want 200 got %d", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
 
 	// Get.
-	resp = get(t, c, fmt.Sprintf("%s/api/recurring/%d", srv.URL, id))
+	resp = get(t, c, fmt.Sprintf("%s/api/t/%s/recurring/%d", srv.URL, uuid, id))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
 	}
@@ -116,7 +118,7 @@ func TestRecurringCRUD(t *testing.T) {
 
 	// Update.
 	upd := fmt.Sprintf(`{"participantId":%d,"name":"Renamed","frequency":"monthly","nextDue":"2026-06-01","lineItems":[{"description":"A","quantity":1,"unitPrice":10,"sortOrder":0}],"taxRate":0,"isActive":true}`, participantID)
-	resp = putJSON(t, c, fmt.Sprintf("%s/api/recurring/%d", srv.URL, id), upd)
+	resp = putJSON(t, c, fmt.Sprintf("%s/api/t/%s/recurring/%d", srv.URL, uuid, id), upd)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update: want 200 got %d", resp.StatusCode)
 	}
@@ -132,7 +134,7 @@ func TestRecurringCRUD(t *testing.T) {
 	}
 
 	// Delete.
-	resp = delete_(t, c, fmt.Sprintf("%s/api/recurring/%d", srv.URL, id))
+	resp = delete_(t, c, fmt.Sprintf("%s/api/t/%s/recurring/%d", srv.URL, uuid, id))
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
 	}
@@ -140,12 +142,12 @@ func TestRecurringCRUD(t *testing.T) {
 }
 
 func TestRecurringGenerateAdvancesNextDue(t *testing.T) {
-	srv := newRecurringServer(t)
+	srv, uuid := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, "Acme")
-	id := createRecurring(t, c, srv.URL, participantID, "2026-06-01")
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	id := createRecurring(t, c, srv.URL, uuid, participantID, "2026-06-01")
 
-	resp := postJSON(t, c, fmt.Sprintf("%s/api/recurring/%d/generate", srv.URL, id), "")
+	resp := postJSON(t, c, fmt.Sprintf("%s/api/t/%s/recurring/%d/generate", srv.URL, uuid, id), "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("generate: want 200 got %d", resp.StatusCode)
 	}
@@ -172,7 +174,7 @@ func TestRecurringGenerateAdvancesNextDue(t *testing.T) {
 	}
 
 	// The template's next_due must have advanced one month: 2026-06-01 -> 2026-07-01.
-	resp = get(t, c, fmt.Sprintf("%s/api/recurring/%d", srv.URL, id))
+	resp = get(t, c, fmt.Sprintf("%s/api/t/%s/recurring/%d", srv.URL, uuid, id))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get after generate: want 200 got %d", resp.StatusCode)
 	}
@@ -189,9 +191,9 @@ func TestRecurringGenerateAdvancesNextDue(t *testing.T) {
 }
 
 func TestRecurringCreateValidation(t *testing.T) {
-	srv := newRecurringServer(t)
+	srv, uuid := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	createParticipant(t, c, srv.URL, "Acme")
+	createParticipant(t, c, srv.URL, uuid, "Acme")
 
 	cases := []string{
 		`{"participantId":1,"name":"","frequency":"monthly","nextDue":"2026-06-01"}`,  // empty name
@@ -200,7 +202,7 @@ func TestRecurringCreateValidation(t *testing.T) {
 		`{"participantId":1,"name":"X","frequency":"","nextDue":"2026-06-01"}`,        // empty frequency
 	}
 	for i, body := range cases {
-		resp := postJSON(t, c, srv.URL+"/api/recurring", body)
+		resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/recurring", body)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("case %d: want 400 got %d", i, resp.StatusCode)
 		}
@@ -209,9 +211,9 @@ func TestRecurringCreateValidation(t *testing.T) {
 }
 
 func TestRecurringGetMissing404(t *testing.T) {
-	srv := newRecurringServer(t)
+	srv, uuid := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/recurring/999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/recurring/999")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing get: want 404 got %d", resp.StatusCode)
 	}
@@ -219,9 +221,9 @@ func TestRecurringGetMissing404(t *testing.T) {
 }
 
 func TestRecurringGenerateMissing404(t *testing.T) {
-	srv := newRecurringServer(t)
+	srv, uuid := newRecurringServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := postJSON(t, c, srv.URL+"/api/recurring/999/generate", "")
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/recurring/999/generate", "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing generate: want 404 got %d", resp.StatusCode)
 	}
@@ -229,9 +231,9 @@ func TestRecurringGenerateMissing404(t *testing.T) {
 }
 
 func TestRecurringListUnauthenticated401(t *testing.T) {
-	srv := newRecurringServer(t)
+	srv, uuid := newRecurringServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/recurring")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/recurring")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)
 	}
