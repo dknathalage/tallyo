@@ -324,17 +324,19 @@ func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 // tenant role and is provisioned out-of-band (e.g. a future admin CLI or a
 // direct DB update), never via public signup.
 type SignupHandler struct {
-	sm      *scs.SessionManager
-	tenants *auth.TenantsRepo
-	users   *auth.UsersRepo
+	sm        *scs.SessionManager
+	tenants   *auth.TenantsRepo
+	users     *auth.UsersRepo
+	provision auth.ProfileProvisioner
 }
 
 // NewSignupHandler constructs the handler. Nil dependencies are programmer errors.
-func NewSignupHandler(sm *scs.SessionManager, tenants *auth.TenantsRepo, users *auth.UsersRepo) *SignupHandler {
-	if sm == nil || tenants == nil || users == nil {
+// provision creates the new tenant's business_profile in its own DB (DB-per-tenant).
+func NewSignupHandler(sm *scs.SessionManager, tenants *auth.TenantsRepo, users *auth.UsersRepo, provision auth.ProfileProvisioner) *SignupHandler {
+	if sm == nil || tenants == nil || users == nil || provision == nil {
 		panic("NewSignupHandler: nil dep")
 	}
-	return &SignupHandler{sm: sm, tenants: tenants, users: users}
+	return &SignupHandler{sm: sm, tenants: tenants, users: users, provision: provision}
 }
 
 // signupRequest is the decoded body for Signup. zone defaults to "national".
@@ -370,7 +372,7 @@ func (h *SignupHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		PasswordHash: hash,
 		OwnerName:    req.Name,
 		Zone:         req.Zone,
-	})
+	}, h.provision)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return

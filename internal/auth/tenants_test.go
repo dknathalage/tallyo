@@ -137,7 +137,7 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 		PasswordHash: hash,
 		OwnerName:    "Owner Person",
 		Zone:         "remote",
-	})
+	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("Signup: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestSignupDefaultsZoneToNational(t *testing.T) {
 		PasswordHash: hash,
 		OwnerName:    "Owner",
 		// Zone intentionally empty
-	})
+	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("Signup: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestSignupRejectsMissingRequiredFields(t *testing.T) {
 	}
 	// bounded loop: fixed-size table
 	for _, tc := range cases {
-		if _, err := repo.Signup(ctx, tc.in); err == nil {
+		if _, err := repo.Signup(ctx, tc.in, profileProv(conn)); err == nil {
 			t.Fatalf("%s: expected error, got nil", tc.name)
 		}
 	}
@@ -233,7 +233,7 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	hash, _ := HashPassword("pw123456")
 	a, err := repo.Signup(ctx, SignupInput{
 		BusinessName: "First", Email: "dup@x.com", PasswordHash: hash, OwnerName: "A", Zone: "remote",
-	})
+	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("first signup: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	// tenant, so the same email is allowed and a second tenant exists.
 	b, err := repo.Signup(ctx, SignupInput{
 		BusinessName: "Second", Email: "dup@x.com", PasswordHash: hash, OwnerName: "B", Zone: "remote",
-	})
+	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("second signup: %v", err)
 	}
@@ -270,4 +270,12 @@ func TestNewTenantsNilDBPanics(t *testing.T) {
 		}
 	}()
 	NewTenants(nil)
+}
+
+// profileProv is the single-DB test provisioner: it upserts the business_profile
+// on the same handle the control rows were created on.
+func profileProv(conn *sql.DB) ProfileProvisioner {
+	return func(ctx context.Context, tenantID int64, in SignupInput) error {
+		return ProvisionBusinessProfile(ctx, conn, tenantID, in)
+	}
 }

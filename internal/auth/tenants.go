@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/google/uuid"
 )
@@ -154,12 +155,44 @@ type SignupInput struct {
 	Zone         string
 }
 
-// Signup provisions a brand-new tenant in ONE transaction: the tenant (status
-// active), its owner user (role "owner"), and the tenant's business_profile
-// (carrying the geographic zone). Any failure rolls back the whole transaction,
-// so a half-provisioned tenant can never exist (spec §3.2). Returns the created
-// owner user (without the password hash).
-func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput) (*User, error) {
+// ProfileProvisioner creates the tenant's business_profile in the TENANT DB
+// (DB-per-tenant: the profile table does not live in the control DB). Signup
+// calls it AFTER the control-tx tenant+owner commit. In single-DB tests the
+// provisioner writes to the same handle; in production it opens the tenant file
+// via the registry. See ProvisionBusinessProfile.
+type ProfileProvisioner func(ctx context.Context, tenantID int64, in SignupInput) error
+
+// ProvisionBusinessProfile upserts the tenant's default business_profile on db
+// (the tenant DB in production). The zone defaults to "national".
+func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID int64, in SignupInput) error {
+	if tenantID == 0 {
+		return errors.New("provision profile: tenant id required")
+	}
+	zone := in.Zone
+	if zone == "" {
+		zone = "national"
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	return gen.New(db).UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
+		TenantID:        tenantID,
+		Uuid:            uuid.NewString(),
+		Name:            in.BusinessName,
+		Email:           sql.NullString{String: in.Email, Valid: true},
+		Zone:            zone,
+		Metadata:        sql.NullString{String: "{}", Valid: true},
+		DefaultCurrency: sql.NullString{String: "AUD", Valid: true},
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+}
+
+// Signup provisions a brand-new tenant. The tenant (status active) and its owner
+// user (role "owner") are created in ONE control-DB transaction; on commit, the
+// business_profile is provisioned in the TENANT DB via provision. If provision
+// fails, the control rows are deleted (best-effort compensation) so a usable
+// half-provisioned tenant can never persist (the startup orphan-sweep is the
+// backstop). Returns the created owner user (without the password hash).
+func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision ProfileProvisioner) (*User, error) {
 	if in.BusinessName == "" || in.Email == "" || in.PasswordHash == "" {
 		return nil, errors.New("signup: business name, email and password hash are required")
 	}
@@ -196,19 +229,6 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput) (*User, error)
 			return fmt.Errorf("create owner: %w", e)
 		}
 		owner = u
-		if e := q.UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
-			TenantID:        t.ID,
-			Uuid:            uuid.NewString(),
-			Name:            in.BusinessName,
-			Email:           sql.NullString{String: in.Email, Valid: true},
-			Zone:            zone,
-			Metadata:        sql.NullString{String: "{}", Valid: true},
-			DefaultCurrency: sql.NullString{String: "AUD", Valid: true},
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}); e != nil {
-			return fmt.Errorf("create business profile: %w", e)
-		}
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "tenant",
 			EntityID:   t.ID,
@@ -218,6 +238,15 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput) (*User, error)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("signup: %w", err)
+	}
+	if provision != nil {
+		if e := provision(ctx, owner.TenantID, in); e != nil {
+			// Compensate: the tenant+owner are committed but unusable without a
+			// profile/tenant DB. Best-effort delete; orphan-sweep is the backstop.
+			_, _ = r.db.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = ?", owner.TenantID)
+			_, _ = r.db.ExecContext(ctx, "DELETE FROM tenants WHERE id = ?", owner.TenantID)
+			return nil, fmt.Errorf("signup: provision profile: %w", e)
+		}
 	}
 	return toUser(owner), nil
 }

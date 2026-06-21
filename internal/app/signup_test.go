@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"github.com/dknathalage/tallyo/internal/httpx"
@@ -20,7 +21,9 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 	users := auth.NewUsers(conn)
 	tenants := auth.NewTenants(conn)
 	sm := auth.NewSessionManager(conn, false)
-	signupH := NewSignupHandler(sm, tenants, users)
+	signupH := NewSignupHandler(sm, tenants, users, func(ctx context.Context, tenantID int64, in auth.SignupInput) error {
+		return auth.ProvisionBusinessProfile(ctx, conn, tenantID, in)
+	})
 	authH := NewAuthHandler(sm, users, tenants)
 
 	router := chi.NewRouter()
@@ -145,7 +148,7 @@ func TestSignupAtomicRollback(t *testing.T) {
 		Email:        "r@b.com",
 		PasswordHash: "",
 		Zone:         "national",
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("Signup with empty hash: want error, got nil")
 	}

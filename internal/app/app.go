@@ -205,7 +205,7 @@ func Run(cfg Config, version string) error {
 		Users:           users,
 		Tenants:         tenants,
 		Session:         sm,
-		Signup:          NewSignupHandler(sm, tenants, users),
+		Signup:          NewSignupHandler(sm, tenants, users, provisionProfile(reg)),
 		Auth:            NewAuthHandler(sm, users, tenants),
 		Invites:         NewInviteHandler(invites, users),
 		Events:          realtime.NewEventsHandler(hub),
