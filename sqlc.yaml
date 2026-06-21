@@ -1,7 +1,14 @@
 version: "2"
 sql:
   - engine: "sqlite"
-    schema: "internal/db/migrations"
+    # Schema for type generation only (runtime DB selection is the repo's job).
+    # Read the whole control dir (its audit_log is the single AuditLog model) and
+    # the tenant business-table migration EXPLICITLY — the tenant audit_log file
+    # (00002_audit_log.sql) is deliberately omitted to avoid a duplicate-table
+    # error; goose still applies it to tenant DBs. See the DB-per-tenant plan.
+    schema:
+      - "internal/db/migrations/control"
+      - "internal/db/migrations/tenant/00001_tenant.sql"
     queries: "internal/db/queries"
     gen:
       go:

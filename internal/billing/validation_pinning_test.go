@@ -3,6 +3,8 @@ package billing
 import (
 	"context"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/db/gen"
 )
 
 // TestValidatePinnedVersionNotRepriced is the core guard for the requirement that
@@ -22,17 +24,25 @@ func TestValidatePinnedVersionNotRepriced(t *testing.T) {
 	val := NewLineValidator(conn)
 	ctx := context.Background()
 
+	// Lines pin the catalog version by its UUID (the control-DB reference), not
+	// its integer id.
+	v1ver, err := gen.New(conn).GetCatalogVersion(ctx, v1)
+	if err != nil {
+		t.Fatalf("get v1 uuid: %v", err)
+	}
+	v1uuid := v1ver.Uuid
+
 	// Existing line pinned to v1 at $80 (≤ v1 cap 100): must PASS and stay on v1,
 	// even though v2 (cap 50) is the current version for that service date.
 	pinned := supportLine("99_test", "2025-07-01", 1, 80)
-	pinned.CatalogVersionID = &v1
+	pinned.CatalogVersionID = &v1uuid
 	res, err := val.Validate(ctx, tid, pid, []LineItemInput{pinned})
 	if err != nil {
 		t.Fatalf("pinned-to-v1 line at 80 (cap 100) should pass: %v", err)
 	}
 	got := res.Items[0].CatalogVersionID
-	if got == nil || *got != v1 {
-		t.Fatalf("pinned version must be preserved: got %v want %d", got, v1)
+	if got == nil || *got != v1uuid {
+		t.Fatalf("pinned version must be preserved: got %v want %s", got, v1uuid)
 	}
 
 	// Same line UNpinned: resolves to the current version v2 (cap 50) → 80 fails.

@@ -22,9 +22,9 @@ type CreateEstimateLineItemParams struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	EstimateID       int64          `json:"estimate_id"`
-	SupportItemID    sql.NullInt64  `json:"support_item_id"`
+	SupportItemID    sql.NullString `json:"support_item_id"`
 	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
-	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
+	CatalogVersionID sql.NullString `json:"catalog_version_id"`
 	Code             sql.NullString `json:"code"`
 	Description      string         `json:"description"`
 	ServiceDate      sql.NullString `json:"service_date"`

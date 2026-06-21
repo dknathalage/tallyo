@@ -387,9 +387,9 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 			TenantID:         tenantID,
 			ShiftID:          sql.NullInt64{}, // invoice lines from this path are not shift items
 			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
-			SupportItemID:    db.NullID(it.SupportItemID),
+			SupportItemID:    db.NullStr(it.SupportItemID),
 			CustomItemID:     db.NullID(it.CustomItemID),
-			CatalogVersionID: db.NullID(it.CatalogVersionID),
+			CatalogVersionID: db.NullStr(it.CatalogVersionID),
 			Code:             db.NzMaybe(it.Code),
 			Description:      it.Description,
 			ServiceDate:      db.NzMaybe(it.ServiceDate),

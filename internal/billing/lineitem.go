@@ -16,9 +16,9 @@ func LineItemFromRow(row gen.LineItem) *LineItem {
 		UUID:             row.Uuid,
 		ShiftID:          ptrInt(row.ShiftID),
 		InvoiceID:        ptrInt(row.InvoiceID),
-		SupportItemID:    ptrInt(row.SupportItemID),
+		SupportItemID:    ptrStr(row.SupportItemID),
 		CustomItemID:     ptrInt(row.CustomItemID),
-		CatalogVersionID: ptrInt(row.CatalogVersionID),
+		CatalogVersionID: ptrStr(row.CatalogVersionID),
 		Code:             row.Code.String,
 		Description:      row.Description,
 		ServiceDate:      row.ServiceDate.String,
@@ -41,6 +41,14 @@ func ptrInt(n sql.NullInt64) *int64 {
 	return &v
 }
 
+func ptrStr(n sql.NullString) *string {
+	if !n.Valid || n.String == "" {
+		return nil
+	}
+	v := n.String
+	return &v
+}
+
 // LineItem is the domain view of a row in the line_items table. A line item is
 // the same row whether it lives on a shift (ShiftID set, InvoiceID nil) or on an
 // invoice (InvoiceID set); drafting links it by setting InvoiceID.
@@ -49,9 +57,9 @@ type LineItem struct {
 	UUID             string  `json:"uuid"`
 	ShiftID          *int64  `json:"shiftId"`
 	InvoiceID        *int64  `json:"invoiceId"`
-	SupportItemID    *int64  `json:"supportItemId"`
-	CustomItemID     *int64  `json:"customItemId"`
-	CatalogVersionID *int64  `json:"catalogVersionId"`
+	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
+	CustomItemID     *int64  `json:"customItemId"`     // tenant-local
+	CatalogVersionID *string `json:"catalogVersionId"` // control-DB catalog_versions.uuid
 	Code             string  `json:"code"`
 	Description      string  `json:"description"`
 	ServiceDate      string  `json:"serviceDate"`
@@ -68,9 +76,9 @@ type LineItem struct {
 // LineItemInput is the writable subset of a line item. LineTotal is computed
 // (round2(quantity*unitPrice)) when not explicitly supplied.
 type LineItemInput struct {
-	SupportItemID    *int64  `json:"supportItemId"`
-	CustomItemID     *int64  `json:"customItemId"`
-	CatalogVersionID *int64  `json:"catalogVersionId"`
+	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
+	CustomItemID     *int64  `json:"customItemId"`     // tenant-local
+	CatalogVersionID *string `json:"catalogVersionId"` // control-DB catalog_versions.uuid
 	Code             string  `json:"code"`
 	Description      string  `json:"description"`
 	ServiceDate      string  `json:"serviceDate"`

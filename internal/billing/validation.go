@@ -220,7 +220,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	// re-validating an already-priced invoice/estimate never re-prices it against a
 	// newer catalogue version (prices are frozen at create time). Only a NEW line
 	// (no pinned version) resolves by service date and gets pinned.
-	versionID, versionLabel, ok := v.resolveVersion(ctx, idx, line, ve)
+	versionID, versionUUID, versionLabel, ok := v.resolveVersion(ctx, idx, line, ve)
 	if !ok {
 		return
 	}
@@ -235,7 +235,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: fmt.Sprintf("support item code %q is not in the %s price catalogue", line.Code, versionLabel)})
 		return
 	}
-	snapshotSupportItem(line, versionID, item)
+	snapshotSupportItem(line, versionUUID, item)
 
 	// Step 3 + 4: resolve the zone price, then either assert unit_price ≤ cap
 	// (default) or, in fill mode, OVERWRITE unit_price with the cap.
@@ -250,25 +250,27 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 // exact version so its price cap never shifts under a newer catalogue; a fresh
 // line resolves by service date. Returns (versionID, label, ok); on failure it
 // has already appended the field error.
-func (v *LineValidator) resolveVersion(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) (int64, string, bool) {
-	if line.CatalogVersionID != nil && *line.CatalogVersionID > 0 {
-		ver, err := v.cat.GetVersion(ctx, *line.CatalogVersionID)
+// Returns (versionID for downstream control-DB lookups, versionUUID to pin onto
+// the tenant line, label, ok).
+func (v *LineValidator) resolveVersion(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) (int64, string, string, bool) {
+	if line.CatalogVersionID != nil && *line.CatalogVersionID != "" {
+		ver, err := v.cat.GetVersionByUUID(ctx, *line.CatalogVersionID)
 		if err != nil || ver == nil {
 			ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "the price-catalogue version pinned to this line could not be found"})
-			return 0, "", false
+			return 0, "", "", false
 		}
-		return ver.ID, ver.Label, true
+		return ver.ID, ver.UUID, ver.Label, true
 	}
 	ver, err := v.cat.ResolveVersionForDate(ctx, line.ServiceDate)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "could not resolve a price catalogue for that service date"})
-		return 0, "", false
+		return 0, "", "", false
 	}
 	if ver == nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: fmt.Sprintf("no NDIS price catalogue is in effect for service date %s", line.ServiceDate)})
-		return 0, "", false
+		return 0, "", "", false
 	}
-	return ver.ID, ver.Label, true
+	return ver.ID, ver.UUID, ver.Label, true
 }
 
 // applyZonePrice looks up the tenant-zone price for the line's code and, by
@@ -347,10 +349,10 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 // not be able to flip a taxable item to GST-free (or vice versa) by sending its
 // own gstFree, which would corrupt the computed tax. Custom-item lines keep
 // their client-controlled gst_free (they never reach this function).
-func snapshotSupportItem(line *LineItemInput, versionID int64, item *catalog.SupportItem) {
-	id := item.ID
+func snapshotSupportItem(line *LineItemInput, versionUUID string, item *catalog.SupportItem) {
+	id := item.UUID
 	line.SupportItemID = &id
-	vid := versionID
+	vid := versionUUID
 	line.CatalogVersionID = &vid
 	line.Code = item.Code
 	if line.Description == "" {

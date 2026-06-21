@@ -28,7 +28,22 @@ green between phases.
   package. Prove it with a throwaway two-dir config before committing to the
   layout. If unsupported, fall back: keep one schema dir for sqlc type-gen, and
   let goose own the physical per-dir DDL split.
-- No code change this phase; record findings in the commit message.
+
+### VERIFIED (iteration 1) — do not re-derive
+
+- Cross-boundary JOINs: only `support_item_prices ⋈ support_items` and
+  `users ⋈ tenants`, both control↔control. Single `gen` package holds.
+- sqlc v2 (`v1.31.1`) accepts `schema` as a **list** of dirs/files.
+- **`audit_log` lives physically in BOTH DBs** (control-plane repos
+  `catalog`, `auth.users/invites/tenants` audit into control; tenant repos
+  audit into the tenant DB). sqlc errors on a duplicate table NAME (body
+  irrelevant). **Resolution (proven):** sqlc `schema` =
+  `["internal/db/migrations/control", "<each tenant business-table file>"]`
+  — i.e. read the whole control dir (its `audit_log`, FKs intact, becomes the
+  single `AuditLog` model) and list the tenant business-table migration files
+  explicitly, **omitting the tenant `audit_log` migration**. goose still
+  applies that omitted file to tenant DBs. `InsertAuditLog`-style queries then
+  run against either DB's tx unchanged.
 
 ## Phase 1 — Split migrations into control/ and tenant/
 

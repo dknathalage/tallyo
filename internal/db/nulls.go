@@ -19,6 +19,24 @@ func PtrID(n sql.NullInt64) *int64 {
 	return &v
 }
 
+// NullStr wraps an optional string (e.g. a cross-DB UUID reference) into a
+// sql.NullString (invalid/NULL when nil or empty).
+func NullStr(p *string) sql.NullString {
+	if p == nil || *p == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *p, Valid: true}
+}
+
+// PtrStr unwraps a sql.NullString into a *string (nil when invalid or empty).
+func PtrStr(n sql.NullString) *string {
+	if !n.Valid || n.String == "" {
+		return nil
+	}
+	v := n.String
+	return &v
+}
+
 // NzMaybe wraps a string into a sql.NullString that is invalid (SQL NULL) when
 // the string is empty, and valid otherwise. Used for genuinely optional columns.
 func NzMaybe(s string) sql.NullString {

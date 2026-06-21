@@ -98,6 +98,19 @@ func (r *CatalogRepo) GetVersion(ctx context.Context, id int64) (*CatalogVersion
 	return toCatalogVersion(row), nil
 }
 
+// GetVersionByUUID returns the version by its UUID, or (nil, nil) when absent.
+// Used to resolve a tenant line's pinned catalog_version_id (a control-DB UUID).
+func (r *CatalogRepo) GetVersionByUUID(ctx context.Context, uuid string) (*CatalogVersion, error) {
+	row, err := gen.New(r.db).GetCatalogVersionByUUID(ctx, uuid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get catalog version by uuid: %w", err)
+	}
+	return toCatalogVersion(row), nil
+}
+
 // ResolveVersionForDate returns the version whose [effective_from, effective_to]
 // window contains serviceDate (spec §6 step 1), or (nil, nil) when none applies.
 func (r *CatalogRepo) ResolveVersionForDate(ctx context.Context, serviceDate string) (*CatalogVersion, error) {

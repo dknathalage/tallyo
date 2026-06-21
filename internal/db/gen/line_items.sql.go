@@ -40,9 +40,9 @@ type CreateLineItemParams struct {
 	TenantID         int64          `json:"tenant_id"`
 	ShiftID          sql.NullInt64  `json:"shift_id"`
 	InvoiceID        sql.NullInt64  `json:"invoice_id"`
-	SupportItemID    sql.NullInt64  `json:"support_item_id"`
+	SupportItemID    sql.NullString `json:"support_item_id"`
 	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
-	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
+	CatalogVersionID sql.NullString `json:"catalog_version_id"`
 	Code             sql.NullString `json:"code"`
 	Description      string         `json:"description"`
 	ServiceDate      sql.NullString `json:"service_date"`
@@ -347,9 +347,9 @@ RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_ite
 `
 
 type UpdateShiftLineItemParams struct {
-	SupportItemID    sql.NullInt64  `json:"support_item_id"`
+	SupportItemID    sql.NullString `json:"support_item_id"`
 	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
-	CatalogVersionID sql.NullInt64  `json:"catalog_version_id"`
+	CatalogVersionID sql.NullString `json:"catalog_version_id"`
 	Code             sql.NullString `json:"code"`
 	Description      string         `json:"description"`
 	ServiceDate      sql.NullString `json:"service_date"`

@@ -445,9 +445,9 @@ func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in 
 		EntityType: "line_item", EntityID: itemID, Action: "update",
 	}, func(tx *sql.Tx) error {
 		_, e := gen.New(tx).UpdateShiftLineItem(ctx, gen.UpdateShiftLineItemParams{
-			SupportItemID:    db.NullID(in.SupportItemID),
+			SupportItemID:    db.NullStr(in.SupportItemID),
 			CustomItemID:     db.NullID(in.CustomItemID),
-			CatalogVersionID: db.NullID(in.CatalogVersionID),
+			CatalogVersionID: db.NullStr(in.CatalogVersionID),
 			Code:             db.NzMaybe(in.Code),
 			Description:      in.Description,
 			ServiceDate:      db.NzMaybe(in.ServiceDate),
@@ -521,9 +521,9 @@ func lineItemParams(tenantID int64, shiftID *int64, in billing.LineItemInput) ge
 		TenantID:         tenantID,
 		ShiftID:          db.NullID(shiftID),
 		InvoiceID:        sql.NullInt64{}, // unbilled shift item
-		SupportItemID:    db.NullID(in.SupportItemID),
+		SupportItemID:    db.NullStr(in.SupportItemID),
 		CustomItemID:     db.NullID(in.CustomItemID),
-		CatalogVersionID: db.NullID(in.CatalogVersionID),
+		CatalogVersionID: db.NullStr(in.CatalogVersionID),
 		Code:             db.NzMaybe(in.Code),
 		Description:      in.Description,
 		ServiceDate:      db.NzMaybe(in.ServiceDate),
