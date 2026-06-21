@@ -15,7 +15,9 @@
 	} from '$lib/api/types';
 
 	type Props = {
-		open: boolean;
+		open?: boolean;
+		/** Render the form body without the Modal wrapper (full-page route host). */
+		inline?: boolean;
 		/** Editing target — null for a fresh shift. */
 		shift?: Shift | null;
 		/** Pre-filled date for a fresh shift (e.g. clicked calendar day). */
@@ -26,15 +28,19 @@
 		recording?: boolean;
 		/** Called after a successful save (create/update). */
 		onsaved?: () => void;
+		/** Inline Cancel/Back action (modal mode just closes via open). */
+		oncancel?: () => void;
 	};
 
 	let {
-		open = $bindable(),
+		open = $bindable(false),
+		inline = false,
 		shift = null,
 		presetDate = '',
 		presetParticipantId = null,
 		recording = false,
-		onsaved
+		onsaved,
+		oncancel
 	}: Props = $props();
 
 	const editing = $derived(shift !== null);
@@ -56,9 +62,19 @@
 	let itemsBusy = $state(false);
 	let itemError = $state<string | null>(null);
 
-	// Seed the form from props each time the modal transitions to open.
+	// Seed the form from props. In modal mode, re-seed each time the modal
+	// transitions to open (the form is reused). In inline mode the host route
+	// remounts the component (via {#key idParam}), so seed once on mount.
 	let lastOpen = false;
+	let seeded = false;
 	$effect(() => {
+		if (inline) {
+			if (!seeded) {
+				seed();
+				seeded = true;
+			}
+			return;
+		}
 		if (open && !lastOpen) {
 			seed();
 		}
@@ -266,7 +282,7 @@
 			} else {
 				await shiftsApi.create(input);
 			}
-			open = false;
+			if (!inline) open = false;
 			onsaved?.();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to save shift.';
@@ -276,7 +292,7 @@
 	}
 </script>
 
-<Modal bind:open {title}>
+{#snippet body()}
 	<form class="space-y-3" onsubmit={submit}>
 		<p class="text-xs text-gray-500">
 			Date &amp; participant are structured; the note is free text. Add billable line items below
@@ -496,7 +512,7 @@
 		<div class="flex justify-end gap-2">
 			<button
 				type="button"
-				onclick={() => (open = false)}
+				onclick={() => (inline ? oncancel?.() : (open = false))}
 				class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
 			>
 				Cancel
@@ -510,4 +526,15 @@
 			</button>
 		</div>
 	</form>
-</Modal>
+{/snippet}
+
+{#if inline}
+	<div class="rounded border border-gray-200 bg-white p-4">
+		<h2 class="mb-3 text-lg font-semibold">{title}</h2>
+		{@render body()}
+	</div>
+{:else}
+	<Modal bind:open {title}>
+		{@render body()}
+	</Modal>
+{/if}

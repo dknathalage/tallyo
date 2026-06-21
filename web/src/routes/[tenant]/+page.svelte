@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { t } from '$lib/nav';
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
-	import ShiftForm from '$lib/components/ShiftForm.svelte';
 	import { shortDate, todayISO } from '$lib/shifts/format';
 	import type { Shift } from '$lib/api/types';
 
@@ -27,28 +28,9 @@
 		return 'Upcoming';
 	}
 
-	// ---- Shift form (record / edit / add) ----
-	let formOpen = $state(false);
-	let formShift = $state<Shift | null>(null);
-	let formRecording = $state(false);
-	let formDate = $state('');
-
-	function openNew(): void {
-		formShift = null;
-		formRecording = false;
-		formDate = '';
-		formOpen = true;
-	}
-
-	function openRecord(shift: Shift): void {
-		formShift = shift;
-		formRecording = shift.status === 'scheduled';
-		formDate = '';
-		formOpen = true;
-	}
-
-	function onShiftSaved(): void {
-		void shifts.load();
+	// ---- Shift editing (record / edit / add) — full route pages. ----
+	function openShift(shift: Shift): void {
+		void goto(t('/shifts/' + shift.id));
 	}
 
 	async function deleteShifts(ids: number[]): Promise<void> {
@@ -69,7 +51,7 @@
 		</div>
 		<button
 			type="button"
-			onclick={openNew}
+			onclick={() => goto(t('/shifts/new'))}
 			class="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
 		>
 			+ Add shift
@@ -96,7 +78,7 @@
 						</span>
 						<button
 							type="button"
-							onclick={() => openRecord(s)}
+							onclick={() => goto(t('/shifts/' + s.id))}
 							class="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
 						>
 							Record shift →
@@ -116,18 +98,10 @@
 		<p class="text-sm text-gray-500">Loading…</p>
 	{:else}
 		<section>
-			<ShiftTable shifts={shifts.items} {participantName} onopen={openRecord} ondelete={deleteShifts} />
+			<ShiftTable shifts={shifts.items} {participantName} onopen={openShift} ondelete={deleteShifts} />
 			<p class="mt-2 text-xs text-gray-500">
 				Status pipeline: scheduled → recorded → drafted → sent → paid.
 			</p>
 		</section>
 	{/if}
 </div>
-
-<ShiftForm
-	bind:open={formOpen}
-	shift={formShift}
-	recording={formRecording}
-	presetDate={formDate}
-	onsaved={onShiftSaved}
-/>

@@ -59,6 +59,14 @@ export async function toRecord(): Promise<Shift[]> {
 	return (await apiGet<Shift[]>(tenantPath('shifts/to-record'))) ?? [];
 }
 
+/** Fetch a single shift by id. Returns the Shift. */
+export async function get(id: number): Promise<Shift> {
+	if (!Number.isInteger(id) || id <= 0) {
+		throw new Error(`shifts.get: id must be positive, got ${id}`);
+	}
+	return must(await apiGet<Shift>(tenantPath(`shifts/${id}`)), 'shifts get');
+}
+
 /** Create a shift. Returns the persisted Shift (201). */
 export async function create(input: ShiftInput): Promise<Shift> {
 	if (!Number.isInteger(input.participantId) || input.participantId <= 0) {
