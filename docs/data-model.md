@@ -1,8 +1,19 @@
 # Tallyo Data Model (ERD)
 
 Living reference for the SQLite schema. Source of truth is the goose migrations
-(`internal/db/migrations/*.sql`); this diagram is the human-readable map. Update
-it whenever a migration changes a table or relationship.
+(`internal/db/migrations/{control,tenant}/*.sql`); this diagram is the
+human-readable map. Update it whenever a migration changes a table or relationship.
+
+> **DB-per-tenant.** Tables are split across two SQLite databases. The **control
+> DB** (`control.db`) holds `tenants, users, invites, sessions, catalog_versions,
+> support_items, support_item_prices` and a global `audit_log`. Each **tenant DB**
+> (`tenants/tenant-<id>.db`) holds the business tables below plus its own
+> `audit_log`. Relationships that cross the two DBs are **logical only — NOT
+> foreign keys**: `tenant_id` (→ control `tenants`), `support_item_id` /
+> `catalog_version_id` (→ control catalogue, stored as **UUID TEXT**), and
+> `author_user_id` / `user_id` (→ control `users`). The authoritative split ERD is
+> in `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`; keep both
+> in sync.
 
 > **Active change — shift items = invoice line items.** `line_items` is the single
 > home for both a shift's items and an invoice's lines. A row is born on a shift
@@ -45,9 +56,9 @@ erDiagram
         int     tenant_id FK
         int     shift_id   FK "ON DELETE CASCADE; NULL for manual/recurring lines"
         int     invoice_id FK "NULL = unbilled shift item"
-        int     support_item_id FK "catalogue item (nullable)"
-        int     custom_item_id  FK "custom item (nullable)"
-        int     catalog_version_id FK "pinned price version"
+        text    support_item_id "control-DB support_items.uuid (no FK)"
+        int     custom_item_id  FK "custom item (tenant-local, nullable)"
+        text    catalog_version_id "control-DB catalog_versions.uuid (no FK), pinned"
         text    code "NDIS code snapshot"
         text    description "what was done (from shift note)"
         text    service_date
@@ -90,11 +101,14 @@ erDiagram
 
 ## Conventions
 
-- Every tenant-owned table carries `tenant_id INTEGER NOT NULL REFERENCES tenants(id)`.
+- Every tenant-owned table carries a `tenant_id INTEGER` column (a redundant
+  guard — the file already scopes the tenant; it is NOT a foreign key, since
+  `tenants` lives in the control DB).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
   estimate); they are deliberately separate tables, not unified.
-- Prices are pinned per line via `catalog_version_id` + `support_item_id` so an
-  existing invoice is never re-priced when a newer catalogue version loads.
+- Prices are pinned per line via `catalog_version_id` + `support_item_id` (control
+  catalogue UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
+  is never re-priced when a newer catalogue version loads.
 - Agent has **no persistent tables** (Smarts are one-shot). The `notes` table and
   all `agent_*` chat tables were dropped (migrations `00005`, `00007`).
 
