@@ -10,6 +10,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -183,4 +184,99 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 func UserFrom(ctx context.Context) *auth.User {
 	u, _ := ctx.Value(userCtxKey).(*auth.User)
 	return u
+}
+
+// TenantLookup resolves a tenant by its public UUID (satisfied by *auth.TenantsRepo).
+type TenantLookup interface {
+	GetByUUID(ctx context.Context, tenantUUID string) (*auth.Tenant, error)
+}
+
+// MemberLookup resolves the user row (with role) for an email within a tenant,
+// returning (nil, nil) when the email is not a member (satisfied by *auth.UsersRepo).
+type MemberLookup interface {
+	GetByEmail(ctx context.Context, tenantID int64, email string) (*auth.User, error)
+}
+
+// RequireSession requires a valid session carrying a userID + email, attaching
+// both to the request context. It does NOT resolve a tenant — tenant-agnostic
+// authed routes (e.g. /auth/session, /auth/logout) use this alone; tenant-scoped
+// routes chain ResolveTenant after it.
+func RequireSession(sm *scs.SessionManager) func(http.Handler) http.Handler {
+	if sm == nil {
+		panic("RequireSession: nil session manager")
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := sm.GetInt(r.Context(), "userID")
+			email := sm.GetString(r.Context(), "email")
+			if id == 0 || email == "" {
+				WriteError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			ctx := reqctx.WithUser(r.Context(), int64(id))
+			ctx = reqctx.WithEmail(ctx, email)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// ResolveTenant authorizes the {tenantUUID} URL segment against the session
+// email and attaches the resolved tenant + that tenant's user (and role) to the
+// context. It is the security core of URL-based multi-tenancy:
+//   - email missing → 401 (must be chained after RequireSession)
+//   - unknown tenant uuid → 404
+//   - suspended tenant → 403
+//   - email is not a member of the tenant → 403
+//
+// On success, downstream handlers read the tenant via reqctx.MustTenant and the
+// per-tenant user/role via UserFrom (so role gates reflect THIS tenant's role).
+func ResolveTenant(users MemberLookup, tenants TenantLookup) func(http.Handler) http.Handler {
+	if users == nil || tenants == nil {
+		panic("ResolveTenant: nil dep")
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			email, ok := reqctx.EmailFrom(ctx)
+			if !ok || email == "" {
+				WriteError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			tenantUUID := chi.URLParam(r, "tenantUUID")
+			if tenantUUID == "" {
+				WriteError(w, http.StatusNotFound, "tenant not found")
+				return
+			}
+			tenant, err := tenants.GetByUUID(ctx, tenantUUID)
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if tenant == nil {
+				WriteError(w, http.StatusNotFound, "tenant not found")
+				return
+			}
+			if tenant.Status == auth.StatusSuspended {
+				WriteError(w, http.StatusForbidden, "tenant suspended")
+				return
+			}
+			u, err := users.GetByEmail(ctx, tenant.ID, email)
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if u == nil { // email is not a member of this tenant
+				WriteError(w, http.StatusForbidden, "forbidden")
+				return
+			}
+			ctx = reqctx.WithTenant(ctx, tenant.ID)
+			ctx = reqctx.WithUser(ctx, u.ID)
+			tenantID, userID := tenant.ID, u.ID
+			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {
+				return l.With(slog.Int64("tenant_id", tenantID), slog.Int64("user_id", userID))
+			})
+			ctx = context.WithValue(ctx, userCtxKey, u)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

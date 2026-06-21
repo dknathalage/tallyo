@@ -22,7 +22,31 @@ const (
 	// userKey is the context key under which the acting user id is stored. The
 	// audit layer reads it to stamp every mutation with who performed it.
 	userKey
+	// emailKey is the context key under which the authenticated email (the
+	// durable cross-tenant identity) is stored. ResolveTenant reads it to
+	// authorize the URL tenant per request.
+	emailKey
 )
+
+// WithEmail returns a copy of ctx carrying the authenticated email. Set by the
+// session middleware; read by the URL-tenant resolver.
+func WithEmail(ctx context.Context, email string) context.Context {
+	return context.WithValue(ctx, emailKey, email)
+}
+
+// EmailFrom returns the authenticated email stored in ctx and whether one was
+// present. ok is false (and the string empty) when no email has been attached.
+func EmailFrom(ctx context.Context) (string, bool) {
+	v := ctx.Value(emailKey)
+	if v == nil {
+		return "", false
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", false
+	}
+	return s, ok
+}
 
 // WithTenant returns a copy of ctx that carries the given tenant id. A non-zero
 // tenant id is expected; callers that need a value should validate at the
