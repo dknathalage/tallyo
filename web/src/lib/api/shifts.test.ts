@@ -13,7 +13,7 @@ vi.mock('./client', async (importOriginal) => {
 	};
 });
 
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, setActiveTenant } from './client';
 import {
 	listAll,
 	listForParticipant,
@@ -81,13 +81,16 @@ const fakeItem = { id: 11, ...fakeItemInput, lineTotal: 0 } as unknown as LineIt
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	// Real (unmocked) setActiveTenant/tenantPath: every tenant-scoped call now
+	// resolves to /api/t/t-uuid/... — assert against the prefixed URL.
+	setActiveTenant('t-uuid');
 });
 
 describe('listAll', () => {
 	it('calls apiGet /api/shifts and returns the list', async () => {
 		mockApiGet.mockResolvedValue([fakeShift]);
 		const result = await listAll();
-		expect(mockApiGet).toHaveBeenCalledWith('/api/shifts');
+		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/shifts');
 		expect(result).toEqual([fakeShift]);
 	});
 
@@ -101,14 +104,14 @@ describe('listForParticipant', () => {
 	it('uses the base path with no params', async () => {
 		mockApiGet.mockResolvedValue([fakeShift]);
 		await listForParticipant(3);
-		expect(mockApiGet).toHaveBeenCalledWith('/api/participants/3/shifts');
+		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/participants/3/shifts');
 	});
 
 	it('appends from, to and status when provided', async () => {
 		mockApiGet.mockResolvedValue([]);
 		await listForParticipant(3, '2026-06-01', '2026-06-30', 'recorded');
 		expect(mockApiGet).toHaveBeenCalledWith(
-			'/api/participants/3/shifts?from=2026-06-01&to=2026-06-30&status=recorded'
+			'/api/t/t-uuid/participants/3/shifts?from=2026-06-01&to=2026-06-30&status=recorded'
 		);
 	});
 
@@ -121,13 +124,13 @@ describe('suggestions / toRecord', () => {
 	it('suggestions calls /api/shifts/suggestions and coalesces null to []', async () => {
 		mockApiGet.mockResolvedValue(null);
 		expect(await suggestions()).toEqual([]);
-		expect(mockApiGet).toHaveBeenCalledWith('/api/shifts/suggestions');
+		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/shifts/suggestions');
 	});
 
 	it('toRecord calls /api/shifts/to-record', async () => {
 		mockApiGet.mockResolvedValue([fakeShift]);
 		expect(await toRecord()).toEqual([fakeShift]);
-		expect(mockApiGet).toHaveBeenCalledWith('/api/shifts/to-record');
+		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/shifts/to-record');
 	});
 });
 
@@ -135,7 +138,7 @@ describe('create / update / remove', () => {
 	it('create posts to /api/shifts and returns the shift', async () => {
 		mockApiPost.mockResolvedValue(fakeShift);
 		const result = await create(fakeInput);
-		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts', fakeInput);
+		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts', fakeInput);
 		expect(result).toEqual(fakeShift);
 	});
 
@@ -147,13 +150,13 @@ describe('create / update / remove', () => {
 	it('update puts to /api/shifts/5', async () => {
 		mockApiPut.mockResolvedValue(fakeShift);
 		await update(5, fakeInput);
-		expect(mockApiPut).toHaveBeenCalledWith('/api/shifts/5', fakeInput);
+		expect(mockApiPut).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5', fakeInput);
 	});
 
 	it('remove deletes /api/shifts/5', async () => {
 		mockApiDelete.mockResolvedValue(null);
 		await remove(5);
-		expect(mockApiDelete).toHaveBeenCalledWith('/api/shifts/5');
+		expect(mockApiDelete).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5');
 	});
 
 	it('create throws on a missing service date', async () => {
@@ -165,7 +168,7 @@ describe('setStatus', () => {
 	it('posts {status} to /api/shifts/5/status', async () => {
 		mockApiPost.mockResolvedValue(null);
 		await setStatus(5, 'sent');
-		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts/5/status', { status: 'sent' });
+		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/status', { status: 'sent' });
 	});
 
 	it('throws on a non-positive id', async () => {
@@ -177,7 +180,7 @@ describe('importShifts', () => {
 	it('posts {participantId, text} to /api/shifts/import and returns created shifts', async () => {
 		mockApiPost.mockResolvedValue([fakeShift]);
 		const result = await importShifts(3, 'Mon 9-3 cleaning');
-		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts/import', {
+		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/import', {
 			participantId: 3,
 			text: 'Mon 9-3 cleaning'
 		});
@@ -193,7 +196,7 @@ describe('draftFromShifts', () => {
 	it('posts {shiftIds} to /api/invoices/draft-from-shifts', async () => {
 		mockApiPost.mockResolvedValue({ id: 9 } as unknown);
 		await draftFromShifts([5, 6]);
-		expect(mockApiPost).toHaveBeenCalledWith('/api/invoices/draft-from-shifts', {
+		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/invoices/draft-from-shifts', {
 			shiftIds: [5, 6]
 		});
 	});
@@ -212,31 +215,31 @@ describe('shift items', () => {
 	it('listItems gets /api/shifts/5/items and coalesces null to []', async () => {
 		mockApiGet.mockResolvedValue(null);
 		expect(await listItems(5)).toEqual([]);
-		expect(mockApiGet).toHaveBeenCalledWith('/api/shifts/5/items');
+		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items');
 	});
 
 	it('addItem posts to /api/shifts/5/items', async () => {
 		mockApiPost.mockResolvedValue(fakeItem);
 		const result = await addItem(5, fakeItemInput);
-		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts/5/items', fakeItemInput);
+		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items', fakeItemInput);
 		expect(result).toEqual(fakeItem);
 	});
 
 	it('updateItem patches /api/shifts/5/items/11', async () => {
 		mockApiPatch.mockResolvedValue(fakeItem);
 		await updateItem(5, 11, fakeItemInput);
-		expect(mockApiPatch).toHaveBeenCalledWith('/api/shifts/5/items/11', fakeItemInput);
+		expect(mockApiPatch).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items/11', fakeItemInput);
 	});
 
 	it('deleteItem deletes /api/shifts/5/items/11', async () => {
 		mockApiDelete.mockResolvedValue(null);
 		await deleteItem(5, 11);
-		expect(mockApiDelete).toHaveBeenCalledWith('/api/shifts/5/items/11');
+		expect(mockApiDelete).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items/11');
 	});
 
 	it('divideShift posts to /api/shifts/5/divide and coalesces null to []', async () => {
 		mockApiPost.mockResolvedValue(null);
 		expect(await divideShift(5)).toEqual([]);
-		expect(mockApiPost).toHaveBeenCalledWith('/api/shifts/5/divide', {});
+		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/divide', {});
 	});
 });

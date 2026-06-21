@@ -14,6 +14,8 @@ interface EventFrame {
 
 type Listener = () => void;
 
+import { tenantPath } from '$lib/api/client';
+
 const listeners = new Map<string, Set<Listener>>();
 let source: EventSource | null = null;
 
@@ -38,7 +40,16 @@ function ensureOpen(): void {
 	if (typeof window === 'undefined') return;
 	if (source !== null) return;
 
-	const es = new EventSource('/api/events', { withCredentials: true });
+	// A pre-tenant call (e.g. lazy onEntity before the layout set the active
+	// tenant) must no-op rather than crash: tenantPath throws with no tenant.
+	let url: string;
+	try {
+		url = tenantPath('events');
+	} catch {
+		return;
+	}
+
+	const es = new EventSource(url, { withCredentials: true });
 	source = es;
 
 	es.addEventListener('open', () => {
@@ -61,6 +72,19 @@ function ensureOpen(): void {
 
 	// On error we intentionally do NOT close: the browser auto-reconnects and
 	// the next "open" triggers a resync.
+}
+
+/** Open the SSE stream for the active tenant (no-op if already open). */
+export function openEvents(): void {
+	ensureOpen();
+}
+
+/** Close the SSE stream (e.g. on tenant switch, before reopening). */
+export function closeEvents(): void {
+	if (source !== null) {
+		source.close();
+		source = null;
+	}
 }
 
 /**

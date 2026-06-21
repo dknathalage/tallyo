@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, tenantPath } from './client';
 import type {
 	Shift,
 	ShiftInput,
@@ -21,7 +21,7 @@ function must<T>(v: T | null, what: string): T {
 
 /** List every shift for the current tenant (powers the shifts table). Returns []. */
 export async function listAll(): Promise<Shift[]> {
-	return (await apiGet<Shift[]>('/api/shifts')) ?? [];
+	return (await apiGet<Shift[]>(tenantPath('shifts'))) ?? [];
 }
 
 /**
@@ -44,19 +44,19 @@ export async function listForParticipant(
 	if (to !== undefined && to.length > 0) params.set('to', to);
 	if (status !== undefined && status.length > 0) params.set('status', status);
 	const qs = params.toString();
-	const base = `/api/participants/${participantId}/shifts`;
+	const base = tenantPath(`participants/${participantId}/shifts`);
 	const path = qs.length > 0 ? `${base}?${qs}` : base;
 	return (await apiGet<Shift[]>(path)) ?? [];
 }
 
 /** Recorded-but-unbilled shift clusters, one per participant. Returns []. */
 export async function suggestions(): Promise<ShiftSuggestion[]> {
-	return (await apiGet<ShiftSuggestion[]>('/api/shifts/suggestions')) ?? [];
+	return (await apiGet<ShiftSuggestion[]>(tenantPath('shifts/suggestions'))) ?? [];
 }
 
 /** Scheduled shifts still awaiting a record (overdue / today / upcoming). Returns []. */
 export async function toRecord(): Promise<Shift[]> {
-	return (await apiGet<Shift[]>('/api/shifts/to-record')) ?? [];
+	return (await apiGet<Shift[]>(tenantPath('shifts/to-record'))) ?? [];
 }
 
 /** Create a shift. Returns the persisted Shift (201). */
@@ -67,7 +67,7 @@ export async function create(input: ShiftInput): Promise<Shift> {
 	if (input.serviceDate.length === 0) {
 		throw new Error('shifts.create: input.serviceDate is required');
 	}
-	return must(await apiPost<Shift>('/api/shifts', input), 'shifts create');
+	return must(await apiPost<Shift>(tenantPath('shifts'), input), 'shifts create');
 }
 
 /** Update a shift by id. Returns the updated Shift. */
@@ -75,7 +75,7 @@ export async function update(id: number, input: ShiftInput): Promise<Shift> {
 	if (!Number.isInteger(id) || id <= 0) {
 		throw new Error(`shifts.update: id must be positive, got ${id}`);
 	}
-	return must(await apiPut<Shift>(`/api/shifts/${id}`, input), 'shifts update');
+	return must(await apiPut<Shift>(tenantPath(`shifts/${id}`), input), 'shifts update');
 }
 
 /** Delete a shift by id (204). */
@@ -83,7 +83,7 @@ export async function remove(id: number): Promise<void> {
 	if (!Number.isInteger(id) || id <= 0) {
 		throw new Error(`shifts.remove: id must be positive, got ${id}`);
 	}
-	await apiDelete<void>(`/api/shifts/${id}`);
+	await apiDelete<void>(tenantPath(`shifts/${id}`));
 }
 
 /** Advance a shift's lifecycle status (204). */
@@ -94,7 +94,7 @@ export async function setStatus(id: number, status: ShiftStatus): Promise<void> 
 	if (status.length === 0) {
 		throw new Error('shifts.setStatus: status is required');
 	}
-	await apiPost<void>(`/api/shifts/${id}/status`, { status });
+	await apiPost<void>(tenantPath(`shifts/${id}/status`), { status });
 }
 
 /**
@@ -108,7 +108,7 @@ export async function importShifts(participantId: number, text: string): Promise
 	if (text.trim().length === 0) {
 		throw new Error('shifts.import: text is required');
 	}
-	return (await apiPost<Shift[]>('/api/shifts/import', { participantId, text })) ?? [];
+	return (await apiPost<Shift[]>(tenantPath('shifts/import'), { participantId, text })) ?? [];
 }
 
 /**
@@ -121,7 +121,7 @@ export async function draftFromShifts(shiftIds: number[]): Promise<Invoice> {
 		throw new Error('shifts.draftFromShifts: shiftIds is required');
 	}
 	return must(
-		await apiPost<Invoice>('/api/invoices/draft-from-shifts', { shiftIds }),
+		await apiPost<Invoice>(tenantPath('invoices/draft-from-shifts'), { shiftIds }),
 		'shifts draftFromShifts'
 	);
 }
@@ -131,7 +131,7 @@ export async function listItems(shiftId: number): Promise<LineItem[]> {
 	if (!Number.isInteger(shiftId) || shiftId <= 0) {
 		throw new Error(`shifts.listItems: shiftId must be positive, got ${shiftId}`);
 	}
-	return (await apiGet<LineItem[]>(`/api/shifts/${shiftId}/items`)) ?? [];
+	return (await apiGet<LineItem[]>(tenantPath(`shifts/${shiftId}/items`))) ?? [];
 }
 
 /** Add one line item to a shift (server prices it). Returns the item (201). */
@@ -139,7 +139,7 @@ export async function addItem(shiftId: number, input: LineItemInput): Promise<Li
 	if (!Number.isInteger(shiftId) || shiftId <= 0) {
 		throw new Error(`shifts.addItem: shiftId must be positive, got ${shiftId}`);
 	}
-	return must(await apiPost<LineItem>(`/api/shifts/${shiftId}/items`, input), 'shifts addItem');
+	return must(await apiPost<LineItem>(tenantPath(`shifts/${shiftId}/items`), input), 'shifts addItem');
 }
 
 /** Update one unbilled item on a shift. Returns the item. */
@@ -155,7 +155,7 @@ export async function updateItem(
 		throw new Error(`shifts.updateItem: itemId must be positive, got ${itemId}`);
 	}
 	return must(
-		await apiPatch<LineItem>(`/api/shifts/${shiftId}/items/${itemId}`, input),
+		await apiPatch<LineItem>(tenantPath(`shifts/${shiftId}/items/${itemId}`), input),
 		'shifts updateItem'
 	);
 }
@@ -168,7 +168,7 @@ export async function deleteItem(shiftId: number, itemId: number): Promise<void>
 	if (!Number.isInteger(itemId) || itemId <= 0) {
 		throw new Error(`shifts.deleteItem: itemId must be positive, got ${itemId}`);
 	}
-	await apiDelete<void>(`/api/shifts/${shiftId}/items/${itemId}`);
+	await apiDelete<void>(tenantPath(`shifts/${shiftId}/items/${itemId}`));
 }
 
 /**
@@ -179,5 +179,5 @@ export async function divideShift(shiftId: number): Promise<LineItem[]> {
 	if (!Number.isInteger(shiftId) || shiftId <= 0) {
 		throw new Error(`shifts.divideShift: shiftId must be positive, got ${shiftId}`);
 	}
-	return (await apiPost<LineItem[]>(`/api/shifts/${shiftId}/divide`, {})) ?? [];
+	return (await apiPost<LineItem[]>(tenantPath(`shifts/${shiftId}/divide`), {})) ?? [];
 }

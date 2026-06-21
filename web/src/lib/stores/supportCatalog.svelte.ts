@@ -1,4 +1,4 @@
-import { apiGet } from '$lib/api/client';
+import { apiGet, tenantPath } from '$lib/api/client';
 import { onEntity } from '$lib/realtime/events';
 import type { CatalogVersion, SupportItem, SupportItemPrice } from '$lib/api/types';
 
@@ -17,7 +17,7 @@ function createSupportCatalogStore() {
 		loading = true;
 		error = null;
 		try {
-			versions = (await apiGet<CatalogVersion[]>('/api/support-catalog/versions')) ?? [];
+			versions = (await apiGet<CatalogVersion[]>(tenantPath('support-catalog/versions'))) ?? [];
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load catalogue versions';
 		} finally {
@@ -29,14 +29,15 @@ function createSupportCatalogStore() {
 		if (!Number.isFinite(versionId) || versionId <= 0) {
 			throw new Error('loadItems: versionId must be a positive number');
 		}
-		return (await apiGet<SupportItem[]>(`/api/support-catalog/versions/${versionId}/items`)) ?? [];
+		return (await apiGet<SupportItem[]>(tenantPath(`support-catalog/versions/${versionId}/items`))) ??
+			[];
 	}
 
 	async function loadPrices(itemId: number): Promise<SupportItemPrice[]> {
 		if (!Number.isFinite(itemId) || itemId <= 0) {
 			throw new Error('loadPrices: itemId must be a positive number');
 		}
-		return (await apiGet<SupportItemPrice[]>(`/api/support-catalog/items/${itemId}/prices`)) ?? [];
+		return (await apiGet<SupportItemPrice[]>(tenantPath(`support-catalog/items/${itemId}/prices`))) ?? [];
 	}
 
 	function ensureSubscribed(): void {

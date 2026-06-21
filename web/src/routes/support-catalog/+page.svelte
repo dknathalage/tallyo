@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
 	import { session } from '$lib/stores/session.svelte';
-	import { apiUpload } from '$lib/api/client';
+	import { apiUpload, tenantPath } from '$lib/api/client';
 	import type { CatalogVersion, SupportItem, SupportItemPrice } from '$lib/api/types';
 
 	function money(n: number | null): string {
@@ -111,7 +111,7 @@
 			form.append('file', uploadFile);
 			form.append('label', uploadLabel);
 			form.append('effectiveFrom', uploadEffectiveFrom);
-			await apiUpload<CatalogVersion>('/api/support-catalog/versions', form);
+			await apiUpload<CatalogVersion>(tenantPath('support-catalog/versions'), form);
 			uploadNotice = 'Catalogue version uploaded.';
 			uploadLabel = '';
 			uploadEffectiveFrom = '';

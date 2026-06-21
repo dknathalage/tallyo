@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { recurring } from '$lib/stores/recurring.svelte';
-	import { apiPost } from '$lib/api/client';
+	import { apiPost, tenantPath } from '$lib/api/client';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Zap from '@lucide/svelte/icons/zap';
@@ -58,7 +58,7 @@
 		rowError = null;
 		message = null;
 		try {
-			const inv = await apiPost<Invoice>('/api/recurring/' + id + '/generate', {});
+			const inv = await apiPost<Invoice>(tenantPath(`recurring/${id}/generate`), {});
 			message = inv !== null ? 'Generated invoice ' + inv.number : 'Generated invoice.';
 		} catch (err) {
 			rowError = err instanceof Error ? err.message : 'Failed to generate invoice.';

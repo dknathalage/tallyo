@@ -1,4 +1,4 @@
-import { apiGet } from '$lib/api/client';
+import { apiGet, tenantPath } from '$lib/api/client';
 
 /**
  * Singleton feature-gate store. Mirrors the backend's GET /api/features map
@@ -10,7 +10,7 @@ function createFeaturesStore() {
 	let flags = $state<Record<string, boolean>>({});
 
 	async function load(): Promise<void> {
-		const got = await apiGet<Record<string, boolean>>('/api/features');
+		const got = await apiGet<Record<string, boolean>>(tenantPath('features'));
 		if (got !== null) {
 			flags = got;
 		}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { estimates } from '$lib/stores/estimates.svelte';
-	import { ApiError, apiPost } from '$lib/api/client';
+	import { ApiError, apiPost, tenantPath } from '$lib/api/client';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import FileOutput from '@lucide/svelte/icons/file-output';
@@ -58,7 +58,7 @@
 			run: async (rows) => {
 				rowError = null;
 				try {
-					for (const r of rows) await apiPost(`/api/estimates/${r.id}/convert`, {});
+					for (const r of rows) await apiPost(tenantPath(`estimates/${r.id}/convert`), {});
 				} catch (err) {
 					if (err instanceof ApiError) rowError = err.message;
 					else rowError = err instanceof Error ? err.message : 'Failed to convert estimate.';
@@ -70,7 +70,7 @@
 			icon: Copy,
 			bulk: true,
 			run: async (rows) => {
-				for (const r of rows) await apiPost(`/api/estimates/${r.id}/duplicate`, {});
+				for (const r of rows) await apiPost(tenantPath(`estimates/${r.id}/duplicate`), {});
 			}
 		},
 		{
@@ -78,7 +78,8 @@
 			icon: Check,
 			bulk: true,
 			run: async (rows) => {
-				for (const r of rows) await apiPost(`/api/estimates/${r.id}/status`, { status: 'accepted' });
+				for (const r of rows)
+					await apiPost(tenantPath(`estimates/${r.id}/status`), { status: 'accepted' });
 			}
 		},
 		{
@@ -86,7 +87,8 @@
 			icon: Ban,
 			bulk: true,
 			run: async (rows) => {
-				for (const r of rows) await apiPost(`/api/estimates/${r.id}/status`, { status: 'declined' });
+				for (const r of rows)
+					await apiPost(tenantPath(`estimates/${r.id}/status`), { status: 'declined' });
 			}
 		},
 		{

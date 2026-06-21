@@ -1,4 +1,4 @@
-import { apiGet, apiPut } from '$lib/api/client';
+import { apiGet, apiPut, tenantPath } from '$lib/api/client';
 import { onEntity } from '$lib/realtime/events';
 import type { Zone } from '$lib/api/types';
 
@@ -51,7 +51,7 @@ function createProfileStore() {
 		loading = true;
 		error = null;
 		try {
-			const data = await apiGet<Partial<BusinessProfile> | null>('/api/business-profile');
+			const data = await apiGet<Partial<BusinessProfile> | null>(tenantPath('business-profile'));
 			profile = normalize(data);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load profile';
@@ -68,7 +68,7 @@ function createProfileStore() {
 		error = null;
 		try {
 			const body = { ...profile, ...input };
-			await apiPut<Partial<BusinessProfile>>('/api/business-profile', body);
+			await apiPut<Partial<BusinessProfile>>(tenantPath('business-profile'), body);
 			// SSE echo will also trigger load(); reload now for immediacy.
 			await load();
 		} catch (e) {

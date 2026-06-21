@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { apiPost, ApiError } from '$lib/api/client';
+	import { apiPost, ApiError, tenantPath } from '$lib/api/client';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
@@ -226,7 +226,7 @@
 		detailBusy = true;
 		detailError = null;
 		try {
-			await apiPost(`/api/estimates/${detail.id}/status`, { status });
+			await apiPost(tenantPath(`estimates/${detail.id}/status`), { status });
 			await loadDetail();
 		} catch (err) {
 			detailError = err instanceof Error ? err.message : 'Failed to update status.';
@@ -240,7 +240,7 @@
 		detailBusy = true;
 		detailError = null;
 		try {
-			await apiPost(`/api/estimates/${detail.id}/convert`, {});
+			await apiPost(tenantPath(`estimates/${detail.id}/convert`), {});
 			await loadDetail();
 		} catch (err) {
 			detailError = err instanceof Error ? err.message : 'Failed to convert estimate.';
@@ -254,7 +254,7 @@
 		detailBusy = true;
 		detailError = null;
 		try {
-			const created = await apiPost<Estimate>(`/api/estimates/${detail.id}/duplicate`, {});
+			const created = await apiPost<Estimate>(tenantPath(`estimates/${detail.id}/duplicate`), {});
 			if (created) await goto(`/estimates/${created.id}`);
 			else await loadDetail();
 		} catch (err) {

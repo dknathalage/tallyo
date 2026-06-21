@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { session } from '$lib/stores/session.svelte';
-	import { apiPost } from '$lib/api/client';
+	import { apiPost, tenantPath } from '$lib/api/client';
 	import type { InviteCreated, Role } from '$lib/api/types';
 
 	// owner/admin may manage users; member is read-only.
@@ -18,7 +18,7 @@
 		acceptUrl = null;
 		inviting = true;
 		try {
-			const created = await apiPost<InviteCreated>('/api/invites', {
+			const created = await apiPost<InviteCreated>(tenantPath('invites'), {
 				email: inviteEmail,
 				role: inviteRole
 			});
