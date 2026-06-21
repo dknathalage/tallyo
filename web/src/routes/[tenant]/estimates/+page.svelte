@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { estimates } from '$lib/stores/estimates.svelte';
 	import { ApiError, apiPost, tenantPath } from '$lib/api/client';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import FileOutput from '@lucide/svelte/icons/file-output';
@@ -129,8 +130,8 @@
 			{columns}
 			store={estimates}
 			{rowActions}
-			rowHref={(e) => `/estimates/${e.id}`}
-			newHref="/estimates/new"
+			rowHref={(e) => t(`/estimates/${e.id}`)}
+			newHref={t('/estimates/new')}
 		/>
 	</section>
 </div>

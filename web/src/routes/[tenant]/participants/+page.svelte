@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { participants } from '$lib/stores/participants.svelte';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -74,8 +75,8 @@
 			{columns}
 			store={participants}
 			{rowActions}
-			rowHref={(p) => `/participants/${p.id}`}
-			newHref="/participants/new"
+			rowHref={(p) => t(`/participants/${p.id}`)}
+			newHref={t('/participants/new')}
 		/>
 	</section>
 </div>

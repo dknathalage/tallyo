@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { t } from '$lib/nav';
 	import * as shiftsApi from '$lib/api/shifts';
 	import { shortDate } from '$lib/shifts/format';
 	import type { ShiftSuggestion } from '$lib/api/types';
@@ -28,7 +29,7 @@
 		drafting = s.participantId;
 		try {
 			const inv = await shiftsApi.draftFromShifts(s.ids);
-			await goto(`/invoices/${inv.id}`);
+			await goto(t(`/invoices/${inv.id}`));
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to draft the invoice.';
 		} finally {

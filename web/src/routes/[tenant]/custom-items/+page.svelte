@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -67,8 +68,8 @@
 			{columns}
 			store={customItems}
 			{rowActions}
-			rowHref={(r) => `/custom-items/${r.id}`}
-			newHref="/custom-items/new"
+			rowHref={(r) => t(`/custom-items/${r.id}`)}
+			newHref={t('/custom-items/new')}
 		/>
 	</section>
 </div>

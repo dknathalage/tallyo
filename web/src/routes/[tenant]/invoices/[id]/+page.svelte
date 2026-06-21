@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { apiPost, ApiError, tenantPath } from '$lib/api/client';
+	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
@@ -177,7 +178,7 @@
 		saving = true;
 		try {
 			const created = await invoiceStore.crud.create(buildCreatePayload());
-			await goto(`/invoices/${created.id}`);
+			await goto(t(`/invoices/${created.id}`));
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 422) {
 				validationDetails = err.details;
@@ -261,7 +262,7 @@
 {#key idParam}
 	{#if idParam === 'new'}
 		<div class="space-y-5">
-			<a href="/invoices" class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
+			<a href={t('/invoices')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
 			<h1 class="text-xl font-semibold">New invoice</h1>
 
 			<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitCreate}>
@@ -333,7 +334,7 @@
 						{saving ? 'Saving…' : 'Create invoice'}
 					</button>
 					<a
-						href="/invoices"
+						href={t('/invoices')}
 						class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
 					>
 						Cancel
@@ -349,7 +350,7 @@
 			id={idParam}
 			{toInput}
 			{validate}
-			backHref="/invoices"
+			backHref={t('/invoices')}
 			{extras}
 		/>
 	{/if}
@@ -422,7 +423,7 @@
 			</h2>
 			{#each sourceShifts as s (s.id)}
 				<a
-					href={`/participants/${s.participantId}`}
+					href={t(`/participants/${s.participantId}`)}
 					class="flex items-center justify-between gap-3 border-b border-gray-100 py-2 text-sm last:border-0"
 				>
 					<span>

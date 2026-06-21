@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
@@ -31,6 +32,6 @@
 		id={idParam}
 		{toInput}
 		{validate}
-		backHref="/tax-rates"
+		backHref={t('/tax-rates')}
 	/>
 {/key}

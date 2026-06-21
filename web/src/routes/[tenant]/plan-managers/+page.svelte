@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { planManagers } from '$lib/stores/planManagers.svelte';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -53,8 +54,8 @@
 			{columns}
 			store={planManagers}
 			{rowActions}
-			rowHref={(r) => `/plan-managers/${r.id}`}
-			newHref="/plan-managers/new"
+			rowHref={(r) => t(`/plan-managers/${r.id}`)}
+			newHref={t('/plan-managers/new')}
 		/>
 	</section>
 </div>

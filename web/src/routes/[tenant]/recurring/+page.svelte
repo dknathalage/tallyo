@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { recurring } from '$lib/stores/recurring.svelte';
 	import { apiPost, tenantPath } from '$lib/api/client';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Zap from '@lucide/svelte/icons/zap';
@@ -113,8 +114,8 @@
 			{columns}
 			store={recurring}
 			{rowActions}
-			rowHref={(t) => `/recurring/${t.id}`}
-			newHref="/recurring/new"
+			rowHref={(r) => t(`/recurring/${r.id}`)}
+			newHref={t('/recurring/new')}
 		/>
 	</section>
 </div>

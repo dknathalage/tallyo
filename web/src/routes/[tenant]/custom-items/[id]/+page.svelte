@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { customItems } from '$lib/stores/customItems.svelte';
@@ -33,6 +34,6 @@
 		{toInput}
 		{validate}
 		blank={{ gstFree: true }}
-		backHref="/custom-items"
+		backHref={t('/custom-items')}
 	/>
 {/key}

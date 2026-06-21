@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -56,8 +57,8 @@
 			{columns}
 			store={taxRates}
 			{rowActions}
-			rowHref={(r) => `/tax-rates/${r.id}`}
-			newHref="/tax-rates/new"
+			rowHref={(r) => t(`/tax-rates/${r.id}`)}
+			newHref={t('/tax-rates/new')}
 		/>
 	</section>
 </div>

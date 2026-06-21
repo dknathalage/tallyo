@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { t } from '$lib/nav';
 	import { recurring } from '$lib/stores/recurring.svelte';
 	import { participants } from '$lib/stores/participants.svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
@@ -169,10 +170,10 @@
 			const payload = buildPayload();
 			if (idParam === 'new') {
 				const created = await recurring.crud.create(payload);
-				await goto('/recurring/' + created.id);
+				await goto(t('/recurring/' + created.id));
 			} else {
 				await recurring.crud.update(idParam, payload);
-				await goto('/recurring');
+				await goto(t('/recurring'));
 			}
 		} catch (err) {
 			formError = err instanceof Error ? err.message : 'Failed to save template.';
@@ -183,7 +184,7 @@
 </script>
 
 <div class="space-y-5">
-	<a href="/recurring" class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
+	<a href={t('/recurring')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
 	<h1 class="text-xl font-semibold">{idParam === 'new' ? 'New template' : 'Edit template'}</h1>
 
 	{#if loadError}
@@ -360,7 +361,7 @@
 					{saving ? 'Saving…' : idParam === 'new' ? 'Create template' : 'Save changes'}
 				</button>
 				<a
-					href="/recurring"
+					href={t('/recurring')}
 					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
 				>
 					Cancel

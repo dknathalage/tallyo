@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { planManagers } from '$lib/stores/planManagers.svelte';
@@ -32,6 +33,6 @@
 		id={idParam}
 		{toInput}
 		{validate}
-		backHref="/plan-managers"
+		backHref={t('/plan-managers')}
 	/>
 {/key}

@@ -28,7 +28,11 @@
 			}
 			session.set(user);
 			tenantChoices = [];
-			await goto('/invoices');
+			// The login response is the per-tenant User (no uuid); fetch the agnostic
+			// session and land on the first member tenant to avoid a root-redirect flash.
+			const info = await session.loadSession();
+			const first = info?.tenants[0];
+			await goto(first ? '/' + first.tenantUuid + '/' : '/');
 		} catch (err) {
 			if (err instanceof ApiError && err.tenantRequired) {
 				// Multiple tenants share this email: prompt the user to choose one.

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { replaceState } from '$app/navigation';
+	import { t } from '$lib/nav';
 	import { createAutosave, type SaveState } from './autosave';
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
@@ -83,7 +84,7 @@
 		onState: (s) => (status = s),
 		onCreated: (newId) => {
 			currentId = newId;
-			replaceState(`/participants/${newId}`, {});
+			replaceState(t(`/participants/${newId}`), {});
 		}
 	});
 	onDestroy(() => autosave.dispose());
@@ -213,7 +214,7 @@
 
 <div class="space-y-5">
 	<div class="flex items-center justify-between">
-		<a href="/participants" class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
+		<a href={t('/participants')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
 		<div class="flex items-center gap-3">
 			<span class="h-4 text-xs">
 				{#if status === 'saving'}<span class="text-gray-400">saving…</span>
@@ -408,7 +409,7 @@
 					<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Invoices</h2>
 					{#each myInvoices as inv (inv.id)}
 						<a
-							href={`/invoices/${inv.id}`}
+							href={t(`/invoices/${inv.id}`)}
 							class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-gray-400"
 						>
 							<span>

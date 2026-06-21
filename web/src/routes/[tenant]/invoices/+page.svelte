@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
+	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import type { Invoice, InvoiceStatus } from '$lib/api/types';
@@ -79,8 +80,8 @@
 			title="Invoices"
 			{columns}
 			store={invoices}
-			rowHref={(inv) => `/invoices/${inv.id}`}
-			newHref="/invoices/new"
+			rowHref={(inv) => t(`/invoices/${inv.id}`)}
+			newHref={t('/invoices/new')}
 		/>
 	</section>
 </div>

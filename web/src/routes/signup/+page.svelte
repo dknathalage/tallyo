@@ -24,9 +24,11 @@
 				password,
 				zone
 			});
-			// Signup establishes the session; land logged in.
+			// Signup establishes the session; land logged in on the new tenant.
 			session.set(user);
-			await goto('/invoices');
+			const info = await session.loadSession();
+			const first = info?.tenants[0];
+			await goto(first ? '/' + first.tenantUuid + '/' : '/');
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Sign up failed.';
 		} finally {
