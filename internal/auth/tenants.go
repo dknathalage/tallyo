@@ -108,6 +108,29 @@ func (r *TenantsRepo) Status(ctx context.Context, tenantID int64) (status string
 	return row.Status, true, nil
 }
 
+// GetByUUID resolves a tenant by its public UUID. Returns (nil, nil) when no
+// tenant has that uuid (caller → 404). Used by the URL-tenant middleware.
+func (r *TenantsRepo) GetByUUID(ctx context.Context, tenantUUID string) (*Tenant, error) {
+	if tenantUUID == "" {
+		return nil, errors.New("tenant by uuid: uuid required")
+	}
+	row, err := gen.New(r.db).GetTenantByUUID(ctx, tenantUUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tenant by uuid: %w", err)
+	}
+	return &Tenant{
+		ID:        row.ID,
+		UUID:      row.Uuid,
+		Name:      row.Name,
+		Status:    row.Status,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+	}, nil
+}
+
 // SignupInput carries the validated fields for self-serve onboarding. Validation
 // (non-empty business name, valid email, password strength, allowed zone) is the
 // caller's (HTTP boundary) responsibility; this method assumes pre-validated
