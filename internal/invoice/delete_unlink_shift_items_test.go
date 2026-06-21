@@ -59,8 +59,8 @@ func TestDeleteUnlinksShiftItemsBeforeCascade(t *testing.T) {
 	tenantID := seedTenant(t, conn, "T")
 	participantID := seedParticipant(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	shiftSvc := shift.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, shiftSvc)
+	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, conn, hub, shiftSvc)
 	repo := shift.NewShifts(conn)
 	ctx := tctx(tenantID)
 
@@ -96,8 +96,8 @@ func TestBulkDeleteUnlinksShiftItemsBeforeCascade(t *testing.T) {
 	tenantID := seedTenant(t, conn, "T")
 	participantID := seedParticipant(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	shiftSvc := shift.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, shiftSvc)
+	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, conn, hub, shiftSvc)
 	repo := shift.NewShifts(conn)
 	ctx := tctx(tenantID)
 

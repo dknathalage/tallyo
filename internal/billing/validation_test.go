@@ -126,7 +126,7 @@ func TestValidateOverCapRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", 1, 100.01),
@@ -145,7 +145,7 @@ func TestValidateAtCapAllowed(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", 2, 100),
@@ -163,7 +163,7 @@ func TestValidateQuotableNilCapAllowsAnyPrice(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	if _, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_999", "2026-01-15", 1, 999999),
@@ -179,7 +179,7 @@ func TestValidateUnknownCodeRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("NOPE", "2026-01-15", 1, 1),
@@ -195,7 +195,7 @@ func TestValidateNoVersionForDateRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2024-01-01", "2030-01-01")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	// Service date before any catalogue window.
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -214,7 +214,7 @@ func TestValidateVersionResolutionPicksRightVersion(t *testing.T) {
 	// Two consecutive versions; the SAME code has different caps per version.
 	seedZonedCatalog(t, conn, "2024-25", "2024-07-01", "2025-06-30", "01_011", true, map[string]*float64{"national": fptr(90)})
 	seedZonedCatalog(t, conn, "2025-26", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(110)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	// 100 is over the 2024-25 cap (90) but under the 2025-26 cap (110).
@@ -231,7 +231,7 @@ func TestValidateVersionBoundaryDatesInclusive(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2024-01-01", "2030-01-01")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	for _, d := range []string{"2025-07-01", "2026-06-30"} { // both window boundaries
@@ -248,7 +248,7 @@ func TestValidateServiceDateOutsidePlanRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2025-12-31")
 	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	// After plan end (date still inside a valid catalogue window).
@@ -264,7 +264,7 @@ func TestValidateServiceDateOnPlanBoundaryAllowed(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2025-12-31")
 	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	for _, d := range []string{"2025-07-01", "2025-12-31"} { // plan window boundaries
@@ -287,7 +287,7 @@ func TestValidateZoneSelectsDifferentCap(t *testing.T) {
 	pa := seedParticipantPlan(t, conn, a, pid2start, pid2end)
 	setTenantZone(t, conn, a, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, prices)
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	if _, err := v.Validate(ctx, a, pa, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err == nil {
@@ -314,7 +314,7 @@ func TestValidateDefaultsToNationalZoneWhenNoProfile(t *testing.T) {
 	// picks national (not remote, and not "any zone").
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true,
 		map[string]*float64{"national": fptr(100), "remote": fptr(150)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	// 120 is over the national cap (100) but under the remote cap (150). With the
@@ -335,7 +335,7 @@ func TestValidateGstFreeDefaultedFromItem(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	// Line leaves gstFree false; the item is GST-free so it should default true.
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -357,7 +357,7 @@ func TestValidateGstFreeNotDefaultedWhenItemTaxable(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("02_022", "2026-01-15", 1, 50),
@@ -384,7 +384,7 @@ func TestValidateClientGstFreeOverrideIgnoredForSupportItem(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(1000)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	// Client lies: gstFree:true on a taxable catalogue item.
 	line := supportLine("02_022", "2026-01-15", 1, 200)
@@ -408,7 +408,7 @@ func TestValidateSupportItemNegativeRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", -1, -5),
@@ -438,7 +438,7 @@ func TestValidateCustomItemSkipsCatalogChecks(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	// No catalogue seeded at all.
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	cid := int64(1)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -456,7 +456,7 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 	cid := int64(1)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -483,7 +483,7 @@ func TestValidateComputesTaxFromNonGstFreeLines(t *testing.T) {
 	// One version carrying both a GST-free item (0 tax) and a taxable item.
 	verID := seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, map[string]*float64{"national": fptr(1000)})
 	addItemToVersion(t, conn, verID, "TAX", false, map[string]*float64{"national": fptr(1000)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("GF", "2026-01-15", 1, 100),  // gst-free → 0 tax
@@ -508,7 +508,7 @@ func TestValidateTotalsRoundToCents(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "DRIFT", false, map[string]*float64{"national": fptr(1)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("DRIFT", "2026-01-15", 3, 0.1),
@@ -529,7 +529,7 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2025-12-31")
 	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2025-08-01", 1, 200), // line 0: over cap

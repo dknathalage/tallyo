@@ -128,7 +128,7 @@ func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	return NewService(conn, hub, shift.NewService(conn, hub, NewInvoices(conn))), hub, tenantID, participantID
+	return NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn))), hub, tenantID, participantID
 }
 
 // makeInvoice creates a single invoice for the tenant/participant and returns it.

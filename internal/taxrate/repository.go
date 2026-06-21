@@ -56,11 +56,11 @@ var errTaxNotFound = errors.New("not found")
 // TaxRatesRepo reads and writes the tax_rates table with audited mutations and
 // exclusive-default semantics: at most one row per tenant may have is_default=1.
 type TaxRatesRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewTaxRates constructs a repository. A nil db is a programmer error.
-func NewTaxRates(db *sql.DB) *TaxRatesRepo {
+func NewTaxRates(db db.Executor) *TaxRatesRepo {
 	if db == nil {
 		panic("taxrate: NewTaxRates requires a non-nil *sql.DB")
 	}

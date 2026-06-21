@@ -76,11 +76,11 @@ type ParticipantInput struct {
 // ParticipantsRepo reads and writes the participants table (tenant-scoped) with
 // audited mutations.
 type ParticipantsRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewParticipants constructs a repository. A nil db is a programmer error.
-func NewParticipants(db *sql.DB) *ParticipantsRepo {
+func NewParticipants(db db.Executor) *ParticipantsRepo {
 	if db == nil {
 		panic("participant: NewParticipants requires a non-nil *sql.DB")
 	}

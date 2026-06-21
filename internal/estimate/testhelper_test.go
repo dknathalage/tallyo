@@ -70,7 +70,7 @@ func newEstimateSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	return NewService(conn, hub), hub, tenantID, participantID
+	return NewService(conn, conn, hub), hub, tenantID, participantID
 }
 
 // makeEstimate creates a single estimate for the tenant/participant.

@@ -2,7 +2,7 @@ package planmanager
 
 import (
 	"context"
-	"database/sql"
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
@@ -17,7 +17,7 @@ type Service struct {
 }
 
 // NewService constructs the plan-manager service. A nil hub is a programmer error.
-func NewService(db *sql.DB, hub *realtime.Hub) *Service {
+func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("planmanager.NewService: nil hub")
 	}

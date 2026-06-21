@@ -46,7 +46,7 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 	}
 
 	return &shiftFixture{
-		h:             shift.NewHandler(shift.NewService(conn, hub, invoice.NewInvoices(conn)), nil),
+		h:             shift.NewHandler(shift.NewService(conn, conn, hub, invoice.NewInvoices(conn)), nil),
 		ctx:           ctx,
 		tenantID:      tenantID,
 		participantID: part.ID,

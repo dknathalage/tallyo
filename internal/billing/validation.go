@@ -38,10 +38,11 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
@@ -103,16 +104,19 @@ type LineValidator struct {
 	taxRates     *taxrate.TaxRatesRepo
 }
 
-// NewLineValidator constructs the engine. A nil db is a programmer error.
-func NewLineValidator(db *sql.DB) *LineValidator {
-	if db == nil {
+// NewLineValidator constructs the engine. The catalogue is read from the
+// CONTROL DB (shared reference data); the business profile, participants and tax
+// rates are read from the TENANT DB. In single-DB mode (tests) pass the same
+// handle for both. Nil handles are a programmer error.
+func NewLineValidator(tenant, control db.Executor) *LineValidator {
+	if tenant == nil || control == nil {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
-		cat:          catalog.NewCatalog(db),
-		profiles:     businessprofile.NewBusinessProfile(db),
-		participants: participant.NewParticipants(db),
-		taxRates:     taxrate.NewTaxRates(db),
+		cat:          catalog.NewCatalog(control),
+		profiles:     businessprofile.NewBusinessProfile(tenant),
+		participants: participant.NewParticipants(tenant),
+		taxRates:     taxrate.NewTaxRates(tenant),
 	}
 }
 

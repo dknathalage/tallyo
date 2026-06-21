@@ -240,7 +240,7 @@ func TestEstimateConvertAlreadyConverted(t *testing.T) {
 func TestEstimateTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewService(conn, hub)
+	svc := NewService(conn, conn, hub)
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
 	partA := seedParticipant(t, conn, tenantA, "Jane")

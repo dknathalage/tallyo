@@ -36,8 +36,8 @@ func newDraftHarness(t *testing.T) (*Service, *shift.Service, *shift.ShiftsRepo,
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	shiftSvc := shift.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, shiftSvc)
+	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, conn, hub, shiftSvc)
 	return invSvc, shiftSvc, shift.NewShifts(conn), tenantID, participantID
 }
 
@@ -108,8 +108,8 @@ func TestDraftFromShiftsSingleParticipantGuard(t *testing.T) {
 	p1 := seedParticipant(t, conn, tid, "P1")
 	p2 := seedParticipant(t, conn, tid, "P2")
 	hub := realtime.NewHub()
-	shSvc := shift.NewService(conn, hub, NewInvoices(conn))
-	iSvc := NewService(conn, hub, shSvc)
+	shSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
+	iSvc := NewService(conn, conn, hub, shSvc)
 	r := shift.NewShifts(conn)
 
 	a := recordedShiftWithItems(t, shSvc, r, tid, p1, "2026-01-10", 10)

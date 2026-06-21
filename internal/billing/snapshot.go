@@ -2,9 +2,9 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 )
 
@@ -13,12 +13,12 @@ import (
 // RecurringRepo to build snapshot fields at create time without requiring
 // those repos to embed each other.
 type SnapshotBuilder struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewSnapshotBuilder constructs a SnapshotBuilder. A nil db is a programmer
 // error.
-func NewSnapshotBuilder(db *sql.DB) *SnapshotBuilder {
+func NewSnapshotBuilder(db db.Executor) *SnapshotBuilder {
 	if db == nil {
 		panic("billing: NewSnapshotBuilder requires a non-nil *sql.DB")
 	}

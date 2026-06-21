@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
@@ -18,7 +19,7 @@ type PaymentService struct {
 }
 
 // NewPaymentService constructs the payment service. A nil hub is a programmer error.
-func NewPaymentService(db *sql.DB, hub *realtime.Hub) *PaymentService {
+func NewPaymentService(db db.Executor, hub *realtime.Hub) *PaymentService {
 	if hub == nil {
 		panic("invoice.NewPaymentService: nil hub")
 	}

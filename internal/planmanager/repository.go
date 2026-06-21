@@ -56,11 +56,11 @@ type PlanManagerInput struct {
 // PlanManagersRepo reads and writes the plan_managers table (tenant-scoped) with
 // audited mutations.
 type PlanManagersRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewPlanManagers constructs a repository. A nil db is a programmer error.
-func NewPlanManagers(db *sql.DB) *PlanManagersRepo {
+func NewPlanManagers(db db.Executor) *PlanManagersRepo {
 	if db == nil {
 		panic("planmanager: NewPlanManagers requires a non-nil *sql.DB")
 	}

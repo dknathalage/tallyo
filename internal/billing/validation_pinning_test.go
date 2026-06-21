@@ -21,7 +21,7 @@ func TestValidatePinnedVersionNotRepriced(t *testing.T) {
 	v1 := seedZonedCatalog(t, conn, "v1", "2025-01-01", "2025-12-31", "99_test", true, map[string]*float64{"national": fptr(100)})
 	seedZonedCatalog(t, conn, "v2", "2025-06-01", "2026-12-31", "99_test", true, map[string]*float64{"national": fptr(50)})
 
-	val := NewLineValidator(conn)
+	val := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
 	// Lines pin the catalog version by its UUID (the control-DB reference), not

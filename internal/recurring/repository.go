@@ -101,12 +101,12 @@ type GeneratedInvoice struct {
 // transaction as the invoice insert so re-running the due sweep never
 // double-generates.
 type Repo struct {
-	db   *sql.DB
+	db   db.Executor
 	snap *billing.SnapshotBuilder
 }
 
 // NewRepo constructs a repository. A nil db is a programmer error.
-func NewRepo(db *sql.DB) *Repo {
+func NewRepo(db db.Executor) *Repo {
 	if db == nil {
 		panic("recurring: NewRepo requires a non-nil *sql.DB")
 	}

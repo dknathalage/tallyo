@@ -45,11 +45,11 @@ type BusinessProfileInput struct {
 
 // BusinessProfileRepo reads and writes the per-tenant business profile (1:1).
 type BusinessProfileRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewBusinessProfile constructs a repository. A nil db is a programmer error.
-func NewBusinessProfile(db *sql.DB) *BusinessProfileRepo {
+func NewBusinessProfile(db db.Executor) *BusinessProfileRepo {
 	if db == nil {
 		panic("businessprofile: NewBusinessProfile requires a non-nil *sql.DB")
 	}

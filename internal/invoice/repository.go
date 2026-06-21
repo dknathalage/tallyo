@@ -110,12 +110,12 @@ type ParticipantStats struct {
 
 // InvoicesRepo reads and writes the invoices + line_items tables (tenant-scoped).
 type InvoicesRepo struct {
-	db   *sql.DB
+	db   db.Executor
 	snap *billing.SnapshotBuilder
 }
 
 // NewInvoices constructs a repository. A nil db is a programmer error.
-func NewInvoices(db *sql.DB) *InvoicesRepo {
+func NewInvoices(db db.Executor) *InvoicesRepo {
 	if db == nil {
 		panic("invoice: NewInvoices requires a non-nil *sql.DB")
 	}

@@ -99,12 +99,12 @@ type ConvertResult struct {
 // EstimatesRepo reads and writes the estimates + estimate_line_items tables
 // (tenant-scoped).
 type EstimatesRepo struct {
-	db   *sql.DB
+	db   db.Executor
 	snap *billing.SnapshotBuilder
 }
 
 // NewEstimates constructs a repository. A nil db is a programmer error.
-func NewEstimates(db *sql.DB) *EstimatesRepo {
+func NewEstimates(db db.Executor) *EstimatesRepo {
 	if db == nil {
 		panic("estimate: NewEstimates requires a non-nil *sql.DB")
 	}

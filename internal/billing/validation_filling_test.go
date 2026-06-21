@@ -23,7 +23,7 @@ func TestValidateFillingOverwritesUnitPriceWithCap(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	// Caller sends a nonsense price; fill mode must replace it with the cap (100).
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
@@ -45,7 +45,7 @@ func TestValidateFillingOverCapPriceStillPinnedToCap(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", 1, 9999),
@@ -66,7 +66,7 @@ func TestValidateFillingQuotableKeepsPositiveCallerPrice(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_999", "2026-01-15", 1, 250),
@@ -86,7 +86,7 @@ func TestValidateFillingQuotableZeroPriceRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	_, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_999", "2026-01-15", 1, 0),
@@ -110,7 +110,7 @@ func TestValidateFillingComputesTaxOnPinnedPrice(t *testing.T) {
 	}
 	// Taxable item, cap 200; caller sends 5 which must be ignored.
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(200)})
-	v := NewLineValidator(conn)
+	v := NewLineValidator(conn, conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
 		supportLine("02_022", "2026-01-15", 1, 5),

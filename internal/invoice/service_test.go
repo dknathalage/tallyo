@@ -69,7 +69,7 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewService(conn, hub, shift.NewService(conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 
 	tenantA := seedTenant(t, conn, "Active Tenant A") // active
 	tenantB := seedSuspendedTenant(t, conn)           // suspended

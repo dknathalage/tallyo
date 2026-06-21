@@ -53,11 +53,11 @@ type CustomItemInput struct {
 // Repo reads and writes the custom_items table (tenant-scoped) with
 // audited mutations.
 type Repo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewRepo constructs a repository. A nil db is a programmer error.
-func NewRepo(db *sql.DB) *Repo {
+func NewRepo(db db.Executor) *Repo {
 	if db == nil {
 		panic("customitem: NewRepo requires a non-nil *sql.DB")
 	}

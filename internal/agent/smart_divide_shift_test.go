@@ -36,7 +36,7 @@ func divideFixture(t *testing.T) (*Smarts, *llm.Fake, *shift.Service, context.Co
 	t.Helper()
 	conn, tenantID, participantID := shiftToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
-	shifts := shift.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	shifts := shift.NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	sh := seedReferenceShift(t, shifts, ctx, participantID, referenceWeek[0].date)
 	cat := catalog.NewService(conn)
 	fake := llm.NewFake()

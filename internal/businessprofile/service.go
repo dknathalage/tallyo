@@ -2,7 +2,7 @@ package businessprofile
 
 import (
 	"context"
-	"database/sql"
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -16,7 +16,7 @@ type Service struct {
 }
 
 // NewService constructs the business-profile service. A nil hub is a programmer error.
-func NewService(db *sql.DB, hub *realtime.Hub) *Service {
+func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("businessprofile.NewService: nil hub")
 	}

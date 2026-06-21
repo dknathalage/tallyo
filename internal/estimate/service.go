@@ -2,7 +2,7 @@ package estimate
 
 import (
 	"context"
-	"database/sql"
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/listquery"
@@ -20,11 +20,11 @@ type Service struct {
 }
 
 // NewService constructs the estimate service. A nil hub is a programmer error.
-func NewService(db *sql.DB, hub *realtime.Hub) *Service {
+func NewService(db, control db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("estimate.NewService: nil hub")
 	}
-	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub}
+	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db, control), hub: hub}
 }
 
 func (s *Service) List(ctx context.Context) ([]*Estimate, error) {

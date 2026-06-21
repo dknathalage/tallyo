@@ -41,11 +41,11 @@ type PaymentInput struct {
 // PaymentsRepo reads and writes the payments table (tenant-scoped) with audited
 // mutations.
 type PaymentsRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewPayments constructs a repository. A nil db is a programmer error.
-func NewPayments(db *sql.DB) *PaymentsRepo {
+func NewPayments(db db.Executor) *PaymentsRepo {
 	if db == nil {
 		panic("invoice: NewPayments requires a non-nil *sql.DB")
 	}

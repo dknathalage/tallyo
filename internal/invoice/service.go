@@ -2,7 +2,7 @@ package invoice
 
 import (
 	"context"
-	"database/sql"
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/listquery"
@@ -35,14 +35,14 @@ type Service struct {
 
 // NewService constructs the invoice service. A nil hub is a programmer error.
 // shifts may be nil (shift cascade is skipped when nil).
-func NewService(db *sql.DB, hub *realtime.Hub, shifts ShiftLinker) *Service {
+func NewService(db, control db.Executor, hub *realtime.Hub, shifts ShiftLinker) *Service {
 	if hub == nil {
 		panic("invoice.NewService: nil hub")
 	}
 	return &Service{
 		repo:      NewInvoices(db),
 		shifts:    shifts,
-		validator: billing.NewLineValidator(db),
+		validator: billing.NewLineValidator(db, control),
 		hub:       hub,
 	}
 }

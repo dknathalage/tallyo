@@ -22,8 +22,8 @@ const overdueSweepInterval = 1 * time.Hour
 //
 // A failure for one tenant is logged and the sweep continues with the next, so
 // one tenant's data problem cannot stall every other tenant's sweep.
-func runSweepOnce(inv *invoice.Service, rec *recurring.Service, logger *slog.Logger) {
-	tenantIDs, err := inv.ActiveTenantIDs(context.Background())
+func runSweepOnce(activeTenants func(context.Context) ([]int64, error), inv *invoice.Service, rec *recurring.Service, logger *slog.Logger) {
+	tenantIDs, err := activeTenants(context.Background())
 	if err != nil {
 		logger.Error("sweep: list active tenants failed", slog.Any("error", err))
 		return
@@ -46,7 +46,7 @@ func runSweepOnce(inv *invoice.Service, rec *recurring.Service, logger *slog.Log
 
 // runSweeper runs the per-tenant sweeps on each tick until done is closed. It
 // owns its single ticker and stops cleanly, so it never leaks a goroutine.
-func runSweeper(inv *invoice.Service, rec *recurring.Service, logger *slog.Logger, done <-chan struct{}) {
+func runSweeper(activeTenants func(context.Context) ([]int64, error), inv *invoice.Service, rec *recurring.Service, logger *slog.Logger, done <-chan struct{}) {
 	ticker := time.NewTicker(overdueSweepInterval)
 	defer ticker.Stop()
 	for { // bounded by the done signal
@@ -54,7 +54,7 @@ func runSweeper(inv *invoice.Service, rec *recurring.Service, logger *slog.Logge
 		case <-done:
 			return
 		case <-ticker.C:
-			runSweepOnce(inv, rec, logger)
+			runSweepOnce(activeTenants, inv, rec, logger)
 		}
 	}
 }

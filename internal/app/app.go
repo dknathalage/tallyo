@@ -34,6 +34,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/dknathalage/tallyo/internal/taxrate"
+	"github.com/dknathalage/tallyo/internal/tenantdb"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
 
@@ -137,37 +138,42 @@ func Run(cfg Config, version string) error {
 		dir = d
 	}
 
-	conn, err := appdb.Open(filepath.Join(dir, "tallyo-go.db"))
+	// DB-per-tenant: one shared control DB (registry, auth, sessions, catalogue)
+	// and one SQLite file per tenant, opened on demand by the registry. tdb is the
+	// per-request routing handle for tenant-plane repositories; control is the
+	// shared handle for control-plane repositories.
+	control, err := appdb.Open(filepath.Join(dir, "control.db"))
 	if err != nil {
-		return fmt.Errorf("open db: %w", err)
+		return fmt.Errorf("open control db: %w", err)
 	}
+	if err := appdb.MigrateControl(control); err != nil {
+		return fmt.Errorf("migrate control: %w", err)
+	}
+	reg := tenantdb.New(control, dir)
 	defer func() {
-		if cerr := conn.Close(); cerr != nil {
+		if cerr := reg.Close(); cerr != nil {
 			logger.Error("close db failed", slog.Any("error", cerr))
 		}
 	}()
-
-	if err := appdb.Migrate(conn); err != nil {
-		return fmt.Errorf("migrate: %w", err)
-	}
+	tdb := reg.Tenant()
 
 	hub := realtime.NewHub()
-	sm := auth.NewSessionManager(conn, cfg.SecureCookie)
-	users := auth.NewUsers(conn)
-	tenants := auth.NewTenants(conn)
-	invites := auth.NewInvites(conn)
-	bpSvc := businessprofile.NewService(conn, hub)
-	planManagerSvc := planmanager.NewService(conn, hub)
-	taxRateSvc := taxrate.NewService(conn, hub)
-	participantSvc := participant.NewService(conn, hub)
-	customItemSvc := customitem.NewService(conn, hub)
-	supportCatalogSvc := catalog.NewService(conn)
-	catalogIngestSvc := catalog.NewIngestService(conn, hub)
-	shiftSvc := shift.NewService(conn, hub, invoice.NewInvoices(conn))
-	invoiceSvc := invoice.NewService(conn, hub, shiftSvc)
-	estimateSvc := estimate.NewService(conn, hub)
-	paymentSvc := invoice.NewPaymentService(conn, hub)
-	recurringSvc := recurring.NewService(conn, hub)
+	sm := auth.NewSessionManager(control, cfg.SecureCookie)
+	users := auth.NewUsers(control)
+	tenants := auth.NewTenants(control)
+	invites := auth.NewInvites(control)
+	bpSvc := businessprofile.NewService(tdb, hub)
+	planManagerSvc := planmanager.NewService(tdb, hub)
+	taxRateSvc := taxrate.NewService(tdb, hub)
+	participantSvc := participant.NewService(tdb, hub)
+	customItemSvc := customitem.NewService(tdb, hub)
+	supportCatalogSvc := catalog.NewService(control)
+	catalogIngestSvc := catalog.NewIngestService(control, hub)
+	shiftSvc := shift.NewService(tdb, control, hub, invoice.NewInvoices(tdb))
+	invoiceSvc := invoice.NewService(tdb, control, hub, shiftSvc)
+	estimateSvc := estimate.NewService(tdb, control, hub)
+	paymentSvc := invoice.NewPaymentService(tdb, hub)
+	recurringSvc := recurring.NewService(tdb, hub)
 
 	// AI "Smarts" (optional): the service is only constructed when
 	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired:
@@ -238,9 +244,9 @@ func Run(cfg Config, version string) error {
 	// Run one per-tenant sweep at startup, then keep a background sweeper running
 	// on an hourly tick. The done channel stops the goroutine on shutdown so it
 	// does not leak.
-	runSweepOnce(invoiceSvc, recurringSvc, logger)
+	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, recurringSvc, logger)
 	overdueDone := make(chan struct{})
-	go runSweeper(invoiceSvc, recurringSvc, logger, overdueDone)
+	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, recurringSvc, logger, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)

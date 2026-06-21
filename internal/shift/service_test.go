@@ -15,7 +15,7 @@ func newShiftSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	hub := realtime.NewHub()
-	return NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, participantID
+	return NewService(conn, conn, hub, invoice.NewInvoices(conn)), hub, tenantID, participantID
 }
 
 func shiftInput(pid int64, date string) ShiftInput {
@@ -54,7 +54,7 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	uid := seedUser(t, conn, tenantID)
-	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
 	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
@@ -167,7 +167,7 @@ func TestShiftSuggestions(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	p1 := seedParticipant(t, conn, tenantID, "Jane")
 	p2 := seedParticipant(t, conn, tenantID, "Bob")
-	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	var p1ids []int64
@@ -208,7 +208,7 @@ func TestShiftMarkDrafted(t *testing.T) {
 	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
 	invID := seedDraftInvoice(t, conn, tenantID, participantID)
 	hub := realtime.NewHub()
-	svc := NewService(conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
@@ -245,7 +245,7 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	tenantB := seedTenant(t, conn, "Beta NDIS")
 	participantB := seedParticipant(t, conn, tenantB, "Bob")
 	hub := realtime.NewHub()
-	svc := NewService(conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
 	sh, err := svc.Create(ctxB, shiftInput(participantB, "2026-01-15"))

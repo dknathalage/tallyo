@@ -60,11 +60,11 @@ type UnbilledAgg struct {
 // ShiftsRepo reads and writes the shifts table (tenant-scoped) with audited
 // mutations.
 type ShiftsRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewShifts constructs a repository. A nil db is a programmer error.
-func NewShifts(db *sql.DB) *ShiftsRepo {
+func NewShifts(db db.Executor) *ShiftsRepo {
 	if db == nil {
 		panic("shift: NewShifts requires a non-nil *sql.DB")
 	}

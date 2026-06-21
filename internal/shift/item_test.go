@@ -84,7 +84,7 @@ func TestShiftDeleteBilledGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedParticipant(t, conn, tid, "Jane")
-	svc := NewService(conn, realtime.NewHub(), nil)
+	svc := NewService(conn, conn, realtime.NewHub(), nil)
 	repo := NewShifts(conn)
 	ctx := tctx(tid)
 

@@ -2,7 +2,7 @@ package recurring
 
 import (
 	"context"
-	"database/sql"
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/listquery"
@@ -18,7 +18,7 @@ type Service struct {
 }
 
 // NewService constructs the service. A nil hub is a programmer error.
-func NewService(db *sql.DB, hub *realtime.Hub) *Service {
+func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("recurring.NewService: nil hub")
 	}

@@ -2,8 +2,8 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 	"strings"
 
 	"github.com/dknathalage/tallyo/internal/importer"
@@ -20,7 +20,7 @@ type Service struct {
 }
 
 // NewService constructs the read service.
-func NewService(db *sql.DB) *Service {
+func NewService(db db.Executor) *Service {
 	return &Service{repo: NewCatalog(db)}
 }
 
@@ -118,7 +118,7 @@ type IngestService struct {
 }
 
 // NewIngestService constructs the ingest service. A nil hub is a programmer error.
-func NewIngestService(db *sql.DB, hub *realtime.Hub) *IngestService {
+func NewIngestService(db db.Executor, hub *realtime.Hub) *IngestService {
 	if hub == nil {
 		panic("catalog.NewIngestService: nil hub")
 	}

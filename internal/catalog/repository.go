@@ -62,11 +62,11 @@ type SupportItemPrice struct {
 // CatalogRepo reads (and, for the platform-admin ingest, writes) the global NDIS
 // Support Catalogue. It is intentionally NOT tenant-scoped.
 type CatalogRepo struct {
-	db *sql.DB
+	db db.Executor
 }
 
 // NewCatalog constructs a repository. A nil db is a programmer error.
-func NewCatalog(db *sql.DB) *CatalogRepo {
+func NewCatalog(db db.Executor) *CatalogRepo {
 	if db == nil {
 		panic("catalog: NewCatalog requires a non-nil *sql.DB")
 	}

@@ -2,9 +2,9 @@ package shift
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
@@ -37,11 +37,11 @@ type Service struct {
 // invoices is the InvoiceChecker used to verify the invoice in MarkDrafted. The
 // shift service builds its own billing.LineValidator (catalogue-authoritative
 // pricing) from the same db the invoice service uses — no extra wiring needed.
-func NewService(db *sql.DB, hub *realtime.Hub, invoices InvoiceChecker) *Service {
+func NewService(db, control db.Executor, hub *realtime.Hub, invoices InvoiceChecker) *Service {
 	if hub == nil {
 		panic("shift.NewService: nil hub")
 	}
-	return &Service{repo: NewShifts(db), invoices: invoices, validator: billing.NewLineValidator(db), hub: hub}
+	return &Service{repo: NewShifts(db), invoices: invoices, validator: billing.NewLineValidator(db, control), hub: hub}
 }
 
 // Suggestion is a billing prompt: a participant's recorded-but-unbilled shifts
