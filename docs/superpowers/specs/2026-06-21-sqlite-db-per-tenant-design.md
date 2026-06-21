@@ -40,15 +40,20 @@ correct `*sql.DB`.
 data/
   control.db                 # global + shared reference data
   tenants/
-    tenant-<uuid>.db         # one file per tenant
+    tenant-<id>.db           # one file per tenant, keyed by control-DB tenant id
 ```
+
+**Registry key = the control-DB tenant `int64` id**, not the UUID. `reqctx`
+already carries the tenant id (`reqctx.TenantFrom(ctx) → int64`); the UUID is
+only in scope inside `httpx.ResolveTenant`. Keying by id means `ForTenant(ctx)`
+needs no new context plumbing. Files are named `tenant-<id>.db`.
 
 **control.db** (global, single file):
 `tenants, users, invites, sessions, catalog_versions, support_items,
 support_item_prices`, plus a small `audit_log` for global admin actions
 (catalogue upload, tenant create/suspend).
 
-**tenant-<uuid>.db** (one per tenant):
+**tenant-<id>.db** (one per tenant):
 `business_profile, plan_managers, participants, custom_items, tax_rates,
 invoices, line_items, estimates, estimate_line_items, payments,
 recurring_templates, shifts, audit_log`.
@@ -77,6 +82,17 @@ constraints that point at tables **not present in the tenant file** (with
 
 `audit_log.tenant_id` in the tenant file is redundant but kept (zero-diff).
 
+### Integer PKs are file-local after the split
+
+Every table keeps `INTEGER PRIMARY KEY AUTOINCREMENT`, so integer ids are only
+unique **within a file** (tenant A's invoice id 1 ≠ tenant B's). This is safe
+because the app already addresses tenant entities externally by **UUID** (every
+tenant table has a `uuid` column; API paths use UUIDs), and same-file FKs use
+local ids. Invariant to uphold in the plan: **a tenant file's local integer id
+never escapes that file** (never returned as a global handle, never used
+cross-file). The only integer id that crosses files is the control-DB
+`tenants.id`, used solely as the registry key / file name.
+
 ## Components
 
 ### 1. Connection registry — new `internal/tenantdb`
@@ -86,19 +102,24 @@ type Registry struct {
     control *sql.DB
     dataDir string
     mu      sync.Mutex
-    open    map[string]*entry // uuid -> {db *sql.DB, lastUsed time}
+    open    map[int64]*entry // tenant id -> {db *sql.DB, lastUsed time}
 }
 
 func (r *Registry) Control() *sql.DB
-func (r *Registry) ForTenant(ctx context.Context) (*sql.DB, error)
+func (r *Registry) ForTenant(ctx context.Context) (*sql.DB, error) // reads reqctx.TenantFrom(ctx)
+func (r *Registry) ForTenantID(id int64) (*sql.DB, error)          // explicit id, for sweeps
 ```
 
-- `ForTenant` reads the tenant UUID from `reqctx`, returns the cached handle, or
-  on miss opens `tenants/tenant-<uuid>.db` via `db.Open`, runs lazy
-  `goose.Up` **once per process** (tracked by an in-memory "migrated" set), and
-  inserts it into a bounded LRU (cap ~100).
-- Over cap → close the least-recently-used **idle** entry. An idle TTL ensures
-  a handle is never closed while a request is mid-flight.
+- `ForTenant` reads the tenant **int64 id** via `reqctx.TenantFrom(ctx)` and
+  delegates to `ForTenantID`. `ForTenantID` returns the cached handle, or on
+  miss opens `tenants/tenant-<id>.db` via `db.Open`, runs lazy `goose.Up`
+  **once per process** (tracked by an in-memory "migrated" set), and inserts it
+  into a bounded LRU (cap ~100).
+- Over cap → close the least-recently-used entry whose `lastUsed` is older than
+  an **idle TTL (5 min)**; never close a handle used more recently than the TTL,
+  so an in-flight request's handle is never closed mid-use. A background sweep
+  (every 1 min) also closes entries idle past the TTL even when under cap.
+  `// ponytail: idle handles closed; sql.DB is safe to reopen on the next hit.`
 - Per-tenant pool kept small: `SetMaxOpenConns(4)` (each tenant is low-traffic;
   100 handles × 4 = 400 fds, well within limits).
 - `// ponytail: LRU + idle-TTL, cap 100. For thousands of tenants add
@@ -116,8 +137,18 @@ Two embedded goose dirs, each with its own `goose_db_version` table:
 - `internal/db/migrations/tenant/*.sql` — the business tables.
 
 `Migrate(control)` runs at startup. Tenant DBs migrate lazily on first open via
-the registry. `sqlc` is pointed at **both** schema dirs for type generation
-only; runtime DB selection is the repo's job.
+the registry. Each file owns its own `goose_db_version` table; the DBs are
+fresh (clean-break), so relocating/renumbering the existing `00001–00008`
+migrations across the two dirs is safe. The 485 KB `00006` catalogue seed moves
+to `control/`.
+
+`sqlc` is pointed at **both** schema dirs for type generation only; runtime DB
+selection is the repo's job. **`audit_log` exists in both files** but its DDL is
+included in the sqlc schema set **exactly once** (the table shape is identical),
+so the single `gen` package has one `AuditLog` model with no collision; both the
+control and tenant goose dirs still each create their own physical `audit_log`
+at runtime. The plan must verify `sqlc.yaml` accepts multiple schema paths into
+one output package and that no other table name is duplicated across dirs.
 
 ### 3. Repo / service DB injection (the bulk of the work)
 
@@ -138,7 +169,7 @@ only; runtime DB selection is the repo's job.
 No longer a single atomic tx (it spans two files). Ordered with rollback:
 
 1. **control tx:** insert `tenants` row + owner `users` row.
-2. create + migrate `tenants/tenant-<uuid>.db`.
+2. create + migrate `tenants/tenant-<id>.db`.
 3. **tenant tx:** insert `business_profile`.
 
 On failure at any step, unwind the prior steps (delete the tenant file, delete
@@ -148,8 +179,11 @@ tenants (tenant row with no usable file, or file with no row).
 ### 5. Sweeps, hub, sessions, audit
 
 - **Sweeps** (`internal/app/sweep.go`): already per-tenant. Read
-  `ActiveTenantIDs` from control, call `ForTenant` per tenant, run the existing
-  overdue/recurring logic against the tenant DB. Only the DB source changes.
+  `ActiveTenantIDs` from control, then for each id call `reg.ForTenantID(id)`
+  (the explicit-id variant — the sweep runs on `context.Background()` with no
+  tenant in ctx) and run the existing overdue/recurring logic against the tenant
+  DB. Build the per-tenant ctx with `reqctx.WithTenant(bg, id)` as today so
+  `MustTenant` inside repo methods still resolves. Only the DB source changes.
 - **Realtime hub:** unchanged — global singleton, routed by `Event.TenantID`.
 - **Sessions:** scs `sqlite3store` on `control.db`. Behaviour unchanged.
 - **Audit:** tenant mutations write `audit_log` in the tenant DB (`audit.WithTx`
@@ -159,7 +193,7 @@ tenants (tenant row with no usable file, or file with no row).
 ### 6. Per-tenant ops (the payoff)
 
 - **Delete tenant:** mark control `tenants.status`, then delete
-  `tenant-<uuid>.db` (+ `-wal`, `-shm`).
+  `tenant-<id>.db` (+ `-wal`, `-shm`).
 - **Export/backup:** `VACUUM INTO` (or SQLite backup API) for a consistent copy
   under WAL.
 - **Move:** ship the file; the target host's `control.db` already holds the
@@ -184,6 +218,10 @@ tenants (tenant row with no usable file, or file with no row).
   display data already snapshotted on `line_items`, so read paths are
   unaffected.
 - **fd usage:** 100 handles × 4 conns = ~400 fds; fine. Revisit at thousands.
+- **The "no cross-boundary JOIN" finding is load-bearing.** The first plan step
+  must re-verify it mechanically (`grep -niE "join (support_items|support_item_prices|catalog_versions|users|tenants)" internal/db/queries/*.sql`)
+  before relying on the single-`gen`-package claim; one tenant↔control join
+  would break it.
 
 ## Testing
 
