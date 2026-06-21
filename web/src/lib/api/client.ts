@@ -88,6 +88,35 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 	return data as T;
 }
 
+// ---- Active tenant (URL-driven multi-tenancy) ----
+// The [tenant] layout publishes the active tenant UUID here; tenant-scoped API
+// calls build their path through tenantPath() so the prefix is computed PER
+// REQUEST (never frozen at module-load time).
+let _activeTenant: string | null = null;
+
+/** Set (or clear) the active tenant UUID. Called by the [tenant] layout. */
+export function setActiveTenant(uuid: string | null): void {
+	_activeTenant = uuid;
+}
+
+/** The active tenant UUID, or null when none is set (e.g. on a public page). */
+export function activeTenant(): string | null {
+	return _activeTenant;
+}
+
+/**
+ * Build a tenant-scoped API path: tenantPath('invoices') → /api/t/{uuid}/invoices.
+ * Throws if no tenant is active — a tenant-scoped fetch before the layout set the
+ * tenant is a programmer error (surfaces missing-prefix bugs immediately).
+ */
+export function tenantPath(resource: string): string {
+	if (!_activeTenant) {
+		throw new Error(`tenantPath(${resource}): no active tenant set`);
+	}
+	const r = resource.startsWith('/') ? resource.slice(1) : resource;
+	return `/api/t/${_activeTenant}/${r}`;
+}
+
 export function apiGet<T>(path: string): Promise<T | null> {
 	return request<T>('GET', path);
 }

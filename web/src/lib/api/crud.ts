@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import { apiGet, apiPost, apiPut, apiDelete, tenantPath } from './client';
 import type { ListParams, ListResult } from './types';
 
 /** Encode ListParams into a query string (filter keys get an `f.` prefix). */
@@ -34,16 +34,19 @@ function must<T>(v: T | null, what: string): T {
 }
 
 export function createCrud<T, TInput>(resource: string): Crud<T, TInput> {
-	const base = `/api/${resource}`;
+	// Computed PER REQUEST (not at factory-build time) so it always reflects the
+	// currently-active tenant — freezing it here would pin every store to the
+	// first tenant that loaded.
+	const base = () => tenantPath(resource);
 	return {
-		list: async () => (await apiGet<T[]>(base)) ?? [],
+		list: async () => (await apiGet<T[]>(base())) ?? [],
 		query: async (params) =>
-			(await apiGet<ListResult<T>>(`${base}${toQueryString(params)}`)) ?? { rows: [], total: 0 },
-		get: async (id) => must(await apiGet<T>(`${base}/${id}`), `${resource} get`),
-		create: async (input) => must(await apiPost<T>(base, input), `${resource} create`),
-		update: async (id, input) => must(await apiPut<T>(`${base}/${id}`, input), `${resource} update`),
+			(await apiGet<ListResult<T>>(`${base()}${toQueryString(params)}`)) ?? { rows: [], total: 0 },
+		get: async (id) => must(await apiGet<T>(`${base()}/${id}`), `${resource} get`),
+		create: async (input) => must(await apiPost<T>(base(), input), `${resource} create`),
+		update: async (id, input) => must(await apiPut<T>(`${base()}/${id}`, input), `${resource} update`),
 		remove: async (id) => {
-			await apiDelete<void>(`${base}/${id}`);
+			await apiDelete<void>(`${base()}/${id}`);
 		}
 	};
 }
