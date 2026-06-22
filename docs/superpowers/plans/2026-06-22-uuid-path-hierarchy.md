@@ -186,10 +186,10 @@ Template + FK translation:
 
 ### Task 2.5 — invoices (FK: participant_id; owned children: payments; embedded line items)
 > **Inherited from Task 2.4 (commit fc8770a):** shared `billing.LineItem` is already retagged `ID json:"-"`, `UUID json:"id"` — embedded line-item `id` is already the uuid. **Do NOT re-tag the line-item id.** Reusable resolvers exist: `gen.GetParticipantIDByUUID`, `gen.GetShiftIDByUUID`/`GetShiftByID`. The `shiftId`/`invoiceId` int FKs still on `billing.LineItem` are a Phase 3 concern, not this task.
-- [ ] Template for invoice; `/invoices/{invoiceUUID}` + `/status`, `/pdf`, `/bulk-delete`, `/bulk-status`, `/draft-from-shifts` (body: shift **uuids** → resolve to int ids via `GetShiftIDByUUID`).
-- [ ] `?participant={participantUUID}` filter.
-- [ ] Out: `id`=invoice uuid, `participantId`=participant uuid; embedded `lineItems[].id`=line uuid (already present).
-- [ ] In: `lineItems` array — each line's catalogue refs already uuid; resolve inbound `participantId` uuid→int.
+- [x] Template for invoice; `/invoices/{invoiceUUID}` + `/status`, `/pdf`, `/bulk-delete`, `/bulk-status`, `/draft-from-shifts` (body: shift **uuids** → resolve to int ids via `GetShiftIDByUUID`).
+- [x] `?participant={participantUUID}` filter.
+- [x] Out: `id`=invoice uuid, `participantId`=participant uuid; embedded `lineItems[].id`=line uuid (already present).
+- [x] In: `lineItems` array — each line's catalogue refs already uuid; resolve inbound `participantId` uuid→int.
 - [ ] Payments child: `/invoices/{invoiceUUID}/payments`, `DELETE /invoices/{invoiceUUID}/payments/{paymentUUID}`. Resolve invoiceUUID→invoice int id; payments keyed by paymentUUID.
 
 ### Task 2.6 — estimates (mirror of invoices)
