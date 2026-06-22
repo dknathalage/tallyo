@@ -190,7 +190,7 @@ Template + FK translation:
 - [x] `?participant={participantUUID}` filter.
 - [x] Out: `id`=invoice uuid, `participantId`=participant uuid; embedded `lineItems[].id`=line uuid (already present).
 - [x] In: `lineItems` array — each line's catalogue refs already uuid; resolve inbound `participantId` uuid→int.
-- [ ] Payments child: `/invoices/{invoiceUUID}/payments`, `DELETE /invoices/{invoiceUUID}/payments/{paymentUUID}`. Resolve invoiceUUID→invoice int id; payments keyed by paymentUUID.
+- [x] Payments child: `/invoices/{invoiceUUID}/payments`, `DELETE /invoices/{invoiceUUID}/payments/{paymentUUID}`. Resolve invoiceUUID→invoice int id; payments keyed by paymentUUID.
 
 ### Task 2.6 — estimates (mirror of invoices)
 - [x] Same as 2.5 minus payments, plus `/estimates/{estimateUUID}/duplicate` and `/convert`. `/convert` produces an invoice — return the new invoice's uuid.
@@ -205,7 +205,7 @@ The review found three JSON surfaces outside the slices that still emit int ids:
 - [x] **SSE** (`internal/realtime/hub.go`): `Event.ID int64 json:"id"`. The SPA uses the event to refetch by identifier — switch the broadcast payload to carry the entity **uuid** (services already have it post-commit). Retag/replace `ID` with a uuid string; tag any retained int `json:"-"`. Update every `svc` broadcast call site to pass the uuid.
 - [x] **User** (`internal/auth/users.go`): `User.ID`/`User.TenantID` int64 are serialized (`/auth/me`). Tag `ID`→ use the user `uuid` as `json:"id"`; expose tenant as `tenantId` = tenant **uuid**; tag the ints `json:"-"`.
 - [x] **EmailTenant / session** (`internal/auth/users.go`): the `/auth/login` 409 multi-tenant body and `/auth/session` expose `TenantID int64`. Drop it from JSON (`json:"-"`); keep only `TenantUUID` (retag as `json:"id"` or `tenantId`). The SPA already routes by tenant uuid.
-- [ ] Tests: assert each of these three responses contains no integer id field. Commit — `refactor(api): stop leaking int ids via SSE/user/session`.
+- [x] Tests: assert each of these three responses contains no integer id field. Commit — `refactor(api): stop leaking int ids via SSE/user/session`.
 
 ### Task 2.9 — retype the `internal/app` integration test suite to uuid (REQUIRED; do AFTER all slices migrate)
 There is a full HTTP integration suite in `internal/app/*_test.go` (one file per resource: `tax_rates_test.go`, `custom_items_test.go`, `plan_managers_test.go`, `participants_test.go`, `recurring_test.go`, `shifts_test.go`, `invoices_test.go`, `estimates_test.go`, `payments_test.go`, `business_profile_test.go`, `invites_test.go`, plus `auth_test.go`/`signup_test.go` for Task 2.8). Each still asserts the **old int-id contract** and fails once its slice is migrated. They are knowingly RED through all of Phase 2 — this task makes `go test ./...` green again. Two mechanical fixes per file:
@@ -239,7 +239,7 @@ Any enrichment join that surfaced an int FK for the SPA to link on must now surf
 - [x] **Read:** add a `custom_items` uuid join to every line-item read so the row carries the custom-item uuid — central `line_items`, `estimate_line_items`, shift items. `billing.LineItemFromRow` currently gets a bare `gen.LineItem` (no join) — adjust its row source / add a joined variant. Expose `customItemId` as the custom-item uuid string (nil when none); int FK → `json:"-"`.
 - [x] **Write:** on every line-item write path (invoice create/update lineItems[], estimate lineItems[], shift item add/patch, recurring lines), resolve inbound `customItemId` uuid → int via `gen.GetCustomItemIDByUUID`; unknown → 400; empty/null → NULL.
 - [x] Tests: a line item with a custom item round-trips `customItemId` as the same uuid (create→get); unknown custom-item uuid → 400.
-- [ ] Gate: `go test ./... -race`, `go build ./...`, `go vet ./...`, `gofmt -l .` all clean. Commit — `refactor(api): address line-item customItemId by uuid`.
+- [x] Gate: `go test ./... -race`, `go build ./...`, `go vet ./...`, `gofmt -l .` all clean. Commit — `refactor(api): address line-item customItemId by uuid`.
 
 ---
 
@@ -291,10 +291,10 @@ Phase 4 left the catalogue read routes int-keyed: `GET …/support-catalog/versi
 
 ## Phase 6 — Docs + final gate
 
-- [ ] Update `docs/data-model.md` ERD: catalogue moves control→tenant (it already shows uuid columns).
-- [ ] Update `CLAUDE.md`: catalogue section (no more `cmd/cataloguegen`/generated seed; tenant-owned, owner/admin gated), and note the API addresses entities by uuid.
-- [ ] Full gate: `go test ./... -race`, `go vet ./...`, `gofmt -l .` (empty), `CGO_ENABLED=0 go build ./cmd/tallyo`, `cd web && npm run check && npm run build`.
-- [ ] Commit — `docs: catalogue tenant-owned + uuid addressing`
+- [x] Update `docs/data-model.md` ERD: catalogue moves control→tenant (it already shows uuid columns).
+- [x] Update `CLAUDE.md`: catalogue section (no more `cmd/cataloguegen`/generated seed; tenant-owned, owner/admin gated), and note the API addresses entities by uuid.
+- [x] Full gate: `go test ./... -race`, `go vet ./...`, `gofmt -l .` (empty), `CGO_ENABLED=0 go build ./cmd/tallyo`, `cd web && npm run check && npm run build`.
+- [x] Commit — `docs: catalogue tenant-owned + uuid addressing`
 
 ---
 
