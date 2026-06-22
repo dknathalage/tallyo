@@ -196,9 +196,9 @@ Template + FK translation:
 - [x] Same as 2.5 minus payments, plus `/estimates/{estimateUUID}/duplicate` and `/convert`. `/convert` produces an invoice — return the new invoice's uuid.
 
 ### Task 2.7 — business-profile + auth/me + invites
-- [ ] business-profile is a singleton — no id in path, no change beyond confirming JSON `id`=uuid.
-- [ ] `auth/me` — unchanged (session-scoped).
-- [ ] Invites: `DELETE /settings/users/invites/{inviteUUID}` — invites already have a `uuid` column. Add `-- name: DeleteInviteByUUID :exec DELETE FROM invites WHERE tenant_id = ? AND uuid = ?` (the invites slice/handler lives in `internal/app`), wire the route, `ParseUUID`. Keep `GET /api/invites/{token}` and `POST /api/invites/{token}/accept` (token = accept secret) unchanged. The invite list response must expose `id`=invite uuid, not the int.
+- [x] business-profile is a singleton — no id in path, no change beyond confirming JSON `id`=uuid.
+- [x] `auth/me` — unchanged (session-scoped).
+- [x] Invites: `DELETE /settings/users/invites/{inviteUUID}` — invites already have a `uuid` column. Add `-- name: DeleteInviteByUUID :exec DELETE FROM invites WHERE tenant_id = ? AND uuid = ?` (the invites slice/handler lives in `internal/app`), wire the route, `ParseUUID`. Keep `GET /api/invites/{token}` and `POST /api/invites/{token}/accept` (token = accept secret) unchanged. The invite list response must expose `id`=invite uuid, not the int.
 
 ### Task 2.8 — platform structs that leak int ids (REQUIRED — spec: "int PK never crosses the API")
 The review found three JSON surfaces outside the slices that still emit int ids:
