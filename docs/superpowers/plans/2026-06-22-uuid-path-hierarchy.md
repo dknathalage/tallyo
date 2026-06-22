@@ -272,12 +272,20 @@ Any enrichment join that surfaced an int FK for the SPA to link on must now surf
 
 **Files:** `web/src/lib/api/*`, `web/src/routes/**`
 
-- [ ] **Step 1:** API client types — entity `id` is now a `string` (uuid); FK fields (`participantId`, `planManagerId`, …) are `string` uuids. Field names unchanged → store/component churn is bounded to the type and any `parseInt` removal.
-- [ ] **Step 2:** Rename route dirs `web/src/routes/.../[id]` → `[uuid]` (or keep `[id]` as the param name but feed it the uuid — **decide once, apply everywhere**; `[uuid]` matches the API and is clearer).
-- [ ] **Step 3:** Cross-entity links build from the related uuid now present in DTOs (e.g. invoice → participant link uses `invoice.participantId` which is now a uuid).
-- [ ] **Step 3b (login 409 inbound — flagged by Task 2.8):** the multi-tenant login flow now returns the tenant **uuid** as `id` in the 409 body; the SPA must send that tenant **uuid** on re-submit. Backend `loginRequest.TenantID int64 json:"tenantId"` is still int — change it to accept the tenant uuid and add a uuid→int resolution step in the login handler's `resolveCredentials`. SSE consumers now key off `event.id` as a uuid string; `/auth/me` `id`+`tenantId` and the session/409 tenant `id` are uuids.
-- [ ] **Step 4:** `cd web && npm run check` — 0 errors / 0 warnings. `npm run build`.
-- [ ] **Step 5:** Commit — `refactor(web): address entities by uuid (routes + api types)`
+- [x] **Step 1:** API client types — entity `id` is now a `string` (uuid); FK fields (`participantId`, `planManagerId`, …) are `string` uuids. Field names unchanged → store/component churn is bounded to the type and any `parseInt` removal.
+- [x] **Step 2:** Rename route dirs `web/src/routes/.../[id]` → `[uuid]` (or keep `[id]` as the param name but feed it the uuid — **decide once, apply everywhere**; `[uuid]` matches the API and is clearer).
+- [x] **Step 3:** Cross-entity links build from the related uuid now present in DTOs (e.g. invoice → participant link uses `invoice.participantId` which is now a uuid).
+- [x] **Step 3b (login 409 inbound — flagged by Task 2.8):** the multi-tenant login flow now returns the tenant **uuid** as `id` in the 409 body; the SPA must send that tenant **uuid** on re-submit. Backend `loginRequest.TenantID int64 json:"tenantId"` is still int — change it to accept the tenant uuid and add a uuid→int resolution step in the login handler's `resolveCredentials`. SSE consumers now key off `event.id` as a uuid string; `/auth/me` `id`+`tenantId` and the session/409 tenant `id` are uuids.
+- [x] **Step 4:** `cd web && npm run check` — 0 errors / 0 warnings. `npm run build`.
+- [x] **Step 5:** Commit — `refactor(web): address entities by uuid (routes + api types)`
+
+### Task 4.1 — catalogue read endpoints by uuid (last int-path surface)
+Phase 4 left the catalogue read routes int-keyed: `GET …/support-catalog/versions/{id}/items` and `…/support-catalog/items/{itemId}/prices` still take int path params, and the catalogue read DTOs (`CatalogVersion`/`SupportItem`/`SupportItemPrice`) serialize int ids. This is the **only remaining int-path surface** — close it for "all paths uuid". The tables already have `uuid` columns (catalog_versions.uuid, support_items.uuid).
+- [ ] Routes: `{id}` → `{versionUUID}`, `{itemId}` → `{itemUUID}`; `ParseUUID`. Queries (support_items.sql / support_item_prices.sql) look up the version/item by uuid (resolve uuid→int internally, or filter by the uuid column directly).
+- [ ] DTOs: `CatalogVersion`/`SupportItem`/`SupportItemPrice` expose `id` = their uuid (int → `json:"-"`); any FK between them (support_items.catalog_version_id, prices.support_item_id) exposed as the related uuid or dropped if redundant (price is always fetched under its item).
+- [ ] SPA: `web/src/lib/api` catalogue types `id` → string; the catalogue browse pages build version/item URLs from the uuid.
+- [ ] Tests: a catalogue read by version/item uuid returns 200; unknown uuid → 404; non-uuid → 400. Frontend `npm run check` stays 0/0.
+- [ ] Gate: `go test ./... -race`, `go build ./...`, `CGO_ENABLED=0 go build ./cmd/tallyo`, `go vet ./...`, `gofmt -l .`, `cd web && npm run check && npm run build` — all clean. Commit — `refactor(catalog): address versions/items by uuid (read endpoints)`.
 
 ---
 
