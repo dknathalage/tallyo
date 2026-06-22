@@ -255,14 +255,14 @@ Any enrichment join that surfaced an int FK for the SPA to link on must now surf
 
 **Clean-break note:** this project edits migration files pre-release (CLAUDE.md: clean-break, fresh schema; dev `*.db*` are gitignored and disposable). So directly removing the tables from `00001_control.sql` and adding `00003_catalogue.sql` (tenant) is the intended path — no DROP-migration dance, just delete dev DBs and let them re-create.
 
-- [ ] **Step 0 (sqlc):** Read `sqlc.yaml`. The control schema input currently includes the catalogue tables (via `migrations/control` + the generated `00002_catalogue` file). After the move, ensure the **tenant** schema input includes `00003_catalogue.sql` and the **control** input no longer defines catalogue tables. Confirm no control-plane query JOINs catalogue (the review confirmed catalogue has no FK to control tables and nothing cross-tenant reads it). Regenerate and confirm `gen/` compiles before touching the repo.
-- [ ] **Step 1:** Cut the `catalog_versions`, `support_items`, `support_item_prices` CREATE TABLEs (keep their `uuid` columns) from `00001_control.sql` (Up and Down) into a new `00003_catalogue.sql` (tenant) with goose Up/Down.
-- [ ] **Step 2:** Repoint the catalog slice repository to `reg.Tenant()`. The `line_items.catalog_version_id`/`support_item_id` are already uuid TEXT — no change to pinning.
-- [ ] **Step 3:** Flip the ingest gate from `RequirePlatformAdmin` to `RequireRole(owner/admin)` in the route wiring (`internal/app/server.go`).
-- [ ] **Step 4:** Delete `cmd/cataloguegen/`, the generated control catalogue migration, and `data/catalogue/`. Keep `internal/catalog` `ParseXLSX`.
-- [ ] **Step 5:** Routes per spec; mark the ingest/create endpoints **DEFERRED** (leave `ParseXLSX` callable but no new upload wiring this pass). Read endpoints (`GET …/support-catalog/versions`, `…/versions/{versionUUID}/items`, `…/items/{itemUUID}/prices`) serve the now-tenant tables.
-- [ ] **Step 6:** sqlc generate; fix the catalog repo against the regenerated gen. `go build`, `go test ./internal/catalog/ -race`.
-- [ ] **Step 7:** Commit — `refactor(catalog): tenant-owned catalogue; drop global seed + cataloguegen`
+- [x] **Step 0 (sqlc):** Read `sqlc.yaml`. The control schema input currently includes the catalogue tables (via `migrations/control` + the generated `00002_catalogue` file). After the move, ensure the **tenant** schema input includes `00003_catalogue.sql` and the **control** input no longer defines catalogue tables. Confirm no control-plane query JOINs catalogue (the review confirmed catalogue has no FK to control tables and nothing cross-tenant reads it). Regenerate and confirm `gen/` compiles before touching the repo.
+- [x] **Step 1:** Cut the `catalog_versions`, `support_items`, `support_item_prices` CREATE TABLEs (keep their `uuid` columns) from `00001_control.sql` (Up and Down) into a new `00003_catalogue.sql` (tenant) with goose Up/Down.
+- [x] **Step 2:** Repoint the catalog slice repository to `reg.Tenant()`. The `line_items.catalog_version_id`/`support_item_id` are already uuid TEXT — no change to pinning.
+- [x] **Step 3:** Flip the ingest gate from `RequirePlatformAdmin` to `RequireRole(owner/admin)` in the route wiring (`internal/app/server.go`).
+- [x] **Step 4:** Delete `cmd/cataloguegen/`, the generated control catalogue migration, and `data/catalogue/`. Keep `internal/catalog` `ParseXLSX`.
+- [x] **Step 5:** Routes per spec; mark the ingest/create endpoints **DEFERRED** (leave `ParseXLSX` callable but no new upload wiring this pass). Read endpoints (`GET …/support-catalog/versions`, `…/versions/{versionUUID}/items`, `…/items/{itemUUID}/prices`) serve the now-tenant tables.
+- [x] **Step 6:** sqlc generate; fix the catalog repo against the regenerated gen. `go build`, `go test ./internal/catalog/ -race`.
+- [x] **Step 7:** Commit — `refactor(catalog): tenant-owned catalogue; drop global seed + cataloguegen`
 
 **ponytail:** catalogue ingest stays deferred — routes reserved, no upload UI this pass. `ParseXLSX` retained so it drops in later without rework.
 
