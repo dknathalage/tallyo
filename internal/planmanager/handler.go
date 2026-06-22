@@ -27,9 +27,9 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/plan-managers", h.List)
 	r.Post("/plan-managers", h.Create)
 	r.Post("/plan-managers/bulk-delete", h.BulkDelete)
-	r.Get("/plan-managers/{id}", h.Get)
-	r.Put("/plan-managers/{id}", h.Update)
-	r.Delete("/plan-managers/{id}", h.Delete)
+	r.Get("/plan-managers/{uuid}", h.Get)
+	r.Put("/plan-managers/{uuid}", h.Update)
+	r.Delete("/plan-managers/{uuid}", h.Delete)
 }
 
 // List returns plan managers. With DataTable query params (sort/page/limit/f.*)
@@ -55,9 +55,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, managers)
 }
 
-// Get returns a single plan manager by id, or 404 when not found.
+// Get returns a single plan manager by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -93,9 +93,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
-// Update mutates a plan manager. Empty name → 400; unknown id → 404.
+// Update mutates a plan manager. Empty name → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -121,9 +121,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Delete removes a plan manager by id.
+// Delete removes a plan manager by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return

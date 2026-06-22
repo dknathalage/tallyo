@@ -18,7 +18,7 @@ func TestPlanManagerCreateGet(t *testing.T) {
 	if pm == nil || pm.ID == 0 || pm.Name != "Acme PM" || pm.Metadata != "{}" {
 		t.Fatalf("Create = %+v", pm)
 	}
-	got, err := repo.Get(ctx, tid, pm.ID)
+	got, err := repo.Get(ctx, tid, pm.UUID)
 	if err != nil || got == nil || got.Name != "Acme PM" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
@@ -70,14 +70,14 @@ func TestPlanManagerUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, pm.ID, PlanManagerInput{Name: "Acme2", Email: "n@x.com"})
+	up, err := repo.Update(ctx, tid, pm.UUID, PlanManagerInput{Name: "Acme2", Email: "n@x.com"})
 	if err != nil || up == nil || up.Name != "Acme2" || up.Email != "n@x.com" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
-	if err := repo.Delete(ctx, tid, pm.ID); err != nil {
+	if err := repo.Delete(ctx, tid, pm.UUID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, pm.ID); got != nil {
+	if got, _ := repo.Get(ctx, tid, pm.UUID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -112,7 +112,7 @@ func TestPlanManagerTenantIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	if got, _ := repo.Get(ctx, b, pm.ID); got != nil {
+	if got, _ := repo.Get(ctx, b, pm.UUID); got != nil {
 		t.Fatalf("tenant B read tenant A's plan manager: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, ""); len(list) != 0 {

@@ -43,9 +43,9 @@ func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Resu
 	return listquery.Result[*PlanManager]{Rows: rows, Total: total}, nil
 }
 
-func (s *Service) Get(ctx context.Context, id int64) (*PlanManager, error) {
+func (s *Service) Get(ctx context.Context, uuid string) (*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.Get(ctx, tenantID, id)
+	return s.repo.Get(ctx, tenantID, uuid)
 }
 
 // Create inserts a plan manager, then broadcasts AFTER the commit succeeds.
@@ -61,26 +61,34 @@ func (s *Service) Create(ctx context.Context, in PlanManagerInput) (*PlanManager
 
 // Update mutates a plan manager, then broadcasts on success. A nil result means
 // the row was not found, in which case no event is published.
-func (s *Service) Update(ctx context.Context, id int64, in PlanManagerInput) (*PlanManager, error) {
+func (s *Service) Update(ctx context.Context, uuid string, in PlanManagerInput) (*PlanManager, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	p, err := s.repo.Update(ctx, tenantID, id, in)
+	p, err := s.repo.Update(ctx, tenantID, uuid, in)
 	if err != nil {
 		return nil, err
 	}
 	if p == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: p.ID, Action: "update"})
 	return p, nil
 }
 
-// Delete removes a plan manager, then broadcasts on success.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+// Delete removes a plan manager by uuid, then broadcasts on success. The row is
+// resolved first so the post-commit event still carries the int PK.
+func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+	p, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: id, Action: "delete"})
+	if p == nil {
+		return nil
+	}
+	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "plan_manager", ID: p.ID, Action: "delete"})
 	return nil
 }
 

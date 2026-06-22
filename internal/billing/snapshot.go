@@ -65,7 +65,7 @@ func (b *SnapshotBuilder) PlanManager(ctx context.Context, tenantID int64, planM
 	if planManagerID == nil {
 		return "{}"
 	}
-	pm, err := gen.New(b.db).GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, ID: *planManagerID})
+	pm, err := gen.New(b.db).GetPlanManagerByID(ctx, gen.GetPlanManagerByIDParams{TenantID: tenantID, ID: *planManagerID})
 	if err != nil {
 		return "{}"
 	}

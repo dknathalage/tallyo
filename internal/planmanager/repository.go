@@ -33,8 +33,8 @@ var PlanManagerCols = listquery.Spec{
 // PlanManager is the domain view of a row in the plan_managers table. All
 // nullable columns are unwrapped to plain strings ("" when absent).
 type PlanManager struct {
-	ID        int64  `json:"id"`
-	UUID      string `json:"uuid"`
+	ID        int64  `json:"-"`
+	UUID      string `json:"id"`
 	Name      string `json:"name"`
 	Email     string `json:"email"`
 	Phone     string `json:"phone"`
@@ -90,9 +90,9 @@ func (r *PlanManagersRepo) List(ctx context.Context, tenantID int64, search stri
 	return mapPlanManagers(rows), nil
 }
 
-// Get returns the tenant's plan manager, or (nil, nil) when none matches.
-func (r *PlanManagersRepo) Get(ctx context.Context, tenantID, id int64) (*PlanManager, error) {
-	row, err := gen.New(r.db).GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, ID: id})
+// Get returns the tenant's plan manager by uuid, or (nil, nil) when none matches.
+func (r *PlanManagersRepo) Get(ctx context.Context, tenantID int64, uuid string) (*PlanManager, error) {
+	row, err := gen.New(r.db).GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, Uuid: uuid})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -186,9 +186,10 @@ func (r *PlanManagersRepo) Create(ctx context.Context, tenantID int64, in PlanMa
 	return toPlanManager(created), nil
 }
 
-// Update writes the plan manager's fields and one audit row, atomically.
-// Returns (nil, nil) when the row does not exist so the caller can 404.
-func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in PlanManagerInput) (*PlanManager, error) {
+// Update writes the plan manager's fields and one audit row, atomically. The
+// audit entry records the row's int PK, resolved by-uuid inside the tx. Returns
+// (nil, nil) when the row does not exist so the caller can 404.
+func (r *PlanManagersRepo) Update(ctx context.Context, tenantID int64, uuid string, in PlanManagerInput) (*PlanManager, error) {
 	if in.Name == "" {
 		return nil, errors.New("update plan manager: name is required")
 	}
@@ -199,12 +200,7 @@ func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in Pl
 
 	var updated gen.PlanManager
 	var missing bool
-	err := audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "plan_manager",
-		EntityID:   id,
-		Action:     "update",
-		Changes:    audit.Changes(map[string]any{"name": in.Name}),
-	}, func(tx *sql.Tx) error {
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).UpdatePlanManager(ctx, gen.UpdatePlanManagerParams{
 			Name:      in.Name,
@@ -214,7 +210,7 @@ func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in Pl
 			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
-			ID:        id,
+			Uuid:      uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -224,7 +220,12 @@ func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in Pl
 			return fmt.Errorf("update: %w", e)
 		}
 		updated = p
-		return nil
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "plan_manager",
+			EntityID:   p.ID,
+			Action:     "update",
+			Changes:    audit.Changes(map[string]any{"name": in.Name}),
+		})
 	})
 	if missing {
 		return nil, nil
@@ -235,17 +236,26 @@ func (r *PlanManagersRepo) Update(ctx context.Context, tenantID, id int64, in Pl
 	return toPlanManager(updated), nil
 }
 
-// Delete removes a plan manager and writes one audit row, atomically.
-func (r *PlanManagersRepo) Delete(ctx context.Context, tenantID, id int64) error {
-	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "plan_manager",
-		EntityID:   id,
-		Action:     "delete",
-	}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).DeletePlanManager(ctx, gen.DeletePlanManagerParams{TenantID: tenantID, ID: id}); err != nil {
-			return fmt.Errorf("delete: %w", err)
+// Delete removes a plan manager by uuid and writes one audit row, atomically.
+// The audit entry records the row's int PK, resolved by-uuid in the same tx.
+func (r *PlanManagersRepo) Delete(ctx context.Context, tenantID int64, uuid string) error {
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		row, e := q.GetPlanManager(ctx, gen.GetPlanManagerParams{TenantID: tenantID, Uuid: uuid})
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
 		}
-		return nil
+		if e != nil {
+			return fmt.Errorf("lookup: %w", e)
+		}
+		if e := q.DeletePlanManager(ctx, gen.DeletePlanManagerParams{TenantID: tenantID, Uuid: uuid}); e != nil {
+			return fmt.Errorf("delete: %w", e)
+		}
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "plan_manager",
+			EntityID:   row.ID,
+			Action:     "delete",
+		})
 	})
 }
 
@@ -258,7 +268,7 @@ func (r *PlanManagersRepo) BulkDelete(ctx context.Context, tenantID int64, ids [
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
-			if err := q.DeletePlanManager(ctx, gen.DeletePlanManagerParams{TenantID: tenantID, ID: id}); err != nil {
+			if err := q.DeletePlanManagerByID(ctx, gen.DeletePlanManagerByIDParams{TenantID: tenantID, ID: id}); err != nil {
 				return fmt.Errorf("delete %d: %w", id, err)
 			}
 		}

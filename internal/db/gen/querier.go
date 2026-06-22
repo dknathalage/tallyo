@@ -49,6 +49,7 @@ type Querier interface {
 	DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
+	DeletePlanManagerByID(ctx context.Context, arg DeletePlanManagerByIDParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteShift(ctx context.Context, arg DeleteShiftParams) error
 	DeleteShiftLineItem(ctx context.Context, arg DeleteShiftLineItemParams) error
@@ -70,6 +71,8 @@ type Querier interface {
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
+	GetPlanManagerByID(ctx context.Context, arg GetPlanManagerByIDParams) (PlanManager, error)
+	GetPlanManagerIDByUUID(ctx context.Context, arg GetPlanManagerIDByUUIDParams) (int64, error)
 	GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error)
 	GetShift(ctx context.Context, arg GetShiftParams) (Shift, error)
 	GetSupportItem(ctx context.Context, id int64) (SupportItem, error)

@@ -57,30 +57,44 @@ func (q *Queries) CreatePlanManager(ctx context.Context, arg CreatePlanManagerPa
 }
 
 const deletePlanManager = `-- name: DeletePlanManager :exec
-DELETE FROM plan_managers WHERE tenant_id = ? AND id = ?
+DELETE FROM plan_managers WHERE tenant_id = ? AND uuid = ?
 `
 
 type DeletePlanManagerParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error {
+	_, err := q.db.ExecContext(ctx, deletePlanManager, arg.TenantID, arg.Uuid)
+	return err
+}
+
+const deletePlanManagerByID = `-- name: DeletePlanManagerByID :exec
+DELETE FROM plan_managers WHERE tenant_id = ? AND id = ?
+`
+
+type DeletePlanManagerByIDParams struct {
 	TenantID int64 `json:"tenant_id"`
 	ID       int64 `json:"id"`
 }
 
-func (q *Queries) DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error {
-	_, err := q.db.ExecContext(ctx, deletePlanManager, arg.TenantID, arg.ID)
+func (q *Queries) DeletePlanManagerByID(ctx context.Context, arg DeletePlanManagerByIDParams) error {
+	_, err := q.db.ExecContext(ctx, deletePlanManagerByID, arg.TenantID, arg.ID)
 	return err
 }
 
 const getPlanManager = `-- name: GetPlanManager :one
-SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM plan_managers WHERE tenant_id = ? AND id = ?
+SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM plan_managers WHERE tenant_id = ? AND uuid = ?
 `
 
 type GetPlanManagerParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
 }
 
 func (q *Queries) GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error) {
-	row := q.db.QueryRowContext(ctx, getPlanManager, arg.TenantID, arg.ID)
+	row := q.db.QueryRowContext(ctx, getPlanManager, arg.TenantID, arg.Uuid)
 	var i PlanManager
 	err := row.Scan(
 		&i.ID,
@@ -95,6 +109,49 @@ func (q *Queries) GetPlanManager(ctx context.Context, arg GetPlanManagerParams) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getPlanManagerByID = `-- name: GetPlanManagerByID :one
+SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM plan_managers WHERE tenant_id = ? AND id = ?
+`
+
+type GetPlanManagerByIDParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) GetPlanManagerByID(ctx context.Context, arg GetPlanManagerByIDParams) (PlanManager, error) {
+	row := q.db.QueryRowContext(ctx, getPlanManagerByID, arg.TenantID, arg.ID)
+	var i PlanManager
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.Address,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlanManagerIDByUUID = `-- name: GetPlanManagerIDByUUID :one
+SELECT id FROM plan_managers WHERE tenant_id = ? AND uuid = ?
+`
+
+type GetPlanManagerIDByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) GetPlanManagerIDByUUID(ctx context.Context, arg GetPlanManagerIDByUUIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getPlanManagerIDByUUID, arg.TenantID, arg.Uuid)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const listPlanManagers = `-- name: ListPlanManagers :many
@@ -183,7 +240,7 @@ func (q *Queries) SearchPlanManagers(ctx context.Context, arg SearchPlanManagers
 
 const updatePlanManager = `-- name: UpdatePlanManager :one
 UPDATE plan_managers SET name = ?, email = ?, phone = ?, address = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+WHERE tenant_id = ? AND uuid = ?
 RETURNING id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at
 `
 
@@ -195,7 +252,7 @@ type UpdatePlanManagerParams struct {
 	Metadata  sql.NullString `json:"metadata"`
 	UpdatedAt string         `json:"updated_at"`
 	TenantID  int64          `json:"tenant_id"`
-	ID        int64          `json:"id"`
+	Uuid      string         `json:"uuid"`
 }
 
 func (q *Queries) UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerParams) (PlanManager, error) {
@@ -207,7 +264,7 @@ func (q *Queries) UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerPa
 		arg.Metadata,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.ID,
+		arg.Uuid,
 	)
 	var i PlanManager
 	err := row.Scan(
