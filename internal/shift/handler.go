@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
@@ -42,55 +41,36 @@ func NewHandler(svc *Service, divider ShiftDivider) *Handler {
 // Routes registers all shift routes on r. Mounted inside the authenticated
 // /api group by the composition root (server.go).
 func (h *Handler) Routes(r chi.Router) {
-	r.Get("/participants/{id}/shifts", h.ListForParticipant)
 	r.Get("/shifts", h.List)
 	r.Get("/shifts/suggestions", h.Suggestions)
 	r.Get("/shifts/to-record", h.ToRecord)
 	r.Post("/shifts", h.Create)
-	r.Get("/shifts/{id}", h.Get)
-	r.Put("/shifts/{id}", h.Update)
-	r.Delete("/shifts/{id}", h.Delete)
-	r.Post("/shifts/{id}/status", h.UpdateStatus)
-	r.Get("/shifts/{id}/items", h.ListItems)
-	r.Post("/shifts/{id}/items", h.AddItem)
-	r.Patch("/shifts/{id}/items/{itemId}", h.UpdateItem)
-	r.Delete("/shifts/{id}/items/{itemId}", h.DeleteItem)
-	r.Post("/shifts/{id}/divide", h.Divide)
+	r.Get("/shifts/{shiftUUID}", h.Get)
+	r.Put("/shifts/{shiftUUID}", h.Update)
+	r.Delete("/shifts/{shiftUUID}", h.Delete)
+	r.Post("/shifts/{shiftUUID}/status", h.UpdateStatus)
+	r.Get("/shifts/{shiftUUID}/items", h.ListItems)
+	r.Post("/shifts/{shiftUUID}/items", h.AddItem)
+	r.Patch("/shifts/{shiftUUID}/items/{itemUUID}", h.UpdateItem)
+	r.Delete("/shifts/{shiftUUID}/items/{itemUUID}", h.DeleteItem)
+	r.Post("/shifts/{shiftUUID}/divide", h.Divide)
 }
 
-// ListForParticipant returns a participant's shifts, optionally restricted to the
-// ?from=&to= service-date window and a ?status= filter. The chi {id} path param
-// is the participant id.
-func (h *Handler) ListForParticipant(w http.ResponseWriter, r *http.Request) {
-	participantID, ok := httpx.ParseID(r)
-	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
-		return
-	}
-	from := r.URL.Query().Get("from")
-	to := r.URL.Query().Get("to")
-	status := r.URL.Query().Get("status")
-	shifts, err := h.svc.ListParticipant(r.Context(), participantID, from, to)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if status != "" {
-		filtered := make([]*Shift, 0, len(shifts))
-		for i := range shifts { // bounded by len(shifts)
-			if shifts[i].Status == status {
-				filtered = append(filtered, shifts[i])
-			}
-		}
-		shifts = filtered
-	}
-	httpx.WriteJSON(w, http.StatusOK, shifts)
-}
-
-// List returns every shift for the acting tenant, optionally restricted to a
-// ?status= filter (used to populate the shifts table).
+// List returns the tenant's shifts. With ?participant={participantUUID} it
+// returns only that participant's shifts (resolving the participant uuid to its
+// int FK — this replaces the old nested participant→shifts read). An optional
+// ?status= filter restricts the lifecycle status in either mode.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
+	if participantUUID := r.URL.Query().Get("participant"); participantUUID != "" {
+		shifts, err := h.svc.ListByParticipantUUID(r.Context(), participantUUID, status)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, shifts)
+		return
+	}
 	shifts, err := h.svc.List(r.Context(), status)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
@@ -119,14 +99,26 @@ func (h *Handler) ToRecord(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-// Get returns a single shift by id, or 404 when not found.
+// shiftBody is the HTTP write shape of a shift. ParticipantUUID arrives as the
+// participant's uuid (resolved to the int FK before insert/update); the other
+// fields mirror ShiftInput. It is the inbound DTO — ShiftInput stays int-keyed
+// for the cross-slice ShiftCreator contract (agent import).
+type shiftBody struct {
+	ParticipantUUID string   `json:"participantId"`
+	ServiceDate     string   `json:"serviceDate"`
+	Note            string   `json:"note"`
+	Tags            []string `json:"tags"`
+	Status          string   `json:"status"`
+}
+
+// Get returns a single shift by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	sh, err := h.svc.Get(r.Context(), id)
+	sh, err := h.svc.GetByUUID(r.Context(), shiftUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -138,19 +130,23 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sh)
 }
 
-// Create inserts a shift. A missing participant or service date → 400.
+// Create inserts a shift. A missing/unknown participant uuid or service date → 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	var in ShiftInput
-	if err := httpx.DecodeJSON(r, &in); err != nil {
+	var body shiftBody
+	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.ParticipantID == 0 {
+	if body.ParticipantUUID == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "participant required")
 		return
 	}
-	if in.ServiceDate == "" {
+	if body.ServiceDate == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "service date required")
+		return
+	}
+	in, ok := h.resolveBody(w, r, body)
+	if !ok {
 		return
 	}
 	sh, err := h.svc.Create(r.Context(), in)
@@ -161,23 +157,50 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, sh)
 }
 
-// Update mutates a shift. Empty service date → 400; unknown id → 404.
+// resolveBody translates a shiftBody's participant uuid into the int FK and
+// returns the int-keyed ShiftInput. Writes a 400 and returns ok=false when the
+// participant uuid is unknown for the tenant.
+func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body shiftBody) (ShiftInput, bool) {
+	pid, err := h.svc.ResolveParticipant(r.Context(), body.ParticipantUUID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return ShiftInput{}, false
+	}
+	if pid == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		return ShiftInput{}, false
+	}
+	return ShiftInput{
+		ParticipantID: pid,
+		ServiceDate:   body.ServiceDate,
+		Note:          body.Note,
+		Tags:          body.Tags,
+		Status:        body.Status,
+	}, true
+}
+
+// Update mutates a shift. Empty service date → 400; unknown shift uuid → 404;
+// unknown participant uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	var in ShiftInput
-	if err := httpx.DecodeJSON(r, &in); err != nil {
+	var body shiftBody
+	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.ServiceDate == "" {
+	if body.ServiceDate == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "service date required")
 		return
 	}
-	sh, err := h.svc.Update(r.Context(), id, in)
+	in, ok := h.resolveBody(w, r, body)
+	if !ok {
+		return
+	}
+	sh, err := h.svc.Update(r.Context(), shiftUUID, in)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -189,14 +212,14 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sh)
 }
 
-// Delete removes a shift by id.
+// Delete removes a shift by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
+	if err := h.svc.Delete(r.Context(), shiftUUID); err != nil {
 		if errors.Is(err, ErrShiftBilled) {
 			httpx.WriteError(w, http.StatusConflict, "cannot delete a billed shift")
 			return
@@ -208,26 +231,28 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListItems returns a shift's line items (billed + unbilled), [] when none.
+// Unknown shift uuid → 404.
 func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	items, err := h.svc.ListItems(r.Context(), id)
+	items, err := h.svc.ListItemsByShiftUUID(r.Context(), shiftUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if items == nil {
-		items = []*billing.LineItem{}
+		httpx.WriteError(w, http.StatusNotFound, "not found")
+		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
 // AddItem adds one line item to a shift. Unknown shift → 404; invalid line → 400.
 func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -236,7 +261,7 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := h.svc.AddItem(r.Context(), id, in)
+	item, err := h.svc.AddItemByShiftUUID(r.Context(), shiftUUID, in)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -248,14 +273,15 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, item)
 }
 
-// UpdateItem rewrites one unbilled item. Unknown/billed item → 404.
+// UpdateItem rewrites one unbilled item addressed by uuid under its shift uuid.
+// Unknown/billed item → 404.
 func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	itemID, ok := parseItemID(r)
+	itemUUID, ok := httpx.ParseUUID(r, "itemUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
 		return
@@ -264,7 +290,7 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := h.svc.UpdateItem(r.Context(), id, itemID, in)
+	item, err := h.svc.UpdateItemByShiftUUID(r.Context(), shiftUUID, itemUUID, in)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -276,19 +302,20 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, item)
 }
 
-// DeleteItem removes one unbilled item (no-op when absent/billed).
+// DeleteItem removes one unbilled item by uuid under its shift uuid (no-op when
+// absent/billed).
 func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	itemID, ok := parseItemID(r)
+	itemUUID, ok := httpx.ParseUUID(r, "itemUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
-	if err := h.svc.DeleteItem(r.Context(), id, itemID); err != nil {
+	if err := h.svc.DeleteItemByShiftUUID(r.Context(), shiftUUID, itemUUID); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -305,7 +332,7 @@ func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "AI not configured")
 		return
 	}
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -320,6 +347,15 @@ func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), uid), 5*time.Minute)
 	defer cancel()
 
+	id, err := h.svc.ResolveShiftID(ctx, shiftUUID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if id == 0 {
+		httpx.WriteError(w, http.StatusNotFound, "not found")
+		return
+	}
 	if err := h.divider.DivideShift(ctx, id); err != nil {
 		httpx.WriteError(w, http.StatusBadGateway, "couldn't divide this shift into line items")
 		return
@@ -355,23 +391,14 @@ func decodeItem(w http.ResponseWriter, r *http.Request) (billing.LineItemInput, 
 	return in, true
 }
 
-// parseItemID reads the {itemId} path param.
-func parseItemID(r *http.Request) (int64, bool) {
-	v, err := strconv.ParseInt(chi.URLParam(r, "itemId"), 10, 64)
-	if err != nil || v <= 0 {
-		return 0, false
-	}
-	return v, true
-}
-
 // statusRequest is the body of UpdateStatus: the target lifecycle status.
 type statusRequest struct {
 	Status string `json:"status"`
 }
 
-// UpdateStatus advances a shift's lifecycle status. An empty status → 400.
+// UpdateStatus advances a shift's lifecycle status by uuid. An empty status → 400.
 func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -385,7 +412,7 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	if err := h.svc.UpdateStatus(r.Context(), id, req.Status); err != nil {
+	if err := h.svc.UpdateStatus(r.Context(), shiftUUID, req.Status); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

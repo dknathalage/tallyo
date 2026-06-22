@@ -97,7 +97,7 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.UpdateStatus(ctx, sh.ID, "recorded"); err != nil {
+	if err := svc.UpdateStatus(ctx, sh.UUID, "recorded"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	select {
@@ -124,7 +124,7 @@ func TestShiftDeleteSvc(t *testing.T) {
 	}
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.Delete(ctx, sh.ID); err != nil {
+	if err := svc.Delete(ctx, sh.UUID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	select {

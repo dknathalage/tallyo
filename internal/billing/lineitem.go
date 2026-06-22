@@ -53,8 +53,8 @@ func ptrStr(n sql.NullString) *string {
 // the same row whether it lives on a shift (ShiftID set, InvoiceID nil) or on an
 // invoice (InvoiceID set); drafting links it by setting InvoiceID.
 type LineItem struct {
-	ID               int64   `json:"id"`
-	UUID             string  `json:"uuid"`
+	ID               int64   `json:"-"`  // internal PK; the public identifier is the uuid
+	UUID             string  `json:"id"` // public identifier (item uuid)
 	ShiftID          *int64  `json:"shiftId"`
 	InvoiceID        *int64  `json:"invoiceId"`
 	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid

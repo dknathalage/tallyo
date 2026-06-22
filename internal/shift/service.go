@@ -71,10 +71,54 @@ func (s *Service) List(ctx context.Context, status string) ([]*Shift, error) {
 	return s.repo.List(ctx, tenantID)
 }
 
-// Get returns a shift by id, or (nil, nil) when absent.
+// Get returns a shift by int PK, or (nil, nil) when absent. This is the
+// internal/cross-slice read (agent ShiftReader, the service's own pricing path);
+// the public HTTP path addresses shifts by uuid via GetByUUID.
 func (s *Service) Get(ctx context.Context, id int64) (*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
+}
+
+// GetByUUID returns a shift by uuid, or (nil, nil) when absent. Public HTTP read.
+func (s *Service) GetByUUID(ctx context.Context, shiftUUID string) (*Shift, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.GetByUUID(ctx, tenantID, shiftUUID)
+}
+
+// ResolveParticipant translates a participant uuid into its int FK for the
+// tenant (inbound participantId resolution on shift create/update). Returns
+// (0, nil) when the uuid is unknown so the handler can 400.
+func (s *Service) ResolveParticipant(ctx context.Context, participantUUID string) (int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+}
+
+// ListByParticipantUUID returns the tenant's shifts for one participant,
+// resolving the participant uuid to its int FK. An unknown participant uuid
+// yields an empty (non-nil) slice — the filter simply matches nothing.
+func (s *Service) ListByParticipantUUID(ctx context.Context, participantUUID, status string) ([]*Shift, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	pid, err := s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	if err != nil {
+		return nil, err
+	}
+	if pid == 0 {
+		return []*Shift{}, nil
+	}
+	shifts, err := s.repo.ListParticipant(ctx, tenantID, pid, "", "")
+	if err != nil {
+		return nil, err
+	}
+	if status == "" {
+		return shifts, nil
+	}
+	filtered := make([]*Shift, 0, len(shifts))
+	for i := range shifts { // bounded by len(shifts)
+		if shifts[i].Status == status {
+			filtered = append(filtered, shifts[i])
+		}
+	}
+	return filtered, nil
 }
 
 // Create inserts a shift attributed to the authenticated user, then broadcasts
@@ -97,13 +141,13 @@ func (s *Service) Create(ctx context.Context, in ShiftInput) (*Shift, error) {
 // was not found, in which case no event is published. When the service date
 // changes, the shift's UNBILLED items are re-stamped to the new date and
 // re-priced against that date's catalogue (G3/G4).
-func (s *Service) Update(ctx context.Context, id int64, in ShiftInput) (*Shift, error) {
+func (s *Service) Update(ctx context.Context, shiftUUID string, in ShiftInput) (*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	prev, err := s.repo.Get(ctx, tenantID, id)
+	prev, err := s.repo.GetByUUID(ctx, tenantID, shiftUUID)
 	if err != nil {
 		return nil, err
 	}
-	sh, err := s.repo.Update(ctx, tenantID, id, in)
+	sh, err := s.repo.Update(ctx, tenantID, shiftUUID, in)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +159,7 @@ func (s *Service) Update(ctx context.Context, id int64, in ShiftInput) (*Shift, 
 			return nil, err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
 	return sh, nil
 }
 
@@ -145,22 +189,31 @@ func (s *Service) repriceItemsForDate(ctx context.Context, tenantID int64, sh *S
 	return nil
 }
 
-// UpdateStatus advances a shift's lifecycle status, then broadcasts on success.
-func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
+// UpdateStatus advances a shift's lifecycle status by uuid, then broadcasts on
+// success. The SSE event carries the row's int PK, resolved first.
+func (s *Service) UpdateStatus(ctx context.Context, shiftUUID, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
+	sh, err := s.repo.GetByUUID(ctx, tenantID, shiftUUID)
+	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: id, Action: "update"})
+	if sh == nil {
+		return nil
+	}
+	if err := s.repo.UpdateStatus(ctx, tenantID, shiftUUID, status); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
 	return nil
 }
 
-// Delete removes a shift (its items cascade), then broadcasts on success. A
-// billed shift — status past 'recorded' (drafted/sent/paid) — cannot be deleted:
-// its items live on an invoice. Returns ErrShiftBilled in that case.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+// Delete removes a shift by uuid (its items cascade), then broadcasts on success.
+// A billed shift — status past 'recorded' (drafted/sent/paid) — cannot be
+// deleted: its items live on an invoice. Returns ErrShiftBilled in that case.
+// The SSE event carries the row's int PK, resolved first.
+func (s *Service) Delete(ctx context.Context, shiftUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	sh, err := s.repo.Get(ctx, tenantID, id)
+	sh, err := s.repo.GetByUUID(ctx, tenantID, shiftUUID)
 	if err != nil {
 		return err
 	}
@@ -170,10 +223,10 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if sh.Status != "scheduled" && sh.Status != "recorded" {
 		return ErrShiftBilled
 	}
-	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+	if err := s.repo.Delete(ctx, tenantID, shiftUUID); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "delete"})
 	return nil
 }
 
@@ -286,11 +339,39 @@ func (s *Service) AddItem(ctx context.Context, shiftID int64, in billing.LineIte
 	return item, nil
 }
 
-// UpdateItem prices then rewrites one UNBILLED item, then broadcasts. Returns
-// (nil, nil) when the shift or item is absent (or the item is already billed).
-func (s *Service) UpdateItem(ctx context.Context, shiftID, itemID int64, in billing.LineItemInput) (*billing.LineItem, error) {
+// resolveShift translates a shift uuid into its int PK for the tenant. Returns
+// (0, nil) when no such shift exists so HTTP item handlers can 404.
+func (s *Service) resolveShift(ctx context.Context, tenantID int64, shiftUUID string) (int64, error) {
+	return s.repo.ResolveID(ctx, tenantID, shiftUUID)
+}
+
+// ResolveShiftID translates a shift uuid into its int PK for the acting tenant.
+// Returns (0, nil) when no such shift exists (the Divide handler 404s). Exposed
+// so the handler can bridge the uuid path to the int-keyed DivideShift contract.
+func (s *Service) ResolveShiftID(ctx context.Context, shiftUUID string) (int64, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	sh, err := s.repo.Get(ctx, tenantID, shiftID)
+	return s.repo.ResolveID(ctx, tenantID, shiftUUID)
+}
+
+// ListItemsByShiftUUID returns a shift's line items, resolving the shift uuid to
+// its int id first. Returns (nil, nil) when the shift is absent (handler 404s).
+func (s *Service) ListItemsByShiftUUID(ctx context.Context, shiftUUID string) ([]*billing.LineItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	shiftID, err := s.resolveShift(ctx, tenantID, shiftUUID)
+	if err != nil {
+		return nil, err
+	}
+	if shiftID == 0 {
+		return nil, nil
+	}
+	return s.repo.ListItems(ctx, tenantID, shiftID)
+}
+
+// AddItemByShiftUUID prices then inserts one item on the shift named by uuid,
+// then broadcasts. Returns (nil, nil) when the shift is absent.
+func (s *Service) AddItemByShiftUUID(ctx context.Context, shiftUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	sh, err := s.repo.GetByUUID(ctx, tenantID, shiftUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -304,21 +385,56 @@ func (s *Service) UpdateItem(ctx context.Context, shiftID, itemID int64, in bill
 	if err != nil {
 		return nil, err
 	}
-	item, err := s.repo.UpdateItem(ctx, tenantID, itemID, priced)
+	item, err := s.repo.CreateItem(ctx, tenantID, sh.ID, priced)
+	if err != nil {
+		return nil, err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
+	return item, nil
+}
+
+// UpdateItemByShiftUUID prices then rewrites one UNBILLED item addressed by uuid,
+// scoped to the shift named by uuid, then broadcasts. Returns (nil, nil) when the
+// shift or item is absent (or the item is already billed).
+func (s *Service) UpdateItemByShiftUUID(ctx context.Context, shiftUUID, itemUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	sh, err := s.repo.GetByUUID(ctx, tenantID, shiftUUID)
+	if err != nil {
+		return nil, err
+	}
+	if sh == nil {
+		return nil, nil
+	}
+	if in.ServiceDate == "" {
+		in.ServiceDate = sh.ServiceDate
+	}
+	priced, err := s.priceItem(ctx, tenantID, sh.ParticipantID, in)
+	if err != nil {
+		return nil, err
+	}
+	item, err := s.repo.UpdateItemByUUID(ctx, tenantID, sh.ID, itemUUID, priced)
 	if err != nil {
 		return nil, err
 	}
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: shiftID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
 	return item, nil
 }
 
-// DeleteItem removes one UNBILLED item, then broadcasts.
-func (s *Service) DeleteItem(ctx context.Context, shiftID, itemID int64) error {
+// DeleteItemByShiftUUID removes one UNBILLED item addressed by uuid, scoped to the
+// shift named by uuid, then broadcasts. A missing shift is a no-op.
+func (s *Service) DeleteItemByShiftUUID(ctx context.Context, shiftUUID, itemUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.repo.DeleteItem(ctx, tenantID, itemID); err != nil {
+	shiftID, err := s.resolveShift(ctx, tenantID, shiftUUID)
+	if err != nil {
+		return err
+	}
+	if shiftID == 0 {
+		return nil
+	}
+	if err := s.repo.DeleteItemByUUID(ctx, tenantID, shiftID, itemUUID); err != nil {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: shiftID, Action: "update"})

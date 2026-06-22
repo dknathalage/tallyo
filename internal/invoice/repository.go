@@ -215,7 +215,7 @@ func (r *InvoicesRepo) validateDraftShifts(ctx context.Context, tenantID int64, 
 	var participantID int64
 	facts := make([]draftShiftItem, 0, len(shiftIDs))
 	for i := range shiftIDs { // bounded by len(shiftIDs)
-		sh, err := q.GetShift(ctx, gen.GetShiftParams{TenantID: tenantID, ID: shiftIDs[i]})
+		sh, err := q.GetShiftByID(ctx, gen.GetShiftByIDParams{TenantID: tenantID, ID: shiftIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil, fmt.Errorf("draft from shifts: shift %d not found", shiftIDs[i])
 		}

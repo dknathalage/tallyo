@@ -94,7 +94,7 @@ func TestShiftDeleteBilledGuard(t *testing.T) {
 	}
 	// Recorded shift deletes fine.
 	other, _ := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
-	if err := svc.Delete(ctx, other.ID); err != nil {
+	if err := svc.Delete(ctx, other.UUID); err != nil {
 		t.Fatalf("Delete recorded shift: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestShiftDeleteBilledGuard(t *testing.T) {
 	if err := repo.SetInvoice(ctx, tid, sh.ID, invID, "drafted"); err != nil {
 		t.Fatalf("SetInvoice: %v", err)
 	}
-	if err := svc.Delete(ctx, sh.ID); !errors.Is(err, ErrShiftBilled) {
+	if err := svc.Delete(ctx, sh.UUID); !errors.Is(err, ErrShiftBilled) {
 		t.Fatalf("Delete billed shift err = %v, want ErrShiftBilled", err)
 	}
 	if got, _ := repo.Get(ctx, tid, sh.ID); got == nil {

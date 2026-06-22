@@ -7,6 +7,10 @@ SELECT * FROM line_items WHERE tenant_id = ? AND shift_id = ? ORDER BY id;
 -- name: GetLineItem :one
 SELECT * FROM line_items WHERE tenant_id = ? AND id = ?;
 
+-- name: GetShiftLineItemByUUID :one
+-- A shift's line item addressed by its uuid, scoped to the owning shift's int id.
+SELECT * FROM line_items WHERE tenant_id = ? AND shift_id = ? AND uuid = ?;
+
 -- name: CreateLineItem :one
 INSERT INTO line_items (
     uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id,
@@ -25,6 +29,18 @@ RETURNING *;
 
 -- name: DeleteShiftLineItem :exec
 DELETE FROM line_items WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL;
+
+-- name: UpdateShiftLineItemByUUID :one
+-- Rewrite one UNBILLED shift item addressed by uuid, scoped to the owning shift.
+UPDATE line_items SET
+    support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
+    description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
+    quantity = ?, unit_price = ?, gst_free = ?, line_total = ?
+WHERE tenant_id = ? AND shift_id = ? AND uuid = ? AND invoice_id IS NULL
+RETURNING *;
+
+-- name: DeleteShiftLineItemByUUID :exec
+DELETE FROM line_items WHERE tenant_id = ? AND shift_id = ? AND uuid = ? AND invoice_id IS NULL;
 
 -- name: DeleteUnbilledItemsForShift :exec
 DELETE FROM line_items WHERE tenant_id = ? AND shift_id = ? AND invoice_id IS NULL;

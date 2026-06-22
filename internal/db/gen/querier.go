@@ -54,6 +54,7 @@ type Querier interface {
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteShift(ctx context.Context, arg DeleteShiftParams) error
 	DeleteShiftLineItem(ctx context.Context, arg DeleteShiftLineItemParams) error
+	DeleteShiftLineItemByUUID(ctx context.Context, arg DeleteShiftLineItemByUUIDParams) error
 	DeleteSupportItemsForVersion(ctx context.Context, catalogVersionID int64) error
 	DeleteTaxRate(ctx context.Context, arg DeleteTaxRateParams) error
 	DeleteTenant(ctx context.Context, id int64) error
@@ -77,7 +78,11 @@ type Querier interface {
 	GetPlanManagerByID(ctx context.Context, arg GetPlanManagerByIDParams) (PlanManager, error)
 	GetPlanManagerIDByUUID(ctx context.Context, arg GetPlanManagerIDByUUIDParams) (int64, error)
 	GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error)
-	GetShift(ctx context.Context, arg GetShiftParams) (Shift, error)
+	GetShift(ctx context.Context, arg GetShiftParams) (GetShiftRow, error)
+	GetShiftByID(ctx context.Context, arg GetShiftByIDParams) (GetShiftByIDRow, error)
+	GetShiftIDByUUID(ctx context.Context, arg GetShiftIDByUUIDParams) (int64, error)
+	// A shift's line item addressed by its uuid, scoped to the owning shift's int id.
+	GetShiftLineItemByUUID(ctx context.Context, arg GetShiftLineItemByUUIDParams) (LineItem, error)
 	GetSupportItem(ctx context.Context, id int64) (SupportItem, error)
 	GetSupportItemByCode(ctx context.Context, arg GetSupportItemByCodeParams) (SupportItem, error)
 	GetSupportItemPrice(ctx context.Context, arg GetSupportItemPriceParams) (SupportItemPrice, error)
@@ -108,14 +113,16 @@ type Querier interface {
 	ListParticipantInvoices(ctx context.Context, arg ListParticipantInvoicesParams) ([]ListParticipantInvoicesRow, error)
 	ListParticipants(ctx context.Context, tenantID int64) ([]ListParticipantsRow, error)
 	ListPlanManagers(ctx context.Context, tenantID int64) ([]PlanManager, error)
-	ListRecordedUnbilledByParticipant(ctx context.Context, arg ListRecordedUnbilledByParticipantParams) ([]Shift, error)
+	ListRecordedUnbilledByParticipant(ctx context.Context, arg ListRecordedUnbilledByParticipantParams) ([]ListRecordedUnbilledByParticipantRow, error)
 	ListRecurringTemplates(ctx context.Context, tenantID int64) ([]ListRecurringTemplatesRow, error)
-	ListScheduledShifts(ctx context.Context, tenantID int64) ([]Shift, error)
+	ListScheduledShifts(ctx context.Context, tenantID int64) ([]ListScheduledShiftsRow, error)
 	// Shifts: the delivered-support unit (tenant-scoped). See migration 00004_shifts.sql.
-	ListShifts(ctx context.Context, tenantID int64) ([]Shift, error)
-	ListShiftsByParticipant(ctx context.Context, arg ListShiftsByParticipantParams) ([]Shift, error)
-	ListShiftsByParticipantRange(ctx context.Context, arg ListShiftsByParticipantRangeParams) ([]Shift, error)
-	ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatusParams) ([]Shift, error)
+	// Read queries LEFT JOIN participants for p.uuid so the slice DTO can expose the
+	// participant FK as its uuid (participantId) instead of the internal int.
+	ListShifts(ctx context.Context, tenantID int64) ([]ListShiftsRow, error)
+	ListShiftsByParticipant(ctx context.Context, arg ListShiftsByParticipantParams) ([]ListShiftsByParticipantRow, error)
+	ListShiftsByParticipantRange(ctx context.Context, arg ListShiftsByParticipantRangeParams) ([]ListShiftsByParticipantRangeRow, error)
+	ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatusParams) ([]ListShiftsByStatusRow, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListSupportItemPrices(ctx context.Context, supportItemID int64) ([]SupportItemPrice, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
@@ -161,6 +168,8 @@ type Querier interface {
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateShift(ctx context.Context, arg UpdateShiftParams) (Shift, error)
 	UpdateShiftLineItem(ctx context.Context, arg UpdateShiftLineItemParams) (LineItem, error)
+	// Rewrite one UNBILLED shift item addressed by uuid, scoped to the owning shift.
+	UpdateShiftLineItemByUUID(ctx context.Context, arg UpdateShiftLineItemByUUIDParams) (LineItem, error)
 	UpdateShiftStatus(ctx context.Context, arg UpdateShiftStatusParams) error
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)

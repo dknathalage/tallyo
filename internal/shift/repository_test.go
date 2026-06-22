@@ -3,6 +3,8 @@ package shift
 import (
 	"context"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func sampleShiftInput(pid int64) ShiftInput {
@@ -177,7 +179,7 @@ func TestShiftUpdateStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.UpdateStatus(ctx, tid, s.ID, "recorded"); err != nil {
+	if err := repo.UpdateStatus(ctx, tid, s.UUID, "recorded"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, _ := repo.Get(ctx, tid, s.ID)
@@ -340,7 +342,7 @@ func TestShiftUpdateRepo(t *testing.T) {
 	in.ServiceDate = "2026-01-18"
 	in.Note = "updated note"
 	in.Tags = []string{"updated"}
-	up, err := repo.Update(ctx, tid, s.ID, in)
+	up, err := repo.Update(ctx, tid, s.UUID, in)
 	if err != nil || up == nil || up.ServiceDate != "2026-01-18" || up.Note != "updated note" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
@@ -348,7 +350,7 @@ func TestShiftUpdateRepo(t *testing.T) {
 		t.Fatalf("Update tags = %+v", up.Tags)
 	}
 
-	if miss, err := repo.Update(ctx, tid, s.ID+999, in); err != nil || miss != nil {
+	if miss, err := repo.Update(ctx, tid, uuid.NewString(), in); err != nil || miss != nil {
 		t.Fatalf("Update unknown = %+v err=%v", miss, err)
 	}
 }
@@ -364,7 +366,7 @@ func TestShiftDeleteRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.Delete(ctx, tid, s.ID); err != nil {
+	if err := repo.Delete(ctx, tid, s.UUID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if got, _ := repo.Get(ctx, tid, s.ID); got != nil {
