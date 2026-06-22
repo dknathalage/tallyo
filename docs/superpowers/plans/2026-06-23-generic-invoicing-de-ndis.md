@@ -42,6 +42,7 @@ cd web && npm run check && npm run build && cd ..
 - After `sqlc generate`, the compiler is your worklist: `go build ./...` errors point at every gen consumer to fix.
 - **UUID addressing stays** (CLAUDE.md): renamed routes remain uuid-addressed (`/clients/{clientUUID}`, etc.).
 - Keep internal billing **method** names (`ValidateFilling`, `ResolveZonePrice`, `applySupportItem…`) as-is — renaming them is churn with no payoff (per spec review advisory). Only rename types/fields the API or DB exposes.
+- **Columns vs FKs:** the uuid columns (`line_items.support_item_id`, `catalog_version_id`, the uuid `shift_id`) are **TEXT-stored pinned UUIDs with no `REFERENCES` clause** — rename the plain column **and its index** (`idx_line_items_support_item`, `idx_line_items_shift`, `idx_shifts_participant_date`, etc.), not a foreign key. The int `shift_id` IS a real FK. Also fix the **stale "control-DB" comments** in `00003_catalogue.sql` during Phase 5 — the catalogue is tenant-owned now.
 
 ---
 
