@@ -202,9 +202,9 @@ Template + FK translation:
 
 ### Task 2.8 — platform structs that leak int ids (REQUIRED — spec: "int PK never crosses the API")
 The review found three JSON surfaces outside the slices that still emit int ids:
-- [ ] **SSE** (`internal/realtime/hub.go`): `Event.ID int64 json:"id"`. The SPA uses the event to refetch by identifier — switch the broadcast payload to carry the entity **uuid** (services already have it post-commit). Retag/replace `ID` with a uuid string; tag any retained int `json:"-"`. Update every `svc` broadcast call site to pass the uuid.
-- [ ] **User** (`internal/auth/users.go`): `User.ID`/`User.TenantID` int64 are serialized (`/auth/me`). Tag `ID`→ use the user `uuid` as `json:"id"`; expose tenant as `tenantId` = tenant **uuid**; tag the ints `json:"-"`.
-- [ ] **EmailTenant / session** (`internal/auth/users.go`): the `/auth/login` 409 multi-tenant body and `/auth/session` expose `TenantID int64`. Drop it from JSON (`json:"-"`); keep only `TenantUUID` (retag as `json:"id"` or `tenantId`). The SPA already routes by tenant uuid.
+- [x] **SSE** (`internal/realtime/hub.go`): `Event.ID int64 json:"id"`. The SPA uses the event to refetch by identifier — switch the broadcast payload to carry the entity **uuid** (services already have it post-commit). Retag/replace `ID` with a uuid string; tag any retained int `json:"-"`. Update every `svc` broadcast call site to pass the uuid.
+- [x] **User** (`internal/auth/users.go`): `User.ID`/`User.TenantID` int64 are serialized (`/auth/me`). Tag `ID`→ use the user `uuid` as `json:"id"`; expose tenant as `tenantId` = tenant **uuid**; tag the ints `json:"-"`.
+- [x] **EmailTenant / session** (`internal/auth/users.go`): the `/auth/login` 409 multi-tenant body and `/auth/session` expose `TenantID int64`. Drop it from JSON (`json:"-"`); keep only `TenantUUID` (retag as `json:"id"` or `tenantId`). The SPA already routes by tenant uuid.
 - [ ] Tests: assert each of these three responses contains no integer id field. Commit — `refactor(api): stop leaking int ids via SSE/user/session`.
 
 ### Task 2.9 — retype the `internal/app` integration test suite to uuid (REQUIRED; do AFTER all slices migrate)
@@ -260,6 +260,7 @@ Any enrichment join that surfaced an int FK for the SPA to link on must now surf
 - [ ] **Step 1:** API client types — entity `id` is now a `string` (uuid); FK fields (`participantId`, `planManagerId`, …) are `string` uuids. Field names unchanged → store/component churn is bounded to the type and any `parseInt` removal.
 - [ ] **Step 2:** Rename route dirs `web/src/routes/.../[id]` → `[uuid]` (or keep `[id]` as the param name but feed it the uuid — **decide once, apply everywhere**; `[uuid]` matches the API and is clearer).
 - [ ] **Step 3:** Cross-entity links build from the related uuid now present in DTOs (e.g. invoice → participant link uses `invoice.participantId` which is now a uuid).
+- [ ] **Step 3b (login 409 inbound — flagged by Task 2.8):** the multi-tenant login flow now returns the tenant **uuid** as `id` in the 409 body; the SPA must send that tenant **uuid** on re-submit. Backend `loginRequest.TenantID int64 json:"tenantId"` is still int — change it to accept the tenant uuid and add a uuid→int resolution step in the login handler's `resolveCredentials`. SSE consumers now key off `event.id` as a uuid string; `/auth/me` `id`+`tenantId` and the session/409 tenant `id` are uuids.
 - [ ] **Step 4:** `cd web && npm run check` — 0 errors / 0 warnings. `npm run build`.
 - [ ] **Step 5:** Commit — `refactor(web): address entities by uuid (routes + api types)`
 
