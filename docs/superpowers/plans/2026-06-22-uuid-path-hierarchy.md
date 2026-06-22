@@ -206,6 +206,15 @@ The review found three JSON surfaces outside the slices that still emit int ids:
 - [ ] **EmailTenant / session** (`internal/auth/users.go`): the `/auth/login` 409 multi-tenant body and `/auth/session` expose `TenantID int64`. Drop it from JSON (`json:"-"`); keep only `TenantUUID` (retag as `json:"id"` or `tenantId`). The SPA already routes by tenant uuid.
 - [ ] Tests: assert each of these three responses contains no integer id field. Commit — `refactor(api): stop leaking int ids via SSE/user/session`.
 
+### Task 2.9 — retype the `internal/app` integration test suite to uuid (REQUIRED; do AFTER all slices migrate)
+There is a full HTTP integration suite in `internal/app/*_test.go` (one file per resource: `tax_rates_test.go`, `custom_items_test.go`, `plan_managers_test.go`, `participants_test.go`, `recurring_test.go`, `shifts_test.go`, `invoices_test.go`, `estimates_test.go`, `payments_test.go`, `business_profile_test.go`, `invites_test.go`, plus `auth_test.go`/`signup_test.go` for Task 2.8). Each still asserts the **old int-id contract** and fails once its slice is migrated. They are knowingly RED through all of Phase 2 — this task makes `go test ./...` green again. Two mechanical fixes per file:
+- [ ] **Decode struct:** the local response struct decodes JSON `id` into `int64` — change it to `string` (the uuid). Address members by the returned uuid, not `strconv.Itoa(id)`.
+- [ ] **"Missing" cases:** tests that PUT/DELETE a non-existent int id (e.g. `"999"`) now hit `ParseUUID` → 400 instead of the intended 404. Use a well-formed random uuid (e.g. `uuid.NewString()`) for the not-found case so it parses then 404s.
+- [ ] Apply to every resource file above; for FK-bearing resources, the request bodies that sent int FK ids (`participantId` etc.) now send the related uuid.
+- [ ] Run `go test ./internal/app/ -race` → green. Commit — `test(app): retype integration suite to uuid contract`.
+
+> **Gate note:** Per-slice tasks in Phase 2 only require the *slice* test + `go build ./...` to pass. The `internal/app` suite stays RED until Task 2.9 — that is expected, not a regression. The full `go test ./...` gate is asserted only at Task 2.9 and Phase 6.
+
 ---
 
 ## Phase 3 — Cross-slice read uuids (barrier after Phase 2)
