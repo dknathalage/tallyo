@@ -20,7 +20,7 @@
 - Create: `internal/httpx/parseuuid.go`
 - Test: `internal/httpx/parseuuid_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package httpx
@@ -59,9 +59,9 @@ func TestParseUUID(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run — expect FAIL** (`go test ./internal/httpx/ -run TestParseUUID -v`) — undefined: ParseUUID.
+- [x] **Step 2: Run — expect FAIL** (`go test ./internal/httpx/ -run TestParseUUID -v`) — undefined: ParseUUID.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 package httpx
@@ -88,9 +88,9 @@ func ParseUUID(r *http.Request, name string) (string, bool) {
 }
 ```
 
-- [ ] **Step 4: Run — expect PASS.**
-- [ ] **Step 5: `go vet ./internal/httpx/ && gofmt -l internal/httpx/` clean.**
-- [ ] **Step 6: Commit** — `feat(httpx): add ParseUUID path-param helper`
+- [x] **Step 4: Run — expect PASS.**
+- [x] **Step 5: `go vet ./internal/httpx/ && gofmt -l internal/httpx/` clean.**
+- [x] **Step 6: Commit** — `feat(httpx): add ParseUUID path-param helper` (commit ab0d9c2)
 
 ---
 
