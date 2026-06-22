@@ -1,18 +1,20 @@
 // Package tenantdb owns the per-tenant SQLite handle registry for the
 // DB-per-tenant model. The control DB (tenants/users/sessions/catalogue) is one
 // shared *sql.DB; each tenant's business data lives in its own
-// tenants/tenant-<id>.db file, opened on demand and cached in a bounded LRU.
+// tenants/tenant-<uuid>.db file, opened on demand and cached in a bounded LRU.
 package tenantdb
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
@@ -115,10 +117,14 @@ func (r *Registry) ForTenantID(id int64) (*sql.DB, error) {
 func (r *Registry) pathLocked(id int64) (string, error) {
 	uuid, ok := r.uuids[id]
 	if !ok {
-		if err := r.control.QueryRowContext(context.Background(),
-			"SELECT uuid FROM tenants WHERE id = ?", id).Scan(&uuid); err != nil {
+		row, err := gen.New(r.control).GetTenant(context.Background(), id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("tenantdb: tenant %d not found", id)
+		}
+		if err != nil {
 			return "", fmt.Errorf("tenantdb: resolve uuid for tenant %d: %w", id, err)
 		}
+		uuid = row.Uuid
 		r.uuids[id] = uuid
 	}
 	return filepath.Join(r.dataDir, "tenants", fmt.Sprintf("tenant-%s.db", uuid)), nil
