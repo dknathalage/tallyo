@@ -168,10 +168,10 @@ Pure template copies (plan-managers has no inbound FK; custom-items none). Same 
 
 ### Task 2.2 — participants (FK: plan_manager_id)
 Template + FK translation:
-- [ ] Out: join `plan_managers` for its `uuid`; expose `planManagerId` as the plan-manager **uuid** (`PlanManagerUUID *string json:"planManagerId"`), drop the int. The enrichment join already fetches `PlanManagerName` — add `pm.uuid`.
-- [ ] In: create/update body `planManagerId` is a plan-manager uuid → resolve to int via a `GetPlanManagerIDByUUID` query before insert; nil/empty stays NULL.
-- [ ] `/participants/{participantUUID}`. **Note:** `/participants/{id}/stats` is registered by the **invoice** slice (`internal/invoice/handler.go`), not participant — change its route to `{participantUUID}` there and resolve participant uuid→int in the invoice slice. (Same for `/participants/{id}/shifts` if still nested — prefer the `?participant=` filter on shifts, Task 2.4.)
-- [ ] Filtered cross-link: `GET /participants?…` unchanged; participant's shifts/invoices are served by those slices' `?participant={uuid}` filters (Task 2.4/2.5).
+- [x] Out: join `plan_managers` for its `uuid`; expose `planManagerId` as the plan-manager **uuid** (`PlanManagerUUID *string json:"planManagerId"`), drop the int. The enrichment join already fetches `PlanManagerName` — add `pm.uuid`.
+- [x] In: create/update body `planManagerId` is a plan-manager uuid → resolve to int via a `GetPlanManagerIDByUUID` query before insert; nil/empty stays NULL.
+- [x] `/participants/{participantUUID}`. **Note:** `/participants/{id}/stats` is registered by the **invoice** slice (`internal/invoice/handler.go`), not participant — change its route to `{participantUUID}` there and resolve participant uuid→int in the invoice slice. (Same for `/participants/{id}/shifts` if still nested — prefer the `?participant=` filter on shifts, Task 2.4.)
+- [x] Filtered cross-link: `GET /participants?…` unchanged; participant's shifts/invoices are served by those slices' `?participant={uuid}` filters (Task 2.4/2.5).
 
 ### Task 2.3 — recurring (FK: participant_id, plan_manager_id, tax_rate_id, etc.)
 - [ ] Template + resolve each inbound FK uuid→int; expose each as the related uuid out.
