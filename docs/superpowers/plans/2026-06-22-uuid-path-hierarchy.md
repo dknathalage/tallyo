@@ -163,8 +163,8 @@ r.Delete("/tax-rates/{uuid}", h.Delete)
 
 ### Task 2.1 — custom-items, plan-managers
 Pure template copies (plan-managers has no inbound FK; custom-items none). Same 11 steps each. Plan-managers is referenced BY participants — its by-uuid lookup is also reused in 2.2.
-- [ ] custom-items
-- [ ] plan-managers
+- [x] custom-items (605be32)
+- [x] plan-managers (c2e8ed7; + reusable `GetPlanManagerIDByUUID` query)
 
 ### Task 2.2 — participants (FK: plan_manager_id)
 Template + FK translation:
