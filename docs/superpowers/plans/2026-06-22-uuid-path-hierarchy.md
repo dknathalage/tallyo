@@ -193,7 +193,7 @@ Template + FK translation:
 - [ ] Payments child: `/invoices/{invoiceUUID}/payments`, `DELETE /invoices/{invoiceUUID}/payments/{paymentUUID}`. Resolve invoiceUUID→invoice int id; payments keyed by paymentUUID.
 
 ### Task 2.6 — estimates (mirror of invoices)
-- [ ] Same as 2.5 minus payments, plus `/estimates/{estimateUUID}/duplicate` and `/convert`. `/convert` produces an invoice — return the new invoice's uuid.
+- [x] Same as 2.5 minus payments, plus `/estimates/{estimateUUID}/duplicate` and `/convert`. `/convert` produces an invoice — return the new invoice's uuid.
 
 ### Task 2.7 — business-profile + auth/me + invites
 - [ ] business-profile is a singleton — no id in path, no change beyond confirming JSON `id`=uuid.
