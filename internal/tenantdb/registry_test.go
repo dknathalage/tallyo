@@ -2,6 +2,8 @@ package tenantdb
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +20,15 @@ func newReg(t *testing.T) *Registry {
 	}
 	if err := appdb.MigrateControl(control); err != nil {
 		t.Fatalf("migrate control: %v", err)
+	}
+	// Seed tenant rows so the registry can resolve id->uuid for file names.
+	for id := int64(1); id <= 10; id++ {
+		if _, err := control.Exec(
+			`INSERT INTO tenants (id, uuid, name, status, created_at, updated_at)
+			 VALUES (?, ?, ?, 'active', '2026-01-01', '2026-01-01')`,
+			id, fmt.Sprintf("uuid-%d", id), fmt.Sprintf("Tenant %d", id)); err != nil {
+			t.Fatalf("seed tenant %d: %v", id, err)
+		}
 	}
 	reg := New(control, dir)
 	t.Cleanup(func() { reg.Close() })
@@ -90,5 +101,18 @@ func TestSweep_KeepsFreshHandles(t *testing.T) {
 	// Freshly used → idle TTL not elapsed → Sweep closes nothing.
 	if closed := reg.Sweep(); closed != 0 {
 		t.Fatalf("Sweep closed %d fresh handles, want 0", closed)
+	}
+}
+
+func TestForTenantID_FileNamedByUUID(t *testing.T) {
+	reg := newReg(t)
+
+	if _, err := reg.ForTenantID(3); err != nil {
+		t.Fatalf("ForTenantID(3): %v", err)
+	}
+
+	expected := filepath.Join(reg.dataDir, "tenants", "tenant-uuid-3.db")
+	if _, err := os.Stat(expected); err != nil {
+		t.Fatalf("expected tenant DB file at %s: %v", expected, err)
 	}
 }

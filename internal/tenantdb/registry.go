@@ -39,7 +39,8 @@ type Registry struct {
 
 	mu       sync.Mutex
 	open     map[int64]*entry
-	migrated map[int64]bool // tenant DBs migrated this process
+	migrated map[int64]bool   // tenant DBs migrated this process
+	uuids    map[int64]string // tenant id -> uuid (file name), cached from control
 }
 
 // New builds a registry over an already-open control DB and a data dir. Tenant
@@ -53,6 +54,7 @@ func New(control *sql.DB, dataDir string) *Registry {
 		dataDir:  dataDir,
 		open:     make(map[int64]*entry),
 		migrated: make(map[int64]bool),
+		uuids:    make(map[int64]string),
 	}
 }
 
@@ -83,7 +85,11 @@ func (r *Registry) ForTenantID(id int64) (*sql.DB, error) {
 		return e.db, nil
 	}
 
-	conn, err := appdb.Open(r.path(id))
+	path, err := r.pathLocked(id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := appdb.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("tenantdb: open tenant %d: %w", id, err)
 	}
@@ -103,9 +109,19 @@ func (r *Registry) ForTenantID(id int64) (*sql.DB, error) {
 	return conn, nil
 }
 
-// path is the file for a tenant's DB.
-func (r *Registry) path(id int64) string {
-	return filepath.Join(r.dataDir, "tenants", fmt.Sprintf("tenant-%d.db", id))
+// pathLocked is the file for a tenant's DB, named by the tenant UUID (the stable
+// external handle) rather than the control-DB integer id. The id->uuid mapping is
+// resolved once from the control DB and cached. Caller holds r.mu.
+func (r *Registry) pathLocked(id int64) (string, error) {
+	uuid, ok := r.uuids[id]
+	if !ok {
+		if err := r.control.QueryRowContext(context.Background(),
+			"SELECT uuid FROM tenants WHERE id = ?", id).Scan(&uuid); err != nil {
+			return "", fmt.Errorf("tenantdb: resolve uuid for tenant %d: %w", id, err)
+		}
+		r.uuids[id] = uuid
+	}
+	return filepath.Join(r.dataDir, "tenants", fmt.Sprintf("tenant-%s.db", uuid)), nil
 }
 
 // evictLocked closes the least-recently-used IDLE handle while over capacity.
