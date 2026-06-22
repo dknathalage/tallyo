@@ -254,6 +254,27 @@ func (h *InviteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Revoke deletes a pending invite by its uuid, tenant-scoped. Owner/admin only
+// (gated at the route). An unknown uuid is a no-op delete; we return 204 either
+// way so revoke is idempotent.
+func (h *InviteHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+	u := httpx.UserFrom(r.Context())
+	if u == nil {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	inviteUUID, ok := httpx.ParseUUID(r, "inviteUUID")
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.invites.DeleteByUUID(r.Context(), u.TenantID, inviteUUID); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Validate reports whether a token is usable. It never echoes the token back so
 // it cannot be confirmed/leaked via the response body.
 func (h *InviteHandler) Validate(w http.ResponseWriter, r *http.Request) {

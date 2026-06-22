@@ -68,6 +68,20 @@ func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) erro
 	return err
 }
 
+const deleteInviteByUUID = `-- name: DeleteInviteByUUID :exec
+DELETE FROM invites WHERE tenant_id = ? AND uuid = ?
+`
+
+type DeleteInviteByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUIDParams) error {
+	_, err := q.db.ExecContext(ctx, deleteInviteByUUID, arg.TenantID, arg.Uuid)
+	return err
+}
+
 const getInviteByToken = `-- name: GetInviteByToken :one
 SELECT id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE token = ?
 `

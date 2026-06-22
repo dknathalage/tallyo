@@ -27,8 +27,9 @@ var ErrEmailTaken = errors.New("email already registered")
 // Invite is the domain view of a row in the invites table. Invites are
 // tenant-scoped: an owner/admin invites users into their own tenant (spec §3.2).
 type Invite struct {
-	ID        int64  `json:"id"`
-	TenantID  int64  `json:"tenantId"`
+	ID        int64  `json:"-"`
+	UUID      string `json:"id"`
+	TenantID  int64  `json:"-"`
 	Token     string `json:"token"`
 	Email     string `json:"email"`
 	Role      string `json:"role"`
@@ -115,6 +116,32 @@ func (r *InvitesRepo) GetByToken(ctx context.Context, token string) (*Invite, er
 		return nil, fmt.Errorf("get invite by token: %w", err)
 	}
 	return toInvite(row), nil
+}
+
+// DeleteByUUID revokes a tenant-scoped invite by its uuid and writes one audit
+// row, atomically. A uuid that does not exist in this tenant is a no-op (the
+// DELETE matches no rows); callers translate that to a 404 by pre-checking
+// existence if needed.
+func (r *InvitesRepo) DeleteByUUID(ctx context.Context, tenantID int64, inviteUUID string) error {
+	if tenantID == 0 {
+		return errors.New("delete invite: tenant id required")
+	}
+	if inviteUUID == "" {
+		return errors.New("delete invite: uuid required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{
+		EntityType: "invite",
+		Action:     "delete",
+		Changes:    audit.Changes(map[string]any{"uuid": inviteUUID}),
+	}, func(tx *sql.Tx) error {
+		if err := gen.New(tx).DeleteInviteByUUID(ctx, gen.DeleteInviteByUUIDParams{
+			TenantID: tenantID,
+			Uuid:     inviteUUID,
+		}); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+		return nil
+	})
 }
 
 // Validate returns the invite when it is usable; otherwise ErrInviteInvalid.
@@ -251,6 +278,7 @@ func isUniqueViolation(err error) bool {
 func toInvite(row gen.Invite) *Invite {
 	return &Invite{
 		ID:        row.ID,
+		UUID:      row.Uuid,
 		TenantID:  row.TenantID,
 		Token:     row.Token,
 		Email:     row.Email,

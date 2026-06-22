@@ -44,6 +44,7 @@ type Querier interface {
 	DeleteEstimate(ctx context.Context, arg DeleteEstimateParams) error
 	DeleteEstimateLineItemsForEstimate(ctx context.Context, arg DeleteEstimateLineItemsForEstimateParams) error
 	DeleteInvite(ctx context.Context, arg DeleteInviteParams) error
+	DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUIDParams) error
 	DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) error
 	DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error
 	DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error

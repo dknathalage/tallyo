@@ -120,6 +120,7 @@ func NewServer(deps Deps) *Server {
 			if deps.Invites != nil {
 				// User management is owner/admin only (spec §3.2).
 				pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
+				pr.With(httpx.RequireRole("owner", "admin")).Delete("/invites/{inviteUUID}", deps.Invites.Revoke)
 			}
 			if deps.Events != nil {
 				pr.Get("/events", deps.Events.Stream)

@@ -14,3 +14,6 @@ UPDATE invites SET accepted_at = ? WHERE token = ?;
 
 -- name: DeleteInvite :exec
 DELETE FROM invites WHERE tenant_id = ? AND id = ?;
+
+-- name: DeleteInviteByUUID :exec
+DELETE FROM invites WHERE tenant_id = ? AND uuid = ?;

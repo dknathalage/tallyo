@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -216,6 +217,92 @@ func TestInviteCreateRejectsEmptyEmail(t *testing.T) {
 	defer conn.Close()
 	if _, err := NewInvites(conn).Create(context.Background(), tid, "", "member", owner, time.Hour); err == nil {
 		t.Fatal("empty email must error")
+	}
+}
+
+func TestInviteExposesUUIDAsID(t *testing.T) {
+	conn, tid, owner := mustInviteDB(t)
+	defer conn.Close()
+	inv, err := NewInvites(conn).Create(context.Background(), tid, "u@x.com", "member", owner, time.Hour)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// The DTO carries the uuid (the public id), distinct from the int PK.
+	if inv.UUID == "" {
+		t.Fatal("invite UUID must be non-empty")
+	}
+	b, err := json.Marshal(inv)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["id"] != inv.UUID {
+		t.Fatalf("json id=%v want uuid %q", m["id"], inv.UUID)
+	}
+	// The int PK and tenant id must not leak.
+	if _, ok := m["tenantId"]; ok {
+		t.Fatalf("tenantId must not be in JSON: %v", m)
+	}
+	if s, ok := m["id"].(string); !ok || s == "" {
+		t.Fatalf("id must be a non-empty uuid string, got %v", m["id"])
+	}
+}
+
+func TestDeleteInviteByUUID(t *testing.T) {
+	conn, tid, owner := mustInviteDB(t)
+	defer conn.Close()
+	repo := NewInvites(conn)
+	ctx := context.Background()
+
+	inv, err := repo.Create(ctx, tid, "rm@x.com", "member", owner, time.Hour)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.DeleteByUUID(ctx, tid, inv.UUID); err != nil {
+		t.Fatalf("DeleteByUUID: %v", err)
+	}
+	// gone: the token no longer resolves.
+	got, err := repo.GetByToken(ctx, inv.Token)
+	if err != nil {
+		t.Fatalf("GetByToken after delete: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("invite should be deleted, got %+v", got)
+	}
+}
+
+func TestDeleteInviteByUUIDUnknownIsNoOp(t *testing.T) {
+	conn, tid, _ := mustInviteDB(t)
+	defer conn.Close()
+	// A well-formed but unknown uuid matches no rows → no error (idempotent).
+	if err := NewInvites(conn).DeleteByUUID(context.Background(), tid, "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c"); err != nil {
+		t.Fatalf("unknown uuid delete should be no-op, got %v", err)
+	}
+}
+
+func TestDeleteInviteByUUIDTenantScoped(t *testing.T) {
+	conn, tid, owner := mustInviteDB(t)
+	defer conn.Close()
+	repo := NewInvites(conn)
+	ctx := context.Background()
+	inv, err := repo.Create(ctx, tid, "scope@x.com", "member", owner, time.Hour)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	otherTenant := seedTenant(t, conn, "Other")
+	// Deleting under the wrong tenant must not remove the invite.
+	if err := repo.DeleteByUUID(ctx, otherTenant, inv.UUID); err != nil {
+		t.Fatalf("DeleteByUUID other tenant: %v", err)
+	}
+	got, err := repo.GetByToken(ctx, inv.Token)
+	if err != nil {
+		t.Fatalf("GetByToken: %v", err)
+	}
+	if got == nil {
+		t.Fatal("invite must survive a cross-tenant delete")
 	}
 }
 
