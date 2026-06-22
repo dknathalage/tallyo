@@ -14,6 +14,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
+	uuidpkg "github.com/google/uuid"
 )
 
 // newEstimateServer wires the estimate routes behind RequireSession+ResolveTenant, plus
@@ -40,17 +41,7 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
 			invH.Routes(pr)
-			pr.Get("/estimates", estH.List)
-			pr.Post("/estimates", estH.Create)
-			pr.Post("/estimates/bulk-delete", estH.BulkDelete)
-			pr.Post("/estimates/bulk-status", estH.BulkStatus)
-			pr.Get("/estimates/{id}", estH.Get)
-			pr.Put("/estimates/{id}", estH.Update)
-			pr.Delete("/estimates/{id}", estH.Delete)
-			pr.Post("/estimates/{id}/status", estH.Status)
-			pr.Post("/estimates/{id}/duplicate", estH.Duplicate)
-			pr.Get("/estimates/{id}/pdf", estH.Pdf)
-			pr.Post("/estimates/{id}/convert", estH.Convert)
+			estH.Routes(pr)
 		})
 	})
 
@@ -62,7 +53,7 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 // createEstimate posts a two-line estimate for the given participant and returns
 // the id. Lines total 25. The J10 validation engine computes tax from the lines
 // (no tenant default tax rate → tax 0), so the total equals the subtotal (25).
-func createEstimate(t *testing.T, c *http.Client, base, uuid string, participantID int64) int64 {
+func createEstimate(t *testing.T, c *http.Client, base, uuid string, participantID string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
@@ -80,13 +71,13 @@ func createEstimate(t *testing.T, c *http.Client, base, uuid string, participant
 		t.Fatalf("create estimate: want 201 got %d", resp.StatusCode)
 	}
 	var out struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode estimate: %v", err)
 	}
-	if out.ID <= 0 {
-		t.Fatalf("create estimate: want id>0 got %d", out.ID)
+	if out.ID == "" {
+		t.Fatalf("create estimate: want non-empty uuid got %q", out.ID)
 	}
 	return out.ID
 }
@@ -142,7 +133,7 @@ func TestEstimateGetReturnsLineItems(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id))
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
@@ -166,7 +157,7 @@ func TestEstimateStatusFlip(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/status", `{"status":"sent"}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: want 200 got %d", resp.StatusCode)
@@ -179,7 +170,7 @@ func TestEstimateDuplicate(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/duplicate", `{}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/duplicate", `{}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("duplicate: want 201 got %d", resp.StatusCode)
@@ -202,13 +193,13 @@ func TestEstimateBulkStatusAndDelete(t *testing.T) {
 	a := createEstimate(t, c, srv.URL, uuid, participantID)
 	b := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-status", `{"ids":["`+a+`","`+b+`"],"status":"sent"}`)
 	_ = sr.Body.Close()
 	if sr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-status: want 204 got %d", sr.StatusCode)
 	}
 
-	dr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
+	dr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-delete", `{"ids":["`+a+`","`+b+`"]}`)
 	_ = dr.Body.Close()
 	if dr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", dr.StatusCode)
@@ -222,26 +213,26 @@ func TestEstimateConvert(t *testing.T) {
 	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
 	// A draft estimate cannot be converted.
-	draftResp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/convert", `{}`)
+	draftResp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/convert", `{}`)
 	_ = draftResp.Body.Close()
 	if draftResp.StatusCode != http.StatusConflict {
 		t.Fatalf("convert draft: want 409 got %d", draftResp.StatusCode)
 	}
 
 	// Accept it, then convert.
-	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/status", `{"status":"accepted"}`)
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/status", `{"status":"accepted"}`)
 	_ = sr.Body.Close()
 	if sr.StatusCode != http.StatusOK {
 		t.Fatalf("accept: want 200 got %d", sr.StatusCode)
 	}
 
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/convert", `{}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/convert", `{}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("convert: want 200 got %d", resp.StatusCode)
 	}
 	var res struct {
-		InvoiceID      int64  `json:"invoiceId"`
+		InvoiceUUID    string `json:"id"`
 		InvoiceNumber  string `json:"invoiceNumber"`
 		EstimateNumber string `json:"estimateNumber"`
 	}
@@ -251,8 +242,8 @@ func TestEstimateConvert(t *testing.T) {
 	if res.InvoiceNumber == "" {
 		t.Fatalf("convert: invoiceNumber empty")
 	}
-	if res.InvoiceID <= 0 {
-		t.Fatalf("convert: want invoiceId>0 got %d", res.InvoiceID)
+	if res.InvoiceUUID == "" {
+		t.Fatalf("convert: want non-empty invoice uuid got %q", res.InvoiceUUID)
 	}
 	if res.EstimateNumber != "EST-0001" {
 		t.Fatalf("convert: estimateNumber want EST-0001 got %q", res.EstimateNumber)
@@ -265,17 +256,17 @@ func TestEstimateConvert(t *testing.T) {
 		t.Fatalf("invoice list: want 200 got %d", lr.StatusCode)
 	}
 	var invs []struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(lr.Body).Decode(&invs); err != nil {
 		t.Fatalf("decode invoice list: %v", err)
 	}
-	if len(invs) != 1 || invs[0].ID != res.InvoiceID {
+	if len(invs) != 1 || invs[0].ID != res.InvoiceUUID {
 		t.Fatalf("converted invoice not in list: %+v", invs)
 	}
 
 	// Converting again is a conflict.
-	again := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/convert", `{}`)
+	again := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/convert", `{}`)
 	_ = again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
 		t.Fatalf("convert again: want 409 got %d", again.StatusCode)
@@ -302,7 +293,7 @@ func TestEstimateCreateNoItems400(t *testing.T) {
 func TestEstimateGetMissing404(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/99999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+uuidpkg.NewString())
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing: want 404 got %d", resp.StatusCode)
@@ -312,7 +303,7 @@ func TestEstimateGetMissing404(t *testing.T) {
 func TestEstimateConvertMissing404(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/99999/convert", `{}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+uuidpkg.NewString()+"/convert", `{}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("convert missing: want 404 got %d", resp.StatusCode)
@@ -335,7 +326,7 @@ func TestEstimatePdf(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createEstimate(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+itoa(id)+"/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pdf: want 200 got %d", resp.StatusCode)
@@ -355,7 +346,7 @@ func TestEstimatePdf(t *testing.T) {
 func TestEstimatePdfMissing404(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/99999/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+uuidpkg.NewString()+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing pdf: want 404 got %d", resp.StatusCode)

@@ -12,6 +12,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
+	uuidpkg "github.com/google/uuid"
 )
 
 // itoa formats an int64 id for URL building.
@@ -58,8 +59,8 @@ func newPlanManagerServer(t *testing.T) (*httptest.Server, string) {
 	return srv, tenantUUID
 }
 
-// createPlanManager posts a plan manager with the given name and returns its id.
-func createPlanManager(t *testing.T, c *http.Client, base, uuid, name string) int64 {
+// createPlanManager posts a plan manager with the given name and returns its uuid.
+func createPlanManager(t *testing.T, c *http.Client, base, uuid, name string) string {
 	t.Helper()
 	resp := postJSON(t, c, base+"/api/t/"+uuid+"/plan-managers", `{"name":"`+name+`"}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -67,13 +68,13 @@ func createPlanManager(t *testing.T, c *http.Client, base, uuid, name string) in
 		t.Fatalf("create plan manager %q: want 201 got %d", name, resp.StatusCode)
 	}
 	var out struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode plan manager: %v", err)
 	}
-	if out.ID <= 0 {
-		t.Fatalf("create plan manager: want id>0 got %d", out.ID)
+	if out.ID == "" {
+		t.Fatalf("create plan manager: want non-empty uuid got %q", out.ID)
 	}
 	return out.ID
 }
@@ -97,7 +98,7 @@ func TestPlanManagerCreateAndGet(t *testing.T) {
 	srv, uuid := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
 	id := createPlanManager(t, c, srv.URL, uuid, "Acme")
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+itoa(id))
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+id)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
@@ -107,7 +108,7 @@ func TestPlanManagerCreateAndGet(t *testing.T) {
 func TestPlanManagerGetNotFound404(t *testing.T) {
 	srv, uuid := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/99999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+uuidpkg.NewString())
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing plan manager: want 404 got %d", resp.StatusCode)
@@ -138,7 +139,7 @@ func TestPlanManagerUpdateOK(t *testing.T) {
 	srv, uuid := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
 	id := createPlanManager(t, c, srv.URL, uuid, "Acme")
-	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+itoa(id), `{"name":"Acme Corp"}`)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+id, `{"name":"Acme Corp"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update: want 200 got %d", resp.StatusCode)
@@ -148,7 +149,7 @@ func TestPlanManagerUpdateOK(t *testing.T) {
 func TestPlanManagerUpdateMissing404(t *testing.T) {
 	srv, uuid := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/99999", `{"name":"Nope"}`)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+uuidpkg.NewString(), `{"name":"Nope"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("update missing: want 404 got %d", resp.StatusCode)
@@ -159,7 +160,7 @@ func TestPlanManagerDelete204(t *testing.T) {
 	srv, uuid := newPlanManagerServer(t)
 	c := loggedInClient(t, srv.URL)
 	id := createPlanManager(t, c, srv.URL, uuid, "Acme")
-	resp := delete_(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+itoa(id))
+	resp := delete_(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/"+id)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
@@ -171,7 +172,7 @@ func TestPlanManagerBulkDelete204(t *testing.T) {
 	c := loggedInClient(t, srv.URL)
 	a := createPlanManager(t, c, srv.URL, uuid, "A")
 	b := createPlanManager(t, c, srv.URL, uuid, "B")
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/plan-managers/bulk-delete", `{"ids":["`+a+`","`+b+`"]}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", resp.StatusCode)

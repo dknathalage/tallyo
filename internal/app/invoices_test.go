@@ -13,6 +13,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
+	uuidpkg "github.com/google/uuid"
 )
 
 // newInvoiceServer wires the invoice routes behind RequireSession+ResolveTenant, plus participant
@@ -36,16 +37,7 @@ func newInvoiceServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
-			pr.Get("/invoices", invH.List)
-			pr.Post("/invoices", invH.Create)
-			pr.Post("/invoices/bulk-delete", invH.BulkDelete)
-			pr.Post("/invoices/bulk-status", invH.BulkStatus)
-			pr.Get("/invoices/{id}", invH.Get)
-			pr.Put("/invoices/{id}", invH.Update)
-			pr.Delete("/invoices/{id}", invH.Delete)
-			pr.Post("/invoices/{id}/status", invH.Status)
-			pr.Get("/invoices/{id}/pdf", invH.Pdf)
-			pr.Get("/participants/{id}/stats", invH.ParticipantStats)
+			invH.Routes(pr)
 		})
 	})
 
@@ -59,7 +51,7 @@ func newInvoiceServer(t *testing.T) (*httptest.Server, string) {
 // tax from the lines (these custom lines aren't GST-free but the tenant has no
 // default tax rate → tax 0), so the client-supplied "tax" field is ignored and
 // the total equals the subtotal (25).
-func createInvoice(t *testing.T, c *http.Client, base, uuid string, participantID int64) int64 {
+func createInvoice(t *testing.T, c *http.Client, base, uuid string, participantID string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"participantId": participantID, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
@@ -77,13 +69,13 @@ func createInvoice(t *testing.T, c *http.Client, base, uuid string, participantI
 		t.Fatalf("create invoice: want 201 got %d", resp.StatusCode)
 	}
 	var out struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode invoice: %v", err)
 	}
-	if out.ID <= 0 {
-		t.Fatalf("create invoice: want id>0 got %d", out.ID)
+	if out.ID == "" {
+		t.Fatalf("create invoice: want non-empty uuid got %q", out.ID)
 	}
 	return out.ID
 }
@@ -145,7 +137,7 @@ func TestInvoiceGetReturnsLineItems(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+itoa(id))
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+id)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", resp.StatusCode)
@@ -175,7 +167,7 @@ func TestInvoiceListReturnsArray(t *testing.T) {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
 	}
 	var out []struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
@@ -191,7 +183,7 @@ func TestInvoiceStatusFlip(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+itoa(id)+"/status", `{"status":"sent"}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+id+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: want 200 got %d", resp.StatusCode)
@@ -205,13 +197,13 @@ func TestInvoiceBulkStatusAndDelete(t *testing.T) {
 	a := createInvoice(t, c, srv.URL, uuid, participantID)
 	b := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/bulk-status", `{"ids":[`+itoa(a)+`,`+itoa(b)+`],"status":"sent"}`)
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/bulk-status", `{"ids":["`+a+`","`+b+`"],"status":"sent"}`)
 	_ = sr.Body.Close()
 	if sr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-status: want 204 got %d", sr.StatusCode)
 	}
 
-	dr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/bulk-delete", `{"ids":[`+itoa(a)+`,`+itoa(b)+`]}`)
+	dr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/bulk-delete", `{"ids":["`+a+`","`+b+`"]}`)
 	_ = dr.Body.Close()
 	if dr.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", dr.StatusCode)
@@ -224,7 +216,7 @@ func TestInvoiceParticipantStats(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	_ = createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+itoa(participantID)+"/stats")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+participantID+"/stats")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("stats: want 200 got %d", resp.StatusCode)
@@ -264,7 +256,7 @@ func TestInvoiceCreateNoItems400(t *testing.T) {
 func TestInvoiceGetMissing404(t *testing.T) {
 	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/99999")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+uuidpkg.NewString())
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing: want 404 got %d", resp.StatusCode)
@@ -287,7 +279,7 @@ func TestInvoicePdf(t *testing.T) {
 	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
 	id := createInvoice(t, c, srv.URL, uuid, participantID)
 
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+itoa(id)+"/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+id+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pdf: want 200 got %d", resp.StatusCode)
@@ -307,7 +299,7 @@ func TestInvoicePdf(t *testing.T) {
 func TestInvoicePdfMissing404(t *testing.T) {
 	srv, uuid := newInvoiceServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/99999/pdf")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+uuidpkg.NewString()+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing pdf: want 404 got %d", resp.StatusCode)

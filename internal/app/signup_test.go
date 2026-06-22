@@ -41,16 +41,20 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 	return srv, conn, users, tenants
 }
 
-// tenantUUIDFor looks up a tenant's public UUID by its numeric id (used to build
-// /api/t/<uuid>/... URLs after signup, which only returns the numeric tenantId).
-func tenantUUIDFor(t *testing.T, conn *sql.DB, tenantID int64) string {
+// tenantForEmail looks up the tenant (internal numeric id + public uuid) that
+// owns the given user email. The signup response serializes the owner's user
+// uuid but not the tenant uuid, so the test resolves both from the DB to drive
+// tenant-scoped assertions and /api/t/<uuid>/... URLs.
+func tenantForEmail(t *testing.T, conn *sql.DB, email string) (int64, string) {
 	t.Helper()
+	var id int64
 	var uuid string
 	if err := conn.QueryRowContext(t.Context(),
-		"SELECT uuid FROM tenants WHERE id = ?", tenantID).Scan(&uuid); err != nil {
-		t.Fatalf("tenant uuid lookup: %v", err)
+		"SELECT t.id, t.uuid FROM tenants t JOIN users u ON u.tenant_id = t.id WHERE u.email = ?",
+		email).Scan(&id, &uuid); err != nil {
+		t.Fatalf("tenant lookup for %q: %v", email, err)
 	}
-	return uuid
+	return id, uuid
 }
 
 func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
@@ -64,12 +68,13 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 		t.Fatalf("signup: want 201 got %d", resp.StatusCode)
 	}
 	u := decodeUser(t, resp)
-	if u.Role != "owner" || u.Email != "ada@example.com" || u.Name != "Ada" || u.TenantID == 0 {
+	if u.Role != "owner" || u.Email != "ada@example.com" || u.Name != "Ada" || u.UUID == "" {
 		t.Fatalf("signup owner wrong: %+v", u)
 	}
+	tenantID, tenantUUID := tenantForEmail(t, conn, u.Email)
 
 	// Tenant exists and is active.
-	status, ok, err := tenants.Status(t.Context(), u.TenantID)
+	status, ok, err := tenants.Status(t.Context(), tenantID)
 	if err != nil || !ok || status != auth.StatusActive {
 		t.Fatalf("tenant status: status=%q ok=%v err=%v", status, ok, err)
 	}
@@ -77,7 +82,7 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 	// business_profile created with the form's zone.
 	var name, zone string
 	row := conn.QueryRowContext(t.Context(),
-		"SELECT name, zone FROM business_profile WHERE tenant_id = ?", u.TenantID)
+		"SELECT name, zone FROM business_profile WHERE tenant_id = ?", tenantID)
 	if err := row.Scan(&name, &zone); err != nil {
 		t.Fatalf("business_profile scan: %v", err)
 	}
@@ -86,7 +91,7 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 	}
 
 	// Session is established: /auth/me works with the same cookie jar.
-	me := get(t, c, srv.URL+"/api/t/"+tenantUUIDFor(t, conn, u.TenantID)+"/auth/me")
+	me := get(t, c, srv.URL+"/api/t/"+tenantUUID+"/auth/me")
 	defer func() { _ = me.Body.Close() }()
 	if me.StatusCode != http.StatusOK {
 		t.Fatalf("post-signup me: want 200 got %d", me.StatusCode)
@@ -122,9 +127,10 @@ func TestSignupDefaultZoneNational(t *testing.T) {
 		t.Fatalf("signup: want 201 got %d", resp.StatusCode)
 	}
 	u := decodeUser(t, resp)
+	tenantID, _ := tenantForEmail(t, conn, u.Email)
 	var zone string
 	if err := conn.QueryRowContext(t.Context(),
-		"SELECT zone FROM business_profile WHERE tenant_id = ?", u.TenantID).Scan(&zone); err != nil {
+		"SELECT zone FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&zone); err != nil {
 		t.Fatalf("scan zone: %v", err)
 	}
 	if zone != "national" {
@@ -196,7 +202,7 @@ func TestLoginFailSafeAmbiguousEmail(t *testing.T) {
 	var body struct {
 		TenantRequired bool `json:"tenantRequired"`
 		Tenants        []struct {
-			TenantID int64 `json:"tenantId"`
+			ID string `json:"id"` // tenant uuid (int PK never crosses the API)
 		} `json:"tenants"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -204,6 +210,9 @@ func TestLoginFailSafeAmbiguousEmail(t *testing.T) {
 	}
 	if !body.TenantRequired || len(body.Tenants) != 2 {
 		t.Fatalf("ambiguous login body wrong: %+v", body)
+	}
+	if body.Tenants[0].ID == "" {
+		t.Fatalf("ambiguous login: tenant choice missing uuid: %+v", body)
 	}
 
 	// Disambiguated login WITH tenantId → 200 into the chosen tenant.
@@ -215,8 +224,8 @@ func TestLoginFailSafeAmbiguousEmail(t *testing.T) {
 		t.Fatalf("disambiguated login: want 200 got %d", ok.StatusCode)
 	}
 	u := decodeUser(t, ok)
-	if u.TenantID != t2.ID {
-		t.Fatalf("disambiguated login: want tenant %d got %d", t2.ID, u.TenantID)
+	if u.TenantUUID != t2.UUID {
+		t.Fatalf("disambiguated login: want tenant %q got %q", t2.UUID, u.TenantUUID)
 	}
 }
 

@@ -89,8 +89,8 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 }
 
 // createParticipantWithPlan posts a participant carrying an explicit plan window
-// and returns its id.
-func createParticipantWithPlan(t *testing.T, c *http.Client, base, uuid, planStart, planEnd string) int64 {
+// and returns its uuid.
+func createParticipantWithPlan(t *testing.T, c *http.Client, base, uuid, planStart, planEnd string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
 		"name": "Plan Participant", "planStart": planStart, "planEnd": planEnd,
@@ -104,13 +104,13 @@ func createParticipantWithPlan(t *testing.T, c *http.Client, base, uuid, planSta
 		t.Fatalf("create participant: want 201 got %d", resp.StatusCode)
 	}
 	var out struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode participant: %v", err)
 	}
-	if out.ID <= 0 {
-		t.Fatalf("create participant: want id>0 got %d", out.ID)
+	if out.ID == "" {
+		t.Fatalf("create participant: want non-empty uuid got %q", out.ID)
 	}
 	return out.ID
 }
