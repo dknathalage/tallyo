@@ -281,11 +281,11 @@ Any enrichment join that surfaced an int FK for the SPA to link on must now surf
 
 ### Task 4.1 — catalogue read endpoints by uuid (last int-path surface)
 Phase 4 left the catalogue read routes int-keyed: `GET …/support-catalog/versions/{id}/items` and `…/support-catalog/items/{itemId}/prices` still take int path params, and the catalogue read DTOs (`CatalogVersion`/`SupportItem`/`SupportItemPrice`) serialize int ids. This is the **only remaining int-path surface** — close it for "all paths uuid". The tables already have `uuid` columns (catalog_versions.uuid, support_items.uuid).
-- [ ] Routes: `{id}` → `{versionUUID}`, `{itemId}` → `{itemUUID}`; `ParseUUID`. Queries (support_items.sql / support_item_prices.sql) look up the version/item by uuid (resolve uuid→int internally, or filter by the uuid column directly).
-- [ ] DTOs: `CatalogVersion`/`SupportItem`/`SupportItemPrice` expose `id` = their uuid (int → `json:"-"`); any FK between them (support_items.catalog_version_id, prices.support_item_id) exposed as the related uuid or dropped if redundant (price is always fetched under its item).
-- [ ] SPA: `web/src/lib/api` catalogue types `id` → string; the catalogue browse pages build version/item URLs from the uuid.
-- [ ] Tests: a catalogue read by version/item uuid returns 200; unknown uuid → 404; non-uuid → 400. Frontend `npm run check` stays 0/0.
-- [ ] Gate: `go test ./... -race`, `go build ./...`, `CGO_ENABLED=0 go build ./cmd/tallyo`, `go vet ./...`, `gofmt -l .`, `cd web && npm run check && npm run build` — all clean. Commit — `refactor(catalog): address versions/items by uuid (read endpoints)`.
+- [x] Routes: `{id}` → `{versionUUID}`, `{itemId}` → `{itemUUID}`; `ParseUUID`. Queries (support_items.sql / support_item_prices.sql) look up the version/item by uuid (resolve uuid→int internally, or filter by the uuid column directly).
+- [x] DTOs: `CatalogVersion`/`SupportItem`/`SupportItemPrice` expose `id` = their uuid (int → `json:"-"`); any FK between them (support_items.catalog_version_id, prices.support_item_id) exposed as the related uuid or dropped if redundant (price is always fetched under its item).
+- [x] SPA: `web/src/lib/api` catalogue types `id` → string; the catalogue browse pages build version/item URLs from the uuid.
+- [x] Tests: a catalogue read by version/item uuid returns 200; unknown uuid → 404; non-uuid → 400. Frontend `npm run check` stays 0/0.
+- [x] Gate: `go test ./... -race`, `go build ./...`, `CGO_ENABLED=0 go build ./cmd/tallyo`, `go vet ./...`, `gofmt -l .`, `cd web && npm run check && npm run build` — all clean. Commit — `refactor(catalog): address versions/items by uuid (read endpoints)`.
 
 ---
 
