@@ -7,6 +7,9 @@ SELECT * FROM custom_items WHERE tenant_id = ? AND name LIKE ? ORDER BY name;
 -- name: GetCustomItem :one
 SELECT * FROM custom_items WHERE tenant_id = ? AND uuid = ?;
 
+-- name: GetCustomItemIDByUUID :one
+SELECT id FROM custom_items WHERE tenant_id = ? AND uuid = ?;
+
 -- name: CreateCustomItem :one
 INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

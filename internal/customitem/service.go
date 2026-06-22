@@ -97,6 +97,14 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	return nil
 }
 
+// ResolveCustomItemIDs translates a list of custom-item uuids into their int PKs
+// for the tenant (preserving order). An unknown uuid surfaces as an error so the
+// caller can 400 — bulk operations must not silently drop a member.
+func (s *Service) ResolveCustomItemIDs(ctx context.Context, itemUUIDs []string) ([]int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveCustomItemIDs(ctx, tenantID, itemUUIDs)
+}
+
 // BulkDelete removes multiple custom items, then broadcasts a single bulk_delete
 // event on success.
 func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {

@@ -135,16 +135,22 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// BulkDelete removes every plan manager whose id is in the request body.
+// BulkDelete removes every plan manager whose uuid is in the request body. The
+// uuids are resolved to int PKs first; an unknown uuid → 400.
 func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ids []int64 `json:"ids"`
+		Ids []string `json:"ids"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if err := h.svc.BulkDelete(r.Context(), body.Ids); err != nil {
+	ids, err := h.svc.ResolvePlanManagerIDs(r.Context(), body.Ids)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.BulkDelete(r.Context(), ids); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

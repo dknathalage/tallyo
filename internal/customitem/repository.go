@@ -275,6 +275,25 @@ func (r *Repo) Delete(ctx context.Context, tenantID int64, uuid string) error {
 	})
 }
 
+// ResolveCustomItemIDs translates custom-item uuids into their int PKs
+// (preserving order), tenant-scoped. An unknown uuid is an error so bulk ops can
+// 400.
+func (r *Repo) ResolveCustomItemIDs(ctx context.Context, tenantID int64, itemUUIDs []string) ([]int64, error) {
+	q := gen.New(r.db)
+	out := make([]int64, 0, len(itemUUIDs))
+	for i := range itemUUIDs { // bounded by len(itemUUIDs)
+		id, err := q.GetCustomItemIDByUUID(ctx, gen.GetCustomItemIDByUUIDParams{TenantID: tenantID, Uuid: itemUUIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("unknown custom item %q", itemUUIDs[i])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve custom item uuid: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // BulkDelete removes several custom items and writes one audit row, atomically.
 // An empty id list is a no-op.
 func (r *Repo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {

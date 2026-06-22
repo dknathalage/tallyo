@@ -111,6 +111,22 @@ func (q *Queries) GetCustomItem(ctx context.Context, arg GetCustomItemParams) (C
 	return i, err
 }
 
+const getCustomItemIDByUUID = `-- name: GetCustomItemIDByUUID :one
+SELECT id FROM custom_items WHERE tenant_id = ? AND uuid = ?
+`
+
+type GetCustomItemIDByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemIDByUUIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getCustomItemIDByUUID, arg.TenantID, arg.Uuid)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listCustomItems = `-- name: ListCustomItems :many
 SELECT id, uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? ORDER BY name
 `

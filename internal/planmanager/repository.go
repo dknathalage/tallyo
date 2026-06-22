@@ -259,6 +259,25 @@ func (r *PlanManagersRepo) Delete(ctx context.Context, tenantID int64, uuid stri
 	})
 }
 
+// ResolvePlanManagerIDs translates plan-manager uuids into their int PKs
+// (preserving order), tenant-scoped. An unknown uuid is an error so bulk ops can
+// 400.
+func (r *PlanManagersRepo) ResolvePlanManagerIDs(ctx context.Context, tenantID int64, pmUUIDs []string) ([]int64, error) {
+	q := gen.New(r.db)
+	out := make([]int64, 0, len(pmUUIDs))
+	for i := range pmUUIDs { // bounded by len(pmUUIDs)
+		id, err := q.GetPlanManagerIDByUUID(ctx, gen.GetPlanManagerIDByUUIDParams{TenantID: tenantID, Uuid: pmUUIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("unknown plan manager %q", pmUUIDs[i])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve plan manager uuid: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // BulkDelete removes several plan managers and writes one audit row, atomically.
 // An empty id list is a no-op.
 func (r *PlanManagersRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {

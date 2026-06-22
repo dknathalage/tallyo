@@ -102,6 +102,14 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	return nil
 }
 
+// ResolveParticipantIDs translates a list of participant uuids into their int
+// PKs for the tenant (preserving order). An unknown uuid surfaces as an error so
+// the caller can 400 — bulk operations must not silently drop a member.
+func (s *Service) ResolveParticipantIDs(ctx context.Context, participantUUIDs []string) ([]int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveParticipantIDs(ctx, tenantID, participantUUIDs)
+}
+
 // BulkDelete removes multiple participants, then broadcasts a single bulk_delete
 // event on success.
 func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {

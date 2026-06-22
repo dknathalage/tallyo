@@ -360,6 +360,25 @@ func (r *ParticipantsRepo) Delete(ctx context.Context, tenantID int64, uuid stri
 	})
 }
 
+// ResolveParticipantIDs translates participant uuids into their int PKs
+// (preserving order), tenant-scoped. An unknown uuid is an error so bulk ops can
+// 400.
+func (r *ParticipantsRepo) ResolveParticipantIDs(ctx context.Context, tenantID int64, participantUUIDs []string) ([]int64, error) {
+	q := gen.New(r.db)
+	out := make([]int64, 0, len(participantUUIDs))
+	for i := range participantUUIDs { // bounded by len(participantUUIDs)
+		id, err := q.GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: participantUUIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("unknown participant %q", participantUUIDs[i])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve participant uuid: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // BulkDelete removes several participants and writes one audit row, atomically.
 // An empty id list is a no-op.
 func (r *ParticipantsRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {

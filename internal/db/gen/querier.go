@@ -67,6 +67,7 @@ type Querier interface {
 	GetCatalogVersionByUUID(ctx context.Context, uuid string) (CatalogVersion, error)
 	GetCurrentCatalogVersion(ctx context.Context) (CatalogVersion, error)
 	GetCustomItem(ctx context.Context, arg GetCustomItemParams) (CustomItem, error)
+	GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemIDByUUIDParams) (int64, error)
 	GetDefaultTaxRate(ctx context.Context, tenantID int64) (TaxRate, error)
 	GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEstimateRow, error)
 	GetEstimateByID(ctx context.Context, arg GetEstimateByIDParams) (GetEstimateByIDRow, error)
