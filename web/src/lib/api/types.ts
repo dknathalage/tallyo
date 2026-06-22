@@ -125,16 +125,14 @@ export interface CustomItemInput {
 	metadata: string;
 }
 
-// ---- Global NDIS Support Catalogue (read-only for tenants) ----
+// ---- NDIS Support Catalogue (tenant-owned, read-only for non-admins) ----
 
-// NOTE: the support-catalogue read endpoints still address catalogue rows by their
-// internal int id (catalogue ingest is deferred; these slices were not migrated to
-// uuid). Their `id`/`catalogVersionId`/`supportItemId` are numbers; the pinned
-// uuid refs that cross onto a line item (LineItem.catalogVersionId, etc.) are
-// separate and are uuid strings.
+// The support-catalogue read endpoints address catalogue rows by their uuid:
+// `id` is the version/item uuid (string), and `catalogVersionId` on an item is
+// the owning version's uuid. A price is always fetched under its item, so it
+// carries no id of its own.
 export interface CatalogVersion {
-	id: number;
-	uuid: string;
+	id: string;
 	label: string;
 	effectiveFrom: string;
 	effectiveTo: string;
@@ -143,9 +141,8 @@ export interface CatalogVersion {
 }
 
 export interface SupportItem {
-	id: number;
-	uuid: string;
-	catalogVersionId: number;
+	id: string;
+	catalogVersionId: string;
 	code: string;
 	name: string;
 	unit: string;
@@ -157,8 +154,6 @@ export interface SupportItem {
 }
 
 export interface SupportItemPrice {
-	id: number;
-	supportItemId: number;
 	zone: Zone;
 	priceCap: number | null;
 }

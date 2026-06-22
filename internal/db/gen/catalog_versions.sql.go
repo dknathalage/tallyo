@@ -120,6 +120,17 @@ func (q *Queries) GetCatalogVersionByUUID(ctx context.Context, uuid string) (Cat
 	return i, err
 }
 
+const getCatalogVersionIDByUUID = `-- name: GetCatalogVersionIDByUUID :one
+SELECT id FROM catalog_versions WHERE uuid = ?
+`
+
+func (q *Queries) GetCatalogVersionIDByUUID(ctx context.Context, uuid string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getCatalogVersionIDByUUID, uuid)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getCurrentCatalogVersion = `-- name: GetCurrentCatalogVersion :one
 SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at FROM catalog_versions
 WHERE effective_to IS NULL

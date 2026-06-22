@@ -106,9 +106,9 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 		t.Fatalf("versions = %d, want 1", len(versions))
 	}
 
-	items, err := read.ListSupportItems(ctx, summary.VersionID)
+	items, err := read.ListSupportItemsByVersionUUID(ctx, summary.VersionUUID)
 	if err != nil {
-		t.Fatalf("ListSupportItems: %v", err)
+		t.Fatalf("ListSupportItemsByVersionUUID: %v", err)
 	}
 	if len(items) != 2 {
 		t.Fatalf("items = %d, want 2", len(items))

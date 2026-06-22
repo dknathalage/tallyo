@@ -11,6 +11,9 @@ ORDER BY code;
 -- name: GetSupportItem :one
 SELECT * FROM support_items WHERE id = ?;
 
+-- name: GetSupportItemIDByUUID :one
+SELECT id FROM support_items WHERE uuid = ?;
+
 -- name: GetSupportItemByCode :one
 SELECT * FROM support_items WHERE catalog_version_id = ? AND code = ?;
 

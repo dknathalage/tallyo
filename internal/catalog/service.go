@@ -34,14 +34,43 @@ func (s *Service) GetVersion(ctx context.Context, id int64) (*CatalogVersion, er
 	return s.repo.GetVersion(ctx, id)
 }
 
-// ListSupportItems returns the support items in a catalogue version.
-func (s *Service) ListSupportItems(ctx context.Context, versionID int64) ([]*SupportItem, error) {
-	return s.repo.ListSupportItems(ctx, versionID)
+// ErrNotFound is returned when a version/item uuid resolves to no row. The
+// handler maps it to a 404.
+var ErrNotFound = fmt.Errorf("catalogue resource not found")
+
+// ListSupportItemsByVersionUUID returns the support items in the catalogue
+// version identified by versionUUID. Returns ErrNotFound when no version carries
+// that uuid. Each returned item's CatalogVersionUID is set to versionUUID so the
+// SPA can link item→version by uuid.
+func (s *Service) ListSupportItemsByVersionUUID(ctx context.Context, versionUUID string) ([]*SupportItem, error) {
+	versionID, err := s.repo.ResolveVersionIDByUUID(ctx, versionUUID)
+	if err != nil {
+		return nil, err
+	}
+	if versionID == 0 {
+		return nil, ErrNotFound
+	}
+	items, err := s.repo.ListSupportItems(ctx, versionID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items { // bounded by len(items)
+		items[i].CatalogVersionUID = versionUUID
+	}
+	return items, nil
 }
 
-// ListPrices returns the zone prices for a support item.
-func (s *Service) ListPrices(ctx context.Context, supportItemID int64) ([]*SupportItemPrice, error) {
-	return s.repo.ListPrices(ctx, supportItemID)
+// ListPricesByItemUUID returns the zone prices for the support item identified
+// by itemUUID. Returns ErrNotFound when no item carries that uuid.
+func (s *Service) ListPricesByItemUUID(ctx context.Context, itemUUID string) ([]*SupportItemPrice, error) {
+	itemID, err := s.repo.ResolveSupportItemIDByUUID(ctx, itemUUID)
+	if err != nil {
+		return nil, err
+	}
+	if itemID == 0 {
+		return nil, ErrNotFound
+	}
+	return s.repo.ListPrices(ctx, itemID)
 }
 
 // CatalogMatch is one support item resolved for a service date, enriched with

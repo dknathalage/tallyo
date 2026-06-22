@@ -32,17 +32,20 @@ func TestSupportCatalogGetVersionAndListPrices(t *testing.T) {
 		t.Fatalf("GetVersion = %+v, want id %d", ver, summary.VersionID)
 	}
 
-	items, err := read.ListSupportItems(ctx, summary.VersionID)
+	items, err := read.ListSupportItemsByVersionUUID(ctx, summary.VersionUUID)
 	if err != nil {
-		t.Fatalf("ListSupportItems: %v", err)
+		t.Fatalf("ListSupportItemsByVersionUUID: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("items = %d, want 1", len(items))
 	}
+	if items[0].CatalogVersionUID != summary.VersionUUID {
+		t.Fatalf("item CatalogVersionUID = %q, want %q", items[0].CatalogVersionUID, summary.VersionUUID)
+	}
 
-	prices, err := read.ListPrices(ctx, items[0].ID)
+	prices, err := read.ListPricesByItemUUID(ctx, items[0].UUID)
 	if err != nil {
-		t.Fatalf("ListPrices: %v", err)
+		t.Fatalf("ListPricesByItemUUID: %v", err)
 	}
 	if len(prices) != 3 {
 		t.Fatalf("ListPrices = %d, want 3 zone rows", len(prices))

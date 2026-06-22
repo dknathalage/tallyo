@@ -25,17 +25,17 @@ function createSupportCatalogStore() {
 		}
 	}
 
-	async function loadItems(versionId: number): Promise<SupportItem[]> {
-		if (!Number.isFinite(versionId) || versionId <= 0) {
-			throw new Error('loadItems: versionId must be a positive number');
+	async function loadItems(versionId: string): Promise<SupportItem[]> {
+		if (versionId === '') {
+			throw new Error('loadItems: versionId (uuid) is required');
 		}
 		return (await apiGet<SupportItem[]>(tenantPath(`support-catalog/versions/${versionId}/items`))) ??
 			[];
 	}
 
-	async function loadPrices(itemId: number): Promise<SupportItemPrice[]> {
-		if (!Number.isFinite(itemId) || itemId <= 0) {
-			throw new Error('loadPrices: itemId must be a positive number');
+	async function loadPrices(itemId: string): Promise<SupportItemPrice[]> {
+		if (itemId === '') {
+			throw new Error('loadPrices: itemId (uuid) is required');
 		}
 		return (await apiGet<SupportItemPrice[]>(tenantPath(`support-catalog/items/${itemId}/prices`))) ?? [];
 	}

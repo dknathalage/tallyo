@@ -23,7 +23,7 @@
 	}
 
 	// Selected version + its items.
-	let selectedVersionId = $state<number | null>(null);
+	let selectedVersionId = $state<string | null>(null);
 	let items = $state<SupportItem[]>([]);
 	let itemsLoading = $state(false);
 	let itemsError = $state<string | null>(null);
@@ -38,7 +38,7 @@
 	});
 
 	// Expanded item prices (one at a time).
-	let pricesItemId = $state<number | null>(null);
+	let pricesItemId = $state<string | null>(null);
 	let prices = $state<SupportItemPrice[]>([]);
 	let pricesError = $state<string | null>(null);
 
@@ -275,7 +275,7 @@
 											<p class="text-sm text-gray-500">No published prices.</p>
 										{:else}
 											<div class="flex flex-wrap gap-4 text-sm">
-												{#each prices as price (price.id)}
+												{#each prices as price (price.zone)}
 													<span class="rounded border border-gray-200 bg-white px-3 py-1">
 														{zoneLabel(price.zone)}:
 														<span class="font-medium">{money(price.priceCap)}</span>

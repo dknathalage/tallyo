@@ -132,6 +132,17 @@ func (q *Queries) GetSupportItemByCode(ctx context.Context, arg GetSupportItemBy
 	return i, err
 }
 
+const getSupportItemIDByUUID = `-- name: GetSupportItemIDByUUID :one
+SELECT id FROM support_items WHERE uuid = ?
+`
+
+func (q *Queries) GetSupportItemIDByUUID(ctx context.Context, uuid string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getSupportItemIDByUUID, uuid)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listSupportItems = `-- name: ListSupportItems :many
 
 SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata FROM support_items WHERE catalog_version_id = ? ORDER BY code

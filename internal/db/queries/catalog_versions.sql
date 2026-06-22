@@ -9,6 +9,9 @@ SELECT * FROM catalog_versions WHERE id = ?;
 -- name: GetCatalogVersionByUUID :one
 SELECT * FROM catalog_versions WHERE uuid = ?;
 
+-- name: GetCatalogVersionIDByUUID :one
+SELECT id FROM catalog_versions WHERE uuid = ?;
+
 -- name: ResolveCatalogVersionForDate :one
 SELECT * FROM catalog_versions
 WHERE effective_from <= sqlc.arg(service_date)

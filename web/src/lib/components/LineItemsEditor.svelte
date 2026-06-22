@@ -56,7 +56,7 @@
 	}
 
 	// Price-cap cache keyed by supportItem id → the cap for the tenant zone.
-	let capCache = $state<Record<number, number | null>>({});
+	let capCache = $state<Record<string, number | null>>({});
 
 	async function capFor(item: SupportItem): Promise<number | null> {
 		if (item.id in capCache) return capCache[item.id];

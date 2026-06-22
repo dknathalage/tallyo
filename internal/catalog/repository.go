@@ -23,10 +23,11 @@ import (
 // CatalogRepo — GLOBAL NDIS Support Catalogue (NOT tenant-scoped).
 // ---------------------------------------------------------------------------
 
-// CatalogVersion is the domain view of a row in catalog_versions.
+// CatalogVersion is the domain view of a row in catalog_versions. The public
+// identifier (`id`) is the uuid; the int PK stays internal-only (json:"-").
 type CatalogVersion struct {
-	ID             int64  `json:"id"`
-	UUID           string `json:"uuid"`
+	ID             int64  `json:"-"`
+	UUID           string `json:"id"`
 	Label          string `json:"label"`
 	EffectiveFrom  string `json:"effectiveFrom"`
 	EffectiveTo    string `json:"effectiveTo"`
@@ -34,11 +35,15 @@ type CatalogVersion struct {
 	CreatedAt      string `json:"createdAt"`
 }
 
-// SupportItem is the domain view of a row in support_items.
+// SupportItem is the domain view of a row in support_items. The public
+// identifier (`id`) is the uuid; the int PK stays internal-only. The owning
+// version is exposed as its uuid under `catalogVersionId` (items are listed
+// under a version, so the SPA links item→version by uuid).
 type SupportItem struct {
-	ID                int64  `json:"id"`
-	UUID              string `json:"uuid"`
-	CatalogVersionID  int64  `json:"catalogVersionId"`
+	ID                int64  `json:"-"`
+	UUID              string `json:"id"`
+	CatalogVersionID  int64  `json:"-"`
+	CatalogVersionUID string `json:"catalogVersionId"`
 	Code              string `json:"code"`
 	Name              string `json:"name"`
 	Unit              string `json:"unit"`
@@ -51,10 +56,11 @@ type SupportItem struct {
 
 // SupportItemPrice is the domain view of a row in support_item_prices. PriceCap
 // is nil for quotable items (no fixed cap) — the validation engine skips the
-// over-cap assertion when nil (spec §6 step 4).
+// over-cap assertion when nil (spec §6 step 4). A price is always fetched under
+// its item, so neither the int PK nor the support_item FK crosses the API.
 type SupportItemPrice struct {
-	ID            int64    `json:"id"`
-	SupportItemID int64    `json:"supportItemId"`
+	ID            int64    `json:"-"`
+	SupportItemID int64    `json:"-"`
 	Zone          string   `json:"zone"`
 	PriceCap      *float64 `json:"priceCap"`
 }
@@ -138,6 +144,40 @@ func (r *CatalogRepo) ListSupportItems(ctx context.Context, versionID int64) ([]
 		out = append(out, toSupportItem(rows[i]))
 	}
 	return out, nil
+}
+
+// ResolveVersionIDByUUID maps a catalogue-version uuid to its int PK, returning
+// (0, nil) when no version carries that uuid. Used to translate a public version
+// uuid path param to the internal FK before filtering support_items.
+func (r *CatalogRepo) ResolveVersionIDByUUID(ctx context.Context, versionUUID string) (int64, error) {
+	if versionUUID == "" {
+		return 0, errors.New("resolve version id: uuid required")
+	}
+	id, err := gen.New(r.db).GetCatalogVersionIDByUUID(ctx, versionUUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve version id by uuid: %w", err)
+	}
+	return id, nil
+}
+
+// ResolveSupportItemIDByUUID maps a support-item uuid to its int PK, returning
+// (0, nil) when no item carries that uuid. Used to translate a public item uuid
+// path param to the internal FK before filtering support_item_prices.
+func (r *CatalogRepo) ResolveSupportItemIDByUUID(ctx context.Context, itemUUID string) (int64, error) {
+	if itemUUID == "" {
+		return 0, errors.New("resolve support item id: uuid required")
+	}
+	id, err := gen.New(r.db).GetSupportItemIDByUUID(ctx, itemUUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve support item id by uuid: %w", err)
+	}
+	return id, nil
 }
 
 // SearchSupportItems returns the support items in a version whose code or name

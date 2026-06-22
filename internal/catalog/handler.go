@@ -1,9 +1,9 @@
 package catalog
 
 import (
+	"errors"
 	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/go-chi/chi/v5"
@@ -31,8 +31,8 @@ func NewHandler(svc *Service, ingest *IngestService) *Handler {
 // authenticated /api group by the composition root.
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/support-catalog/versions", h.ListVersions)
-	r.Get("/support-catalog/versions/{id}/items", h.ListItems)
-	r.Get("/support-catalog/items/{itemId}/prices", h.ListPrices)
+	r.Get("/support-catalog/versions/{versionUUID}/items", h.ListItems)
+	r.Get("/support-catalog/items/{itemUUID}/prices", h.ListPrices)
 	// DEFERRED: catalogue XLSX ingest. Route reserved + wired (ParseXLSX is
 	// retained), now gated to owner/admin like other tenant resources rather
 	// than platform-admin. No new upload UI this pass.
@@ -107,15 +107,20 @@ func (h *Handler) ListVersions(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, versions)
 }
 
-// ListItems returns the support items in a catalogue version. The {id} path
-// param is the version id.
+// ListItems returns the support items in a catalogue version. The
+// {versionUUID} path param is the version uuid. A non-uuid path 400s; an unknown
+// uuid 404s.
 func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	versionUUID, ok := httpx.ParseUUID(r, "versionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	items, err := h.svc.ListSupportItems(r.Context(), id)
+	items, err := h.svc.ListSupportItemsByVersionUUID(r.Context(), versionUUID)
+	if errors.Is(err, ErrNotFound) {
+		httpx.WriteError(w, http.StatusNotFound, "catalogue version not found")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -123,16 +128,20 @@ func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
-// ListPrices returns the zone prices for a support item. The {itemId} path param
-// is the support item id.
+// ListPrices returns the zone prices for a support item. The {itemUUID} path
+// param is the support item uuid. A non-uuid path 400s; an unknown uuid 404s.
 func (h *Handler) ListPrices(w http.ResponseWriter, r *http.Request) {
-	itemID, err := strconv.ParseInt(chi.URLParam(r, "itemId"), 10, 64)
-	if err != nil || itemID <= 0 {
+	itemUUID, ok := httpx.ParseUUID(r, "itemUUID")
+	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
-	prices, perr := h.svc.ListPrices(r.Context(), itemID)
-	if perr != nil {
+	prices, err := h.svc.ListPricesByItemUUID(r.Context(), itemUUID)
+	if errors.Is(err, ErrNotFound) {
+		httpx.WriteError(w, http.StatusNotFound, "support item not found")
+		return
+	}
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
