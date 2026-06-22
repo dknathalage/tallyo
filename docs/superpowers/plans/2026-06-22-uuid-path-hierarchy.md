@@ -179,13 +179,14 @@ Template + FK translation:
 - [x] `/recurring/{recurringUUID}` and `POST /recurring/{recurringUUID}/generate`.
 
 ### Task 2.4 — shifts (FK: participant_id; owned child: line items)
-- [ ] Template for the shift itself; `/shifts/{shiftUUID}`, `/shifts/{shiftUUID}/status`, `/shifts/{shiftUUID}/divide`. **Note:** `POST /shifts/import` is currently wired in `internal/app/server.go` (not the shift `Routes`) → it has no `{id}`, so no path change, but keep it consistent; leave the wiring as-is unless trivially movable.
-- [ ] Add `?participant={participantUUID}` filter (resolve participant uuid→int, filter `shifts.participant_id`). Replaces the old nested participant→shifts read.
-- [ ] Child items nest one level: `/shifts/{shiftUUID}/items`, `/shifts/{shiftUUID}/items/{itemUUID}` (GET/POST/PATCH/DELETE). Resolve `shiftUUID`→shift row, then operate on items by `itemUUID` scoped to that shift's int id.
-- [ ] Out: shift JSON `id`=shift uuid, `participantId`=participant uuid; item `id`=item uuid. Catalogue refs (`supportItemId`, `catalogVersionId`) are already uuid TEXT — pass through unchanged.
+- [x] Template for the shift itself; `/shifts/{shiftUUID}`, `/shifts/{shiftUUID}/status`, `/shifts/{shiftUUID}/divide`. **Note:** `POST /shifts/import` is currently wired in `internal/app/server.go` (not the shift `Routes`) → it has no `{id}`, so no path change, but keep it consistent; leave the wiring as-is unless trivially movable.
+- [x] Add `?participant={participantUUID}` filter (resolve participant uuid→int, filter `shifts.participant_id`). Replaces the old nested participant→shifts read.
+- [x] Child items nest one level: `/shifts/{shiftUUID}/items`, `/shifts/{shiftUUID}/items/{itemUUID}` (GET/POST/PATCH/DELETE). Resolve `shiftUUID`→shift row, then operate on items by `itemUUID` scoped to that shift's int id.
+- [x] Out: shift JSON `id`=shift uuid, `participantId`=participant uuid; item `id`=item uuid. Catalogue refs (`supportItemId`, `catalogVersionId`) are already uuid TEXT — pass through unchanged.
 
 ### Task 2.5 — invoices (FK: participant_id; owned children: payments; embedded line items)
-- [ ] Template for invoice; `/invoices/{invoiceUUID}` + `/status`, `/pdf`, `/bulk-delete`, `/bulk-status`, `/draft-from-shifts` (body: shift **uuids** → resolve to int ids).
+> **Inherited from Task 2.4 (commit fc8770a):** shared `billing.LineItem` is already retagged `ID json:"-"`, `UUID json:"id"` — embedded line-item `id` is already the uuid. **Do NOT re-tag the line-item id.** Reusable resolvers exist: `gen.GetParticipantIDByUUID`, `gen.GetShiftIDByUUID`/`GetShiftByID`. The `shiftId`/`invoiceId` int FKs still on `billing.LineItem` are a Phase 3 concern, not this task.
+- [ ] Template for invoice; `/invoices/{invoiceUUID}` + `/status`, `/pdf`, `/bulk-delete`, `/bulk-status`, `/draft-from-shifts` (body: shift **uuids** → resolve to int ids via `GetShiftIDByUUID`).
 - [ ] `?participant={participantUUID}` filter.
 - [ ] Out: `id`=invoice uuid, `participantId`=participant uuid; embedded `lineItems[].id`=line uuid (already present).
 - [ ] In: `lineItems` array — each line's catalogue refs already uuid; resolve inbound `participantId` uuid→int.
