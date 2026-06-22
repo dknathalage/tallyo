@@ -74,7 +74,7 @@ type RecurringTemplate struct {
 // RecurringLine is one line in a template's stored line_items JSON.
 type RecurringLine struct {
 	SupportItemID *string `json:"supportItemId"` // control-DB support_items.uuid
-	CustomItemID  *int64  `json:"customItemId"`
+	CustomItemID  *string `json:"customItemId"`  // tenant custom_items.uuid
 	Code          string  `json:"code"`
 	Description   string  `json:"description"`
 	Unit          string  `json:"unit"`

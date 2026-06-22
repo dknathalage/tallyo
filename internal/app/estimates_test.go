@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
@@ -32,6 +33,7 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 	estH := estimate.NewHandler(estimate.NewService(conn, conn, hub))
 	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, shift.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
 	pH := participant.NewHandler(participant.NewService(conn, hub))
+	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
@@ -40,6 +42,7 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/participants", pH.Create)
+			ciH.Routes(pr)
 			invH.Routes(pr)
 			estH.Routes(pr)
 		})
@@ -350,5 +353,81 @@ func TestEstimatePdfMissing404(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing pdf: want 404 got %d", resp.StatusCode)
+	}
+}
+
+// TestEstimateLineItemCustomItemRoundTrips verifies a custom-item uuid set on an
+// estimate line item round-trips on GET.
+func TestEstimateLineItemCustomItemRoundTrips(t *testing.T) {
+	srv, uuid := newEstimateServer(t)
+	c := loggedInClient(t, srv.URL)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	customItemID := createCustomItem(t, c, srv.URL, uuid, "Mileage")
+
+	body, err := json.Marshal(map[string]any{
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"lineItems": []map[string]any{
+			{"description": "Trip", "quantity": 3, "unitPrice": 0.85, "sortOrder": 0, "customItemId": customItemID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates", string(body))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: want 201 got %d", resp.StatusCode)
+	}
+	var est struct {
+		ID        string `json:"id"`
+		LineItems []struct {
+			CustomItemID *string `json:"customItemId"`
+		} `json:"lineItems"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&est); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(est.LineItems) != 1 || est.LineItems[0].CustomItemID == nil || *est.LineItems[0].CustomItemID != customItemID {
+		t.Fatalf("create customItemId: want %q got %v", customItemID, est.LineItems)
+	}
+
+	getResp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+est.ID)
+	defer func() { _ = getResp.Body.Close() }()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("get: want 200 got %d", getResp.StatusCode)
+	}
+	var got struct {
+		LineItems []struct {
+			CustomItemID *string `json:"customItemId"`
+		} `json:"lineItems"`
+	}
+	if err := json.NewDecoder(getResp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode get: %v", err)
+	}
+	if len(got.LineItems) != 1 || got.LineItems[0].CustomItemID == nil || *got.LineItems[0].CustomItemID != customItemID {
+		t.Fatalf("get customItemId: want %q got %v", customItemID, got.LineItems)
+	}
+}
+
+// TestEstimateLineItemUnknownCustomItem400 verifies an unknown custom-item uuid
+// on an estimate line item is rejected.
+func TestEstimateLineItemUnknownCustomItem400(t *testing.T) {
+	srv, uuid := newEstimateServer(t)
+	c := loggedInClient(t, srv.URL)
+	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+
+	body, err := json.Marshal(map[string]any{
+		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"lineItems": []map[string]any{
+			{"description": "Trip", "quantity": 1, "unitPrice": 5, "sortOrder": 0, "customItemId": uuidpkg.NewString()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates", string(body))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown custom item: want 400 got %d", resp.StatusCode)
 	}
 }

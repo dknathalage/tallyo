@@ -430,7 +430,7 @@ func (r *ShiftsRepo) ListItems(ctx context.Context, tenantID, shiftID int64) ([]
 	}
 	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		out = append(out, billing.LineItemFromRow(rows[i]))
+		out = append(out, billing.LineItemFromRow(billing.LineItemRowFromShiftList(rows[i])))
 	}
 	return out, nil
 }
@@ -447,7 +447,7 @@ func (r *ShiftsRepo) GetItem(ctx context.Context, tenantID, itemID int64) (*bill
 	if err != nil {
 		return nil, fmt.Errorf("get shift item: %w", err)
 	}
-	return billing.LineItemFromRow(row), nil
+	return billing.LineItemFromRow(billing.LineItemRowFromGet(row)), nil
 }
 
 // CountItems returns how many UNBILLED items the shift carries.
@@ -477,7 +477,12 @@ func (r *ShiftsRepo) CreateItem(ctx context.Context, tenantID, shiftID int64, in
 	err := audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "line_item", EntityID: shiftID, Action: "create",
 	}, func(tx *sql.Tx) error {
-		row, e := gen.New(tx).CreateLineItem(ctx, lineItemParams(tenantID, &shiftID, in))
+		q := gen.New(tx)
+		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
+		if e != nil {
+			return e
+		}
+		row, e := q.CreateLineItem(ctx, lineItemParams(tenantID, &shiftID, customItemID, in))
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
 		}
@@ -504,9 +509,14 @@ func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in 
 	err := audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "line_item", EntityID: itemID, Action: "update",
 	}, func(tx *sql.Tx) error {
-		_, e := gen.New(tx).UpdateShiftLineItem(ctx, gen.UpdateShiftLineItemParams{
+		q := gen.New(tx)
+		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
+		if e != nil {
+			return e
+		}
+		_, e = q.UpdateShiftLineItem(ctx, gen.UpdateShiftLineItemParams{
 			SupportItemID:    db.NullStr(in.SupportItemID),
-			CustomItemID:     db.NullID(in.CustomItemID),
+			CustomItemID:     customItemID,
 			CatalogVersionID: db.NullStr(in.CatalogVersionID),
 			Code:             db.NzMaybe(in.Code),
 			Description:      in.Description,
@@ -589,7 +599,7 @@ func (r *ShiftsRepo) GetItemByUUID(ctx context.Context, tenantID, shiftID int64,
 	if err != nil {
 		return nil, fmt.Errorf("get shift item by uuid: %w", err)
 	}
-	return billing.LineItemFromRow(row), nil
+	return billing.LineItemFromRow(billing.LineItemRowFromShiftUUID(row)), nil
 }
 
 // UpdateItemByUUID rewrites an UNBILLED shift item addressed by uuid (scoped to
@@ -606,9 +616,14 @@ func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int
 	var item *billing.LineItem
 	var missing bool
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
-		row, e := gen.New(tx).UpdateShiftLineItemByUUID(ctx, gen.UpdateShiftLineItemByUUIDParams{
+		q := gen.New(tx)
+		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
+		if e != nil {
+			return e
+		}
+		row, e := q.UpdateShiftLineItemByUUID(ctx, gen.UpdateShiftLineItemByUUIDParams{
 			SupportItemID:    db.NullStr(in.SupportItemID),
-			CustomItemID:     db.NullID(in.CustomItemID),
+			CustomItemID:     customItemID,
 			CatalogVersionID: db.NullStr(in.CatalogVersionID),
 			Code:             db.NzMaybe(in.Code),
 			Description:      in.Description,
@@ -631,7 +646,7 @@ func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int
 		if e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		item = billing.LineItemFromRow(row)
+		item = billing.LineItemFromRow(lineItemRowFromGen(row, in.CustomItemID))
 		return audit.Log(ctx, tx, audit.Entry{EntityType: "line_item", EntityID: row.ID, Action: "update"})
 	})
 	if missing {
@@ -671,16 +686,31 @@ func (r *ShiftsRepo) DeleteItemByUUID(ctx context.Context, tenantID, shiftID int
 	})
 }
 
+// lineItemRowFromGen adapts a bare gen.LineItem (an UPDATE/INSERT RETURNING *
+// row, which carries no custom-item join) into a billing.LineItemRow, stamping
+// the custom-item uuid from the resolved inbound value so customItemId
+// round-trips without a re-read.
+func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItemRow {
+	return billing.LineItemRow{
+		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: db.NullStr(customItemUUID),
+		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+	}
+}
+
 // lineItemParams builds the gen insert params for a line item. shiftID nil = an
-// invoice-only line; here it is always set (shift item, invoice_id NULL).
-func lineItemParams(tenantID int64, shiftID *int64, in billing.LineItemInput) gen.CreateLineItemParams {
+// invoice-only line; here it is always set (shift item, invoice_id NULL). The
+// inbound custom-item uuid is resolved to the int FK by the caller and passed in.
+func lineItemParams(tenantID int64, shiftID *int64, customItemID sql.NullInt64, in billing.LineItemInput) gen.CreateLineItemParams {
 	return gen.CreateLineItemParams{
 		Uuid:             uuid.NewString(),
 		TenantID:         tenantID,
 		ShiftID:          db.NullID(shiftID),
 		InvoiceID:        sql.NullInt64{}, // unbilled shift item
 		SupportItemID:    db.NullStr(in.SupportItemID),
-		CustomItemID:     db.NullID(in.CustomItemID),
+		CustomItemID:     customItemID,
 		CatalogVersionID: db.NullStr(in.CatalogVersionID),
 		Code:             db.NzMaybe(in.Code),
 		Description:      in.Description,

@@ -235,12 +235,16 @@ func createEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimateID int64, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
-		_, err := q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
+		customItemID, err := billing.ResolveCustomItemID(ctx, q, tenantID, it.CustomItemID)
+		if err != nil {
+			return fmt.Errorf("insert estimate line item %d: %w", i, err)
+		}
+		_, err = q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
 			EstimateID:       estimateID,
 			SupportItemID:    db.NullStr(it.SupportItemID),
-			CustomItemID:     db.NullID(it.CustomItemID),
+			CustomItemID:     customItemID,
 			CatalogVersionID: db.NullStr(it.CatalogVersionID),
 			Code:             db.NzMaybe(it.Code),
 			Description:      it.Description,
@@ -764,7 +768,7 @@ func lineItemsToInput(items []*billing.LineItem) []billing.LineItemInput {
 		it := items[i]
 		out = append(out, billing.LineItemInput{
 			SupportItemID:    it.SupportItemID,
-			CustomItemID:     it.CustomItemID,
+			CustomItemID:     it.CustomItemUUID,
 			CatalogVersionID: it.CatalogVersionID,
 			Code:             it.Code,
 			Description:      it.Description,
@@ -886,8 +890,9 @@ func estimateFieldsFromParticipant(r gen.ListParticipantEstimatesRow) estimateFi
 	}
 }
 
-// mapEstimateLineItems maps generated rows to domain line items (non-nil).
-func mapEstimateLineItems(rows []gen.EstimateLineItem) []*billing.LineItem {
+// mapEstimateLineItems maps generated joined rows to domain line items
+// (non-nil); customItemId surfaces as the custom-item uuid.
+func mapEstimateLineItems(rows []gen.ListEstimateLineItemsRow) []*billing.LineItem {
 	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		out = append(out, toEstimateLineItem(rows[i]))
@@ -895,14 +900,15 @@ func mapEstimateLineItems(rows []gen.EstimateLineItem) []*billing.LineItem {
 	return out
 }
 
-// toEstimateLineItem maps one generated estimate line item to the shared
+// toEstimateLineItem maps one generated joined estimate line item to the shared
 // LineItem domain shape.
-func toEstimateLineItem(row gen.EstimateLineItem) *billing.LineItem {
+func toEstimateLineItem(row gen.ListEstimateLineItemsRow) *billing.LineItem {
 	return &billing.LineItem{
 		ID:               row.ID,
 		UUID:             row.Uuid,
 		SupportItemID:    db.PtrStr(row.SupportItemID),
 		CustomItemID:     db.PtrID(row.CustomItemID),
+		CustomItemUUID:   db.PtrStr(row.CustomItemUuid),
 		CatalogVersionID: db.PtrStr(row.CatalogVersionID),
 		Code:             row.Code.String,
 		Description:      row.Description,

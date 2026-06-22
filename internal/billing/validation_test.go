@@ -439,7 +439,7 @@ func TestValidateCustomItemSkipsCatalogChecks(t *testing.T) {
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	// No catalogue seeded at all.
 	v := NewLineValidator(conn, conn)
-	cid := int64(1)
+	cid := "11111111-1111-1111-1111-111111111111"
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		{CustomItemID: &cid, Description: "Mileage", Quantity: 3, UnitPrice: 0.85},
@@ -457,7 +457,7 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	v := NewLineValidator(conn, conn)
-	cid := int64(1)
+	cid := "11111111-1111-1111-1111-111111111111"
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		{CustomItemID: &cid, Description: "Bad", Quantity: -1, UnitPrice: -5},

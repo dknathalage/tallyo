@@ -1,6 +1,7 @@
 package invoice
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -110,6 +111,10 @@ func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req invoi
 // writes a 422 envelope and returns true. Otherwise it writes nothing and
 // returns false so callers can fall through to generic error handling.
 func writeValidationError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, billing.ErrUnknownCustomItem) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
+		return true
+	}
 	ve, ok := billing.AsValidationError(err)
 	if !ok || ve == nil {
 		return false

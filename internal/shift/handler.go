@@ -263,6 +263,10 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := h.svc.AddItemByShiftUUID(r.Context(), shiftUUID, in)
 	if err != nil {
+		if errors.Is(err, billing.ErrUnknownCustomItem) {
+			httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
+			return
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -292,6 +296,10 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := h.svc.UpdateItemByShiftUUID(r.Context(), shiftUUID, itemUUID, in)
 	if err != nil {
+		if errors.Is(err, billing.ErrUnknownCustomItem) {
+			httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
+			return
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

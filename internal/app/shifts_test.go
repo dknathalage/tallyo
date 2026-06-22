@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
@@ -25,6 +26,7 @@ type shiftFixture struct {
 	ctx             context.Context
 	tenantID        int64
 	participantUUID string
+	customItemUUID  string
 }
 
 // newShiftFixture migrates a temp DB, seeds a tenant+participant, and mounts the
@@ -46,6 +48,15 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 		t.Fatalf("seed participant: want uuid got %+v", part)
 	}
 
+	ciSvc := customitem.NewService(conn, hub)
+	ci, err := ciSvc.Create(ctx, customitem.CustomItemInput{Name: "Mileage", Rate: 0.85, Unit: "km"})
+	if err != nil {
+		t.Fatalf("seed custom item: %v", err)
+	}
+	if ci == nil || ci.UUID == "" {
+		t.Fatalf("seed custom item: want uuid got %+v", ci)
+	}
+
 	h := shift.NewHandler(shift.NewService(conn, conn, hub, invoice.NewInvoices(conn)), nil)
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -63,6 +74,7 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 		ctx:             ctx,
 		tenantID:        tenantID,
 		participantUUID: part.UUID,
+		customItemUUID:  ci.UUID,
 	}
 }
 
@@ -332,4 +344,81 @@ func mustJSON(t *testing.T, v any) string {
 		t.Fatalf("marshal: %v", err)
 	}
 	return string(b)
+}
+
+// TestShiftItemCustomItemRoundTrips verifies a custom-item uuid set on a shift
+// line item round-trips on GET; an unknown custom-item uuid is rejected.
+func TestShiftItemCustomItemRoundTrips(t *testing.T) {
+	f := newShiftFixture(t)
+	shiftBody, err := json.Marshal(map[string]any{
+		"participantId": f.participantUUID, "serviceDate": "2026-01-05", "note": "x",
+	})
+	if err != nil {
+		t.Fatalf("marshal shift: %v", err)
+	}
+	s := f.createShift(t, string(shiftBody))
+
+	itemBody, err := json.Marshal(map[string]any{
+		"description": "Trip", "quantity": 3, "unitPrice": 0.85, "customItemId": f.customItemUUID,
+	})
+	if err != nil {
+		t.Fatalf("marshal item: %v", err)
+	}
+	resp := f.do(t, http.MethodPost, "/shifts/"+s.UUID+"/items", string(itemBody))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(resp.Body)
+		t.Fatalf("add item: want 201 got %d (%s)", resp.StatusCode, buf.String())
+	}
+	var item struct {
+		ID           string  `json:"id"`
+		CustomItemID *string `json:"customItemId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&item); err != nil {
+		t.Fatalf("decode item: %v", err)
+	}
+	if item.CustomItemID == nil || *item.CustomItemID != f.customItemUUID {
+		t.Fatalf("add customItemId: want %q got %v", f.customItemUUID, item.CustomItemID)
+	}
+
+	listResp := f.do(t, http.MethodGet, "/shifts/"+s.UUID+"/items", "")
+	defer func() { _ = listResp.Body.Close() }()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("list items: want 200 got %d", listResp.StatusCode)
+	}
+	var items []struct {
+		CustomItemID *string `json:"customItemId"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&items); err != nil {
+		t.Fatalf("decode items: %v", err)
+	}
+	if len(items) != 1 || items[0].CustomItemID == nil || *items[0].CustomItemID != f.customItemUUID {
+		t.Fatalf("list customItemId: want %q got %v", f.customItemUUID, items)
+	}
+}
+
+// TestShiftItemUnknownCustomItem400 verifies an unknown custom-item uuid on a
+// shift item add is rejected.
+func TestShiftItemUnknownCustomItem400(t *testing.T) {
+	f := newShiftFixture(t)
+	shiftBody, err := json.Marshal(map[string]any{
+		"participantId": f.participantUUID, "serviceDate": "2026-01-05", "note": "x",
+	})
+	if err != nil {
+		t.Fatalf("marshal shift: %v", err)
+	}
+	s := f.createShift(t, string(shiftBody))
+
+	itemBody, err := json.Marshal(map[string]any{
+		"description": "Trip", "quantity": 1, "unitPrice": 5, "customItemId": uuidpkg.NewString(),
+	})
+	if err != nil {
+		t.Fatalf("marshal item: %v", err)
+	}
+	resp := f.do(t, http.MethodPost, "/shifts/"+s.UUID+"/items", string(itemBody))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown custom item: want 400 got %d", resp.StatusCode)
+	}
 }

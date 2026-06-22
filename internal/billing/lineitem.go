@@ -3,14 +3,67 @@
 package billing
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
 )
 
-// LineItemFromRow maps one generated line_items row to the domain shape. Shared
-// by the invoice and shift slices (both read the central line_items table).
-func LineItemFromRow(row gen.LineItem) *LineItem {
+// ResolveCustomItemID translates an inbound custom-item uuid into its int FK,
+// tenant-scoped, for a line-item write. An empty/nil uuid → NULL FK; an unknown
+// uuid → ErrUnknownCustomItem so the handler can 400. The int FK never crosses
+// the API — storage stays int-based, resolved here at the write boundary.
+func ResolveCustomItemID(ctx context.Context, q *gen.Queries, tenantID int64, customItemUUID *string) (sql.NullInt64, error) {
+	if customItemUUID == nil || *customItemUUID == "" {
+		return sql.NullInt64{}, nil
+	}
+	id, err := q.GetCustomItemIDByUUID(ctx, gen.GetCustomItemIDByUUIDParams{TenantID: tenantID, Uuid: *customItemUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return sql.NullInt64{}, fmt.Errorf("%w: %q", ErrUnknownCustomItem, *customItemUUID)
+	}
+	if err != nil {
+		return sql.NullInt64{}, fmt.Errorf("resolve custom item uuid: %w", err)
+	}
+	return sql.NullInt64{Int64: id, Valid: true}, nil
+}
+
+// ErrUnknownCustomItem is returned by ResolveCustomItemID when an inbound
+// custom-item uuid matches no tenant custom item. Handlers map it to a 400.
+var ErrUnknownCustomItem = errors.New("unknown custom item")
+
+// LineItemRow is the joined central line_items row (the row + the related
+// custom-item uuid). The four by-* reads of line_items all produce the same
+// shape; each gen row type is converted to this before mapping so the API can
+// surface customItemId as the custom-item uuid rather than the int FK.
+type LineItemRow struct {
+	ID               int64
+	Uuid             string
+	ShiftID          sql.NullInt64
+	InvoiceID        sql.NullInt64
+	SupportItemID    sql.NullString
+	CustomItemID     sql.NullInt64
+	CustomItemUuid   sql.NullString
+	CatalogVersionID sql.NullString
+	Code             sql.NullString
+	Description      string
+	ServiceDate      sql.NullString
+	Unit             sql.NullString
+	StartTime        sql.NullString
+	EndTime          sql.NullString
+	Quantity         float64
+	UnitPrice        float64
+	GstFree          int64
+	LineTotal        float64
+	SortOrder        sql.NullInt64
+}
+
+// LineItemFromRow maps one joined central line_items row to the domain shape.
+// Shared by the invoice and shift slices (both read the central line_items
+// table). customItemId surfaces as the custom-item uuid (nil when no custom
+// item); the int FK stays internal.
+func LineItemFromRow(row LineItemRow) *LineItem {
 	return &LineItem{
 		ID:               row.ID,
 		UUID:             row.Uuid,
@@ -18,6 +71,7 @@ func LineItemFromRow(row gen.LineItem) *LineItem {
 		InvoiceID:        ptrInt(row.InvoiceID),
 		SupportItemID:    ptrStr(row.SupportItemID),
 		CustomItemID:     ptrInt(row.CustomItemID),
+		CustomItemUUID:   ptrStr(row.CustomItemUuid),
 		CatalogVersionID: ptrStr(row.CatalogVersionID),
 		Code:             row.Code.String,
 		Description:      row.Description,
@@ -30,6 +84,48 @@ func LineItemFromRow(row gen.LineItem) *LineItem {
 		GstFree:          row.GstFree == 1,
 		LineTotal:        row.LineTotal,
 		SortOrder:        row.SortOrder.Int64,
+	}
+}
+
+// LineItemRowFromInvoice/Shift/Get/ShiftUUID adapt the four generated joined
+// row types (all structurally identical) into the shared LineItemRow.
+func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
+	return LineItemRow{
+		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+	}
+}
+
+func LineItemRowFromShiftList(r gen.ListLineItemsForShiftRow) LineItemRow {
+	return LineItemRow{
+		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+	}
+}
+
+func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
+	return LineItemRow{
+		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+	}
+}
+
+func LineItemRowFromShiftUUID(r gen.GetShiftLineItemByUUIDRow) LineItemRow {
+	return LineItemRow{
+		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
 }
 
@@ -58,7 +154,8 @@ type LineItem struct {
 	ShiftID          *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent shift, so the parent ref is redundant on the API
 	InvoiceID        *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent invoice, so the parent ref is redundant on the API
 	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
-	CustomItemID     *int64  `json:"customItemId"`     // tenant-local
+	CustomItemID     *int64  `json:"-"`                // internal tenant-local FK; the public ref is the uuid
+	CustomItemUUID   *string `json:"customItemId"`     // tenant custom_items.uuid (nil when no custom item)
 	CatalogVersionID *string `json:"catalogVersionId"` // control-DB catalog_versions.uuid
 	Code             string  `json:"code"`
 	Description      string  `json:"description"`
@@ -77,7 +174,7 @@ type LineItem struct {
 // (round2(quantity*unitPrice)) when not explicitly supplied.
 type LineItemInput struct {
 	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
-	CustomItemID     *int64  `json:"customItemId"`     // tenant-local
+	CustomItemID     *string `json:"customItemId"`     // tenant custom_items.uuid (resolved to the int FK at the write boundary)
 	CatalogVersionID *string `json:"catalogVersionId"` // control-DB catalog_versions.uuid
 	Code             string  `json:"code"`
 	Description      string  `json:"description"`

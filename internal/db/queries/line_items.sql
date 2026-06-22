@@ -1,15 +1,27 @@
 -- name: ListLineItemsForInvoice :many
-SELECT * FROM line_items WHERE tenant_id = ? AND invoice_id = ? ORDER BY sort_order, id;
+SELECT li.*, ci.uuid AS custom_item_uuid
+FROM line_items li
+LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
+WHERE li.tenant_id = ? AND li.invoice_id = ? ORDER BY li.sort_order, li.id;
 
 -- name: ListLineItemsForShift :many
-SELECT * FROM line_items WHERE tenant_id = ? AND shift_id = ? ORDER BY id;
+SELECT li.*, ci.uuid AS custom_item_uuid
+FROM line_items li
+LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
+WHERE li.tenant_id = ? AND li.shift_id = ? ORDER BY li.id;
 
 -- name: GetLineItem :one
-SELECT * FROM line_items WHERE tenant_id = ? AND id = ?;
+SELECT li.*, ci.uuid AS custom_item_uuid
+FROM line_items li
+LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
+WHERE li.tenant_id = ? AND li.id = ?;
 
 -- name: GetShiftLineItemByUUID :one
 -- A shift's line item addressed by its uuid, scoped to the owning shift's int id.
-SELECT * FROM line_items WHERE tenant_id = ? AND shift_id = ? AND uuid = ?;
+SELECT li.*, ci.uuid AS custom_item_uuid
+FROM line_items li
+LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
+WHERE li.tenant_id = ? AND li.shift_id = ? AND li.uuid = ?;
 
 -- name: CreateLineItem :one
 INSERT INTO line_items (

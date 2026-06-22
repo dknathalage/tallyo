@@ -329,7 +329,7 @@ func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceIn
 // totalsFromRows sums line totals from already-priced line_items rows. Tax is 0
 // (NDIS GST-free lines carry no tax; gst-bearing lines already fold tax into
 // their unit price upstream — same as the human invoice path).
-func totalsFromRows(rows []gen.LineItem) billing.Totals {
+func totalsFromRows(rows []gen.ListLineItemsForInvoiceRow) billing.Totals {
 	var subtotal float64
 	for i := range rows { // bounded by len(rows)
 		subtotal += billing.Round2(rows[i].LineTotal)
@@ -384,13 +384,17 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
-		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
+		customItemID, err := billing.ResolveCustomItemID(ctx, q, tenantID, it.CustomItemID)
+		if err != nil {
+			return fmt.Errorf("insert line item %d: %w", i, err)
+		}
+		_, err = q.CreateLineItem(ctx, gen.CreateLineItemParams{
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
 			ShiftID:          sql.NullInt64{}, // invoice lines from this path are not shift items
 			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
 			SupportItemID:    db.NullStr(it.SupportItemID),
-			CustomItemID:     db.NullID(it.CustomItemID),
+			CustomItemID:     customItemID,
 			CatalogVersionID: db.NullStr(it.CatalogVersionID),
 			Code:             db.NzMaybe(it.Code),
 			Description:      it.Description,
@@ -973,11 +977,12 @@ func nullStrPtr(ns sql.NullString) *string {
 	return &s
 }
 
-// mapLineItems maps generated line item rows to domain line items (non-nil).
-func mapLineItems(rows []gen.LineItem) []*billing.LineItem {
+// mapLineItems maps generated joined line item rows to domain line items
+// (non-nil); customItemId surfaces as the custom-item uuid.
+func mapLineItems(rows []gen.ListLineItemsForInvoiceRow) []*billing.LineItem {
 	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		out = append(out, billing.LineItemFromRow(rows[i]))
+		out = append(out, billing.LineItemFromRow(billing.LineItemRowFromInvoice(rows[i])))
 	}
 	return out
 }

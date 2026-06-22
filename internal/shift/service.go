@@ -479,7 +479,7 @@ func (s *Service) priceItem(ctx context.Context, tenantID, participantID int64, 
 func itemToInput(it *billing.LineItem) billing.LineItemInput {
 	return billing.LineItemInput{
 		SupportItemID:    it.SupportItemID,
-		CustomItemID:     it.CustomItemID,
+		CustomItemID:     it.CustomItemUUID,
 		CatalogVersionID: it.CatalogVersionID,
 		Code:             it.Code,
 		Description:      it.Description,
