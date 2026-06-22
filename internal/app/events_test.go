@@ -47,9 +47,12 @@ func TestEventsStreamsBroadcast(t *testing.T) {
 
 	// give the handler a moment to subscribe, then broadcast
 	time.Sleep(50 * time.Millisecond)
-	hub.Broadcast(realtime.Event{TenantID: testTenant, Entity: "invoice", ID: 7, Action: "update"})
+	const invoiceUUID = "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c"
+	hub.Broadcast(realtime.Event{TenantID: testTenant, Entity: "invoice", UUID: invoiceUUID, Action: "update"})
 
-	// read lines until we see a data: frame containing the event
+	// read lines until we see a data: frame containing the event. The payload "id"
+	// is the entity uuid (a string), never an int PK (spec: int PK never crosses
+	// the API).
 	reader := bufio.NewReader(resp.Body)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -57,7 +60,7 @@ func TestEventsStreamsBroadcast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read: %v", err)
 		}
-		if strings.HasPrefix(line, "data:") && strings.Contains(line, `"invoice"`) && strings.Contains(line, `"id":7`) {
+		if strings.HasPrefix(line, "data:") && strings.Contains(line, `"invoice"`) && strings.Contains(line, `"id":"`+invoiceUUID+`"`) {
 			return // success
 		}
 	}
@@ -89,7 +92,7 @@ func TestEventsStreamsThroughMiddleware(t *testing.T) {
 	}
 
 	time.Sleep(50 * time.Millisecond)
-	hub.Broadcast(realtime.Event{TenantID: testTenant, Entity: "business_profile", ID: 1, Action: "update"})
+	hub.Broadcast(realtime.Event{TenantID: testTenant, Entity: "business_profile", UUID: "", Action: "update"})
 
 	reader := bufio.NewReader(resp.Body)
 	deadline := time.Now().Add(2 * time.Second)

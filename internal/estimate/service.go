@@ -172,7 +172,7 @@ func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: est.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "create"})
 	return est, nil
 }
 
@@ -192,27 +192,43 @@ func (s *Service) Update(ctx context.Context, id int64, in EstimateInput, items 
 	if est == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "update"})
 	return est, nil
 }
 
-// UpdateStatus sets the estimate status, then broadcasts on success.
+// UpdateStatus sets the estimate status, then broadcasts on success. The row's
+// uuid is resolved first so the post-commit event carries the public id.
 func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
+	est, err := s.repo.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if est == nil {
+		return nil
+	}
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "status"})
 	return nil
 }
 
-// Delete removes an estimate, then broadcasts on success.
+// Delete removes an estimate, then broadcasts on success. The row's uuid is
+// resolved first so the post-commit event carries the public id.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
+	est, err := s.repo.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if est == nil {
+		return nil
+	}
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "delete"})
 	return nil
 }
 
@@ -223,7 +239,7 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (*Estimate, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: est.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "create"})
 	return est, nil
 }
 
@@ -233,7 +249,7 @@ func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: "", Action: "bulk_delete"})
 	return nil
 }
 
@@ -243,7 +259,7 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status stri
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: 0, Action: "bulk_status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: "", Action: "bulk_status"})
 	return nil
 }
 
@@ -252,6 +268,13 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status stri
 // returns the result. ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
 func (s *Service) Convert(ctx context.Context, id int64) (*ConvertResult, error) {
 	tenantID := reqctx.MustTenant(ctx)
+	est, err := s.repo.Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if est == nil {
+		return nil, nil
+	}
 	res, err := s.repo.Convert(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
@@ -259,7 +282,7 @@ func (s *Service) Convert(ctx context.Context, id int64) (*ConvertResult, error)
 	if res == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", ID: id, Action: "convert"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: res.InvoiceID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "convert"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: res.InvoiceUUID, Action: "create"})
 	return res, nil
 }

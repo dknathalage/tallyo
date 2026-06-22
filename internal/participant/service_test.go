@@ -30,7 +30,7 @@ func TestParticipantCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "participant" || e.ID != c.ID || e.Action != "create" {
+		if e.Entity != "participant" || e.UUID != c.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want participant/%d/create", e, c.ID)
 		}
 	case <-time.After(time.Second):
@@ -71,7 +71,7 @@ func TestParticipantBulkDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "participant" || e.ID != 0 || e.Action != "bulk_delete" {
+		if e.Entity != "participant" || e.UUID != "" || e.Action != "bulk_delete" {
 			t.Fatalf("event=%+v want participant/0/bulk_delete", e)
 		}
 	case <-time.After(time.Second):

@@ -20,10 +20,16 @@ var ErrAmbiguousEmail = errors.New("email registered in multiple tenants")
 
 // User is the domain view of a row in the users table. It deliberately omits
 // the password hash so callers never receive credential material.
+//
+// Public-id contract (spec: "int PK never crosses the API"): the serialized
+// identifier is the user's uuid (json:"id") and the tenant is identified by the
+// tenant uuid (json:"tenantId"). The int PKs (ID, TenantID) are server-side only
+// and tagged json:"-".
 type User struct {
-	ID              int64  `json:"id"`
-	UUID            string `json:"uuid"`
-	TenantID        int64  `json:"tenantId"`
+	ID              int64  `json:"-"`  // internal PK
+	UUID            string `json:"id"` // public identifier (user uuid)
+	TenantID        int64  `json:"-"`  // internal tenant FK
+	TenantUUID      string `json:"tenantId"`
 	Email           string `json:"email"`
 	Name            string `json:"name"`
 	Role            string `json:"role"`
@@ -95,7 +101,7 @@ func (r *UsersRepo) Create(ctx context.Context, tenantID int64, email, hash, nam
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
-	return toUser(created), nil
+	return r.fillTenantUUID(ctx, toUser(created))
 }
 
 // GetByEmail returns a tenant's user by email, or (nil, nil) when none matches.
@@ -107,7 +113,7 @@ func (r *UsersRepo) GetByEmail(ctx context.Context, tenantID int64, email string
 	if err != nil {
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
-	return toUser(row), nil
+	return r.fillTenantUUID(ctx, toUser(row))
 }
 
 // GetByEmailGlobal returns the user with the given email regardless of tenant,
@@ -120,7 +126,7 @@ func (r *UsersRepo) GetByEmailGlobal(ctx context.Context, email string) (*User, 
 	if err != nil {
 		return nil, fmt.Errorf("get user by email global: %w", err)
 	}
-	return toUser(row), nil
+	return r.fillTenantUUID(ctx, toUser(row))
 }
 
 // GetByID returns a tenant's user by id (used by the auth-guard middleware), or
@@ -133,7 +139,7 @@ func (r *UsersRepo) GetByID(ctx context.Context, tenantID, id int64) (*User, err
 	if err != nil {
 		return nil, fmt.Errorf("get user by id: %w", err)
 	}
-	return toUser(row), nil
+	return r.fillTenantUUID(ctx, toUser(row))
 }
 
 // Credentials carries the fields needed to authenticate and establish a session.
@@ -158,10 +164,15 @@ func (r *UsersRepo) CountByEmailGlobal(ctx context.Context, email string) (int64
 
 // EmailTenant identifies one tenant in which an email is registered. Returned by
 // TenantsForEmail so an ambiguous login can prompt the user to choose a tenant.
+//
+// Public-id contract (spec: "int PK never crosses the API"): the tenant is
+// identified by its uuid, serialized as "id". The int TenantID is server-side
+// only (json:"-"); it stays on the struct because the login flow uses it to
+// scope the credential lookup.
 type EmailTenant struct {
-	TenantID   int64  `json:"tenantId"`
+	TenantID   int64  `json:"-"`  // internal tenant PK (used by login, not serialized)
+	TenantUUID string `json:"id"` // public tenant identifier (uuid)
 	TenantName string `json:"tenantName"`
-	TenantUUID string `json:"tenantUuid"`
 	Role       string `json:"role"`
 }
 
@@ -226,15 +237,26 @@ func (r *UsersRepo) GetCredentialsForTenant(ctx context.Context, tenantID int64,
 	return Credentials{ID: row.ID, TenantID: row.TenantID, Hash: row.PasswordHash}, true, nil
 }
 
-// List returns a tenant's users ordered by id.
+// List returns a tenant's users ordered by id. Every row shares the tenant uuid,
+// so it is resolved once and stamped onto each User (public tenant identifier).
 func (r *UsersRepo) List(ctx context.Context, tenantID int64) ([]*User, error) {
 	rows, err := gen.New(r.db).ListUsers(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
+	var tenantUUID string
+	if len(rows) > 0 {
+		t, terr := gen.New(r.db).GetTenant(ctx, tenantID)
+		if terr != nil {
+			return nil, fmt.Errorf("list users: resolve tenant uuid: %w", terr)
+		}
+		tenantUUID = t.Uuid
+	}
 	out := make([]*User, 0, len(rows))
-	for i := range rows {
-		out = append(out, toUser(rows[i]))
+	for i := range rows { // bounded by len(rows)
+		u := toUser(rows[i])
+		u.TenantUUID = tenantUUID
+		out = append(out, u)
 	}
 	return out, nil
 }
@@ -275,6 +297,9 @@ func bi(b bool) int64 {
 }
 
 // toUser maps a generated row to the domain User, dropping the password hash.
+// TenantUUID is left empty here; callers that surface the User to clients fill it
+// via fillTenantUUID (a single tenant lookup) so the public tenant identifier is
+// the tenant uuid, never the int PK.
 func toUser(row gen.User) *User {
 	return &User{
 		ID:              row.ID,
@@ -286,4 +311,21 @@ func toUser(row gen.User) *User {
 		IsPlatformAdmin: row.IsPlatformAdmin == 1,
 		LastLoginAt:     row.LastLoginAt.String,
 	}
+}
+
+// fillTenantUUID resolves and sets u.TenantUUID from u.TenantID so the serialized
+// User exposes the tenant by its public uuid. A nil user is returned unchanged.
+func (r *UsersRepo) fillTenantUUID(ctx context.Context, u *User) (*User, error) {
+	if u == nil {
+		return nil, nil
+	}
+	if u.TenantID == 0 {
+		return u, nil
+	}
+	t, err := gen.New(r.db).GetTenant(ctx, u.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve tenant uuid: %w", err)
+	}
+	u.TenantUUID = t.Uuid
+	return u, nil
 }

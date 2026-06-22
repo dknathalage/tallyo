@@ -58,7 +58,7 @@ func (s *Service) Create(ctx context.Context, in RecurringInput) (*RecurringTemp
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "create"})
 	return tpl, nil
 }
 
@@ -74,7 +74,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in RecurringInput) (*
 	if tpl == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "update"})
 	return tpl, nil
 }
 
@@ -92,7 +92,7 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "delete"})
 	return nil
 }
 
@@ -115,8 +115,8 @@ func (s *Service) GenerateOne(ctx context.Context, uuid string) (*invoice.Invoic
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "generate"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "generate"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
 	return inv, nil
 }
 
@@ -143,7 +143,7 @@ func (s *Service) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]G
 		return nil, err
 	}
 	if len(gens) > 0 {
-		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "recurring_sweep"})
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "recurring_sweep"})
 	}
 	return gens, nil
 }

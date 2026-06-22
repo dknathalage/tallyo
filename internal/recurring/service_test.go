@@ -20,7 +20,7 @@ func TestRecurringCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "recurring_template" || e.ID != tpl.ID || e.Action != "create" {
+		if e.Entity != "recurring_template" || e.UUID != tpl.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want recurring_template/%d/create", e, tpl.ID)
 		}
 	case <-time.After(time.Second):
@@ -54,9 +54,9 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 		select {
 		case e := <-ch:
 			switch {
-			case e.Entity == "recurring_template" && e.ID == tpl.ID && e.Action == "generate":
+			case e.Entity == "recurring_template" && e.UUID == tpl.UUID && e.Action == "generate":
 				gotGenerate = true
-			case e.Entity == "invoice" && e.ID == inv.ID && e.Action == "create":
+			case e.Entity == "invoice" && e.UUID == inv.UUID && e.Action == "create":
 				gotCreate = true
 			default:
 				t.Fatalf("unexpected event=%+v", e)

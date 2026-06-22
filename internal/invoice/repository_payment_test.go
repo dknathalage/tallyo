@@ -60,11 +60,11 @@ func TestPaymentDeleteReturnsInvoiceID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	gotInv, err := repo.Delete(ctx, tid, p.ID)
-	if err != nil || gotInv != invID {
-		t.Fatalf("Delete = %d err=%v, want %d", gotInv, err, invID)
+	gotUUID, gotInv, err := repo.Delete(ctx, tid, p.ID)
+	if err != nil || gotInv != invID || gotUUID != p.UUID {
+		t.Fatalf("Delete = (%q,%d) err=%v, want (%q,%d)", gotUUID, gotInv, err, p.UUID, invID)
 	}
-	if _, err := repo.Delete(ctx, tid, 99999); !errors.Is(err, sql.ErrNoRows) {
+	if _, _, err := repo.Delete(ctx, tid, 99999); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("Delete missing err = %v, want sql.ErrNoRows", err)
 	}
 }
@@ -90,7 +90,7 @@ func TestPaymentTenantIsolation(t *testing.T) {
 		t.Fatalf("tenant B TotalPaid = %v, want 0", total)
 	}
 	// Tenant B cannot delete tenant A's payment.
-	if _, err := repo.Delete(ctx, b, p.ID); !errors.Is(err, sql.ErrNoRows) {
+	if _, _, err := repo.Delete(ctx, b, p.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("tenant B Delete A's payment err = %v, want sql.ErrNoRows", err)
 	}
 }

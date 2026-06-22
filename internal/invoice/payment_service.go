@@ -47,8 +47,12 @@ func (s *PaymentService) Create(ctx context.Context, in PaymentInput) (*Payment,
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: p.ID, Action: "create"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: in.InvoiceID, Action: "update"})
+	invoiceUUID, err := s.repo.InvoiceUUID(ctx, tenantID, in.InvoiceID)
+	if err != nil {
+		return nil, err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", UUID: p.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: invoiceUUID, Action: "update"})
 	return p, nil
 }
 
@@ -57,23 +61,27 @@ func (s *PaymentService) Create(ctx context.Context, in PaymentInput) (*Payment,
 // update so the balance refreshes.
 func (s *PaymentService) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
-	invoiceID, err := s.repo.Delete(ctx, tenantID, id)
+	paymentUUID, invoiceID, err := s.repo.Delete(ctx, tenantID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: id, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: invoiceID, Action: "update"})
+	invoiceUUID, err := s.repo.InvoiceUUID(ctx, tenantID, invoiceID)
+	if err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", UUID: paymentUUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: invoiceUUID, Action: "update"})
 	return nil
 }
 
 // DeleteByUUID removes a payment addressed by its uuid under the given invoice
 // int id. A missing payment (or one under another invoice) surfaces
 // sql.ErrNoRows so the handler can 404; on success it broadcasts a payment
-// delete plus an invoice update so the balance refreshes. The SSE Event.ID keeps
-// the int PK (resolved from the deleted row's invoice id; Phase 2.8 retypes it).
+// delete plus an invoice update so the balance refreshes. The SSE events carry
+// the payment uuid and the invoice uuid — no int PK crosses the API.
 func (s *PaymentService) DeleteByUUID(ctx context.Context, invoiceID int64, paymentUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	deletedInvoiceID, err := s.repo.DeleteByUUID(ctx, tenantID, invoiceID, paymentUUID)
@@ -83,7 +91,11 @@ func (s *PaymentService) DeleteByUUID(ctx context.Context, invoiceID int64, paym
 	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: 0, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: deletedInvoiceID, Action: "update"})
+	invoiceUUID, err := s.repo.InvoiceUUID(ctx, tenantID, deletedInvoiceID)
+	if err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", UUID: paymentUUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: invoiceUUID, Action: "update"})
 	return nil
 }

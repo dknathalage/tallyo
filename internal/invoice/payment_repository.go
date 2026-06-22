@@ -128,9 +128,8 @@ func (r *PaymentsRepo) TotalPaid(ctx context.Context, tenantID, invoiceID int64)
 // Delete removes a payment and writes one audit row, atomically. It returns the
 // deleted payment's invoice id so the caller can broadcast an invoice update.
 // A missing payment surfaces sql.ErrNoRows so the caller can 404.
-func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (int64, error) {
-	var invoiceID int64
-	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (paymentUUID string, invoiceID int64, err error) {
+	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		p, e := q.GetPayment(ctx, gen.GetPaymentParams{TenantID: tenantID, ID: id})
 		if e != nil {
@@ -139,6 +138,7 @@ func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (int64, e
 		if e := q.DeletePayment(ctx, gen.DeletePaymentParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
+		paymentUUID = p.Uuid
 		invoiceID = p.InvoiceID
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "payment",
@@ -148,12 +148,12 @@ func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (int64, e
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, sql.ErrNoRows
+		return "", 0, sql.ErrNoRows
 	}
 	if err != nil {
-		return 0, fmt.Errorf("delete payment: %w", err)
+		return "", 0, fmt.Errorf("delete payment: %w", err)
 	}
-	return invoiceID, nil
+	return paymentUUID, invoiceID, nil
 }
 
 // ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
@@ -167,6 +167,20 @@ func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID int64, inv
 		return 0, fmt.Errorf("resolve invoice uuid: %w", err)
 	}
 	return id, nil
+}
+
+// InvoiceUUID returns the public uuid of an invoice by its int PK (tenant-scoped),
+// or "" when no invoice matches. Used to broadcast the invoice-update SSE event
+// after a payment mutation without leaking the int PK.
+func (r *PaymentsRepo) InvoiceUUID(ctx context.Context, tenantID, invoiceID int64) (string, error) {
+	row, err := gen.New(r.db).GetInvoiceByID(ctx, gen.GetInvoiceByIDParams{TenantID: tenantID, ID: invoiceID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve invoice uuid: %w", err)
+	}
+	return row.Uuid, nil
 }
 
 // DeleteByUUID removes a payment addressed by its uuid, scoped to the owning

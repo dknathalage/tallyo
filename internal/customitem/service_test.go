@@ -70,7 +70,7 @@ func TestCustomItemCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.ID != item.ID || e.Action != "create" {
+		if e.Entity != "custom_item" || e.UUID != item.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want custom_item/%d/create", e, item.ID)
 		}
 	case <-time.After(time.Second):
@@ -111,7 +111,7 @@ func TestCustomItemBulkDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.ID != 0 || e.Action != "bulk_delete" {
+		if e.Entity != "custom_item" || e.UUID != "" || e.Action != "bulk_delete" {
 			t.Fatalf("event=%+v want custom_item/0/bulk_delete", e)
 		}
 	case <-time.After(time.Second):
@@ -189,7 +189,7 @@ func TestCustomItemUpdateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.ID != item.ID || e.Action != "update" {
+		if e.Entity != "custom_item" || e.UUID != item.UUID || e.Action != "update" {
 			t.Fatalf("event=%+v want custom_item/%d/update", e, item.ID)
 		}
 	case <-time.After(time.Second):
@@ -226,7 +226,7 @@ func TestCustomItemDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.ID != item.ID || e.Action != "delete" {
+		if e.Entity != "custom_item" || e.UUID != item.UUID || e.Action != "delete" {
 			t.Fatalf("event=%+v want custom_item/%d/delete", e, item.ID)
 		}
 	case <-time.After(time.Second):

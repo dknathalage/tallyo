@@ -133,7 +133,7 @@ func (s *Service) Create(ctx context.Context, in ShiftInput) (*Shift, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "create"})
 	return sh, nil
 }
 
@@ -159,7 +159,7 @@ func (s *Service) Update(ctx context.Context, shiftUUID string, in ShiftInput) (
 			return nil, err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "update"})
 	return sh, nil
 }
 
@@ -203,7 +203,7 @@ func (s *Service) UpdateStatus(ctx context.Context, shiftUUID, status string) er
 	if err := s.repo.UpdateStatus(ctx, tenantID, shiftUUID, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "update"})
 	return nil
 }
 
@@ -226,7 +226,7 @@ func (s *Service) Delete(ctx context.Context, shiftUUID string) error {
 	if err := s.repo.Delete(ctx, tenantID, shiftUUID); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "delete"})
 	return nil
 }
 
@@ -289,7 +289,7 @@ func (s *Service) MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []i
 			return err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "bill"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "bill"})
 	return nil
 }
 
@@ -335,7 +335,7 @@ func (s *Service) AddItem(ctx context.Context, shiftID int64, in billing.LineIte
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: shiftID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "update"})
 	return item, nil
 }
 
@@ -389,7 +389,7 @@ func (s *Service) AddItemByShiftUUID(ctx context.Context, shiftUUID string, in b
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "update"})
 	return item, nil
 }
 
@@ -419,7 +419,7 @@ func (s *Service) UpdateItemByShiftUUID(ctx context.Context, shiftUUID, itemUUID
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: sh.ID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "update"})
 	return item, nil
 }
 
@@ -437,18 +437,27 @@ func (s *Service) DeleteItemByShiftUUID(ctx context.Context, shiftUUID, itemUUID
 	if err := s.repo.DeleteItemByUUID(ctx, tenantID, shiftID, itemUUID); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: shiftID, Action: "update"})
+	// The event names the changed shift; shiftUUID is its public id.
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: shiftUUID, Action: "update"})
 	return nil
 }
 
 // ClearUnbilledItems removes all of a shift's unbilled items (used to make a
-// re-divide idempotent). Broadcasts on success.
+// re-divide idempotent). Broadcasts on success. Resolves the shift's uuid first
+// so the post-commit event carries the public id, not the int PK.
 func (s *Service) ClearUnbilledItems(ctx context.Context, shiftID int64) error {
 	tenantID := reqctx.MustTenant(ctx)
+	sh, err := s.repo.Get(ctx, tenantID, shiftID)
+	if err != nil {
+		return err
+	}
+	if sh == nil {
+		return nil
+	}
 	if err := s.repo.DeleteUnbilledItems(ctx, tenantID, shiftID); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: shiftID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: sh.UUID, Action: "update"})
 	return nil
 }
 

@@ -35,10 +35,15 @@ const GlobalTenantID int64 = 0
 // TenantID routes the event: a real tenant id (>=1) reaches only that tenant's
 // subscribers; GlobalTenantID (0) reaches all subscribers. TenantID is NOT
 // serialized to clients — it is a server-side routing field only.
+//
+// UUID is the changed entity's public identifier (a uuid string). The SPA uses
+// it to know which entity changed and refetch. Int primary keys never cross the
+// API (spec: "int PK never crosses the API"), so the payload carries the uuid,
+// not the int PK. Bulk/sweep events that touch no single entity carry "".
 type Event struct {
 	TenantID int64  `json:"-"`
 	Entity   string `json:"entity"`
-	ID       int64  `json:"id"`
+	UUID     string `json:"id"`
 	Action   string `json:"action"`
 }
 

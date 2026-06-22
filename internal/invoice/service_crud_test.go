@@ -158,7 +158,7 @@ func TestInvoiceDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.ID != inv.ID || e.Action != "delete" {
+		if e.Entity != "invoice" || e.UUID != inv.UUID || e.Action != "delete" {
 			t.Fatalf("event=%+v want invoice/%d/delete", e, inv.ID)
 		}
 	case <-time.After(time.Second):
@@ -189,7 +189,7 @@ func TestInvoiceBulkDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.ID != 0 || e.Action != "bulk_delete" {
+		if e.Entity != "invoice" || e.UUID != "" || e.Action != "bulk_delete" {
 			t.Fatalf("event=%+v want invoice/0/bulk_delete", e)
 		}
 	case <-time.After(time.Second):
@@ -220,7 +220,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.ID != 0 || e.Action != "bulk_status" {
+		if e.Entity != "invoice" || e.UUID != "" || e.Action != "bulk_status" {
 			t.Fatalf("event=%+v want invoice/0/bulk_status", e)
 		}
 	case <-time.After(time.Second):

@@ -35,6 +35,6 @@ func (s *Service) Save(ctx context.Context, in BusinessProfileInput) error {
 	if err := s.repo.Save(ctx, tenantID, in); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "business_profile", ID: 1, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "business_profile", UUID: "", Action: "update"})
 	return nil
 }

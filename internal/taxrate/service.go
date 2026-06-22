@@ -60,7 +60,7 @@ func (s *Service) Create(ctx context.Context, in TaxRateInput) (*TaxRate, error)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", ID: t.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", UUID: t.UUID, Action: "create"})
 	return t, nil
 }
 
@@ -75,7 +75,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in TaxRateInput) (*Ta
 	if t == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", ID: t.ID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", UUID: t.UUID, Action: "update"})
 	return t, nil
 }
 
@@ -93,6 +93,6 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", ID: t.ID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", UUID: t.UUID, Action: "delete"})
 	return nil
 }

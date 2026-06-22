@@ -30,7 +30,7 @@ func TestTaxRateCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "tax_rate" || e.ID != tr.ID || e.Action != "create" {
+		if e.Entity != "tax_rate" || e.UUID != tr.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want tax_rate/%d/create", e, tr.ID)
 		}
 	case <-time.After(time.Second):

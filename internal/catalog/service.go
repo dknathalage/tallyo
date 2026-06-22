@@ -185,7 +185,7 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 	// The NDIS Support Catalogue is GLOBAL shared reference data (spec §4.3) with
 	// no owning tenant: broadcast with the GlobalTenantID sentinel so the event
 	// reaches every tenant's open SSE stream, not just one tenant's.
-	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "catalog_version", ID: res.Version.ID, Action: "ingest"})
+	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "catalog_version", UUID: res.Version.UUID, Action: "ingest"})
 	return &IngestSummary{
 		VersionID:     res.Version.ID,
 		VersionUUID:   res.Version.UUID,

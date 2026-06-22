@@ -40,9 +40,9 @@ func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 	for i := 0; i < 2; i++ { // exactly two events expected
 		select {
 		case e := <-ch:
-			if e.Entity == "payment" && e.ID == p.ID && e.Action == "create" {
+			if e.Entity == "payment" && e.UUID == p.UUID && e.Action == "create" {
 				gotPayment = true
-			} else if e.Entity == "invoice" && e.ID == inv.ID && e.Action == "update" {
+			} else if e.Entity == "invoice" && e.UUID == inv.UUID && e.Action == "update" {
 				gotInvoice = true
 			} else {
 				t.Fatalf("unexpected event %+v", e)
@@ -114,9 +114,9 @@ func TestPaymentDeleteBroadcastsPaymentAndInvoice(t *testing.T) {
 	for i := 0; i < 2; i++ { // exactly two events expected
 		select {
 		case e := <-ch:
-			if e.Entity == "payment" && e.ID == p.ID && e.Action == "delete" {
+			if e.Entity == "payment" && e.UUID == p.UUID && e.Action == "delete" {
 				gotPayment = true
-			} else if e.Entity == "invoice" && e.ID == inv.ID && e.Action == "update" {
+			} else if e.Entity == "invoice" && e.UUID == inv.UUID && e.Action == "update" {
 				gotInvoice = true
 			} else {
 				t.Fatalf("unexpected event %+v", e)

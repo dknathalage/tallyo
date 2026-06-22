@@ -30,7 +30,7 @@ func TestPlanManagerCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "plan_manager" || e.ID != pm.ID || e.Action != "create" {
+		if e.Entity != "plan_manager" || e.UUID != pm.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want plan_manager/%d/create", e, pm.ID)
 		}
 	case <-time.After(time.Second):

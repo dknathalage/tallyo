@@ -24,7 +24,7 @@ func TestEstimateCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "estimate" || e.ID != est.ID || e.Action != "create" {
+		if e.Entity != "estimate" || e.UUID != est.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want estimate/%d/create", e, est.ID)
 		}
 	case <-time.After(time.Second):
@@ -62,10 +62,10 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 	for i := 0; i < 2; i++ { // bounded: exactly two events expected
 		select {
 		case e := <-ch:
-			if e.Entity == "estimate" && e.ID == est.ID && e.Action == "convert" {
+			if e.Entity == "estimate" && e.UUID == est.UUID && e.Action == "convert" {
 				sawEstimate = true
 			}
-			if e.Entity == "invoice" && e.ID == res.InvoiceID && e.Action == "create" {
+			if e.Entity == "invoice" && e.UUID == res.InvoiceUUID && e.Action == "create" {
 				sawInvoice = true
 			}
 		case <-deadline:
@@ -100,7 +100,7 @@ func TestEstimateDuplicateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "estimate" || e.ID != dup.ID || e.Action != "create" {
+		if e.Entity != "estimate" || e.UUID != dup.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want estimate/%d/create", e, dup.ID)
 		}
 	case <-time.After(time.Second):

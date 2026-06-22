@@ -41,7 +41,7 @@ func TestShiftCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.ID != sh.ID || e.Action != "create" {
+		if e.Entity != "shift" || e.UUID != sh.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want shift/%d/create", e, sh.ID)
 		}
 	case <-time.After(time.Second):
@@ -102,7 +102,7 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.ID != sh.ID || e.Action != "update" {
+		if e.Entity != "shift" || e.UUID != sh.UUID || e.Action != "update" {
 			t.Fatalf("event=%+v want shift/%d/update", e, sh.ID)
 		}
 	case <-time.After(time.Second):
@@ -129,7 +129,7 @@ func TestShiftDeleteSvc(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.ID != sh.ID || e.Action != "delete" {
+		if e.Entity != "shift" || e.UUID != sh.UUID || e.Action != "delete" {
 			t.Fatalf("event=%+v want shift/%d/delete", e, sh.ID)
 		}
 	case <-time.After(time.Second):

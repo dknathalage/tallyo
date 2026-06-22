@@ -27,7 +27,7 @@ func TestInvoiceCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.ID != inv.ID || e.Action != "create" {
+		if e.Entity != "invoice" || e.UUID != inv.UUID || e.Action != "create" {
 			t.Fatalf("event=%+v want invoice/%d/create", e, inv.ID)
 		}
 	case <-time.After(time.Second):
@@ -54,7 +54,7 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.ID != inv.ID || e.Action != "status" {
+		if e.Entity != "invoice" || e.UUID != inv.UUID || e.Action != "status" {
 			t.Fatalf("event=%+v want invoice/%d/status", e, inv.ID)
 		}
 	case <-time.After(time.Second):

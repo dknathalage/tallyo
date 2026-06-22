@@ -118,7 +118,7 @@ func TestEstimateDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "estimate" || e.ID != est.ID || e.Action != "delete" {
+		if e.Entity != "estimate" || e.UUID != est.UUID || e.Action != "delete" {
 			t.Fatalf("event=%+v want estimate/%d/delete", e, est.ID)
 		}
 	case <-time.After(time.Second):
@@ -149,7 +149,7 @@ func TestEstimateBulkDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "estimate" || e.ID != 0 || e.Action != "bulk_delete" {
+		if e.Entity != "estimate" || e.UUID != "" || e.Action != "bulk_delete" {
 			t.Fatalf("event=%+v want estimate/0/bulk_delete", e)
 		}
 	case <-time.After(time.Second):
@@ -180,7 +180,7 @@ func TestEstimateBulkUpdateStatusBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "estimate" || e.ID != 0 || e.Action != "bulk_status" {
+		if e.Entity != "estimate" || e.UUID != "" || e.Action != "bulk_status" {
 			t.Fatalf("event=%+v want estimate/0/bulk_status", e)
 		}
 	case <-time.After(time.Second):

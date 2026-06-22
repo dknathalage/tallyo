@@ -90,7 +90,7 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "catalog_version" || e.Action != "ingest" || e.ID != summary.VersionID {
+		if e.Entity != "catalog_version" || e.Action != "ingest" || e.UUID != summary.VersionUUID {
 			t.Fatalf("event=%+v want catalog_version/ingest/%d", e, summary.VersionID)
 		}
 	case <-time.After(time.Second):

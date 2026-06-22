@@ -149,7 +149,7 @@ func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.L
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
 	return inv, nil
 }
 
@@ -170,7 +170,7 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
 	return inv, nil
 }
 
@@ -195,8 +195,8 @@ func (s *Service) DraftFromShifts(ctx context.Context, shiftIDs []int64) (*Invoi
 			return nil, err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "bill"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "bill"})
 	return inv, nil
 }
 
@@ -216,7 +216,7 @@ func (s *Service) Update(ctx context.Context, id int64, in InvoiceInput, items [
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "update"})
 	return inv, nil
 }
 
@@ -267,6 +267,13 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status st
 // attached to it advance in lockstep (recorded→drafted→sent→paid lifecycle).
 func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
+	inv, err := s.repo.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return nil
+	}
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
@@ -276,9 +283,9 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 			return err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "status"})
 	if cascade {
-		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "status"})
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "status"})
 	}
 	return nil
 }
@@ -289,6 +296,13 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 // at status 'drafted' by the FK's ON DELETE SET NULL.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	tenantID := reqctx.MustTenant(ctx)
+	inv, err := s.repo.Get(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return nil
+	}
 	if s.shifts != nil {
 		if err := s.shifts.ClearForInvoice(ctx, tenantID, id); err != nil {
 			return err
@@ -297,8 +311,8 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", ID: 0, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "status"})
 	return nil
 }
 
@@ -318,7 +332,7 @@ func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "bulk_delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "bulk_delete"})
 	return nil
 }
 
@@ -328,7 +342,7 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status stri
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "bulk_status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "bulk_status"})
 	return nil
 }
 
@@ -348,7 +362,7 @@ func (s *Service) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]O
 		return nil, err
 	}
 	if len(rows) > 0 {
-		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: 0, Action: "overdue_sweep"})
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "overdue_sweep"})
 	}
 	return rows, nil
 }
