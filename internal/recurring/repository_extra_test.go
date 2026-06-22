@@ -18,7 +18,7 @@ func TestRecurringListActiveOnly(t *testing.T) {
 	active := mkTemplate(t, repo, tid, pid, "2026-01-01")
 
 	inactive, err := repo.Create(ctx, tid, RecurringInput{
-		ParticipantID: &pid, Name: "Paused", Frequency: "monthly", NextDue: "2026-02-01",
+		ParticipantUUID: &pid, Name: "Paused", Frequency: "monthly", NextDue: "2026-02-01",
 		TaxRate: 0, LineItems: []RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: false,
 	})
 	if err != nil {

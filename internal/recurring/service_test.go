@@ -6,12 +6,12 @@ import (
 )
 
 func TestRecurringCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newRecurringSvc(t)
+	svc, hub, tenantID, participantUUID := newRecurringSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	tpl, err := svc.Create(ctx, seedRecurringInput(participantID))
+	tpl, err := svc.Create(ctx, seedRecurringInput(participantUUID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -29,10 +29,10 @@ func TestRecurringCreateBroadcasts(t *testing.T) {
 }
 
 func TestRecurringGenerateOneBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newRecurringSvc(t)
+	svc, hub, tenantID, participantUUID := newRecurringSvc(t)
 	ctx := tctx(tenantID)
 
-	tpl, err := svc.Create(ctx, seedRecurringInput(participantID))
+	tpl, err := svc.Create(ctx, seedRecurringInput(participantUUID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	inv, err := svc.GenerateOne(ctx, tpl.ID)
+	inv, err := svc.GenerateOne(ctx, tpl.UUID)
 	if err != nil {
 		t.Fatalf("GenerateOne: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 
 func TestRecurringGenerateOneMissingTemplate(t *testing.T) {
 	svc, _, tenantID, _ := newRecurringSvc(t)
-	inv, err := svc.GenerateOne(tctx(tenantID), 999)
+	inv, err := svc.GenerateOne(tctx(tenantID), "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
 	if err != nil {
 		t.Fatalf("GenerateOne missing: %v", err)
 	}

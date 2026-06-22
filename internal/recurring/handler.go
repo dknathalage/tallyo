@@ -1,6 +1,7 @@
 package recurring
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
@@ -26,10 +27,10 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/recurring", h.List)
 	r.Post("/recurring", h.Create)
-	r.Get("/recurring/{id}", h.Get)
-	r.Put("/recurring/{id}", h.Update)
-	r.Delete("/recurring/{id}", h.Delete)
-	r.Post("/recurring/{id}/generate", h.Generate)
+	r.Get("/recurring/{recurringUUID}", h.Get)
+	r.Put("/recurring/{recurringUUID}", h.Update)
+	r.Delete("/recurring/{recurringUUID}", h.Delete)
+	r.Post("/recurring/{recurringUUID}/generate", h.Generate)
 }
 
 // List returns templates. With DataTable query params (sort/page/limit/f.*) it
@@ -57,9 +58,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, tpls)
 }
 
-// Get returns a single template, or 404 when not found.
+// Get returns a single template by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "recurringUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -81,7 +82,7 @@ func validateRecurring(in RecurringInput) (string, bool) {
 	if in.Name == "" {
 		return "name required", false
 	}
-	if in.ParticipantID == nil || *in.ParticipantID == 0 {
+	if in.ParticipantUUID == nil || *in.ParticipantUUID == "" {
 		return "participant required", false
 	}
 	if in.Frequency == "" {
@@ -102,6 +103,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Create(r.Context(), in)
+	if errors.Is(err, errParticipantNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		return
+	}
+	if errors.Is(err, errPlanManagerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -109,9 +118,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, tpl)
 }
 
-// Update rewrites a template. Validation fails → 400; unknown id → 404.
+// Update rewrites a template by uuid. Validation fails → 400; unknown id → 404;
+// unknown participant/plan-manager uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "recurringUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -126,6 +136,14 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Update(r.Context(), id, in)
+	if errors.Is(err, errParticipantNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		return
+	}
+	if errors.Is(err, errPlanManagerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -137,9 +155,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, tpl)
 }
 
-// Delete removes a template by id.
+// Delete removes a template by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "recurringUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -154,7 +172,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 // Generate produces a draft invoice from the template and advances its next_due.
 // Unknown id → 404; otherwise the generated invoice is returned with 200.
 func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "recurringUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return

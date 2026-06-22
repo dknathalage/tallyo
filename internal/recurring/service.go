@@ -45,10 +45,10 @@ func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Resu
 	return listquery.Result[*RecurringTemplate]{Rows: rows, Total: total}, nil
 }
 
-// Get returns a single template, or (nil, nil) when absent.
-func (s *Service) Get(ctx context.Context, id int64) (*RecurringTemplate, error) {
+// Get returns a single template by uuid, or (nil, nil) when absent.
+func (s *Service) Get(ctx context.Context, uuid string) (*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.Get(ctx, tenantID, id)
+	return s.repo.Get(ctx, tenantID, uuid)
 }
 
 // Create inserts a template, then broadcasts on success.
@@ -62,44 +62,60 @@ func (s *Service) Create(ctx context.Context, in RecurringInput) (*RecurringTemp
 	return tpl, nil
 }
 
-// Update rewrites a template. A nil result means the row was not found, in
-// which case no event is published.
-func (s *Service) Update(ctx context.Context, id int64, in RecurringInput) (*RecurringTemplate, error) {
+// Update rewrites a template by uuid. A nil result means the row was not found,
+// in which case no event is published. The SSE event carries the row's int PK
+// (Phase 2.8 retypes the SSE payload).
+func (s *Service) Update(ctx context.Context, uuid string, in RecurringInput) (*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	tpl, err := s.repo.Update(ctx, tenantID, id, in)
+	tpl, err := s.repo.Update(ctx, tenantID, uuid, in)
 	if err != nil {
 		return nil, err
 	}
 	if tpl == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "update"})
 	return tpl, nil
 }
 
-// Delete removes a template, then broadcasts on success.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+// Delete removes a template by uuid, then broadcasts on success. The row is
+// resolved first so the post-commit event still carries the int PK.
+func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+	tpl, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: id, Action: "delete"})
+	if tpl == nil {
+		return nil
+	}
+	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "delete"})
 	return nil
 }
 
 // GenerateOne creates a draft invoice from the template and advances its
 // next_due. A nil invoice means the template was missing (no events). On
 // success it broadcasts both a template "generate" and an invoice "create".
-func (s *Service) GenerateOne(ctx context.Context, id int64) (*invoice.Invoice, error) {
+func (s *Service) GenerateOne(ctx context.Context, uuid string) (*invoice.Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	inv, err := s.repo.GenerateOne(ctx, tenantID, id)
+	tpl, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
+		return nil, err
+	}
+	if tpl == nil {
+		return nil, nil
+	}
+	inv, err := s.repo.GenerateOne(ctx, tenantID, uuid)
 	if err != nil {
 		return nil, err
 	}
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: id, Action: "generate"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", ID: tpl.ID, Action: "generate"})
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: inv.ID, Action: "create"})
 	return inv, nil
 }
