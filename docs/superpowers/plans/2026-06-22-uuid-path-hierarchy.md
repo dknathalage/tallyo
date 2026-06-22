@@ -212,9 +212,17 @@ There is a full HTTP integration suite in `internal/app/*_test.go` (one file per
 - [ ] **Decode struct:** the local response struct decodes JSON `id` into `int64` — change it to `string` (the uuid). Address members by the returned uuid, not `strconv.Itoa(id)`.
 - [ ] **"Missing" cases:** tests that PUT/DELETE a non-existent int id (e.g. `"999"`) now hit `ParseUUID` → 400 instead of the intended 404. Use a well-formed random uuid (e.g. `uuid.NewString()`) for the not-found case so it parses then 404s.
 - [ ] Apply to every resource file above; for FK-bearing resources, the request bodies that sent int FK ids (`participantId` etc.) now send the related uuid.
-- [ ] Run `go test ./internal/app/ -race` → green. Commit — `test(app): retype integration suite to uuid contract`.
+- [x] Run `go test ./internal/app/ -race` → green. Commit — `test(app): retype integration suite to uuid contract` (4b3b7e0). **Done EXCEPT 3 tests left RED on a real production gap → Task 2.10.**
 
-> **Gate note:** Per-slice tasks in Phase 2 only require the *slice* test + `go build ./...` to pass. The `internal/app` suite stays RED until Task 2.9 — that is expected, not a regression. The full `go test ./...` gate is asserted only at Task 2.9 and Phase 6.
+### Task 2.10 — bulk-delete by uuid for participant / plan-manager / custom-item (REAL BUG found by Task 2.9)
+Task 2.9 found that `bulk-delete` for these three slices still accepts `[]int64` ids across the full stack (handler decodes `Ids []int64 json:"ids"`, `Service.BulkDelete(ctx, []int64)`, repo same) — the int PK crosses the API, violating the spec. invoice/estimate were already migrated to `[]string` uuid arrays; mirror them.
+- [ ] **participant:** handler decode `Ids []string`; resolve each uuid→int via existing `gen.GetParticipantIDByUUID`; keep service/repo int-based (or add `BulkDeleteByUUID`). Unknown uuid → 400.
+- [ ] **plan-manager:** same, reuse existing `gen.GetPlanManagerIDByUUID`.
+- [ ] **custom-item:** same, but **no `GetCustomItemIDByUUID` query exists** — add `-- name: GetCustomItemIDByUUID :one SELECT id FROM custom_items WHERE tenant_id=? AND uuid=?;` to `custom_items.sql` and `sqlc generate`.
+- [ ] The 3 RED tests (`TestParticipantBulkDelete204`, `TestPlanManagerBulkDelete204`, `TestCustomItemBulkDelete204`) already assert the uuid-array contract — they go green with no further test edits.
+- [ ] Gate: `go test ./internal/app/ ./internal/participant/ ./internal/planmanager/ ./internal/customitem/ -race`, `go build ./...`, `go vet ./...`, `gofmt -l .` all clean. Commit — `fix(api): bulk-delete by uuid for participant/plan-manager/custom-item`.
+
+> **Gate note:** Per-slice tasks in Phase 2 only require the *slice* test + `go build ./...` to pass. The `internal/app` suite stays RED until Tasks 2.9+2.10. The full `go test ./...` gate is asserted at Task 2.10 and Phase 6.
 
 ---
 
