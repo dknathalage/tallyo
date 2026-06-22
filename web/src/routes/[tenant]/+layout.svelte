@@ -5,7 +5,6 @@
 	import { session } from '$lib/stores/session.svelte';
 	import { features } from '$lib/stores/features.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
-	import { setActiveTenant } from '$lib/api/client';
 	import { openEvents, closeEvents } from '$lib/realtime/events';
 	import { t } from '$lib/nav';
 
@@ -63,7 +62,6 @@
 		wired = uuid;
 
 		untrack(() => {
-			setActiveTenant(uuid);
 			closeEvents();
 			void (async () => {
 				await session.loadMe();
