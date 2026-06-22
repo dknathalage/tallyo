@@ -215,10 +215,10 @@ func TestLoginFailSafeAmbiguousEmail(t *testing.T) {
 		t.Fatalf("ambiguous login: tenant choice missing uuid: %+v", body)
 	}
 
-	// Disambiguated login WITH tenantId → 200 into the chosen tenant.
+	// Disambiguated login WITH the tenant uuid → 200 into the chosen tenant.
 	c2 := jarClient(t)
 	ok := postJSON(t, c2, srv.URL+"/api/auth/login",
-		`{"email":"shared@x.com","password":"password1","tenantId":`+itoa(t2.ID)+`}`)
+		`{"email":"shared@x.com","password":"password1","tenantId":"`+t2.UUID+`"}`)
 	defer func() { _ = ok.Body.Close() }()
 	if ok.StatusCode != http.StatusOK {
 		t.Fatalf("disambiguated login: want 200 got %d", ok.StatusCode)

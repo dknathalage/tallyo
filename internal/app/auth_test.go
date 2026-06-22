@@ -14,6 +14,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // openMigratedDB opens a fresh migrated SQLite database in a temp dir.
@@ -245,6 +246,105 @@ func TestAuthDeletedUserSessionRejected(t *testing.T) {
 	_ = resp2.Body.Close()
 	if resp2.StatusCode != http.StatusForbidden {
 		t.Fatalf("deleted-user me: want 403 got %d", resp2.StatusCode)
+	}
+}
+
+// loginWithTenant performs a login carrying an explicit tenant uuid (the 409
+// disambiguation re-submit) and returns the response.
+func loginWithTenant(t *testing.T, c *http.Client, base, email, password, tenantUUID string) *http.Response {
+	t.Helper()
+	body := strings.NewReader(`{"email":"` + email + `","password":"` + password +
+		`","tenantId":"` + tenantUUID + `"}`)
+	req, err := http.NewRequest("POST", base+"/api/auth/login", body)
+	if err != nil {
+		t.Fatalf("new login req: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatalf("login do: %v", err)
+	}
+	return resp
+}
+
+// TestAuthLoginMultiTenantByUUID exercises the multi-tenant disambiguation: an
+// email registered in two tenants returns 409 with the candidate tenant uuids;
+// re-submitting with one tenant's uuid logs in to that tenant. A bogus uuid 401s.
+func TestAuthLoginMultiTenantByUUID(t *testing.T) {
+	conn := openMigratedDB(t, "a.db")
+	users := auth.NewUsers(conn)
+	tenants := auth.NewTenants(conn)
+	hash, err := auth.HashPassword("password1")
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	// Two tenants share the email "dup@x.com" → ambiguous global lookup.
+	t1, err := tenants.Create(t.Context(), "Acme")
+	if err != nil {
+		t.Fatalf("Create t1: %v", err)
+	}
+	t2, err := tenants.Create(t.Context(), "Beta")
+	if err != nil {
+		t.Fatalf("Create t2: %v", err)
+	}
+	if _, err := users.Create(t.Context(), t1.ID, "dup@x.com", hash, "", "owner", false); err != nil {
+		t.Fatalf("Create user t1: %v", err)
+	}
+	if _, err := users.Create(t.Context(), t2.ID, "dup@x.com", hash, "", "owner", false); err != nil {
+		t.Fatalf("Create user t2: %v", err)
+	}
+
+	sm := auth.NewSessionManager(conn, false)
+	authH := NewAuthHandler(sm, users, tenants)
+	router := chi.NewRouter()
+	router.Route("/api", func(api chi.Router) {
+		api.Post("/auth/login", authH.Login)
+	})
+	srv := httptest.NewServer(sm.LoadAndSave(router))
+	t.Cleanup(srv.Close)
+
+	// Step 1: login without a tenant → 409 with the candidate tenant uuids.
+	c := jarClient(t)
+	resp := login(t, c, srv.URL, "dup@x.com", "password1")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("ambiguous login: want 409 got %d", resp.StatusCode)
+	}
+	var body struct {
+		TenantRequired bool `json:"tenantRequired"`
+		Tenants        []struct {
+			ID string `json:"id"`
+		} `json:"tenants"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode 409: %v", err)
+	}
+	if !body.TenantRequired || len(body.Tenants) != 2 {
+		t.Fatalf("409 body unexpected: %+v", body)
+	}
+	for _, tn := range body.Tenants {
+		if _, perr := uuid.Parse(tn.ID); perr != nil {
+			t.Fatalf("409 tenant id not a uuid: %q", tn.ID)
+		}
+	}
+
+	// Step 2: re-submit with t2's uuid → 200, logged into t2.
+	resp2 := loginWithTenant(t, c, srv.URL, "dup@x.com", "password1", t2.UUID)
+	defer func() { _ = resp2.Body.Close() }()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("re-submit by uuid: want 200 got %d", resp2.StatusCode)
+	}
+	u := decodeUser(t, resp2)
+	if u.TenantUUID != t2.UUID {
+		t.Fatalf("logged into wrong tenant: want %s got %s", t2.UUID, u.TenantUUID)
+	}
+
+	// Step 3: a well-formed but unknown tenant uuid → 401 (no enumeration).
+	c2 := jarClient(t)
+	resp3 := loginWithTenant(t, c2, srv.URL, "dup@x.com", "password1", uuid.NewString())
+	defer func() { _ = resp3.Body.Close() }()
+	if resp3.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("bogus tenant uuid: want 401 got %d", resp3.StatusCode)
 	}
 }
 

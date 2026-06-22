@@ -49,12 +49,14 @@ func NewAuthHandler(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth
 	return &AuthHandler{sm: sm, users: users, tenants: tenants}
 }
 
-// loginRequest is the decoded login body. TenantId is optional: it is REQUIRED
-// only to disambiguate when the email is registered in more than one tenant.
+// loginRequest is the decoded login body. tenantId is optional: it is REQUIRED
+// only to disambiguate when the email is registered in more than one tenant. It
+// carries the tenant's public UUID (matching the 409 response's tenant id), which
+// the login handler resolves to the internal tenant PK before looking up creds.
 type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	TenantID int64  `json:"tenantId"`
+	Email      string `json:"email"`
+	Password   string `json:"password"`
+	TenantUUID string `json:"tenantId"`
 }
 
 // Login verifies credentials and establishes a session. It uses a single error
@@ -129,11 +131,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // resolveCredentials looks up the login credentials, honouring an explicit
-// tenantId when present and otherwise relying on the fail-safe global lookup
-// (which returns ErrAmbiguousEmail when the email spans multiple tenants).
+// tenant uuid when present and otherwise relying on the fail-safe global lookup
+// (which returns ErrAmbiguousEmail when the email spans multiple tenants). When a
+// tenant uuid is supplied it is resolved to the internal tenant PK first; an
+// unknown uuid yields a not-found result (→ 401, no user enumeration).
 func (h *AuthHandler) resolveCredentials(r *http.Request, in loginRequest) (auth.Credentials, bool, error) {
-	if in.TenantID != 0 {
-		return h.users.GetCredentialsForTenant(r.Context(), in.TenantID, in.Email)
+	if in.TenantUUID != "" {
+		t, err := h.tenants.GetByUUID(r.Context(), in.TenantUUID)
+		if err != nil {
+			return auth.Credentials{}, false, err
+		}
+		if t == nil {
+			return auth.Credentials{}, false, nil
+		}
+		return h.users.GetCredentialsForTenant(r.Context(), t.ID, in.Email)
 	}
 	return h.users.GetCredentialsGlobal(r.Context(), in.Email)
 }
