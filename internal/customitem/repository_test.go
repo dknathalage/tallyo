@@ -18,21 +18,21 @@ func TestCustomItemCRUD(t *testing.T) {
 	if ci.ID == 0 || ci.Rate != 1.5 || !ci.GstFree || ci.Unit != "km" {
 		t.Fatalf("Create = %+v", ci)
 	}
-	got, err := repo.Get(ctx, tid, ci.ID)
+	got, err := repo.Get(ctx, tid, ci.UUID)
 	if err != nil || got == nil || got.Name != "Travel" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
-	up, err := repo.Update(ctx, tid, ci.ID, CustomItemInput{Name: "Travel2", Rate: 2})
+	up, err := repo.Update(ctx, tid, ci.UUID, CustomItemInput{Name: "Travel2", Rate: 2})
 	if err != nil || up == nil || up.Name != "Travel2" || up.Rate != 2 {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
 	if list, _ := repo.List(ctx, tid); len(list) != 1 {
 		t.Fatalf("List len = %d, want 1", len(list))
 	}
-	if err := repo.Delete(ctx, tid, ci.ID); err != nil {
+	if err := repo.Delete(ctx, tid, ci.UUID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, ci.ID); got != nil {
+	if got, _ := repo.Get(ctx, tid, ci.UUID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -48,7 +48,7 @@ func TestCustomItemTenantIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	if got, _ := repo.Get(ctx, b, ci.ID); got != nil {
+	if got, _ := repo.Get(ctx, b, ci.UUID); got != nil {
 		t.Fatalf("tenant B read tenant A's custom item: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b); len(list) != 0 {

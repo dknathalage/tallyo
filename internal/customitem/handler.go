@@ -27,9 +27,9 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/custom-items", h.List)
 	r.Post("/custom-items", h.Create)
 	r.Post("/custom-items/bulk-delete", h.BulkDelete)
-	r.Get("/custom-items/{id}", h.Get)
-	r.Put("/custom-items/{id}", h.Update)
-	r.Delete("/custom-items/{id}", h.Delete)
+	r.Get("/custom-items/{uuid}", h.Get)
+	r.Put("/custom-items/{uuid}", h.Update)
+	r.Delete("/custom-items/{uuid}", h.Delete)
 }
 
 // List returns custom items. DataTable query params switch to a paged
@@ -63,9 +63,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
-// Get returns a single custom item by id, or 404 when not found.
+// Get returns a single custom item by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -101,9 +101,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, it)
 }
 
-// Update mutates a custom item. Empty name → 400; unknown id → 404.
+// Update mutates a custom item. Empty name → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -129,9 +129,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, it)
 }
 
-// Delete removes a custom item by id.
+// Delete removes a custom item by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return

@@ -48,9 +48,9 @@ func (s *Service) Search(ctx context.Context, q string) ([]*CustomItem, error) {
 	return s.repo.Search(ctx, tenantID, q)
 }
 
-func (s *Service) Get(ctx context.Context, id int64) (*CustomItem, error) {
+func (s *Service) Get(ctx context.Context, uuid string) (*CustomItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.Get(ctx, tenantID, id)
+	return s.repo.Get(ctx, tenantID, uuid)
 }
 
 // Create inserts a custom item, then broadcasts AFTER the commit succeeds.
@@ -66,26 +66,34 @@ func (s *Service) Create(ctx context.Context, in CustomItemInput) (*CustomItem, 
 
 // Update mutates a custom item, then broadcasts on success. A nil result means
 // the row was not found, in which case no event is published.
-func (s *Service) Update(ctx context.Context, id int64, in CustomItemInput) (*CustomItem, error) {
+func (s *Service) Update(ctx context.Context, uuid string, in CustomItemInput) (*CustomItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	item, err := s.repo.Update(ctx, tenantID, id, in)
+	item, err := s.repo.Update(ctx, tenantID, uuid, in)
 	if err != nil {
 		return nil, err
 	}
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: item.ID, Action: "update"})
 	return item, nil
 }
 
-// Delete removes a custom item, then broadcasts on success.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+// Delete removes a custom item by uuid, then broadcasts on success. The row is
+// resolved first so the post-commit event still carries the int PK.
+func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+	item, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: id, Action: "delete"})
+	if item == nil {
+		return nil
+	}
+	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", ID: item.ID, Action: "delete"})
 	return nil
 }
 

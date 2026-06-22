@@ -147,7 +147,7 @@ func TestCustomItemListSearchGet(t *testing.T) {
 		t.Fatalf("Search Widget = %+v, want one id %d", found, widget.ID)
 	}
 
-	got, err := svc.Get(ctx, widget.ID)
+	got, err := svc.Get(ctx, widget.UUID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestCustomItemListSearchGet(t *testing.T) {
 func TestCustomItemGetNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID := newSvc(t)
 
-	got, err := svc.Get(tctx(tenantID), 999999)
+	got, err := svc.Get(tctx(tenantID), "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
 	if err != nil {
 		t.Fatalf("Get missing: unexpected err %v", err)
 	}
@@ -180,7 +180,7 @@ func TestCustomItemUpdateBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	updated, err := svc.Update(ctx, item.ID, CustomItemInput{Name: "Widget Pro", Rate: 9})
+	updated, err := svc.Update(ctx, item.UUID, CustomItemInput{Name: "Widget Pro", Rate: 9})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestCustomItemUpdateBroadcasts(t *testing.T) {
 func TestCustomItemUpdateNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID := newSvc(t)
 
-	got, err := svc.Update(tctx(tenantID), 999999, CustomItemInput{Name: "X", Rate: 1})
+	got, err := svc.Update(tctx(tenantID), "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c", CustomItemInput{Name: "X", Rate: 1})
 	if err != nil {
 		t.Fatalf("Update missing: unexpected err %v", err)
 	}
@@ -221,7 +221,7 @@ func TestCustomItemDeleteBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.Delete(ctx, item.ID); err != nil {
+	if err := svc.Delete(ctx, item.UUID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	select {
@@ -233,7 +233,7 @@ func TestCustomItemDeleteBroadcasts(t *testing.T) {
 		t.Fatal("no broadcast after Delete")
 	}
 
-	got, err := svc.Get(ctx, item.ID)
+	got, err := svc.Get(ctx, item.UUID)
 	if err != nil {
 		t.Fatalf("Get after delete: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestCustomItemTenantScoping(t *testing.T) {
 		t.Fatalf("tenant B sees %d custom items, want 0", len(listB))
 	}
 
-	gotB, err := svc.Get(tctx(tenantB), item.ID)
+	gotB, err := svc.Get(tctx(tenantB), item.UUID)
 	if err != nil {
 		t.Fatalf("Get B: %v", err)
 	}

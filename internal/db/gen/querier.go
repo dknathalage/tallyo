@@ -40,6 +40,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteCatalogVersion(ctx context.Context, id int64) error
 	DeleteCustomItem(ctx context.Context, arg DeleteCustomItemParams) error
+	DeleteCustomItemByID(ctx context.Context, arg DeleteCustomItemByIDParams) error
 	DeleteEstimate(ctx context.Context, arg DeleteEstimateParams) error
 	DeleteEstimateLineItemsForEstimate(ctx context.Context, arg DeleteEstimateLineItemsForEstimateParams) error
 	DeleteInvite(ctx context.Context, arg DeleteInviteParams) error

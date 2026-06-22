@@ -30,8 +30,8 @@ var CustomItemCols = listquery.Spec{
 
 // CustomItem is the domain view of a row in the custom_items table.
 type CustomItem struct {
-	ID        int64   `json:"id"`
-	UUID      string  `json:"uuid"`
+	ID        int64   `json:"-"`
+	UUID      string  `json:"id"`
 	Name      string  `json:"name"`
 	Rate      float64 `json:"rate"`
 	Unit      string  `json:"unit"`
@@ -146,9 +146,9 @@ func (r *Repo) Search(ctx context.Context, tenantID int64, q string) ([]*CustomI
 	return mapCustomItems(rows), nil
 }
 
-// Get returns the tenant's custom item, or (nil, nil) when none matches.
-func (r *Repo) Get(ctx context.Context, tenantID, id int64) (*CustomItem, error) {
-	row, err := gen.New(r.db).GetCustomItem(ctx, gen.GetCustomItemParams{TenantID: tenantID, ID: id})
+// Get returns the tenant's custom item by uuid, or (nil, nil) when none matches.
+func (r *Repo) Get(ctx context.Context, tenantID int64, uuid string) (*CustomItem, error) {
+	row, err := gen.New(r.db).GetCustomItem(ctx, gen.GetCustomItemParams{TenantID: tenantID, Uuid: uuid})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -202,9 +202,10 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in CustomItemInput) (
 	return toCustomItem(created), nil
 }
 
-// Update writes the custom item's fields and one audit row, atomically. Returns
+// Update writes the custom item's fields and one audit row, atomically. The
+// audit entry records the row's int PK, resolved by-uuid inside the tx. Returns
 // (nil, nil) when the item does not exist so the caller can 404.
-func (r *Repo) Update(ctx context.Context, tenantID, id int64, in CustomItemInput) (*CustomItem, error) {
+func (r *Repo) Update(ctx context.Context, tenantID int64, uuid string, in CustomItemInput) (*CustomItem, error) {
 	if in.Name == "" {
 		return nil, errors.New("update custom item: name is required")
 	}
@@ -215,12 +216,7 @@ func (r *Repo) Update(ctx context.Context, tenantID, id int64, in CustomItemInpu
 
 	var updated gen.CustomItem
 	var missing bool
-	err := audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "custom_item",
-		EntityID:   id,
-		Action:     "update",
-		Changes:    audit.Changes(map[string]any{"name": in.Name}),
-	}, func(tx *sql.Tx) error {
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		c, e := gen.New(tx).UpdateCustomItem(ctx, gen.UpdateCustomItemParams{
 			Name:      in.Name,
@@ -230,7 +226,7 @@ func (r *Repo) Update(ctx context.Context, tenantID, id int64, in CustomItemInpu
 			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
-			ID:        id,
+			Uuid:      uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -240,7 +236,12 @@ func (r *Repo) Update(ctx context.Context, tenantID, id int64, in CustomItemInpu
 			return fmt.Errorf("update: %w", e)
 		}
 		updated = c
-		return nil
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "custom_item",
+			EntityID:   c.ID,
+			Action:     "update",
+			Changes:    audit.Changes(map[string]any{"name": in.Name}),
+		})
 	})
 	if missing {
 		return nil, nil
@@ -251,17 +252,26 @@ func (r *Repo) Update(ctx context.Context, tenantID, id int64, in CustomItemInpu
 	return toCustomItem(updated), nil
 }
 
-// Delete removes a custom item and writes one audit row, atomically.
-func (r *Repo) Delete(ctx context.Context, tenantID, id int64) error {
-	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "custom_item",
-		EntityID:   id,
-		Action:     "delete",
-	}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).DeleteCustomItem(ctx, gen.DeleteCustomItemParams{TenantID: tenantID, ID: id}); err != nil {
-			return fmt.Errorf("delete: %w", err)
+// Delete removes a custom item by uuid and writes one audit row, atomically. The
+// audit entry records the row's int PK, resolved by-uuid in the same tx.
+func (r *Repo) Delete(ctx context.Context, tenantID int64, uuid string) error {
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		row, e := q.GetCustomItem(ctx, gen.GetCustomItemParams{TenantID: tenantID, Uuid: uuid})
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
 		}
-		return nil
+		if e != nil {
+			return fmt.Errorf("lookup: %w", e)
+		}
+		if e := q.DeleteCustomItem(ctx, gen.DeleteCustomItemParams{TenantID: tenantID, Uuid: uuid}); e != nil {
+			return fmt.Errorf("delete: %w", e)
+		}
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "custom_item",
+			EntityID:   row.ID,
+			Action:     "delete",
+		})
 	})
 }
 
@@ -274,7 +284,7 @@ func (r *Repo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) erro
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
-			if err := q.DeleteCustomItem(ctx, gen.DeleteCustomItemParams{TenantID: tenantID, ID: id}); err != nil {
+			if err := q.DeleteCustomItemByID(ctx, gen.DeleteCustomItemByIDParams{TenantID: tenantID, ID: id}); err != nil {
 				return fmt.Errorf("delete %d: %w", id, err)
 			}
 		}
