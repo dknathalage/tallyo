@@ -48,10 +48,10 @@
 
 		// Membership check: only once tenants are known. Redirect a non-member away.
 		if (known.length > 0) {
-			const member = known.some((x) => x.tenantUuid === uuid);
+			const member = known.some((x) => x.id === uuid);
 			if (!member) {
 				untrack(() => {
-					const fallback = known[0]?.tenantUuid;
+					const fallback = known[0]?.id;
 					void goto(fallback ? '/' + fallback + '/' : '/login');
 				});
 				return;
@@ -179,8 +179,8 @@
 					onchange={(e) => switchTenant((e.currentTarget as HTMLSelectElement).value)}
 					class="w-full rounded border border-gray-300 px-2 py-1.5 text-sm md:mb-2"
 				>
-					{#each session.tenants as ten (ten.tenantUuid)}
-						<option value={ten.tenantUuid}>{ten.tenantName}</option>
+					{#each session.tenants as ten (ten.id)}
+						<option value={ten.id}>{ten.tenantName}</option>
 					{/each}
 				</select>
 			{/if}

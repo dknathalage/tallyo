@@ -1,18 +1,18 @@
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-export interface AutosaveOptions<T, R extends { id: number }> {
+export interface AutosaveOptions<T, R extends { id: string }> {
 	/** Existing record id when editing; null/undefined for a brand-new record. */
-	initialId?: number | null;
+	initialId?: string | null;
 	/** Persist a brand-new record; resolves to the created entity (carrying its id). */
 	create: (payload: T) => Promise<R>;
 	/** Persist an update to an already-created record. */
-	update: (id: number, payload: T) => Promise<R>;
+	update: (id: string, payload: T) => Promise<R>;
 	/** Debounce window before a scheduled flush fires (ms). */
 	delay?: number;
 	/** Called on every state transition — drive the status line from this. */
 	onState?: (state: SaveState) => void;
 	/** Called once with the new id the first time a `new` record is created. */
-	onCreated?: (id: number) => void;
+	onCreated?: (id: string) => void;
 }
 
 export interface Autosave<T> {
@@ -33,11 +33,11 @@ export interface Autosave<T> {
  * Errors are surfaced via `onState('error')` and the failed payload is held for
  * `retry()` — never auto-retried (so a persistent failure can't spin).
  */
-export function createAutosave<T, R extends { id: number }>(
+export function createAutosave<T, R extends { id: string }>(
 	opts: AutosaveOptions<T, R>
 ): Autosave<T> {
 	const delay = opts.delay ?? 400;
-	let id: number | null = opts.initialId ?? null; // existing id, or null until first create
+	let id: string | null = opts.initialId ?? null; // existing id, or null until first create
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let saving = false;
 	let pending: T | null = null; // latest payload awaiting a flush

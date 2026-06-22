@@ -55,7 +55,7 @@
 		}
 	];
 
-	async function generateNow(id: number): Promise<void> {
+	async function generateNow(id: string): Promise<void> {
 		rowError = null;
 		message = null;
 		try {

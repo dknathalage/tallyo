@@ -1,11 +1,13 @@
 import { apiGet, apiPost, tenantPath } from '$lib/api/client';
 import type { User } from '$lib/api/types';
 
-/** One tenant membership for the signed-in account, from GET /api/auth/session. */
+/**
+ * One tenant membership for the signed-in account, from GET /api/auth/session.
+ * `id` is the tenant's public UUID (the value used in the /{tenant} URL segment).
+ */
 export interface SessionTenant {
-	tenantId: number;
+	id: string;
 	tenantName: string;
-	tenantUuid: string;
 	role: string;
 }
 

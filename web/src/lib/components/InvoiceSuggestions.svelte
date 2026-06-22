@@ -7,10 +7,10 @@
 
 	type Props = {
 		suggestions: ShiftSuggestion[];
-		/** Resolve a participant id to a display name. */
-		nameFor: (participantId: number) => string;
-		/** Restrict to a single participant (the profile view). */
-		participantId?: number | null;
+		/** Resolve a participant uuid to a display name. */
+		nameFor: (participantId: string) => string;
+		/** Restrict to a single participant (the profile view), by uuid. */
+		participantId?: string | null;
 	};
 
 	let { suggestions, nameFor, participantId = null }: Props = $props();
@@ -21,7 +21,7 @@
 			: suggestions.filter((s) => s.participantId === participantId)
 	);
 
-	let drafting = $state<number | null>(null);
+	let drafting = $state<string | null>(null);
 	let error = $state<string | null>(null);
 
 	async function draft(s: ShiftSuggestion): Promise<void> {

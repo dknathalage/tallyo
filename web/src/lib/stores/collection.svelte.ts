@@ -12,7 +12,7 @@ import type { ListParams } from '$lib/api/types';
  *   the DataTable. After a query has run, SSE invalidations re-run the LAST query
  *   (not a full reload) so the visible page stays consistent.
  */
-export function createCollectionStore<T extends { id: number }, TInput>(
+export function createCollectionStore<T extends { id: string }, TInput>(
 	resource: string,
 	entity: string
 ) {

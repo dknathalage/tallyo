@@ -4,8 +4,8 @@
 
 	type Props = {
 		shifts: Shift[];
-		/** Resolve a participant id to a display name (chips show the first name). */
-		nameFor: (participantId: number) => string;
+		/** Resolve a participant uuid to a display name (chips show the first name). */
+		nameFor: (participantId: string) => string;
 		/** Month to render, as a YYYY-MM string. Defaults to the current month. */
 		month?: string;
 		/** Click an empty day cell → add a shift on that date. */
@@ -56,7 +56,7 @@
 	const days = $derived(Array.from({ length: daysInMonth }, (_, i) => i + 1));
 	const blanks = $derived(Array.from({ length: leadingBlanks }, (_, i) => i));
 
-	function firstName(participantId: number): string {
+	function firstName(participantId: string): string {
 		return nameFor(participantId).split(' ')[0] ?? '';
 	}
 

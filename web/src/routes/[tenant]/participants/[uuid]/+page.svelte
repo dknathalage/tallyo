@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import ParticipantEditor from '$lib/components/ParticipantEditor.svelte';
 
-	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
+	const idParam = $derived((page.params.uuid ?? 'new'));
 </script>
 
 <!--

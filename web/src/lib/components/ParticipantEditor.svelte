@@ -16,8 +16,8 @@
 	import type { Participant, ParticipantInput, Shift } from '$lib/api/types';
 
 	type Props = {
-		/** Existing participant id, or 'new' to create. */
-		idParam: number | 'new';
+		/** Existing participant uuid, or 'new' to create. */
+		idParam: string | 'new';
 	};
 
 	let { idParam }: Props = $props();
@@ -42,10 +42,11 @@
 	let loaded = $state(false);
 	let nameError = $state<string | null>(null);
 	let status = $state<SaveState>('idle');
-	// currentId > 0 once the record exists (numeric id, or set in onCreated) — gates
-	// the shifts/invoices section, mirroring the old `row.id > 0` guard.
+	// currentId is the participant uuid once the record exists ('' until created,
+	// or set in onCreated) — gates the shifts/invoices section, mirroring the old
+	// `row.id > 0` guard.
 	// svelte-ignore state_referenced_locally -- intentional one-time seed; this component is remounted by a {#key idParam} on the route, so an id change is handled by remount, not reactivity. onCreated owns currentId thereafter.
-	let currentId = $state<number>(idParam === 'new' ? 0 : idParam);
+	let currentId = $state<string>(idParam === 'new' ? '' : idParam);
 
 	function seedFrom(p: Participant): void {
 		name = p.name;
@@ -93,7 +94,7 @@
 	// save of ANY field carries the latest value of EVERY field — neither name nor
 	// planManagerId can be reverted by the other's autosave.
 	function buildInput(): ParticipantInput {
-		const pmId = planManager === '' ? null : Number(planManager);
+		const pmId = planManager === '' ? null : planManager;
 		return {
 			name,
 			ndisNumber,
@@ -141,7 +142,7 @@
 		void planManagers.query({ page: 1, limit: 500 });
 	});
 
-	function nameFor(id: number): string {
+	function nameFor(id: string): string {
 		const p = participants.items.find((x) => x.id === id);
 		return p ? p.name : `#${id}`;
 	}
@@ -171,9 +172,9 @@
 	let formShift = $state<Shift | null>(null);
 	let formRecording = $state(false);
 	let formDate = $state('');
-	let formParticipantId = $state(0);
+	let formParticipantId = $state('');
 
-	function openAdd(pid: number): void {
+	function openAdd(pid: string): void {
 		formShift = null;
 		formRecording = false;
 		formDate = '';
@@ -181,7 +182,7 @@
 		formOpen = true;
 	}
 
-	function addDay(pid: number, dateISO: string): void {
+	function addDay(pid: string, dateISO: string): void {
 		formShift = null;
 		formRecording = false;
 		formDate = dateISO;
@@ -200,7 +201,7 @@
 		void shifts.load();
 	}
 
-	async function deleteShifts(ids: number[]): Promise<void> {
+	async function deleteShifts(ids: string[]): Promise<void> {
 		for (const id of ids) {
 			await shiftsApi.remove(id); // bounded by selection
 		}
@@ -348,7 +349,7 @@
 			</label>
 		</div>
 
-		{#if currentId > 0}
+		{#if currentId !== ''}
 			<div class="space-y-6">
 				<InvoiceSuggestions suggestions={shifts.suggestions} {nameFor} participantId={currentId} />
 

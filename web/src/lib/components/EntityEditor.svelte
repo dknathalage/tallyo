@@ -1,4 +1,4 @@
-<script lang="ts" generics="T extends { id: number }, TInput">
+<script lang="ts" generics="T extends { id: string }, TInput">
 	import type { Snippet } from 'svelte';
 	import { onDestroy } from 'svelte';
 	import { replaceState } from '$app/navigation';
@@ -6,17 +6,17 @@
 	import { createAutosave, type SaveState } from './autosave';
 
 	type Crud = {
-		get: (id: number) => Promise<T>;
+		get: (id: string) => Promise<T>;
 		create: (input: TInput) => Promise<T>;
-		update: (id: number, input: TInput) => Promise<T>;
+		update: (id: string, input: TInput) => Promise<T>;
 	};
 
 	type Props = {
 		title: string;
 		columns: Column<T>[];
 		crud: Crud;
-		/** Existing record id, or 'new' to create. */
-		id: number | 'new';
+		/** Existing record uuid, or 'new' to create. */
+		id: string | 'new';
 		/** Map the editable draft back to the API input shape. */
 		toInput: (draft: T) => TInput;
 		/** List route the back-link returns to (e.g. '/tax-rates'). */
@@ -56,12 +56,12 @@
 	let draft = $state<T | null>(null);
 	let loadError = $state<string | null>(null);
 	// svelte-ignore state_referenced_locally -- the seed is intentional: this component is remounted by a {#key} on the route id, so re-seeding on an id change is handled by remount, not by reactivity here. onCreated then owns recordId independently.
-	let recordId = $state<number | 'new'>(id);
+	let recordId = $state<string | 'new'>(id);
 
 	async function init(): Promise<void> {
 		const currentId = id;
 		if (currentId === 'new') {
-			const seed: Record<string, unknown> = { id: 0 };
+			const seed: Record<string, unknown> = { id: '' };
 			for (const col of columns) seed[col.key] = defaultFor(col);
 			draft = { ...(seed as T), ...(blank ?? {}) };
 			return;

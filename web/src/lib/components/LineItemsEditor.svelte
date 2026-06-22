@@ -8,11 +8,11 @@
 	// gst server-authoritative) from a custom line (free text, user gst).
 	export interface EditorLine {
 		kind: 'support' | 'custom';
-		customItemId: number | null;
-		// Pinned NDIS catalogue version for an EXISTING support line; null for a new
-		// line (the server then prices it from the current version). Carried on edit
-		// so re-validation never re-prices an existing line against a newer version.
-		catalogVersionId: number | null;
+		customItemId: string | null;
+		// Pinned NDIS catalogue version uuid for an EXISTING support line; null for a
+		// new line (the server then prices it from the current version). Carried on
+		// edit so re-validation never re-prices an existing line against a newer one.
+		catalogVersionId: string | null;
 		code: string;
 		description: string;
 		serviceDate: string;
@@ -55,7 +55,7 @@
 		}
 	}
 
-	// Price-cap cache keyed by supportItemId → the cap for the tenant zone.
+	// Price-cap cache keyed by supportItem id → the cap for the tenant zone.
 	let capCache = $state<Record<number, number | null>>({});
 
 	async function capFor(item: SupportItem): Promise<number | null> {

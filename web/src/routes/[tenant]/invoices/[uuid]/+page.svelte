@@ -22,7 +22,7 @@
 		ValidationDetail
 	} from '$lib/api/types';
 
-	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
+	const idParam = $derived((page.params.uuid ?? 'new'));
 
 	function money(n: number): string {
 		return '$' + (Number.isFinite(n) ? n : 0).toFixed(2);
@@ -153,7 +153,7 @@
 			sortOrder: i
 		}));
 		return {
-			participantId: Number(formParticipantId),
+			participantId: formParticipantId,
 			planManagerId: null,
 			status: 'draft' as InvoiceStatus,
 			issueDate: formIssueDate,

@@ -7,12 +7,12 @@
 
 	type Props = {
 		shifts: Shift[];
-		/** Maps a participant id → display name. */
-		participantName: (id: number) => string;
+		/** Maps a participant uuid → display name. */
+		participantName: (id: string) => string;
 		/** Row click — open the shift (edit / record). */
 		onopen?: (shift: Shift) => void;
-		/** Bulk delete — called with the selected shift ids. */
-		ondelete?: (ids: number[]) => void | Promise<void>;
+		/** Bulk delete — called with the selected shift uuids. */
+		ondelete?: (ids: string[]) => void | Promise<void>;
 	};
 
 	let { shifts, participantName, onopen, ondelete }: Props = $props();
@@ -20,7 +20,7 @@
 	// A flattened row carrying the derived participant name + a single tag string,
 	// so the table can sort/search/filter on plain scalar columns.
 	interface Row {
-		id: number;
+		id: string;
 		date: string;
 		participant: string;
 		note: string;
@@ -136,14 +136,14 @@
 
 	// Row selection for bulk actions. Keyed by shift id so it survives re-sorts
 	// and filter changes; ids that filter out of view simply aren't acted on.
-	const selected = new SvelteSet<number>();
+	const selected = new SvelteSet<string>();
 
 	const visibleIds = $derived(table.rows.map((r) => r.id));
 	const allVisibleSelected = $derived(
 		visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
 	);
 
-	function toggleRow(id: number): void {
+	function toggleRow(id: string): void {
 		if (selected.has(id)) selected.delete(id);
 		else selected.add(id);
 	}

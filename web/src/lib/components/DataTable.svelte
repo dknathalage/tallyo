@@ -1,4 +1,4 @@
-<script lang="ts" generics="T extends { id: number }">
+<script lang="ts" generics="T extends { id: string }">
 	import type { ListParams } from '$lib/api/types';
 	import type { Column, RowAction } from './datatable';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -40,7 +40,7 @@
 	let dir = $state<'asc' | 'desc'>('asc');
 	let page = $state(1);
 	let filters = $state<Record<string, FState>>({});
-	let selected = $state<Set<number>>(new Set());
+	let selected = $state<Set<string>>(new Set());
 	let openMenu = $state<string | null>(null);
 	let lastIdx = $state<number | null>(null);
 
@@ -171,7 +171,7 @@
 	}
 
 	// ── Selection ─────────────────────────────────────────────────────────────
-	function toggleRow(id: number, idx: number, shift: boolean): void {
+	function toggleRow(id: string, idx: number, shift: boolean): void {
 		const next = new Set(selected);
 		if (shift && lastIdx !== null) {
 			const [a, b] = [lastIdx, idx].sort((x, y) => x - y);

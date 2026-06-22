@@ -16,7 +16,7 @@
 		void participants.load();
 	});
 
-	function participantName(id: number): string {
+	function participantName(id: string): string {
 		const p = participants.items.find((x) => x.id === id);
 		return p ? p.name : `#${id}`;
 	}
@@ -33,7 +33,7 @@
 		void goto(t('/shifts/' + shift.id));
 	}
 
-	async function deleteShifts(ids: number[]): Promise<void> {
+	async function deleteShifts(ids: string[]): Promise<void> {
 		for (const id of ids) {
 			await shiftsApi.remove(id);
 		}

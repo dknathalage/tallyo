@@ -8,7 +8,7 @@
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
 	import type { Shift } from '$lib/api/types';
 
-	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
+	const idParam = $derived((page.params.uuid ?? 'new'));
 
 	let loadedShift = $state<Shift | null>(null);
 	let loading = $state(false);
@@ -32,7 +32,7 @@
 		void loadShift(current);
 	});
 
-	async function loadShift(id: number): Promise<void> {
+	async function loadShift(id: string): Promise<void> {
 		loading = true;
 		try {
 			loadedShift = await shiftsApi.get(id);

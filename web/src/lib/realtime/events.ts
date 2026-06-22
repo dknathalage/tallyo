@@ -8,7 +8,7 @@
 
 interface EventFrame {
 	entity: string;
-	id: number | string;
+	id: string;
 	action: string;
 }
 

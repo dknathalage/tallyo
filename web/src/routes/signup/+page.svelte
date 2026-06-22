@@ -28,7 +28,7 @@
 			session.set(user);
 			const info = await session.loadSession();
 			const first = info?.tenants[0];
-			await goto(first ? '/' + first.tenantUuid + '/' : '/');
+			await goto(first ? '/' + first.id + '/' : '/');
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Sign up failed.';
 		} finally {

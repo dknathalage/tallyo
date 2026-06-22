@@ -19,6 +19,13 @@ function must<T>(v: T | null, what: string): T {
 	return v;
 }
 
+/** Guard: an id/uuid path segment must be a non-empty string. */
+function requireId(value: string, what: string): void {
+	if (typeof value !== 'string' || value.length === 0) {
+		throw new Error(`${what}: id must be a non-empty string`);
+	}
+}
+
 /** List every shift for the current tenant (powers the shifts table). Returns []. */
 export async function listAll(): Promise<Shift[]> {
 	return (await apiGet<Shift[]>(tenantPath('shifts'))) ?? [];
@@ -27,25 +34,21 @@ export async function listAll(): Promise<Shift[]> {
 /**
  * List one participant's shifts, optionally bounded to a [from, to] inclusive
  * service-date range (YYYY-MM-DD) and/or a single lifecycle status. Returns [].
+ * The participant is addressed by its uuid via the `?participant=` filter.
  */
 export async function listForParticipant(
-	participantId: number,
+	participantId: string,
 	from?: string,
 	to?: string,
 	status?: ShiftStatus
 ): Promise<Shift[]> {
-	if (!Number.isInteger(participantId) || participantId <= 0) {
-		throw new Error(
-			`shifts.listForParticipant: participantId must be positive, got ${participantId}`
-		);
-	}
+	requireId(participantId, 'shifts.listForParticipant');
 	const params = new URLSearchParams();
+	params.set('participant', participantId);
 	if (from !== undefined && from.length > 0) params.set('from', from);
 	if (to !== undefined && to.length > 0) params.set('to', to);
 	if (status !== undefined && status.length > 0) params.set('status', status);
-	const qs = params.toString();
-	const base = tenantPath(`participants/${participantId}/shifts`);
-	const path = qs.length > 0 ? `${base}?${qs}` : base;
+	const path = `${tenantPath('shifts')}?${params.toString()}`;
 	return (await apiGet<Shift[]>(path)) ?? [];
 }
 
@@ -59,46 +62,36 @@ export async function toRecord(): Promise<Shift[]> {
 	return (await apiGet<Shift[]>(tenantPath('shifts/to-record'))) ?? [];
 }
 
-/** Fetch a single shift by id. Returns the Shift. */
-export async function get(id: number): Promise<Shift> {
-	if (!Number.isInteger(id) || id <= 0) {
-		throw new Error(`shifts.get: id must be positive, got ${id}`);
-	}
+/** Fetch a single shift by uuid. Returns the Shift. */
+export async function get(id: string): Promise<Shift> {
+	requireId(id, 'shifts.get');
 	return must(await apiGet<Shift>(tenantPath(`shifts/${id}`)), 'shifts get');
 }
 
 /** Create a shift. Returns the persisted Shift (201). */
 export async function create(input: ShiftInput): Promise<Shift> {
-	if (!Number.isInteger(input.participantId) || input.participantId <= 0) {
-		throw new Error('shifts.create: input.participantId must be positive');
-	}
+	requireId(input.participantId, 'shifts.create');
 	if (input.serviceDate.length === 0) {
 		throw new Error('shifts.create: input.serviceDate is required');
 	}
 	return must(await apiPost<Shift>(tenantPath('shifts'), input), 'shifts create');
 }
 
-/** Update a shift by id. Returns the updated Shift. */
-export async function update(id: number, input: ShiftInput): Promise<Shift> {
-	if (!Number.isInteger(id) || id <= 0) {
-		throw new Error(`shifts.update: id must be positive, got ${id}`);
-	}
+/** Update a shift by uuid. Returns the updated Shift. */
+export async function update(id: string, input: ShiftInput): Promise<Shift> {
+	requireId(id, 'shifts.update');
 	return must(await apiPut<Shift>(tenantPath(`shifts/${id}`), input), 'shifts update');
 }
 
-/** Delete a shift by id (204). */
-export async function remove(id: number): Promise<void> {
-	if (!Number.isInteger(id) || id <= 0) {
-		throw new Error(`shifts.remove: id must be positive, got ${id}`);
-	}
+/** Delete a shift by uuid (204). */
+export async function remove(id: string): Promise<void> {
+	requireId(id, 'shifts.remove');
 	await apiDelete<void>(tenantPath(`shifts/${id}`));
 }
 
 /** Advance a shift's lifecycle status (204). */
-export async function setStatus(id: number, status: ShiftStatus): Promise<void> {
-	if (!Number.isInteger(id) || id <= 0) {
-		throw new Error(`shifts.setStatus: id must be positive, got ${id}`);
-	}
+export async function setStatus(id: string, status: ShiftStatus): Promise<void> {
+	requireId(id, 'shifts.setStatus');
 	if (status.length === 0) {
 		throw new Error('shifts.setStatus: status is required');
 	}
@@ -109,10 +102,8 @@ export async function setStatus(id: number, status: ShiftStatus): Promise<void> 
  * Extract recorded shifts from a free-text timesheet for one participant (AI).
  * Returns the created shifts (201).
  */
-export async function importShifts(participantId: number, text: string): Promise<Shift[]> {
-	if (!Number.isInteger(participantId) || participantId <= 0) {
-		throw new Error(`shifts.import: participantId must be positive, got ${participantId}`);
-	}
+export async function importShifts(participantId: string, text: string): Promise<Shift[]> {
+	requireId(participantId, 'shifts.import');
 	if (text.trim().length === 0) {
 		throw new Error('shifts.import: text is required');
 	}
@@ -122,9 +113,10 @@ export async function importShifts(participantId: number, text: string): Promise
 /**
  * Draft one invoice from a set of recorded shifts (deterministic link of their
  * already-priced items — no AI). All shifts must share one participant and each
- * must carry at least one item. Returns the created Invoice (201).
+ * must carry at least one item. Shifts are addressed by uuid. Returns the created
+ * Invoice (201).
  */
-export async function draftFromShifts(shiftIds: number[]): Promise<Invoice> {
+export async function draftFromShifts(shiftIds: string[]): Promise<Invoice> {
 	if (shiftIds.length === 0) {
 		throw new Error('shifts.draftFromShifts: shiftIds is required');
 	}
@@ -135,33 +127,25 @@ export async function draftFromShifts(shiftIds: number[]): Promise<Invoice> {
 }
 
 /** List a shift's line items (billed + unbilled), [] when none. */
-export async function listItems(shiftId: number): Promise<LineItem[]> {
-	if (!Number.isInteger(shiftId) || shiftId <= 0) {
-		throw new Error(`shifts.listItems: shiftId must be positive, got ${shiftId}`);
-	}
+export async function listItems(shiftId: string): Promise<LineItem[]> {
+	requireId(shiftId, 'shifts.listItems');
 	return (await apiGet<LineItem[]>(tenantPath(`shifts/${shiftId}/items`))) ?? [];
 }
 
 /** Add one line item to a shift (server prices it). Returns the item (201). */
-export async function addItem(shiftId: number, input: LineItemInput): Promise<LineItem> {
-	if (!Number.isInteger(shiftId) || shiftId <= 0) {
-		throw new Error(`shifts.addItem: shiftId must be positive, got ${shiftId}`);
-	}
+export async function addItem(shiftId: string, input: LineItemInput): Promise<LineItem> {
+	requireId(shiftId, 'shifts.addItem');
 	return must(await apiPost<LineItem>(tenantPath(`shifts/${shiftId}/items`), input), 'shifts addItem');
 }
 
 /** Update one unbilled item on a shift. Returns the item. */
 export async function updateItem(
-	shiftId: number,
-	itemId: number,
+	shiftId: string,
+	itemId: string,
 	input: LineItemInput
 ): Promise<LineItem> {
-	if (!Number.isInteger(shiftId) || shiftId <= 0) {
-		throw new Error(`shifts.updateItem: shiftId must be positive, got ${shiftId}`);
-	}
-	if (!Number.isInteger(itemId) || itemId <= 0) {
-		throw new Error(`shifts.updateItem: itemId must be positive, got ${itemId}`);
-	}
+	requireId(shiftId, 'shifts.updateItem');
+	requireId(itemId, 'shifts.updateItem');
 	return must(
 		await apiPatch<LineItem>(tenantPath(`shifts/${shiftId}/items/${itemId}`), input),
 		'shifts updateItem'
@@ -169,13 +153,9 @@ export async function updateItem(
 }
 
 /** Delete one unbilled item from a shift (204). */
-export async function deleteItem(shiftId: number, itemId: number): Promise<void> {
-	if (!Number.isInteger(shiftId) || shiftId <= 0) {
-		throw new Error(`shifts.deleteItem: shiftId must be positive, got ${shiftId}`);
-	}
-	if (!Number.isInteger(itemId) || itemId <= 0) {
-		throw new Error(`shifts.deleteItem: itemId must be positive, got ${itemId}`);
-	}
+export async function deleteItem(shiftId: string, itemId: string): Promise<void> {
+	requireId(shiftId, 'shifts.deleteItem');
+	requireId(itemId, 'shifts.deleteItem');
 	await apiDelete<void>(tenantPath(`shifts/${shiftId}/items/${itemId}`));
 }
 
@@ -183,9 +163,7 @@ export async function deleteItem(shiftId: number, itemId: number): Promise<void>
  * Divide a shift's note into priced catalogue line items via AI (idempotent —
  * replaces the shift's unbilled items). Returns the shift's items.
  */
-export async function divideShift(shiftId: number): Promise<LineItem[]> {
-	if (!Number.isInteger(shiftId) || shiftId <= 0) {
-		throw new Error(`shifts.divideShift: shiftId must be positive, got ${shiftId}`);
-	}
+export async function divideShift(shiftId: string): Promise<LineItem[]> {
+	requireId(shiftId, 'shifts.divideShift');
 	return (await apiPost<LineItem[]>(tenantPath(`shifts/${shiftId}/divide`), {})) ?? [];
 }

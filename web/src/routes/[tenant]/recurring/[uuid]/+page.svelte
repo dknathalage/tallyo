@@ -22,7 +22,7 @@
 
 	const FREQUENCIES: RecurringFrequency[] = ['weekly', 'monthly', 'quarterly'];
 
-	const idParam = $derived(page.params.id === 'new' ? 'new' : Number(page.params.id));
+	const idParam = $derived((page.params.uuid ?? 'new'));
 
 	function money(n: number): string {
 		const v = Number.isFinite(n) ? n : 0;
@@ -45,8 +45,7 @@
 	// Selected tax-rate percent (recurring stores only a number, no taxRateId).
 	const selectedTaxRate = $derived.by<number>(() => {
 		if (formTaxRateId === '') return 0;
-		const tid = Number(formTaxRateId);
-		const tr = taxRates.items.find((t) => t.id === tid);
+		const tr = taxRates.items.find((t) => t.id === formTaxRateId);
 		return tr ? tr.rate : 0;
 	});
 
@@ -102,7 +101,7 @@
 		}
 	});
 
-	async function loadTemplate(id: number): Promise<void> {
+	async function loadTemplate(id: string): Promise<void> {
 		loadError = null;
 		try {
 			const full = await recurring.crud.get(id);
@@ -132,7 +131,7 @@
 	}
 
 	// Reconstruct the full RecurringInput. Line items pass through field-for-field
-	// (no re-pricing) and the relational selects coerce back to numbers.
+	// (no re-pricing); the relational selects carry the related entity uuid.
 	function buildPayload() {
 		const items: RecurringLine[] = lines.map((row, i) => ({
 			supportItemId: null,
@@ -146,7 +145,7 @@
 			sortOrder: i
 		}));
 		return {
-			participantId: formParticipantId === '' ? null : Number(formParticipantId),
+			participantId: formParticipantId === '' ? null : formParticipantId,
 			planManagerId: null,
 			name: formName,
 			frequency: formFrequency,

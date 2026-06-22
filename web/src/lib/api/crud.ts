@@ -22,10 +22,10 @@ function toQueryString(p: ListParams): string {
 export interface Crud<T, TInput> {
 	list(): Promise<T[]>;
 	query(params: ListParams): Promise<ListResult<T>>;
-	get(id: number): Promise<T>;
+	get(id: string): Promise<T>;
 	create(input: TInput): Promise<T>;
-	update(id: number, input: TInput): Promise<T>;
-	remove(id: number): Promise<void>;
+	update(id: string, input: TInput): Promise<T>;
+	remove(id: string): Promise<void>;
 }
 
 function must<T>(v: T | null, what: string): T {

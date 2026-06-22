@@ -31,7 +31,7 @@
 			}
 			// Land on the first member tenant when hitting the bare root.
 			if (page.url.pathname === '/' && info.tenants[0]) {
-				await goto('/' + info.tenants[0].tenantUuid + '/');
+				await goto('/' + info.tenants[0].id + '/');
 			}
 		} catch {
 			// Network/parse failure — render anyway so public pages still work.

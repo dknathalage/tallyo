@@ -22,8 +22,8 @@
 		shift?: Shift | null;
 		/** Pre-filled date for a fresh shift (e.g. clicked calendar day). */
 		presetDate?: string;
-		/** Pre-selected participant for a fresh shift. */
-		presetParticipantId?: number | null;
+		/** Pre-selected participant (uuid) for a fresh shift. */
+		presetParticipantId?: string | null;
 		/** Recording a scheduled shift — adjusts the title + advances status. */
 		recording?: boolean;
 		/** Called after a successful save (create/update). */
@@ -101,7 +101,7 @@
 		}
 	}
 
-	async function loadItems(shiftId: number): Promise<void> {
+	async function loadItems(shiftId: string): Promise<void> {
 		try {
 			items = await shiftsApi.listItems(shiftId);
 		} catch (err) {
@@ -122,7 +122,7 @@
 		}
 	}
 
-	async function removeItem(id: number): Promise<void> {
+	async function removeItem(id: string): Promise<void> {
 		if (!shift) return;
 		itemError = null;
 		itemsBusy = true;
@@ -146,7 +146,7 @@
 	}
 
 	let niCode = $state('');
-	let niCustomItemId = $state<number | null>(null);
+	let niCustomItemId = $state<string | null>(null);
 	let niDescription = $state('');
 	let niUnit = $state('');
 	let niQuantity = $state('1');
@@ -269,7 +269,7 @@
 		// Recording a scheduled shift advances it to recorded.
 		const nextStatus: ShiftStatus = recording && fStatus === 'scheduled' ? 'recorded' : fStatus;
 		const input: ShiftInput = {
-			participantId: Number(fParticipantId),
+			participantId: fParticipantId,
 			serviceDate: fDate,
 			note: fNote,
 			tags: shift?.tags ?? [],

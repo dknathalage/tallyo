@@ -5,9 +5,8 @@ export type Zone = 'national' | 'remote' | 'very_remote';
 export type MgmtType = 'plan' | 'self' | string;
 
 export interface User {
-	id: number;
-	uuid: string;
-	tenantId: number;
+	id: string;
+	tenantId: string;
 	email: string;
 	name: string;
 	role: Role;
@@ -15,10 +14,14 @@ export interface User {
 	lastLoginAt: string | null;
 }
 
-/** One candidate tenant returned with the 409 tenant-disambiguation login response. */
+/**
+ * One candidate tenant returned with the 409 tenant-disambiguation login response
+ * (and by GET /api/auth/session). `id` is the tenant's public UUID.
+ */
 export interface EmailTenant {
-	tenantId: number;
+	id: string;
 	tenantName: string;
+	role: string;
 }
 
 export interface SignupInput {
@@ -40,8 +43,7 @@ export interface InviteCreated {
 }
 
 export interface PlanManager {
-	id: number;
-	uuid: string;
+	id: string;
 	name: string;
 	email: string;
 	phone: string;
@@ -60,8 +62,7 @@ export interface PlanManagerInput {
 }
 
 export interface TaxRate {
-	id: number;
-	uuid: string;
+	id: string;
 	name: string;
 	rate: number;
 	isDefault: boolean;
@@ -76,14 +77,13 @@ export interface TaxRateInput {
 }
 
 export interface Participant {
-	id: number;
-	uuid: string;
+	id: string;
 	name: string;
 	ndisNumber: string;
 	planStart: string;
 	planEnd: string;
 	mgmtType: MgmtType;
-	planManagerId: number | null;
+	planManagerId: string | null;
 	planManagerName: string;
 	email: string;
 	phone: string;
@@ -99,7 +99,7 @@ export interface ParticipantInput {
 	planStart: string;
 	planEnd: string;
 	mgmtType: MgmtType;
-	planManagerId: number | null;
+	planManagerId: string | null;
 	email: string;
 	phone: string;
 	address: string;
@@ -107,8 +107,7 @@ export interface ParticipantInput {
 }
 
 export interface CustomItem {
-	id: number;
-	uuid: string;
+	id: string;
 	name: string;
 	rate: number;
 	unit: string;
@@ -128,6 +127,11 @@ export interface CustomItemInput {
 
 // ---- Global NDIS Support Catalogue (read-only for tenants) ----
 
+// NOTE: the support-catalogue read endpoints still address catalogue rows by their
+// internal int id (catalogue ingest is deferred; these slices were not migrated to
+// uuid). Their `id`/`catalogVersionId`/`supportItemId` are numbers; the pinned
+// uuid refs that cross onto a line item (LineItem.catalogVersionId, etc.) are
+// separate and are uuid strings.
 export interface CatalogVersion {
 	id: number;
 	uuid: string;
@@ -162,13 +166,12 @@ export interface SupportItemPrice {
 // ---- Invoice + estimate domain ----
 
 export interface LineItem {
-	id: number;
-	uuid: string;
-	shiftId: number | null;
-	invoiceId: number | null;
-	supportItemId: number | null;
-	customItemId: number | null;
-	catalogVersionId: number | null;
+	id: string;
+	shiftId: string | null;
+	invoiceId: string | null;
+	supportItemId: string | null;
+	customItemId: string | null;
+	catalogVersionId: string | null;
 	code: string;
 	description: string;
 	serviceDate: string;
@@ -185,9 +188,9 @@ export interface LineItem {
 // LineItemInput is the writable subset of a line item (no id/uuid/lineTotal —
 // the server's DecodeJSON rejects unknown fields, so only these are sent).
 export interface LineItemInput {
-	supportItemId: number | null;
-	customItemId: number | null;
-	catalogVersionId: number | null;
+	supportItemId: string | null;
+	customItemId: string | null;
+	catalogVersionId: string | null;
 	code: string;
 	description: string;
 	serviceDate: string;
@@ -203,12 +206,11 @@ export interface LineItemInput {
 export type InvoiceStatus = 'draft' | 'sent' | 'overdue' | 'paid' | string;
 
 export interface Invoice {
-	id: number;
-	uuid: string;
+	id: string;
 	number: string;
-	participantId: number;
+	participantId: string;
 	participantName: string;
-	planManagerId: number | null;
+	planManagerId: string | null;
 	status: InvoiceStatus;
 	issueDate: string;
 	dueDate: string;
@@ -229,8 +231,8 @@ export interface Invoice {
 // The create/update payload: the flat InvoiceInput fields plus line items.
 // tax is server-derived; it is intentionally omitted from the payload.
 export interface InvoiceInput {
-	participantId: number;
-	planManagerId: number | null;
+	participantId: string;
+	planManagerId: string | null;
 	status: InvoiceStatus;
 	issueDate: string;
 	dueDate: string;
@@ -239,9 +241,8 @@ export interface InvoiceInput {
 }
 
 export interface Payment {
-	id: number;
-	uuid: string;
-	invoiceId: number;
+	id: string;
+	invoiceId: string;
 	amount: number;
 	paymentDate: string;
 	method: string;
@@ -269,12 +270,11 @@ export type EstimateLineItem = LineItem;
 export type EstimateLineItemInput = LineItemInput;
 
 export interface Estimate {
-	id: number;
-	uuid: string;
+	id: string;
 	number: string;
-	participantId: number | null;
+	participantId: string | null;
 	participantName: string;
-	planManagerId: number | null;
+	planManagerId: string | null;
 	status: EstimateStatus;
 	issueDate: string;
 	validUntil: string;
@@ -282,7 +282,7 @@ export interface Estimate {
 	tax: number;
 	total: number;
 	notes: string;
-	convertedInvoiceId: number | null;
+	convertedInvoiceId: string | null;
 	businessSnapshot: string;
 	participantSnapshot: string;
 	planManagerSnapshot: string;
@@ -292,8 +292,8 @@ export interface Estimate {
 }
 
 export interface EstimateInput {
-	participantId: number;
-	planManagerId: number | null;
+	participantId: string;
+	planManagerId: string | null;
 	status: EstimateStatus;
 	issueDate: string;
 	validUntil: string;
@@ -304,8 +304,8 @@ export interface EstimateInput {
 export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
 
 export interface RecurringLine {
-	supportItemId: number | null;
-	customItemId: number | null;
+	supportItemId: string | null;
+	customItemId: string | null;
 	code: string;
 	description: string;
 	unit: string;
@@ -316,11 +316,10 @@ export interface RecurringLine {
 }
 
 export interface RecurringTemplate {
-	id: number;
-	uuid: string;
-	participantId: number | null;
+	id: string;
+	participantId: string | null;
 	participantName: string;
-	planManagerId: number | null;
+	planManagerId: string | null;
 	name: string;
 	frequency: RecurringFrequency;
 	nextDue: string;
@@ -333,8 +332,8 @@ export interface RecurringTemplate {
 }
 
 export interface RecurringInput {
-	participantId: number | null;
-	planManagerId: number | null;
+	participantId: string | null;
+	planManagerId: string | null;
 	name: string;
 	frequency: RecurringFrequency;
 	nextDue: string;
@@ -356,21 +355,19 @@ export interface ValidationDetail {
 export type ShiftStatus = 'scheduled' | 'recorded' | 'drafted' | 'sent' | 'paid';
 
 export interface Shift {
-	id: number;
-	uuid: string;
-	participantId: number;
+	id: string;
+	participantId: string;
 	serviceDate: string;
 	note: string;
 	tags: string[];
 	status: ShiftStatus;
-	invoiceId: number | null;
-	authorUserId: number | null;
+	invoiceId: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
 
 export interface ShiftInput {
-	participantId: number;
+	participantId: string;
 	serviceDate: string;
 	note: string;
 	tags: string[];
@@ -384,8 +381,8 @@ export interface ShiftInput {
  * UI from the loaded participants + shifts.
  */
 export interface ShiftSuggestion {
-	participantId: number;
-	ids: number[];
+	participantId: string;
+	ids: string[];
 	from: string;
 	to: string;
 	count: number;

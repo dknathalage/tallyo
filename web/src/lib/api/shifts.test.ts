@@ -39,22 +39,24 @@ const mockApiPut = vi.mocked(apiPut);
 const mockApiPatch = vi.mocked(apiPatch);
 const mockApiDelete = vi.mocked(apiDelete);
 
+const SHIFT_UUID = '11111111-1111-4111-8111-111111111111';
+const PART_UUID = '22222222-2222-4222-8222-222222222222';
+const ITEM_UUID = '33333333-3333-4333-8333-333333333333';
+
 const fakeShift: Shift = {
-	id: 5,
-	uuid: 'shift-uuid',
-	participantId: 3,
+	id: SHIFT_UUID,
+	participantId: PART_UUID,
 	serviceDate: '2026-06-10',
 	note: 'cleaning, laundry',
 	tags: [],
 	status: 'recorded',
 	invoiceId: null,
-	authorUserId: null,
 	createdAt: '2026-06-10T00:00:00Z',
 	updatedAt: '2026-06-10T00:00:00Z'
 };
 
 const fakeInput: ShiftInput = {
-	participantId: 3,
+	participantId: PART_UUID,
 	serviceDate: '2026-06-10',
 	note: 'cleaning, laundry',
 	tags: [],
@@ -77,7 +79,7 @@ const fakeItemInput: LineItemInput = {
 	sortOrder: 0
 };
 
-const fakeItem = { id: 11, ...fakeItemInput, lineTotal: 0 } as unknown as LineItem;
+const fakeItem = { id: ITEM_UUID, ...fakeItemInput, lineTotal: 0 } as unknown as LineItem;
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -101,22 +103,22 @@ describe('listAll', () => {
 });
 
 describe('listForParticipant', () => {
-	it('uses the base path with no params', async () => {
+	it('filters by the participant uuid', async () => {
 		mockApiGet.mockResolvedValue([fakeShift]);
-		await listForParticipant(3);
-		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/participants/3/shifts');
+		await listForParticipant(PART_UUID);
+		expect(mockApiGet).toHaveBeenCalledWith(`/api/t/t-uuid/shifts?participant=${PART_UUID}`);
 	});
 
 	it('appends from, to and status when provided', async () => {
 		mockApiGet.mockResolvedValue([]);
-		await listForParticipant(3, '2026-06-01', '2026-06-30', 'recorded');
+		await listForParticipant(PART_UUID, '2026-06-01', '2026-06-30', 'recorded');
 		expect(mockApiGet).toHaveBeenCalledWith(
-			'/api/t/t-uuid/participants/3/shifts?from=2026-06-01&to=2026-06-30&status=recorded'
+			`/api/t/t-uuid/shifts?participant=${PART_UUID}&from=2026-06-01&to=2026-06-30&status=recorded`
 		);
 	});
 
-	it('throws on a non-positive participantId', async () => {
-		await expect(listForParticipant(0)).rejects.toThrow();
+	it('throws on an empty participantId', async () => {
+		await expect(listForParticipant('')).rejects.toThrow();
 	});
 });
 
@@ -147,16 +149,16 @@ describe('create / update / remove', () => {
 		await expect(create(fakeInput)).rejects.toThrow();
 	});
 
-	it('update puts to /api/shifts/5', async () => {
+	it('update puts to /api/shifts/{uuid}', async () => {
 		mockApiPut.mockResolvedValue(fakeShift);
-		await update(5, fakeInput);
-		expect(mockApiPut).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5', fakeInput);
+		await update(SHIFT_UUID, fakeInput);
+		expect(mockApiPut).toHaveBeenCalledWith(`/api/t/t-uuid/shifts/${SHIFT_UUID}`, fakeInput);
 	});
 
-	it('remove deletes /api/shifts/5', async () => {
+	it('remove deletes /api/shifts/{uuid}', async () => {
 		mockApiDelete.mockResolvedValue(null);
-		await remove(5);
-		expect(mockApiDelete).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5');
+		await remove(SHIFT_UUID);
+		expect(mockApiDelete).toHaveBeenCalledWith(`/api/t/t-uuid/shifts/${SHIFT_UUID}`);
 	});
 
 	it('create throws on a missing service date', async () => {
@@ -165,39 +167,41 @@ describe('create / update / remove', () => {
 });
 
 describe('setStatus', () => {
-	it('posts {status} to /api/shifts/5/status', async () => {
+	it('posts {status} to /api/shifts/{uuid}/status', async () => {
 		mockApiPost.mockResolvedValue(null);
-		await setStatus(5, 'sent');
-		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/status', { status: 'sent' });
+		await setStatus(SHIFT_UUID, 'sent');
+		expect(mockApiPost).toHaveBeenCalledWith(`/api/t/t-uuid/shifts/${SHIFT_UUID}/status`, {
+			status: 'sent'
+		});
 	});
 
-	it('throws on a non-positive id', async () => {
-		await expect(setStatus(0, 'sent')).rejects.toThrow();
+	it('throws on an empty id', async () => {
+		await expect(setStatus('', 'sent')).rejects.toThrow();
 	});
 });
 
 describe('importShifts', () => {
 	it('posts {participantId, text} to /api/shifts/import and returns created shifts', async () => {
 		mockApiPost.mockResolvedValue([fakeShift]);
-		const result = await importShifts(3, 'Mon 9-3 cleaning');
+		const result = await importShifts(PART_UUID, 'Mon 9-3 cleaning');
 		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/import', {
-			participantId: 3,
+			participantId: PART_UUID,
 			text: 'Mon 9-3 cleaning'
 		});
 		expect(result).toEqual([fakeShift]);
 	});
 
 	it('throws on blank text', async () => {
-		await expect(importShifts(3, '   ')).rejects.toThrow();
+		await expect(importShifts(PART_UUID, '   ')).rejects.toThrow();
 	});
 });
 
 describe('draftFromShifts', () => {
 	it('posts {shiftIds} to /api/invoices/draft-from-shifts', async () => {
-		mockApiPost.mockResolvedValue({ id: 9 } as unknown);
-		await draftFromShifts([5, 6]);
+		mockApiPost.mockResolvedValue({ id: 'inv-uuid' } as unknown);
+		await draftFromShifts([SHIFT_UUID, PART_UUID]);
 		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/invoices/draft-from-shifts', {
-			shiftIds: [5, 6]
+			shiftIds: [SHIFT_UUID, PART_UUID]
 		});
 	});
 
@@ -207,39 +211,44 @@ describe('draftFromShifts', () => {
 
 	it('throws when apiPost resolves null', async () => {
 		mockApiPost.mockResolvedValue(null);
-		await expect(draftFromShifts([5])).rejects.toThrow();
+		await expect(draftFromShifts([SHIFT_UUID])).rejects.toThrow();
 	});
 });
 
 describe('shift items', () => {
-	it('listItems gets /api/shifts/5/items and coalesces null to []', async () => {
+	it('listItems gets /api/shifts/{uuid}/items and coalesces null to []', async () => {
 		mockApiGet.mockResolvedValue(null);
-		expect(await listItems(5)).toEqual([]);
-		expect(mockApiGet).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items');
+		expect(await listItems(SHIFT_UUID)).toEqual([]);
+		expect(mockApiGet).toHaveBeenCalledWith(`/api/t/t-uuid/shifts/${SHIFT_UUID}/items`);
 	});
 
-	it('addItem posts to /api/shifts/5/items', async () => {
+	it('addItem posts to /api/shifts/{uuid}/items', async () => {
 		mockApiPost.mockResolvedValue(fakeItem);
-		const result = await addItem(5, fakeItemInput);
-		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items', fakeItemInput);
+		const result = await addItem(SHIFT_UUID, fakeItemInput);
+		expect(mockApiPost).toHaveBeenCalledWith(`/api/t/t-uuid/shifts/${SHIFT_UUID}/items`, fakeItemInput);
 		expect(result).toEqual(fakeItem);
 	});
 
-	it('updateItem patches /api/shifts/5/items/11', async () => {
+	it('updateItem patches /api/shifts/{uuid}/items/{itemUuid}', async () => {
 		mockApiPatch.mockResolvedValue(fakeItem);
-		await updateItem(5, 11, fakeItemInput);
-		expect(mockApiPatch).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items/11', fakeItemInput);
+		await updateItem(SHIFT_UUID, ITEM_UUID, fakeItemInput);
+		expect(mockApiPatch).toHaveBeenCalledWith(
+			`/api/t/t-uuid/shifts/${SHIFT_UUID}/items/${ITEM_UUID}`,
+			fakeItemInput
+		);
 	});
 
-	it('deleteItem deletes /api/shifts/5/items/11', async () => {
+	it('deleteItem deletes /api/shifts/{uuid}/items/{itemUuid}', async () => {
 		mockApiDelete.mockResolvedValue(null);
-		await deleteItem(5, 11);
-		expect(mockApiDelete).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/items/11');
+		await deleteItem(SHIFT_UUID, ITEM_UUID);
+		expect(mockApiDelete).toHaveBeenCalledWith(
+			`/api/t/t-uuid/shifts/${SHIFT_UUID}/items/${ITEM_UUID}`
+		);
 	});
 
-	it('divideShift posts to /api/shifts/5/divide and coalesces null to []', async () => {
+	it('divideShift posts to /api/shifts/{uuid}/divide and coalesces null to []', async () => {
 		mockApiPost.mockResolvedValue(null);
-		expect(await divideShift(5)).toEqual([]);
-		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/5/divide', {});
+		expect(await divideShift(SHIFT_UUID)).toEqual([]);
+		expect(mockApiPost).toHaveBeenCalledWith(`/api/t/t-uuid/shifts/${SHIFT_UUID}/divide`, {});
 	});
 });

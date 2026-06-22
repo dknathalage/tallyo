@@ -11,15 +11,15 @@
 
 	// Tenant-disambiguation state: when the email spans multiple tenants the API
 	// answers 409 with the candidate tenants; we render a picker and re-POST with
-	// the chosen tenantId.
+	// the chosen tenant's uuid (the 409 body's `id`).
 	let tenantChoices = $state<EmailTenant[]>([]);
 	let selectedTenantId = $state<string>('');
 
-	async function attempt(tenantId?: number): Promise<void> {
+	async function attempt(tenantId?: string): Promise<void> {
 		error = null;
 		submitting = true;
 		try {
-			const body: { email: string; password: string; tenantId?: number } = { email, password };
+			const body: { email: string; password: string; tenantId?: string } = { email, password };
 			if (tenantId !== undefined) body.tenantId = tenantId;
 			const user = await apiPost<User>('/api/auth/login', body);
 			if (user === null) {
@@ -28,16 +28,16 @@
 			}
 			session.set(user);
 			tenantChoices = [];
-			// The login response is the per-tenant User (no uuid); fetch the agnostic
-			// session and land on the first member tenant to avoid a root-redirect flash.
+			// The login response is the per-tenant User; fetch the agnostic session
+			// and land on the first member tenant to avoid a root-redirect flash.
 			const info = await session.loadSession();
 			const first = info?.tenants[0];
-			await goto(first ? '/' + first.tenantUuid + '/' : '/');
+			await goto(first ? '/' + first.id + '/' : '/');
 		} catch (err) {
 			if (err instanceof ApiError && err.tenantRequired) {
 				// Multiple tenants share this email: prompt the user to choose one.
 				tenantChoices = err.tenants;
-				selectedTenantId = err.tenants.length > 0 ? String(err.tenants[0].tenantId) : '';
+				selectedTenantId = err.tenants.length > 0 ? err.tenants[0].id : '';
 				return;
 			}
 			if (err instanceof ApiError && err.status === 403) {
@@ -61,7 +61,7 @@
 			error = 'Please select an organisation.';
 			return;
 		}
-		await attempt(Number(selectedTenantId));
+		await attempt(selectedTenantId);
 	}
 </script>
 
@@ -79,8 +79,8 @@
 					bind:value={selectedTenantId}
 					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 				>
-					{#each tenantChoices as t (t.tenantId)}
-						<option value={String(t.tenantId)}>{t.tenantName}</option>
+					{#each tenantChoices as t (t.id)}
+						<option value={t.id}>{t.tenantName}</option>
 					{/each}
 				</select>
 			</label>
