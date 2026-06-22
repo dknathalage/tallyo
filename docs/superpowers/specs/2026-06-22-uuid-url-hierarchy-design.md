@@ -1,256 +1,258 @@
-# UUID URL Scheme + Path Hierarchy (HTML UI) — Design
+# UUID Path Scheme + Route Hierarchy — Design
 
 **Date:** 2026-06-22
 **Status:** Approved (design), pending implementation plan
-**Companion to:** [`2026-06-22-spa-to-go-htmx-design.md`](2026-06-22-spa-to-go-htmx-design.md) — that
-spec defines the SPA→Go+HTMX rewrite; this one fixes the **URL scheme and route
-hierarchy** for the new server-rendered HTML pages.
+
+> **Note.** The earlier HTMX/server-rendered rewrite is dropped. The app keeps
+> the existing **SvelteKit SPA** served over the **`/api` JSON tree**. This spec
+> covers only the UUID path scheme + route hierarchy across that SPA + API.
 
 ## Problem
 
-In the current routing, only the tenant segment is a UUID
-(`/t/{tenantUUID}/...`); every child resource is addressed by a **sequential
+Today only the tenant segment is a UUID (`/api/t/{tenantUUID}/...`,
+`/:tenant/...` in SvelteKit); every child entity is addressed by a **sequential
 int64** (`/invoices/{id}`, `/shifts/{id}/items/{itemId}`). This is inconsistent
-and leaks enumerable IDs in URLs that may leave the app (an invoice/estimate
-link shared with a plan manager). We want the new HTML UI routes to:
+and leaks enumerable IDs in URLs that can leave the app (an invoice/estimate link
+shared with a plan manager). We want **every entity addressed by a UUID** in both
+the SvelteKit routes and the `/api` paths, under a **consistent, shallow
+hierarchy**.
 
-1. Use **UUIDs for every entity** in the path (non-enumerable, stable, no count
-   leak), consistent with the already-UUID tenant segment.
-2. Follow a **consistent, shallow hierarchy** with predictable naming.
+## Architecture context
 
-**Scope: HTML UI routes only.** The `/api/...` JSON tree keeps int IDs and is
-out of scope (changing it would break the programmatic contract). The on-disk
-tenant-DB file naming (already UUID, per recent commits) is unchanged.
+The SvelteKit SPA route `/:tenant/invoices/[invoiceUUID]` fetches
+`GET /api/t/{tenantUUID}/invoices/{invoiceUUID}`. The same identifier flows
+**client route → API path → server resolves to the int PK in the DB**. So the
+SvelteKit routes and the API paths must use the *same* UUID; they mirror each
+other.
 
 ## Decisions
 
-### D1 — Full UUID via a public alias column (keep the int PK)
+### D1 — UUID is the only public identifier; int64 PK is internal-only
 
-Add `uuid TEXT NOT NULL UNIQUE` to every tenant entity exposed in a URL. The
-int64 PK is retained — all foreign keys, joins, audit references, and the entire
-`/api` tree continue to use it. The UUID is purely the **public URL alias**: HTML
-handlers resolve `uuid → row` (then operate on the int PK internally). No PK
-surgery, no FK churn, `/api` unaffected.
+Add `uuid TEXT NOT NULL UNIQUE` to every tenant entity exposed in a URL or JSON
+body. The int64 PK is **retained but never appears in any URL or API payload** —
+it stays the DB-internal key for foreign keys, joins, and audit references. Every
+public surface (SvelteKit route param, API path param, JSON `id`/`*Id` fields)
+uses the UUID.
 
-- UUIDs are generated at insert time (random v4), stored as TEXT, `UNIQUE`
-  indexed per tenant DB.
-- This is intentionally an alias, not a PK swap: it is the smallest change that
-  makes URLs opaque without touching the relational core or the JSON API.
-- Accepted consequence: the same entity is addressed by `uuid` in HTML and by
-  int `id` in `/api`. Acceptable — they are two surfaces; the API may adopt the
-  uuid later if wanted, but that is not in scope here.
+- UUIDs generated at insert (random v4), stored TEXT, `UNIQUE` per tenant DB.
+- Server resolves `uuid → row` at the API boundary, then operates on the int PK
+  internally. FK columns stay int; the service translates inbound `*Id` UUIDs to
+  int FKs and outbound int FKs to UUIDs.
 
-### D2 — Shallow hierarchy (best-practice REST URL nesting)
+### D2 — Clean break: `/api` path params switch int → UUID
 
-- **Top-level resources are flat:** `/invoices/{invoiceUUID}`,
-  `/participants/{participantUUID}`. An entity that exists on its own lives at the
-  root of the tenant tree.
-- **Owned children nest exactly one level:** things that cannot exist without a
-  parent — `/shifts/{shiftUUID}/items/{itemUUID}`,
-  `/invoices/{invoiceUUID}/payments/{paymentUUID}`,
-  `/invoices/{invoiceUUID}/lines/{lineUUID}`.
+Only the SPA consumes the API, so the contract changes outright:
+`/api/.../invoices/{id}` → `/api/.../invoices/{invoiceUUID}`. No dual int/uuid
+resolution. Consistent with the project's clean-break data-model ethos.
+
+**JSON-body ripple:** field *names* are kept to minimize SPA churn, but their
+*values* become UUID strings — `id` holds the entity UUID; foreign-key fields
+(`participantId`, `versionId`, …) hold the related entity's UUID. The server maps
+these to/from int PKs at the service boundary.
+
+### D3 — Shallow hierarchy (best-practice REST nesting)
+
+- **Top-level resources flat:** `/invoices/{invoiceUUID}`,
+  `/participants/{participantUUID}`.
+- **Owned children nest exactly one level** — things that can't exist without a
+  parent: `/shifts/{shiftUUID}/items/{itemUUID}`,
+  `/invoices/{invoiceUUID}/payments/{paymentUUID}`.
 - **Never nest two levels.** `/participants/{uuid}/invoices/{uuid}/payments/{uuid}`
-  is rejected — once you hold the leaf UUID you don't need its grandparent in the
-  path, and every handler would drag params it never uses. Max depth = 2.
-- **Relationships are filtered list views, not nested paths.** "This
-  participant's invoices" = `/invoices?participant={participantUUID}`; the
-  participant detail page links there. No `/participants/{uuid}/invoices` route.
+  is rejected — once you hold the leaf UUID you don't need its grandparent.
+  Max depth = 2.
+- **Relationships are filtered list queries, not nested paths.** Participant's
+  invoices = `GET …/invoices?participant={participantUUID}`; the SPA participant
+  page links there. No `/participants/{uuid}/invoices` route.
 
-### D3 — Naming conventions
+### D4 — Naming conventions
 
-- kebab-case collection names (existing convention: `tax-rates`,
-  `plan-managers`, `custom-items`, `support-catalog`).
-- Collection plural; member `/{entityUUID}`; create form `/new`; the **autosave
-  detail page IS the edit page** (no separate `/edit`, per the HTMX spec's
-  autosave model).
-- Only **literal verbs** are static path words: `new`, `bulk-delete`,
-  `bulk-status`, `status`, `pdf`, `convert`, `duplicate`, `generate`, `divide`,
-  `import`, `lines`, `items`, `payments`, `search`.
+- kebab-case collections (existing: `tax-rates`, `plan-managers`,
+  `custom-items`, `support-catalog`).
+- Collection plural; member `/{entityUUID}`. Only **literal verbs** are static
+  segments: `bulk-delete`, `bulk-status`, `status`, `pdf`, `convert`,
+  `duplicate`, `generate`, `divide`, `import`, `draft-from-shifts`, `lines`,
+  `items`, `payments`, `prices`.
 - **Typed param names** — `{invoiceUUID}`, `{lineUUID}`, `{participantUUID}` —
-  not bare `{id}`. Self-documenting in chi handlers and avoids ambiguity in
-  nested routes.
+  not bare `{id}`; self-documenting in chi handlers and unambiguous when nested.
 
-### D4 — Support catalogue becomes a tenant-owned resource
+### D5 — Support catalogue becomes a tenant-owned resource
 
-The NDIS support catalogue moves from the **control DB** (globally seeded via a
-generated migration) to a **per-tenant** resource that each tenant populates
-itself. Rationale: removes the global seed/generation machinery and the
-platform-admin special case; the catalogue becomes a normal tenant CRUD resource
-gated by **owner/admin** like everything else.
+The NDIS catalogue moves from the **control DB** (globally seeded via generated
+migration) to a **per-tenant** resource each tenant populates itself. Removes the
+global-seed machinery and the platform-admin special case; the catalogue becomes
+a normal tenant resource gated by **owner/admin**.
 
-- **Versions are kept.** Yearly price changes plus per-invoice price pinning
-  (`line_items.catalog_version_id`) are real requirements — old invoices must not
-  re-price when a tenant uploads a newer catalogue. Do **not** flatten to a
-  single item table.
-- **XLSX ingest UI is deferred.** Tables and routes are defined now; the actual
-  upload/parse wiring (`/support-catalog/new`, `POST .../versions`) is a later
-  task. `catalog.ParseXLSX` is retained for when it lands. Until then the
-  catalogue UI is effectively read-only/empty.
-- Accepted cost: the NDIS price guide is identical for every Australian
-  provider, so on a multi-tenant deploy each tenant re-uploads the same XLSX.
-  Fine for the self-hosted single-tenant case; mild duplication otherwise.
+- **Versions kept.** Yearly price changes + per-invoice price pinning
+  (`line_items.catalog_version_id`) are real — old invoices must not re-price.
+  Don't flatten to a single item table.
+- **XLSX ingest is deferred.** Tables + routes defined now; the upload/parse
+  wiring is a later task. `catalog.ParseXLSX` retained for then. Catalogue UI is
+  effectively read-only/empty until ingest lands.
+- Accepted cost: identical NDIS guide per tenant means each re-uploads the same
+  XLSX on a multi-tenant deploy. Fine for self-hosted single-tenant.
 
-### D5 — Invites keyed by UUID for revoke
+### D6 — Invites revoked by UUID
 
-Invites currently key on `token` (a secret). Revoking by token would put the
-secret in the URL/logs. Add a `uuid` column to invites and revoke by uuid:
-`DELETE …/settings/users/invites/{inviteUUID}`. The token stays the
-accept-link secret (`/accept-invite?token=…`), never used as a path id for
-management.
+Invites key on `token` (a secret). Add a `uuid` column and revoke by uuid
+(`DELETE …/invites/{inviteUUID}`); the token stays the accept-link secret
+(`/accept-invite?token=…`), never a management path id.
 
-## Full HTML route map
+## API route map (`/api`, the contract)
 
-`{xUUID}` = entity uuid · literal words are static segments · **P** = full page
-(GET render) · **F** = HTMX fragment · **A** = action (mutation).
+All under `/api/t/{tenantUUID}/` unless noted. `{xUUID}` = entity uuid; literal
+words are static segments.
 
 ### Public (no tenant)
 ```
-GET   /login                         P
-POST  /login                         A   multi-tenant email → re-render tenant chooser
-POST  /logout                        A
-GET   /signup                        P
-POST  /signup                        A   → HX-Redirect /t/{tenantUUID}/
-GET   /accept-invite?token=…         P
-POST  /accept-invite                 A
-GET   /                              A   resolve user's tenants → redirect single, chooser if many
+POST  /api/signup
+POST  /api/auth/login                      (multi-tenant email → tenant list in body)
+POST  /api/auth/logout
+GET   /api/auth/session
+GET   /api/invites/{token}                 validate accept-link (token, not uuid)
+POST  /api/invites/{token}/accept
+GET   /healthz
 ```
 
-### Tenant root
+### Standard resource (participants, plan-managers, tax-rates, custom-items, recurring)
+Shown with `participants`:
 ```
-GET   /t/{tenantUUID}/                P   dashboard
-GET   /t/{tenantUUID}/events          —   SSE stream (HTMX sse-connect)
+GET    …/participants
+POST   …/participants
+POST   …/participants/bulk-delete
+GET    …/participants/{participantUUID}
+PUT    …/participants/{participantUUID}
+DELETE …/participants/{participantUUID}
 ```
-
-### Standard resource pattern
-Applies identically to `participants`, `plan-managers`, `tax-rates`,
-`custom-items`, `recurring` (shown with `participants`; all paths under
-`/t/{tenantUUID}/`):
+Per-resource extras:
 ```
-GET    …/participants                          P   list (filter/sort/paginate → F on #rows)
-GET    …/participants/new                       P   create form
-POST   …/participants                           A   → HX-Redirect …/{participantUUID}
-GET    …/participants/{participantUUID}         P   detail = autosave edit page
-POST   …/participants/{participantUUID}         A   autosave (field-group + save-badge F)
-DELETE …/participants/{participantUUID}         A   hx-delete
-POST   …/participants/bulk-delete               A   checkbox form
-```
-Per-resource extra:
-```
-POST   …/recurring/{recurringUUID}/generate     A   → new draft invoice
+GET    …/participants/{participantUUID}/stats
+POST   …/recurring/{recurringUUID}/generate
 ```
 
-### Invoices (owned children: lines, payments)
+### Invoices (owned children: payments)
 ```
-GET    …/invoices                               P   list
-GET    …/invoices/new                            P
-POST   …/invoices                                A
-GET    …/invoices/{invoiceUUID}                  P   edit (autosave)
-POST   …/invoices/{invoiceUUID}                  A   autosave
-DELETE …/invoices/{invoiceUUID}                  A
-POST   …/invoices/bulk-delete                    A
-POST   …/invoices/bulk-status                    A
-POST   …/invoices/{invoiceUUID}/status           A
-GET    …/invoices/{invoiceUUID}/pdf              —   download
-GET    …/invoices/{invoiceUUID}/lines/search?q=  F   NDIS picker menu
-POST   …/invoices/{invoiceUUID}/lines            F   append row + recompute totals
-DELETE …/invoices/{invoiceUUID}/lines/{lineUUID} F   remove row + recompute totals
-GET    …/invoices/{invoiceUUID}/payments         F   list
-POST   …/invoices/{invoiceUUID}/payments         A
-DELETE …/invoices/{invoiceUUID}/payments/{paymentUUID}  A
+GET    …/invoices                                  (+ ?participant= / ?status=)
+POST   …/invoices
+POST   …/invoices/draft-from-shifts                (body: shift UUIDs)
+POST   …/invoices/bulk-delete
+POST   …/invoices/bulk-status
+GET    …/invoices/{invoiceUUID}
+PUT    …/invoices/{invoiceUUID}
+DELETE …/invoices/{invoiceUUID}
+POST   …/invoices/{invoiceUUID}/status
+GET    …/invoices/{invoiceUUID}/pdf
+GET    …/invoices/{invoiceUUID}/payments
+POST   …/invoices/{invoiceUUID}/payments
+DELETE …/invoices/{invoiceUUID}/payments/{paymentUUID}
 ```
+(Line items stay embedded in the invoice PUT body as a `lineItems` array — each
+carries its own `id` = lineUUID; no per-line endpoints, the SPA owns the array.)
 
-### Estimates (owned child: lines)
-List/new/create/edit/delete/bulk-* identical to invoices, plus:
+### Estimates
+List/CRUD/bulk identical to invoices, plus:
 ```
-POST   …/estimates/{estimateUUID}/status         A
-POST   …/estimates/{estimateUUID}/duplicate      A   → new draft
-POST   …/estimates/{estimateUUID}/convert        A   → invoice
-GET    …/estimates/{estimateUUID}/pdf            —
-GET    …/estimates/{estimateUUID}/lines/search?q= F
-POST   …/estimates/{estimateUUID}/lines           F
-DELETE …/estimates/{estimateUUID}/lines/{lineUUID} F
+POST   …/estimates/{estimateUUID}/status
+POST   …/estimates/{estimateUUID}/duplicate
+POST   …/estimates/{estimateUUID}/convert
+GET    …/estimates/{estimateUUID}/pdf
 ```
 
 ### Shifts (owned child: items)
 ```
-GET    …/shifts                                  P   list (+ ?status=)
-GET    …/shifts/suggestions                       F   billing suggestions
-GET    …/shifts/to-record                         F   awaiting-record
-GET    …/shifts/new                               P
-POST   …/shifts                                   A
-GET    …/shifts/{shiftUUID}                        P   edit (autosave)
-POST   …/shifts/{shiftUUID}                        A
-DELETE …/shifts/{shiftUUID}                        A
-POST   …/shifts/{shiftUUID}/status                 A
-POST   …/shifts/{shiftUUID}/divide                 A   AI; 503 if disabled
-POST   …/shifts/import                             A   AI; 503 if disabled
-GET    …/shifts/{shiftUUID}/items                  F
-POST   …/shifts/{shiftUUID}/items                  F
-PATCH  …/shifts/{shiftUUID}/items/{itemUUID}       F
-DELETE …/shifts/{shiftUUID}/items/{itemUUID}       F
+GET    …/shifts                                    (+ ?status= / ?participant=)
+GET    …/shifts/suggestions
+GET    …/shifts/to-record
+POST   …/shifts
+POST   …/shifts/import                             (AI; 503 if disabled)
+GET    …/shifts/{shiftUUID}
+PUT    …/shifts/{shiftUUID}
+DELETE …/shifts/{shiftUUID}
+POST   …/shifts/{shiftUUID}/status
+POST   …/shifts/{shiftUUID}/divide                 (AI; 503 if disabled)
+GET    …/shifts/{shiftUUID}/items
+POST   …/shifts/{shiftUUID}/items
+PATCH  …/shifts/{shiftUUID}/items/{itemUUID}
+DELETE …/shifts/{shiftUUID}/items/{itemUUID}
 ```
 
 ### Support catalogue (tenant-owned; ingest deferred)
 ```
-GET    …/support-catalog                                       P   this tenant's versions list
-GET    …/support-catalog/new                                    P   upload/create version form   [DEFERRED]
-POST   …/support-catalog/versions                               A   ingest (multipart)/manual    [DEFERRED]
-GET    …/support-catalog/versions/{versionUUID}                 P   items in version
-DELETE …/support-catalog/versions/{versionUUID}                 A
-GET    …/support-catalog/versions/{versionUUID}/items/new        P   add item                     [DEFERRED]
-POST   …/support-catalog/versions/{versionUUID}/items            A                                [DEFERRED]
-POST   …/support-catalog/versions/{versionUUID}/items/{itemUUID} A   edit (autosave)              [DEFERRED]
-DELETE …/support-catalog/versions/{versionUUID}/items/{itemUUID} A                                [DEFERRED]
+GET    …/support-catalog/versions
+POST   …/support-catalog/versions                  [DEFERRED] ingest/manual create
+GET    …/support-catalog/versions/{versionUUID}/items
+DELETE …/support-catalog/versions/{versionUUID}    [DEFERRED]
+GET    …/support-catalog/items/{itemUUID}/prices
+POST   …/support-catalog/versions/{versionUUID}/items            [DEFERRED]
+PATCH  …/support-catalog/versions/{versionUUID}/items/{itemUUID} [DEFERRED]
+DELETE …/support-catalog/versions/{versionUUID}/items/{itemUUID} [DEFERRED]
 ```
 
-### Settings
+### Business profile & settings
 ```
-GET    …/settings                       P   business profile form
-POST   …/settings                       A   autosave
-GET    …/settings/account               P
-POST   …/settings/account               A
-GET    …/settings/users                 P   users + invites
-POST   …/settings/users/invites         A   create invite link
-DELETE …/settings/users/invites/{inviteUUID}  A   revoke
+GET    …/business-profile
+PUT    …/business-profile
+GET    …/auth/me
+POST   …/settings/users/invites                    create invite link
+DELETE …/settings/users/invites/{inviteUUID}       revoke
 ```
 
-### Cross-links (filtered lists, not nested routes)
+### Realtime
 ```
-participant's invoices  →  …/invoices?participant={participantUUID}
-participant's shifts    →  …/shifts?participant={participantUUID}
+GET    …/events                                    SSE stream (unchanged)
 ```
+
+## SvelteKit route mirror (file-based)
+
+The client routes mirror the API hierarchy; `[uuid]` segments carry the same
+UUID handed to the API. `/new` is a **client-only** create page (no API `/new` —
+it POSTs to the collection).
+```
+/login   /signup   /accept-invite
+/:tenant/                                  dashboard
+/:tenant/{collection}                      list      (participants, invoices, …)
+/:tenant/{collection}/new                  create form
+/:tenant/{collection}/[entityUUID]         detail/edit
+/:tenant/settings   /settings/account   /settings/users
+/:tenant/support-catalog
+```
+Cross-links are filtered list pages: `/:tenant/invoices?participant={uuid}`.
 
 ## Data-model ripples (for the implementation plan)
 
-- **Add `uuid TEXT NOT NULL UNIQUE`** to every tenant entity addressed in a URL:
+- **Add `uuid TEXT NOT NULL UNIQUE`** to every tenant entity in a URL/payload:
   participants, plan-managers, tax-rates, custom-items, invoices, estimates,
   shifts, recurring, payments, invoice/estimate line items, shift items, invites.
-  Backfill existing rows in the migration. Int64 PK retained throughout.
-- **HTML handlers gain a `uuid → row` resolve step** (a `GetXByUUID` sqlc query
-  per slice) before calling the existing service on the int id.
-- **Catalogue tables move control DB → tenant DB:** `catalog_versions` + items +
-  prices. New tenant migration; drop from control. `line_items.catalog_version_id`
-  now references a tenant-local catalogue UUID.
+  Backfill existing rows in the migration. Int64 PK retained, internal-only.
+- **sqlc:** add `GetXByUUID` lookups and `uuid` to every select/insert. Inserts
+  generate a UUID. FK columns stay int.
+- **Handlers/services:** path param + `ParseID` → resolve uuid→row; map inbound
+  `*Id` UUID body fields to int FKs and outbound int FKs to UUIDs. `ParseID`
+  (currently int) gains/loses to a UUID parse helper.
+- **Catalogue:** move `catalog_versions` + items + prices control DB → tenant DB
+  (new tenant migration; drop from control). `line_items.catalog_version_id` now
+  references a tenant-local catalogue UUID.
 - **Delete:** `cmd/cataloguegen`, the generated
-  `internal/db/migrations/control/0000N_catalogue_*.sql`, `data/catalogue/`, and
-  the platform-admin gate on catalogue ingest. Keep `catalog.ParseXLSX` for the
-  deferred upload path.
-- **Docs:** update `CLAUDE.md` (catalogue + DB sections) and `docs/data-model.md`
-  ERD to move the catalogue from control to tenant and add the `uuid` columns.
+  `internal/db/migrations/control/0000N_catalogue_*.sql`, `data/catalogue/`, the
+  platform-admin gate on ingest. Keep `catalog.ParseXLSX` for the deferred upload.
+- **SPA:** API client types — `id`/`*Id` fields become UUID strings; route
+  `[id]` params → `[uuid]`. Field names unchanged, so store/component churn is
+  bounded.
+- **Docs:** `CLAUDE.md` (catalogue + DB sections) and `docs/data-model.md` ERD —
+  move catalogue control→tenant, add `uuid` columns.
 
 ## Out of scope
 
-- `/api/...` JSON routes (stay int-keyed).
 - Tenant-DB file naming (already UUID).
-- The HTMX rendering mechanics, CSRF, SSE frame format — covered by the companion
-  HTMX spec.
 - XLSX catalogue ingest wiring (deferred; routes reserved).
+- Any change to the SSE frame format or auth/session mechanics.
 
 ## Testing
 
-- `httptest` route tests asserting each HTML path resolves a UUID and 404s on an
-  unknown/foreign-tenant UUID (the security check: a UUID from tenant A must not
-  resolve in tenant B).
-- A migration test asserting `uuid` is populated + unique on backfill for each
-  table.
-- Reuse existing service/repo tests (services operate on int PK, unchanged).
+- Handler tests: each API path resolves a UUID and **404s on an unknown or
+  foreign-tenant UUID** (the core security check — a tenant A UUID must not
+  resolve in tenant B's DB).
+- Migration test: `uuid` populated + unique after backfill on every table.
+- Round-trip test: create via POST returns a UUID `id`; GET by that UUID returns
+  the same entity; FK fields round-trip as UUIDs.
+- Reuse existing service/repo tests (services still operate on int PK).
