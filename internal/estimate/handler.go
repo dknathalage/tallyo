@@ -3,7 +3,7 @@ package estimate
 import (
 	"errors"
 	"net/http"
-	"strconv"
+	"net/url"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
@@ -33,20 +33,77 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/estimates", h.Create)
 	r.Post("/estimates/bulk-delete", h.BulkDelete)
 	r.Post("/estimates/bulk-status", h.BulkStatus)
-	r.Get("/estimates/{id}", h.Get)
-	r.Put("/estimates/{id}", h.Update)
-	r.Delete("/estimates/{id}", h.Delete)
-	r.Post("/estimates/{id}/status", h.Status)
-	r.Post("/estimates/{id}/duplicate", h.Duplicate)
-	r.Get("/estimates/{id}/pdf", h.Pdf)
-	r.Post("/estimates/{id}/convert", h.Convert)
+	r.Get("/estimates/{uuid}", h.Get)
+	r.Put("/estimates/{uuid}", h.Update)
+	r.Delete("/estimates/{uuid}", h.Delete)
+	r.Post("/estimates/{uuid}/status", h.Status)
+	r.Post("/estimates/{uuid}/duplicate", h.Duplicate)
+	r.Get("/estimates/{uuid}/pdf", h.Pdf)
+	r.Post("/estimates/{uuid}/convert", h.Convert)
 }
 
-// estimateRequest is the flat write payload: every EstimateInput field (embedded so
-// its json tags flatten) plus the line items. The frontend posts this shape.
+// estimateRequest is the flat write payload. ParticipantUUID/PlanManagerUUID
+// arrive as uuids under the public field names (participantId/planManagerId) and
+// are resolved to int FKs before the service is called; the remaining fields
+// mirror EstimateInput. LineItems carry the priced lines (catalogue refs already
+// uuid TEXT — passed through unchanged).
 type estimateRequest struct {
-	EstimateInput
-	LineItems []billing.LineItemInput `json:"lineItems"`
+	ParticipantUUID  string                  `json:"participantId"`
+	PlanManagerUUID  *string                 `json:"planManagerId"`
+	Status           string                  `json:"status"`
+	IssueDate        string                  `json:"issueDate"`
+	ValidUntil       string                  `json:"validUntil"`
+	Tax              float64                 `json:"tax"`
+	Notes            string                  `json:"notes"`
+	BusinessSnapshot string                  `json:"businessSnapshot"`
+	ClientSnapshot   string                  `json:"participantSnapshot"`
+	PayerSnapshot    string                  `json:"planManagerSnapshot"`
+	LineItems        []billing.LineItemInput `json:"lineItems"`
+}
+
+// resolveInput translates an estimateRequest's participant/plan-manager uuids
+// into int FKs and returns the int-keyed EstimateInput. Writes a 400 and returns
+// ok=false when the participant uuid is missing/unknown for the tenant. A
+// missing/empty plan-manager uuid stays NULL; a present-but-unknown one 400s.
+func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req estimateRequest) (EstimateInput, bool) {
+	if req.ParticipantUUID == "" || len(req.LineItems) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+		return EstimateInput{}, false
+	}
+	pid, err := h.svc.ResolveParticipant(r.Context(), req.ParticipantUUID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return EstimateInput{}, false
+	}
+	if pid == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		return EstimateInput{}, false
+	}
+	var pmID *int64
+	if req.PlanManagerUUID != nil && *req.PlanManagerUUID != "" {
+		id, err := h.svc.ResolvePlanManager(r.Context(), *req.PlanManagerUUID)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return EstimateInput{}, false
+		}
+		if id == 0 {
+			httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+			return EstimateInput{}, false
+		}
+		pmID = &id
+	}
+	return EstimateInput{
+		ParticipantID:    pid,
+		PlanManagerID:    pmID,
+		Status:           req.Status,
+		IssueDate:        req.IssueDate,
+		ValidUntil:       req.ValidUntil,
+		Tax:              req.Tax,
+		Notes:            req.Notes,
+		BusinessSnapshot: req.BusinessSnapshot,
+		ClientSnapshot:   req.ClientSnapshot,
+		PayerSnapshot:    req.PayerSnapshot,
+	}, true
 }
 
 // writeValidationError, when err is (or wraps) a *billing.ValidationError,
@@ -64,18 +121,18 @@ func writeValidationError(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-// parseIDFromString parses a decimal int64 from s. Used by the List handler
-// to parse query-string ids (e.g. ?participantId=123).
-func parseIDFromString(s string) (int64, bool) {
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n <= 0 {
-		return 0, false
+// participantFilter returns the participant uuid filter from the query, accepting
+// the canonical ?participant= and the legacy ?participantId= key.
+func participantFilter(q url.Values) string {
+	if v := q.Get("participant"); v != "" {
+		return v
 	}
-	return n, true
+	return q.Get("participantId")
 }
 
-// List returns estimates filtered by the optional ?participantId= or ?status= query
-// params. Unlike invoices there is no read-time overdue sweep.
+// List returns estimates filtered by the optional ?participant= (participant
+// uuid) or ?status= query params. Unlike invoices there is no read-time overdue
+// sweep.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if listquery.IsListQuery(q) {
@@ -88,10 +145,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, res)
 		return
 	}
-	if pid := q.Get("participantId"); pid != "" {
-		participantID, ok := parseIDFromString(pid)
-		if !ok {
-			httpx.WriteError(w, http.StatusBadRequest, "invalid participantId")
+	if pUUID := participantFilter(q); pUUID != "" {
+		participantID, err := h.svc.ResolveParticipant(r.Context(), pUUID)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if participantID == 0 {
+			httpx.WriteJSON(w, http.StatusOK, []*Estimate{})
 			return
 		}
 		ests, err := h.svc.ListParticipantEstimates(r.Context(), participantID)
@@ -121,12 +182,12 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get returns a single estimate (with line items), or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	est, err := h.svc.Get(r.Context(), id)
+	est, err := h.svc.GetByUUID(r.Context(), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -138,18 +199,18 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, est)
 }
 
-// Create inserts an estimate. A missing participant or empty line items → 400.
+// Create inserts an estimate. A missing/unknown participant or empty line items → 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req estimateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+	in, ok := h.resolveInput(w, r, req)
+	if !ok {
 		return
 	}
-	est, err := h.svc.Create(r.Context(), req.EstimateInput, req.LineItems)
+	est, err := h.svc.Create(r.Context(), in, req.LineItems)
 	if err != nil {
 		if writeValidationError(w, err) {
 			return
@@ -160,9 +221,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, est)
 }
 
-// Update rewrites an estimate. Missing participant/items → 400; unknown id → 404.
+// Update rewrites an estimate. Missing participant/items → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -172,11 +233,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+	in, ok := h.resolveInput(w, r, req)
+	if !ok {
 		return
 	}
-	est, err := h.svc.Update(r.Context(), id, req.EstimateInput, req.LineItems)
+	est, err := h.svc.UpdateByUUID(r.Context(), uid, in, req.LineItems)
 	if err != nil {
 		if writeValidationError(w, err) {
 			return
@@ -191,14 +252,14 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, est)
 }
 
-// Delete removes an estimate by id.
+// Delete removes an estimate by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
+	if err := h.svc.DeleteByUUID(r.Context(), uid); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -207,7 +268,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // Status flips just the estimate status. An empty status → 400.
 func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -223,55 +284,71 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	if err := h.svc.UpdateStatus(r.Context(), id, body.Status); err != nil {
+	if err := h.svc.UpdateStatusByUUID(r.Context(), uid, body.Status); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": body.Status})
 }
 
-// Duplicate copies an estimate into a new draft and returns it.
+// Duplicate copies an estimate into a new draft and returns it. An unknown uuid → 404.
 func (h *Handler) Duplicate(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	est, err := h.svc.Duplicate(r.Context(), id)
+	est, err := h.svc.DuplicateByUUID(r.Context(), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if est == nil {
+		httpx.WriteError(w, http.StatusNotFound, "not found")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, est)
 }
 
-// BulkDelete removes every estimate whose id is in the request body.
+// BulkDelete removes every estimate whose uuid is in the request body. The uuids
+// are resolved to int PKs first; an unknown uuid → 400.
 func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ids []int64 `json:"ids"`
+		Ids []string `json:"ids"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if err := h.svc.BulkDelete(r.Context(), body.Ids); err != nil {
+	ids, err := h.svc.ResolveEstimateIDs(r.Context(), body.Ids)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.BulkDelete(r.Context(), ids); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// BulkStatus sets the status of every estimate whose id is in the request body.
+// BulkStatus sets the status of every estimate whose uuid is in the request
+// body. The uuids are resolved to int PKs first; an unknown uuid → 400.
 func (h *Handler) BulkStatus(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ids    []int64 `json:"ids"`
-		Status string  `json:"status"`
+		Ids    []string `json:"ids"`
+		Status string   `json:"status"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if err := h.svc.BulkUpdateStatus(r.Context(), body.Ids, body.Status); err != nil {
+	ids, err := h.svc.ResolveEstimateIDs(r.Context(), body.Ids)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.BulkUpdateStatus(r.Context(), ids, body.Status); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -281,12 +358,12 @@ func (h *Handler) BulkStatus(w http.ResponseWriter, r *http.Request) {
 // Convert turns an accepted estimate into an invoice. A non-accepted or
 // already-converted estimate → 409; an unknown id → 404.
 func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	res, err := h.svc.Convert(r.Context(), id)
+	res, err := h.svc.ConvertByUUID(r.Context(), uid)
 	if err != nil {
 		if errors.Is(err, ErrNotAccepted) {
 			httpx.WriteError(w, http.StatusConflict, "only accepted estimates can be converted")
@@ -308,12 +385,12 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 
 // Pdf renders an estimate to PDF and returns it as a file download.
 func (h *Handler) Pdf(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	est, err := h.svc.Get(r.Context(), id)
+	est, err := h.svc.GetByUUID(r.Context(), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return

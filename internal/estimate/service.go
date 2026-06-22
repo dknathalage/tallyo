@@ -61,6 +61,105 @@ func (s *Service) Get(ctx context.Context, id int64) (*Estimate, error) {
 	return s.repo.Get(ctx, tenantID, id)
 }
 
+// GetByUUID returns an estimate by uuid, or (nil, nil) when absent. Public HTTP read.
+func (s *Service) GetByUUID(ctx context.Context, estimateUUID string) (*Estimate, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.GetByUUID(ctx, tenantID, estimateUUID)
+}
+
+// ResolveParticipant translates a participant uuid into its int FK for the
+// tenant. Returns (0, nil) when no participant matches (caller 400s).
+func (s *Service) ResolveParticipant(ctx context.Context, participantUUID string) (int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+}
+
+// ResolvePlanManager translates a plan-manager uuid into its int FK for the
+// tenant. Returns (0, nil) when no plan manager matches (caller 400s).
+func (s *Service) ResolvePlanManager(ctx context.Context, planManagerUUID string) (int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolvePlanManagerID(ctx, tenantID, planManagerUUID)
+}
+
+// ResolveEstimateIDs translates a list of estimate uuids into their int PKs for
+// the tenant (preserving order). An unknown uuid surfaces as an error so the
+// caller can 400 — bulk operations must not silently drop a member.
+func (s *Service) ResolveEstimateIDs(ctx context.Context, estimateUUIDs []string) ([]int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveEstimateIDs(ctx, tenantID, estimateUUIDs)
+}
+
+// UpdateByUUID resolves the estimate uuid → int PK, then rewrites the estimate.
+// Returns (nil, nil) when no estimate matches the uuid so the handler can 404.
+func (s *Service) UpdateByUUID(ctx context.Context, estimateUUID string, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveEstimateID(ctx, tenantID, estimateUUID)
+	if err != nil {
+		return nil, err
+	}
+	if id == 0 {
+		return nil, nil
+	}
+	return s.Update(ctx, id, in, items)
+}
+
+// DeleteByUUID resolves the estimate uuid → int PK, then deletes the estimate.
+// A no-match uuid is a no-op (the int Delete is idempotent).
+func (s *Service) DeleteByUUID(ctx context.Context, estimateUUID string) error {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveEstimateID(ctx, tenantID, estimateUUID)
+	if err != nil {
+		return err
+	}
+	if id == 0 {
+		return nil
+	}
+	return s.Delete(ctx, id)
+}
+
+// UpdateStatusByUUID resolves the estimate uuid → int PK, then flips its status.
+// A no-match uuid is a no-op.
+func (s *Service) UpdateStatusByUUID(ctx context.Context, estimateUUID, status string) error {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveEstimateID(ctx, tenantID, estimateUUID)
+	if err != nil {
+		return err
+	}
+	if id == 0 {
+		return nil
+	}
+	return s.UpdateStatus(ctx, id, status)
+}
+
+// DuplicateByUUID resolves the estimate uuid → int PK, then duplicates it.
+// Returns (nil, nil) when no estimate matches the uuid so the handler can 404.
+func (s *Service) DuplicateByUUID(ctx context.Context, estimateUUID string) (*Estimate, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveEstimateID(ctx, tenantID, estimateUUID)
+	if err != nil {
+		return nil, err
+	}
+	if id == 0 {
+		return nil, nil
+	}
+	return s.Duplicate(ctx, id)
+}
+
+// ConvertByUUID resolves the estimate uuid → int PK, then converts it to an
+// invoice. Returns (nil, nil) when no estimate matches the uuid so the handler
+// can 404; ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
+func (s *Service) ConvertByUUID(ctx context.Context, estimateUUID string) (*ConvertResult, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveEstimateID(ctx, tenantID, estimateUUID)
+	if err != nil {
+		return nil, err
+	}
+	if id == 0 {
+		return nil, nil
+	}
+	return s.Convert(ctx, id)
+}
+
 // Create inserts an estimate + line items, then broadcasts on success.
 func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)

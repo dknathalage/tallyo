@@ -25,9 +25,10 @@ import (
 
 // estimateListSelect mirrors the ListEstimates sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/estimates.sql. tenant_id is the only ?.
-const estimateListSelect = `SELECT e.*, p.name AS participant_name
+const estimateListSelect = `SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM estimates e
 LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 WHERE e.tenant_id = ?`
 
 // EstimateCols is the listquery allowlist for estimates. Keys match the JSON
@@ -53,12 +54,14 @@ var ErrAlreadyConverted = errors.New("estimate already converted")
 // valid_until replaces due_date, and an optional converted_invoice_id records
 // the invoice produced by Convert.
 type Estimate struct {
-	ID                 int64               `json:"id"`
-	UUID               string              `json:"uuid"`
+	ID                 int64               `json:"-"`  // internal PK; the public identifier is the uuid
+	UUID               string              `json:"id"` // public identifier (estimate uuid)
 	Number             string              `json:"number"`
-	ParticipantID      *int64              `json:"participantId"`
+	ParticipantID      *int64              `json:"-"`             // internal FK; the public ref is participantId (uuid)
+	ParticipantUUID    string              `json:"participantId"` // participant uuid
 	ParticipantName    string              `json:"participantName"`
-	PlanManagerID      *int64              `json:"planManagerId"`
+	PlanManagerID      *int64              `json:"-"`             // internal FK; the public ref is planManagerId (uuid)
+	PlanManagerUUID    *string             `json:"planManagerId"` // plan-manager uuid (nil when none)
 	Status             string              `json:"status"`
 	IssueDate          string              `json:"issueDate"`
 	ValidUntil         string              `json:"validUntil"`
@@ -89,9 +92,12 @@ type EstimateInput struct {
 	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
-// ConvertResult identifies the invoice produced by Convert.
+// ConvertResult identifies the invoice produced by Convert. The public
+// identifier is the new invoice's uuid, serialized as "id"; the int PK is kept
+// internal (the service reads it to broadcast the invoice "create" event).
 type ConvertResult struct {
-	InvoiceID      int64  `json:"invoiceId"`
+	InvoiceID      int64  `json:"-"`  // internal invoice PK
+	InvoiceUUID    string `json:"id"` // public identifier (new invoice uuid)
 	InvoiceNumber  string `json:"invoiceNumber"`
 	EstimateNumber string `json:"estimateNumber"`
 }
@@ -251,24 +257,102 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 	return nil
 }
 
-// Get returns the estimate (with participant name and line items), or (nil, nil)
-// when absent.
+// Get returns the estimate (with participant name and line items) by int PK, or
+// (nil, nil) when absent. Internal read used by the convert/duplicate paths and
+// the int-keyed service methods.
 func (r *EstimatesRepo) Get(ctx context.Context, tenantID, id int64) (*Estimate, error) {
 	q := gen.New(r.db)
-	row, err := q.GetEstimate(ctx, gen.GetEstimateParams{TenantID: tenantID, ID: id})
+	row, err := q.GetEstimateByID(ctx, gen.GetEstimateByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get estimate: %w", err)
 	}
+	est := toEstimateFromRow(estimateFieldsFromGetByID(row))
+	return r.withLineItems(ctx, q, tenantID, est)
+}
+
+// GetByUUID returns the estimate (with line items) addressed by its uuid, or
+// (nil, nil) when no estimate matches the uuid for the tenant. Public HTTP read.
+func (r *EstimatesRepo) GetByUUID(ctx context.Context, tenantID int64, estimateUUID string) (*Estimate, error) {
+	q := gen.New(r.db)
+	row, err := q.GetEstimate(ctx, gen.GetEstimateParams{TenantID: tenantID, Uuid: estimateUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get estimate by uuid: %w", err)
+	}
 	est := toEstimateFromRow(estimateFieldsFromGet(row))
-	rows, err := q.ListEstimateLineItems(ctx, gen.ListEstimateLineItemsParams{TenantID: tenantID, EstimateID: id})
+	return r.withLineItems(ctx, q, tenantID, est)
+}
+
+// withLineItems loads an estimate's line items (keyed by the estimate's int PK).
+func (r *EstimatesRepo) withLineItems(ctx context.Context, q *gen.Queries, tenantID int64, est *Estimate) (*Estimate, error) {
+	rows, err := q.ListEstimateLineItems(ctx, gen.ListEstimateLineItemsParams{TenantID: tenantID, EstimateID: est.ID})
 	if err != nil {
 		return nil, fmt.Errorf("list estimate line items: %w", err)
 	}
 	est.LineItems = mapEstimateLineItems(rows)
 	return est, nil
+}
+
+// ResolveEstimateID translates an estimate uuid into its int PK, scoped to the
+// tenant. Returns (0, nil) when no estimate matches the uuid (caller 404s).
+func (r *EstimatesRepo) ResolveEstimateID(ctx context.Context, tenantID int64, estimateUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetEstimateIDByUUID(ctx, gen.GetEstimateIDByUUIDParams{TenantID: tenantID, Uuid: estimateUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve estimate uuid: %w", err)
+	}
+	return id, nil
+}
+
+// ResolveEstimateIDs translates estimate uuids into their int PKs (preserving
+// order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
+func (r *EstimatesRepo) ResolveEstimateIDs(ctx context.Context, tenantID int64, estimateUUIDs []string) ([]int64, error) {
+	q := gen.New(r.db)
+	out := make([]int64, 0, len(estimateUUIDs))
+	for i := range estimateUUIDs { // bounded by len(estimateUUIDs)
+		id, err := q.GetEstimateIDByUUID(ctx, gen.GetEstimateIDByUUIDParams{TenantID: tenantID, Uuid: estimateUUIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("unknown estimate %q", estimateUUIDs[i])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve estimate uuid: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// ResolveParticipantID translates a participant uuid into its int PK, scoped to
+// the tenant. Returns (0, nil) when no participant matches (caller 400s).
+func (r *EstimatesRepo) ResolveParticipantID(ctx context.Context, tenantID int64, participantUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: participantUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve participant uuid: %w", err)
+	}
+	return id, nil
+}
+
+// ResolvePlanManagerID translates a plan-manager uuid into its int PK, scoped to
+// the tenant. Returns (0, nil) when no plan manager matches (caller 400s).
+func (r *EstimatesRepo) ResolvePlanManagerID(ctx context.Context, tenantID int64, planManagerUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetPlanManagerIDByUUID(ctx, gen.GetPlanManagerIDByUUIDParams{TenantID: tenantID, Uuid: planManagerUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve plan manager uuid: %w", err)
+	}
+	return id, nil
 }
 
 // List returns every estimate for the tenant (header only), newest first.
@@ -316,7 +400,8 @@ func (r *EstimatesRepo) Query(ctx context.Context, tenantID int64, c listquery.C
 		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.participantID,
 			&f.planManagerID, &f.status, &f.issueDate, &f.validUntil, &f.subtotal,
 			&f.tax, &f.total, &f.notes, &f.convertedInvoiceID, &f.businessSnap,
-			&f.clientSnap, &f.payerSnap, &f.createdAt, &f.updatedAt, &f.participantName); err != nil {
+			&f.clientSnap, &f.payerSnap, &f.createdAt, &f.updatedAt, &f.participantName,
+			&f.participantUUID, &f.planManagerUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan estimate: %w", err)
 		}
 		out = append(out, toEstimateFromRow(f))
@@ -369,7 +454,7 @@ func (r *EstimatesRepo) Update(ctx context.Context, tenantID, id int64, in Estim
 	if len(items) == 0 {
 		return nil, errors.New("update estimate: at least one line item is required")
 	}
-	existing, err := gen.New(r.db).GetEstimate(ctx, gen.GetEstimateParams{TenantID: tenantID, ID: id})
+	existing, err := gen.New(r.db).GetEstimateByID(ctx, gen.GetEstimateByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -397,7 +482,7 @@ func (r *EstimatesRepo) Update(ctx context.Context, tenantID, id int64, in Estim
 }
 
 // keepEstimateSnapshots preserves stored snapshots for any input left empty.
-func keepEstimateSnapshots(in *EstimateInput, existing gen.GetEstimateRow) {
+func keepEstimateSnapshots(in *EstimateInput, existing gen.GetEstimateByIDRow) {
 	if in.BusinessSnapshot == "" {
 		in.BusinessSnapshot = existing.BusinessSnapshot.String
 	}
@@ -562,18 +647,18 @@ func (r *EstimatesRepo) Convert(ctx context.Context, tenantID, estimateID int64)
 	}
 
 	var invID int64
-	var invNum string
+	var invNum, invUUID string
 	err = numbering.WithRetry(ctx, 10, func() error {
-		return r.convertTx(ctx, tenantID, est, &invID, &invNum)
+		return r.convertTx(ctx, tenantID, est, &invID, &invNum, &invUUID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("convert estimate: %w", err)
 	}
-	return &ConvertResult{InvoiceID: invID, InvoiceNumber: invNum, EstimateNumber: est.Number}, nil
+	return &ConvertResult{InvoiceID: invID, InvoiceUUID: invUUID, InvoiceNumber: invNum, EstimateNumber: est.Number}, nil
 }
 
 // convertTx runs a single convert attempt inside one transaction.
-func (r *EstimatesRepo) convertTx(ctx context.Context, tenantID int64, est *Estimate, invID *int64, invNum *string) error {
+func (r *EstimatesRepo) convertTx(ctx context.Context, tenantID int64, est *Estimate, invID *int64, invNum, invUUID *string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -609,6 +694,7 @@ func (r *EstimatesRepo) convertTx(ctx context.Context, tenantID int64, est *Esti
 	}
 	*invID = inv.ID
 	*invNum = num
+	*invUUID = inv.Uuid
 	return nil
 }
 
@@ -696,7 +782,9 @@ type estimateFields struct {
 	id                                  int64
 	uuid, number                        string
 	participantID                       sql.NullInt64
+	participantUUID                     sql.NullString
 	planManagerID                       sql.NullInt64
+	planManagerUUID                     sql.NullString
 	status, issueDate, validUntil       string
 	subtotal, tax, total                float64
 	notes                               sql.NullString
@@ -713,8 +801,10 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 		UUID:               f.uuid,
 		Number:             f.number,
 		ParticipantID:      db.PtrID(f.participantID),
+		ParticipantUUID:    f.participantUUID.String,
 		ParticipantName:    f.participantName.String,
 		PlanManagerID:      db.PtrID(f.planManagerID),
+		PlanManagerUUID:    db.PtrStr(f.planManagerUUID),
 		Status:             f.status,
 		IssueDate:          f.issueDate,
 		ValidUntil:         f.validUntil,
@@ -735,8 +825,20 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 func estimateFieldsFromGet(r gen.GetEstimateRow) estimateFields {
 	return estimateFields{
 		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		planManagerID: r.PlanManagerID,
-		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
+		convertedInvoiceID: r.ConvertedInvoiceID,
+		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+	}
+}
+
+func estimateFieldsFromGetByID(r gen.GetEstimateByIDRow) estimateFields {
+	return estimateFields{
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
@@ -747,8 +849,8 @@ func estimateFieldsFromGet(r gen.GetEstimateRow) estimateFields {
 func estimateFieldsFromList(r gen.ListEstimatesRow) estimateFields {
 	return estimateFields{
 		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		planManagerID: r.PlanManagerID,
-		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
@@ -759,8 +861,8 @@ func estimateFieldsFromList(r gen.ListEstimatesRow) estimateFields {
 func estimateFieldsFromStatus(r gen.ListEstimatesByStatusRow) estimateFields {
 	return estimateFields{
 		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		planManagerID: r.PlanManagerID,
-		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
@@ -771,8 +873,8 @@ func estimateFieldsFromStatus(r gen.ListEstimatesByStatusRow) estimateFields {
 func estimateFieldsFromParticipant(r gen.ListParticipantEstimatesRow) estimateFields {
 	return estimateFields{
 		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		planManagerID: r.PlanManagerID,
-		status:        r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
+		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID,
 		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,

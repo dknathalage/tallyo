@@ -68,6 +68,8 @@ type Querier interface {
 	GetCustomItem(ctx context.Context, arg GetCustomItemParams) (CustomItem, error)
 	GetDefaultTaxRate(ctx context.Context, tenantID int64) (TaxRate, error)
 	GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEstimateRow, error)
+	GetEstimateByID(ctx context.Context, arg GetEstimateByIDParams) (GetEstimateByIDRow, error)
+	GetEstimateIDByUUID(ctx context.Context, arg GetEstimateIDByUUIDParams) (int64, error)
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
 	GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvoiceRow, error)
 	GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) (GetInvoiceByIDRow, error)

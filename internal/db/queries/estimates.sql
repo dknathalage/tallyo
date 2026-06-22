@@ -1,29 +1,43 @@
 -- name: ListEstimates :many
-SELECT e.*, p.name AS participant_name
+SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM estimates e
 LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 WHERE e.tenant_id = ?
 ORDER BY e.created_at DESC;
 
 -- name: ListEstimatesByStatus :many
-SELECT e.*, p.name AS participant_name
+SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM estimates e
 LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.status = ?
 ORDER BY e.created_at DESC;
 
 -- name: ListParticipantEstimates :many
-SELECT e.*, p.name AS participant_name
+SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM estimates e
 LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.participant_id = ?
 ORDER BY e.created_at DESC;
 
 -- name: GetEstimate :one
-SELECT e.*, p.name AS participant_name
+SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM estimates e
 LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
+WHERE e.tenant_id = ? AND e.uuid = ?;
+
+-- name: GetEstimateByID :one
+SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+FROM estimates e
+LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.id = ?;
+
+-- name: GetEstimateIDByUUID :one
+SELECT id FROM estimates WHERE tenant_id = ? AND uuid = ?;
 
 -- name: CreateEstimate :one
 INSERT INTO estimates (
