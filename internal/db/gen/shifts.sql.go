@@ -93,9 +93,10 @@ func (q *Queries) DeleteShift(ctx context.Context, arg DeleteShiftParams) error 
 }
 
 const getShift = `-- name: GetShift :one
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.uuid = ?
 `
 
@@ -118,6 +119,7 @@ type GetShiftRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) GetShift(ctx context.Context, arg GetShiftParams) (GetShiftRow, error) {
@@ -137,14 +139,16 @@ func (q *Queries) GetShift(ctx context.Context, arg GetShiftParams) (GetShiftRow
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParticipantUuid,
+		&i.InvoiceUuid,
 	)
 	return i, err
 }
 
 const getShiftByID = `-- name: GetShiftByID :one
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.id = ?
 `
 
@@ -167,6 +171,7 @@ type GetShiftByIDRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) GetShiftByID(ctx context.Context, arg GetShiftByIDParams) (GetShiftByIDRow, error) {
@@ -186,6 +191,7 @@ func (q *Queries) GetShiftByID(ctx context.Context, arg GetShiftByIDParams) (Get
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParticipantUuid,
+		&i.InvoiceUuid,
 	)
 	return i, err
 }
@@ -207,9 +213,10 @@ func (q *Queries) GetShiftIDByUUID(ctx context.Context, arg GetShiftIDByUUIDPara
 }
 
 const listRecordedUnbilledByParticipant = `-- name: ListRecordedUnbilledByParticipant :many
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.participant_id = ? AND s.status = 'recorded' AND s.invoice_id IS NULL
 ORDER BY s.service_date, s.id
 `
@@ -233,6 +240,7 @@ type ListRecordedUnbilledByParticipantRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) ListRecordedUnbilledByParticipant(ctx context.Context, arg ListRecordedUnbilledByParticipantParams) ([]ListRecordedUnbilledByParticipantRow, error) {
@@ -258,6 +266,7 @@ func (q *Queries) ListRecordedUnbilledByParticipant(ctx context.Context, arg Lis
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantUuid,
+			&i.InvoiceUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -273,9 +282,10 @@ func (q *Queries) ListRecordedUnbilledByParticipant(ctx context.Context, arg Lis
 }
 
 const listScheduledShifts = `-- name: ListScheduledShifts :many
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.status = 'scheduled' ORDER BY s.service_date, s.id
 `
 
@@ -293,6 +303,7 @@ type ListScheduledShiftsRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) ListScheduledShifts(ctx context.Context, tenantID int64) ([]ListScheduledShiftsRow, error) {
@@ -318,6 +329,7 @@ func (q *Queries) ListScheduledShifts(ctx context.Context, tenantID int64) ([]Li
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantUuid,
+			&i.InvoiceUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -334,9 +346,10 @@ func (q *Queries) ListScheduledShifts(ctx context.Context, tenantID int64) ([]Li
 
 const listShifts = `-- name: ListShifts :many
 
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? ORDER BY s.service_date DESC, s.id DESC
 `
 
@@ -354,11 +367,14 @@ type ListShiftsRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 // Shifts: the delivered-support unit (tenant-scoped). See migration 00004_shifts.sql.
 // Read queries LEFT JOIN participants for p.uuid so the slice DTO can expose the
-// participant FK as its uuid (participantId) instead of the internal int.
+// participant FK as its uuid (participantId) instead of the internal int, and
+// LEFT JOIN invoices for i.uuid so the linked-invoice FK surfaces as its uuid
+// (invoiceId) instead of the internal int.
 func (q *Queries) ListShifts(ctx context.Context, tenantID int64) ([]ListShiftsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listShifts, tenantID)
 	if err != nil {
@@ -382,6 +398,7 @@ func (q *Queries) ListShifts(ctx context.Context, tenantID int64) ([]ListShiftsR
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantUuid,
+			&i.InvoiceUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -397,9 +414,10 @@ func (q *Queries) ListShifts(ctx context.Context, tenantID int64) ([]ListShiftsR
 }
 
 const listShiftsByParticipant = `-- name: ListShiftsByParticipant :many
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.participant_id = ?
 ORDER BY s.service_date, s.id
 `
@@ -423,6 +441,7 @@ type ListShiftsByParticipantRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) ListShiftsByParticipant(ctx context.Context, arg ListShiftsByParticipantParams) ([]ListShiftsByParticipantRow, error) {
@@ -448,6 +467,7 @@ func (q *Queries) ListShiftsByParticipant(ctx context.Context, arg ListShiftsByP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantUuid,
+			&i.InvoiceUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -463,9 +483,10 @@ func (q *Queries) ListShiftsByParticipant(ctx context.Context, arg ListShiftsByP
 }
 
 const listShiftsByParticipantRange = `-- name: ListShiftsByParticipantRange :many
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.participant_id = ?
   AND s.service_date >= ? AND s.service_date <= ?
 ORDER BY s.service_date, s.id
@@ -492,6 +513,7 @@ type ListShiftsByParticipantRangeRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) ListShiftsByParticipantRange(ctx context.Context, arg ListShiftsByParticipantRangeParams) ([]ListShiftsByParticipantRangeRow, error) {
@@ -522,6 +544,7 @@ func (q *Queries) ListShiftsByParticipantRange(ctx context.Context, arg ListShif
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantUuid,
+			&i.InvoiceUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -537,9 +560,10 @@ func (q *Queries) ListShiftsByParticipantRange(ctx context.Context, arg ListShif
 }
 
 const listShiftsByStatus = `-- name: ListShiftsByStatus :many
-SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid
+SELECT s.id, s.uuid, s.tenant_id, s.participant_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS participant_uuid, i.uuid AS invoice_uuid
 FROM shifts s
 LEFT JOIN participants p ON s.participant_id = p.id AND p.tenant_id = s.tenant_id
+LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
 WHERE s.tenant_id = ? AND s.status = ? ORDER BY s.service_date, s.id
 `
 
@@ -562,6 +586,7 @@ type ListShiftsByStatusRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	ParticipantUuid sql.NullString `json:"participant_uuid"`
+	InvoiceUuid     sql.NullString `json:"invoice_uuid"`
 }
 
 func (q *Queries) ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatusParams) ([]ListShiftsByStatusRow, error) {
@@ -587,6 +612,7 @@ func (q *Queries) ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatus
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantUuid,
+			&i.InvoiceUuid,
 		); err != nil {
 			return nil, err
 		}

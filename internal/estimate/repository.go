@@ -25,10 +25,11 @@ import (
 
 // estimateListSelect mirrors the ListEstimates sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/estimates.sql. tenant_id is the only ?.
-const estimateListSelect = `SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+const estimateListSelect = `SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
 LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
+LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ?`
 
 // EstimateCols is the listquery allowlist for estimates. Keys match the JSON
@@ -54,28 +55,29 @@ var ErrAlreadyConverted = errors.New("estimate already converted")
 // valid_until replaces due_date, and an optional converted_invoice_id records
 // the invoice produced by Convert.
 type Estimate struct {
-	ID                 int64               `json:"-"`  // internal PK; the public identifier is the uuid
-	UUID               string              `json:"id"` // public identifier (estimate uuid)
-	Number             string              `json:"number"`
-	ParticipantID      *int64              `json:"-"`             // internal FK; the public ref is participantId (uuid)
-	ParticipantUUID    string              `json:"participantId"` // participant uuid
-	ParticipantName    string              `json:"participantName"`
-	PlanManagerID      *int64              `json:"-"`             // internal FK; the public ref is planManagerId (uuid)
-	PlanManagerUUID    *string             `json:"planManagerId"` // plan-manager uuid (nil when none)
-	Status             string              `json:"status"`
-	IssueDate          string              `json:"issueDate"`
-	ValidUntil         string              `json:"validUntil"`
-	Subtotal           float64             `json:"subtotal"`
-	Tax                float64             `json:"tax"`
-	Total              float64             `json:"total"`
-	Notes              string              `json:"notes"`
-	ConvertedInvoiceID *int64              `json:"convertedInvoiceId"`
-	BusinessSnapshot   string              `json:"businessSnapshot"`
-	ClientSnapshot     string              `json:"participantSnapshot"`
-	PayerSnapshot      string              `json:"planManagerSnapshot"`
-	CreatedAt          string              `json:"createdAt"`
-	UpdatedAt          string              `json:"updatedAt"`
-	LineItems          []*billing.LineItem `json:"lineItems"`
+	ID                   int64               `json:"-"`  // internal PK; the public identifier is the uuid
+	UUID                 string              `json:"id"` // public identifier (estimate uuid)
+	Number               string              `json:"number"`
+	ParticipantID        *int64              `json:"-"`             // internal FK; the public ref is participantId (uuid)
+	ParticipantUUID      string              `json:"participantId"` // participant uuid
+	ParticipantName      string              `json:"participantName"`
+	PlanManagerID        *int64              `json:"-"`             // internal FK; the public ref is planManagerId (uuid)
+	PlanManagerUUID      *string             `json:"planManagerId"` // plan-manager uuid (nil when none)
+	Status               string              `json:"status"`
+	IssueDate            string              `json:"issueDate"`
+	ValidUntil           string              `json:"validUntil"`
+	Subtotal             float64             `json:"subtotal"`
+	Tax                  float64             `json:"tax"`
+	Total                float64             `json:"total"`
+	Notes                string              `json:"notes"`
+	ConvertedInvoiceID   *int64              `json:"-"`                  // internal FK; the public ref is convertedInvoiceId (the produced invoice's uuid)
+	ConvertedInvoiceUUID *string             `json:"convertedInvoiceId"` // produced invoice uuid (nil until converted)
+	BusinessSnapshot     string              `json:"businessSnapshot"`
+	ClientSnapshot       string              `json:"participantSnapshot"`
+	PayerSnapshot        string              `json:"planManagerSnapshot"`
+	CreatedAt            string              `json:"createdAt"`
+	UpdatedAt            string              `json:"updatedAt"`
+	LineItems            []*billing.LineItem `json:"lineItems"`
 }
 
 // EstimateInput is the writable subset of an estimate header.
@@ -401,7 +403,7 @@ func (r *EstimatesRepo) Query(ctx context.Context, tenantID int64, c listquery.C
 			&f.planManagerID, &f.status, &f.issueDate, &f.validUntil, &f.subtotal,
 			&f.tax, &f.total, &f.notes, &f.convertedInvoiceID, &f.businessSnap,
 			&f.clientSnap, &f.payerSnap, &f.createdAt, &f.updatedAt, &f.participantName,
-			&f.participantUUID, &f.planManagerUUID); err != nil {
+			&f.participantUUID, &f.planManagerUUID, &f.convertedInvoiceUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan estimate: %w", err)
 		}
 		out = append(out, toEstimateFromRow(f))
@@ -789,6 +791,7 @@ type estimateFields struct {
 	subtotal, tax, total                float64
 	notes                               sql.NullString
 	convertedInvoiceID                  sql.NullInt64
+	convertedInvoiceUUID                sql.NullString
 	businessSnap, clientSnap, payerSnap sql.NullString
 	createdAt, updatedAt                string
 	participantName                     sql.NullString
@@ -797,28 +800,29 @@ type estimateFields struct {
 // toEstimateFromRow builds a domain Estimate (without line items).
 func toEstimateFromRow(f estimateFields) *Estimate {
 	return &Estimate{
-		ID:                 f.id,
-		UUID:               f.uuid,
-		Number:             f.number,
-		ParticipantID:      db.PtrID(f.participantID),
-		ParticipantUUID:    f.participantUUID.String,
-		ParticipantName:    f.participantName.String,
-		PlanManagerID:      db.PtrID(f.planManagerID),
-		PlanManagerUUID:    db.PtrStr(f.planManagerUUID),
-		Status:             f.status,
-		IssueDate:          f.issueDate,
-		ValidUntil:         f.validUntil,
-		Subtotal:           f.subtotal,
-		Tax:                f.tax,
-		Total:              f.total,
-		Notes:              f.notes.String,
-		ConvertedInvoiceID: db.PtrID(f.convertedInvoiceID),
-		BusinessSnapshot:   f.businessSnap.String,
-		ClientSnapshot:     f.clientSnap.String,
-		PayerSnapshot:      f.payerSnap.String,
-		CreatedAt:          f.createdAt,
-		UpdatedAt:          f.updatedAt,
-		LineItems:          []*billing.LineItem{},
+		ID:                   f.id,
+		UUID:                 f.uuid,
+		Number:               f.number,
+		ParticipantID:        db.PtrID(f.participantID),
+		ParticipantUUID:      f.participantUUID.String,
+		ParticipantName:      f.participantName.String,
+		PlanManagerID:        db.PtrID(f.planManagerID),
+		PlanManagerUUID:      db.PtrStr(f.planManagerUUID),
+		Status:               f.status,
+		IssueDate:            f.issueDate,
+		ValidUntil:           f.validUntil,
+		Subtotal:             f.subtotal,
+		Tax:                  f.tax,
+		Total:                f.total,
+		Notes:                f.notes.String,
+		ConvertedInvoiceID:   db.PtrID(f.convertedInvoiceID),
+		ConvertedInvoiceUUID: db.PtrStr(f.convertedInvoiceUUID),
+		BusinessSnapshot:     f.businessSnap.String,
+		ClientSnapshot:       f.clientSnap.String,
+		PayerSnapshot:        f.payerSnap.String,
+		CreatedAt:            f.createdAt,
+		UpdatedAt:            f.updatedAt,
+		LineItems:            []*billing.LineItem{},
 	}
 }
 
@@ -828,8 +832,8 @@ func estimateFieldsFromGet(r gen.GetEstimateRow) estimateFields {
 		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
-		convertedInvoiceID: r.ConvertedInvoiceID,
-		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
+		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
@@ -840,8 +844,8 @@ func estimateFieldsFromGetByID(r gen.GetEstimateByIDRow) estimateFields {
 		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
-		convertedInvoiceID: r.ConvertedInvoiceID,
-		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
+		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
@@ -852,8 +856,8 @@ func estimateFieldsFromList(r gen.ListEstimatesRow) estimateFields {
 		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
-		convertedInvoiceID: r.ConvertedInvoiceID,
-		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
+		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
@@ -864,8 +868,8 @@ func estimateFieldsFromStatus(r gen.ListEstimatesByStatusRow) estimateFields {
 		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
-		convertedInvoiceID: r.ConvertedInvoiceID,
-		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
+		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }
@@ -876,8 +880,8 @@ func estimateFieldsFromParticipant(r gen.ListParticipantEstimatesRow) estimateFi
 		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
-		convertedInvoiceID: r.ConvertedInvoiceID,
-		businessSnap:       r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
+		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
 	}
 }

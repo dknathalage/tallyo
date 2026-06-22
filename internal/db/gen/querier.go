@@ -126,7 +126,9 @@ type Querier interface {
 	ListScheduledShifts(ctx context.Context, tenantID int64) ([]ListScheduledShiftsRow, error)
 	// Shifts: the delivered-support unit (tenant-scoped). See migration 00004_shifts.sql.
 	// Read queries LEFT JOIN participants for p.uuid so the slice DTO can expose the
-	// participant FK as its uuid (participantId) instead of the internal int.
+	// participant FK as its uuid (participantId) instead of the internal int, and
+	// LEFT JOIN invoices for i.uuid so the linked-invoice FK surfaces as its uuid
+	// (invoiceId) instead of the internal int.
 	ListShifts(ctx context.Context, tenantID int64) ([]ListShiftsRow, error)
 	ListShiftsByParticipant(ctx context.Context, arg ListShiftsByParticipantParams) ([]ListShiftsByParticipantRow, error)
 	ListShiftsByParticipantRange(ctx context.Context, arg ListShiftsByParticipantRangeParams) ([]ListShiftsByParticipantRangeRow, error)

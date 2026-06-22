@@ -34,8 +34,9 @@ type Shift struct {
 	Note            string   `json:"note"`
 	Tags            []string `json:"tags"`
 	Status          string   `json:"status"`
-	InvoiceID       *int64   `json:"invoiceId"`
-	AuthorUserID    *int64   `json:"authorUserId"`
+	InvoiceID       *int64   `json:"-"`         // internal FK; the public ref is invoiceId (the linked invoice's uuid)
+	InvoiceUUID     *string  `json:"invoiceId"` // linked invoice uuid (nil until the shift is drafted onto an invoice)
+	AuthorUserID    *int64   `json:"-"`         // internal author user FK; not linked from the SPA
 	CreatedAt       string   `json:"createdAt"`
 	UpdatedAt       string   `json:"updatedAt"`
 }
@@ -760,6 +761,7 @@ type shiftFields struct {
 	tags            string
 	status          string
 	invoiceID       sql.NullInt64
+	invoiceUUID     sql.NullString
 	authorUserID    sql.NullInt64
 	createdAt       string
 	updatedAt       string
@@ -785,6 +787,7 @@ func mapShift(f shiftFields) (*Shift, error) {
 		Tags:            tags,
 		Status:          f.status,
 		InvoiceID:       db.PtrID(f.invoiceID),
+		InvoiceUUID:     db.PtrStr(f.invoiceUUID),
 		AuthorUserID:    db.PtrID(f.authorUserID),
 		CreatedAt:       f.createdAt,
 		UpdatedAt:       f.updatedAt,
@@ -798,7 +801,7 @@ func shiftFieldsFromGet(r gen.GetShiftRow) shiftFields {
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -806,7 +809,7 @@ func shiftFieldsFromByID(r gen.GetShiftByIDRow) shiftFields {
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -814,7 +817,7 @@ func shiftFieldsFromList(r gen.ListShiftsRow) shiftFields {
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -822,7 +825,7 @@ func shiftFieldsFromByPart(r gen.ListShiftsByParticipantRow) shiftFields {
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -830,7 +833,7 @@ func shiftFieldsFromByPartRange(r gen.ListShiftsByParticipantRangeRow) shiftFiel
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -838,7 +841,7 @@ func shiftFieldsFromByStatus(r gen.ListShiftsByStatusRow) shiftFields {
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -846,7 +849,7 @@ func shiftFieldsFromScheduled(r gen.ListScheduledShiftsRow) shiftFields {
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
@@ -854,7 +857,7 @@ func shiftFieldsFromRecorded(r gen.ListRecordedUnbilledByParticipantRow) shiftFi
 	return shiftFields{
 		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
-		invoiceID: r.InvoiceID, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
+		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
