@@ -24,7 +24,7 @@ shared platform packages, never on each other directly — cross-domain reads go
 through the central `db/gen`; cross-domain writes/behaviour go through small
 interfaces declared by the consumer and wired in `internal/app`.
 
-- `cmd/tallyo/main.go` (~40 lines) — parses flags, then calls `app.Run`. (`cmd/cataloguegen` is the dev-time catalogue migration generator.)
+- `cmd/tallyo/main.go` (~40 lines) — parses flags, then calls `app.Run`.
 - `internal/app/` — composition root: resolve data dir → open DB → migrate → build
   every slice's service+handler → assemble the chi router (`server.go`: middleware,
   `/api` group, role gates, SPA catch-all) → graceful shutdown; owns the per-tenant
@@ -83,6 +83,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 - **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.ShiftLinker`, `shift.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` (line items, totals, snapshots, validator).
 - Every DB mutation is audited (via `audit.WithTx`) and broadcasts an SSE event from the service after commit.
 - JSON is camelCase (Go struct json tags); list endpoints return `[]` (non-nil) when empty.
+- **UUID addressing.** The HTTP/JSON API addresses every entity by its **uuid** — paths are `/{...UUID}` (e.g. `/invoices/{invoiceUUID}`) and every JSON `id` / `*Id` field is a uuid string. The int64 PK is internal-only: never in a URL or JSON payload. Handlers resolve `uuid → row` at the boundary (`httpx.ParseUUID` + a `GetXByUUID` lookup) and operate on the int PK internally; inbound FK uuids resolve to int before insert. SvelteKit routes use `[uuid]` params.
 - Clean-break data model (fresh goose schema; no migration from the old Electron `tallyo.db`).
 - Commits follow Conventional Commits.
 
@@ -90,30 +91,26 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 - **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema. The Mermaid ERD in the DB-per-tenant design ([`docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`](docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md)) is the authority for the control-DB vs tenant-DB split — update both ERDs together when a migration moves a table between databases or changes a relationship.
 - SQLite (modernc.org/sqlite, pure-Go) + sqlc + goose. WAL, `foreign_keys=ON`, `busy_timeout=5000`, `_txlock=immediate` (all mutations take the write lock at BEGIN).
-- **DB-per-tenant.** A shared **control DB** (`<data-dir>/control.db`) holds the global/reference tables (tenants, users, invites, sessions, NDIS catalogue, global audit_log); each tenant's business data lives in its own file (`<data-dir>/tenants/tenant-<id>.db`). `internal/tenantdb.Registry` opens tenant files on demand (bounded LRU, lazy migrate-on-first-open) and `Conn` (a `db.Executor`) routes each repo call to the request's tenant DB via `reqctx`. Control-plane repos use `reg.Control()`; tenant-plane repos use `reg.Tenant()`. Cross-DB references (tenant_id, catalogue UUIDs, author user ids) are NOT foreign keys — validated in app. See `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`.
+- **DB-per-tenant.** A shared **control DB** (`<data-dir>/control.db`) holds the global/reference tables (tenants, users, invites, sessions, global audit_log); each tenant's business data — including its own NDIS catalogue — lives in its own file (`<data-dir>/tenants/tenant-<id>.db`). `internal/tenantdb.Registry` opens tenant files on demand (bounded LRU, lazy migrate-on-first-open) and `Conn` (a `db.Executor`) routes each repo call to the request's tenant DB via `reqctx`. Control-plane repos use `reg.Control()`; tenant-plane repos use `reg.Tenant()`. Cross-DB references (tenant_id, author user ids) are NOT foreign keys — validated in app. See `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`.
 - Migrations are embedded in **two goose sequences** (distinct version tables): `internal/db/migrations/control/*.sql` and `internal/db/migrations/tenant/*.sql`. `MigrateControl` runs at startup; tenant DBs migrate lazily via the registry. `Migrate(conn)` applies both to one file (combined single-DB mode, used by tests). sqlc reads the control dir + the tenant business-table file (the tenant `audit_log` migration is excluded to avoid a duplicate-table; goose still applies it). Add a migration to the right dir then `sqlc generate`.
 - `DATA_DIR` / `--data-dir` override the data dir (default `./data`).
 
-### NDIS catalogue (versioned, seeded by migration)
+### NDIS catalogue (versioned, tenant-owned)
 
-- The NDIS Support Catalogue is loaded as a **generated SQL migration**, not at
-  runtime. Each catalogue release is its own `catalog_versions` row; ingesting a
-  newer one never mutates prior versions, and prices are pinned per invoice line
-  (`catalog_version_id` on `line_items`, stored as the catalogue UUID) so existing
-  invoices are never re-priced. The catalogue lives in the **control DB**.
-- To add/refresh a catalogue, drop the XLSX in `data/catalogue/` and regenerate
-  into the **control** migrations dir:
-  ```bash
-  go run ./cmd/cataloguegen \
-    -xlsx "data/catalogue/NDIS Support Catalogue 2025-26.xlsx" \
-    -label 2025-26 -effective-from 2025-07-01 \
-    -out internal/db/migrations/control/0000N_catalogue_2025_26.sql
-  ```
-  Use the next free control-migration number + the release's label/effective-from. The
-  generator reuses `catalog.ParseXLSX` (same mapping as the admin upload path) and
-  emits deterministic UUIDs, so re-running yields a clean diff. Commit the `.sql`;
-  it loads on startup. The live admin upload (`POST /api/support-catalog/versions`)
-  also creates a new version and auto-closes the prior one's effective window.
+- The NDIS Support Catalogue is a **tenant-owned resource** — the three tables
+  (`catalog_versions`, `support_items`, `support_item_prices`) live in each
+  **tenant DB** (`internal/db/migrations/tenant/`), and every tenant populates its
+  own. Each catalogue release is its own `catalog_versions` row; ingesting a newer
+  one never mutates prior versions, and prices are pinned per invoice line
+  (`catalog_version_id` on `line_items`, stored as the tenant catalogue UUID) so
+  existing invoices are never re-priced.
+- Read endpoints (`GET …/support-catalog/versions`, `…/versions/{versionUUID}/items`,
+  `…/items/{itemUUID}/prices`) serve the tenant tables; the ingest/create endpoints
+  are gated by **owner/admin** (no longer a platform-admin special case).
+- **XLSX ingest is DEFERRED** — the global-seed machinery is gone: `cmd/cataloguegen`,
+  the generated control catalogue migration, and `data/catalogue/` were deleted.
+  `internal/catalog`'s `ParseXLSX` is retained so the per-tenant upload path can be
+  wired in later without rework.
 
 ## Coding Rules (NASA Power of 10, adapted)
 

@@ -5,15 +5,17 @@ Living reference for the SQLite schema. Source of truth is the goose migrations
 human-readable map. Update it whenever a migration changes a table or relationship.
 
 > **DB-per-tenant.** Tables are split across two SQLite databases. The **control
-> DB** (`control.db`) holds `tenants, users, invites, sessions, catalog_versions,
-> support_items, support_item_prices` and a global `audit_log`. Each **tenant DB**
-> (`tenants/tenant-<id>.db`) holds the business tables below plus its own
-> `audit_log`. Relationships that cross the two DBs are **logical only — NOT
-> foreign keys**: `tenant_id` (→ control `tenants`), `support_item_id` /
-> `catalog_version_id` (→ control catalogue, stored as **UUID TEXT**), and
-> `author_user_id` / `user_id` (→ control `users`). The authoritative split ERD is
-> in `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`; keep both
-> in sync.
+> DB** (`control.db`) holds `tenants, users, invites, sessions` and a global
+> `audit_log`. Each **tenant DB** (`tenants/tenant-<id>.db`) holds the business
+> tables below — including the **tenant-owned NDIS catalogue** (`catalog_versions,
+> support_items, support_item_prices`, each tenant populates its own) — plus its
+> own `audit_log`. Relationships that cross the two DBs are **logical only — NOT
+> foreign keys**: `tenant_id` (→ control `tenants`) and `author_user_id` /
+> `user_id` (→ control `users`). Within a tenant DB, `support_item_id` /
+> `catalog_version_id` reference the tenant catalogue stored as **UUID TEXT** (not
+> FKs — pinned per line so old invoices never re-price). The authoritative split
+> ERD is in `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`;
+> keep both in sync.
 
 > **Active change — shift items = invoice line items.** `line_items` is the single
 > home for both a shift's items and an invoice's lines. A row is born on a shift
@@ -56,9 +58,9 @@ erDiagram
         int     tenant_id FK
         int     shift_id   FK "ON DELETE CASCADE; NULL for manual/recurring lines"
         int     invoice_id FK "NULL = unbilled shift item"
-        text    support_item_id "control-DB support_items.uuid (no FK)"
+        text    support_item_id "tenant support_items.uuid (TEXT, no FK)"
         int     custom_item_id  FK "custom item (tenant-local, nullable)"
-        text    catalog_version_id "control-DB catalog_versions.uuid (no FK), pinned"
+        text    catalog_version_id "tenant catalog_versions.uuid (TEXT, no FK), pinned"
         text    code "NDIS code snapshot"
         text    description "what was done (from shift note)"
         text    service_date
@@ -106,7 +108,11 @@ erDiagram
   `tenants` lives in the control DB).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
   estimate); they are deliberately separate tables, not unified.
-- Prices are pinned per line via `catalog_version_id` + `support_item_id` (control
+- The NDIS catalogue (`catalog_versions`, `support_items`, `support_item_prices`)
+  is **tenant-owned** — each tenant DB holds its own copy. `line_items` and
+  `estimate_line_items` reference it by **UUID TEXT** (`catalog_version_id` +
+  `support_item_id`), not by FK.
+- Prices are pinned per line via `catalog_version_id` + `support_item_id` (tenant
   catalogue UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
   is never re-priced when a newer catalogue version loads.
 - Agent has **no persistent tables** (Smarts are one-shot). The `notes` table and
