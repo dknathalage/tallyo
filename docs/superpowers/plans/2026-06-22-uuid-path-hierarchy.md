@@ -110,6 +110,12 @@ Each slice is independent. The **template below is taxrate (no FKs)** — fully 
 
 > **The API surface is the slice DTO structs** (e.g. `taxrate.TaxRate`, `participant.Participant`), NOT the sqlc `gen/models.go` structs. `gen` models keep their int fields (internal); the slice's response struct is what gets retagged. If a handler ever returns a `gen` model directly, replace it with the slice DTO.
 
+> **Audit + SSE keep the int PK (learned from the taxrate template, commit 155a3bc).** Two internal uses of the int PK survive and must be preserved when the public method only has a uuid:
+> 1. **`audit.WithTx` `Entry{EntityID: <int>}`** — resolve the row *inside the tx* (the by-uuid Get) to recover the int PK for the audit entry, then mutate by uuid. Missing row = silent no-op.
+> 2. **Post-commit `realtime.Event.ID int64`** — for Update read it from the returned row; for Delete resolve the row first. **Leave `Event.ID` int here** — Phase 2.8 retypes the SSE payload.
+
+> **Test harness (no pre-existing `handler_test.go`).** Slices have `testhelper_test.go` (`newTestDB` → migrated temp SQLite via `appdb.Open`+`appdb.Migrate`; `seedTenant` → int64 tenant id; `tctx(tenantID)` wraps `reqctx.WithTenant`). For an httptest handler test, mount `h.Routes` on a fresh `chi.NewRouter()` with a one-line middleware injecting `reqctx.WithTenant(req.Context(), tenantID)` (stands in for auth), hit via `httptest.NewServer`. Expect in-package churn: `repository_test.go`/`service_test.go` passing `.ID` (int) to Get/Update/Delete switch to `.UUID`.
+
 ### Task 2.0 (TEMPLATE): taxrate
 
 **Files:**
@@ -118,11 +124,11 @@ Each slice is independent. The **template below is taxrate (no FKs)** — fully 
 - Regenerate: `internal/db/gen/` (sqlc)
 - Test: `internal/taxrate/handler_test.go` (create if absent)
 
-- [ ] **Step 1: Failing handler test** — `GET /tax-rates/{uuid}` returns the rate; an unknown uuid 404s; a non-uuid path 400s. Use `httptest` against the slice's `Routes`, seeding one tax rate via the repo. Assert the JSON `id` equals the seeded **uuid** (not an int).
+- [x] **Step 1: Failing handler test** — `GET /tax-rates/{uuid}` returns the rate; an unknown uuid 404s; a non-uuid path 400s. Use `httptest` against the slice's `Routes`, seeding one tax rate via the repo. Assert the JSON `id` equals the seeded **uuid** (not an int).
 
-- [ ] **Step 2: Run — expect FAIL** (`go test ./internal/taxrate/ -v`).
+- [x] **Step 2: Run — expect FAIL** (`go test ./internal/taxrate/ -v`).
 
-- [ ] **Step 3: Queries** — in `internal/db/queries/tax_rates.sql` change the by-id lookups to by-uuid:
+- [x] **Step 3: Queries** — in `internal/db/queries/tax_rates.sql` change the by-id lookups to by-uuid:
 ```sql
 -- name: GetTaxRate :one
 SELECT * FROM tax_rates WHERE tenant_id = ? AND uuid = ?;
@@ -136,24 +142,24 @@ DELETE FROM tax_rates WHERE tenant_id = ? AND uuid = ?;
 ```
 (Match the existing column list; only the WHERE key changes.)
 
-- [ ] **Step 4: Regenerate sqlc** — `"$(go env GOPATH)/bin/sqlc" generate`. The params struct field flips from `ID int64` to `Uuid string`.
+- [x] **Step 4: Regenerate sqlc** — `"$(go env GOPATH)/bin/sqlc" generate`. The params struct field flips from `ID int64` to `Uuid string`.
 
-- [ ] **Step 5: Service/repo** — change `Get/Update/Delete(ctx, id int64)` → `(ctx, uuid string)`; pass `Uuid: uuid` into the gen params.
+- [x] **Step 5: Service/repo** — change `Get/Update/Delete(ctx, id int64)` → `(ctx, uuid string)`; pass `Uuid: uuid` into the gen params.
 
-- [ ] **Step 6: Handler** — `ParseID` → `ParseUUID(r, "uuid")` in Get/Update/Delete.
+- [x] **Step 6: Handler** — `ParseID` → `ParseUUID(r, "uuid")` in Get/Update/Delete.
 
-- [ ] **Step 7: JSON** — in `repository.go` `TaxRate` struct, retag `UUID string` as `json:"id"`, set `ID int64` to `json:"-"`.
+- [x] **Step 7: JSON** — in `repository.go` `TaxRate` struct, retag `UUID string` as `json:"id"`, set `ID int64` to `json:"-"`.
 
-- [ ] **Step 8: Routes** — `internal/taxrate/handler.go`:
+- [x] **Step 8: Routes** — `internal/taxrate/handler.go`:
 ```go
 r.Get("/tax-rates/{uuid}", h.Get)
 r.Put("/tax-rates/{uuid}", h.Update)
 r.Delete("/tax-rates/{uuid}", h.Delete)
 ```
 
-- [ ] **Step 9: Run — expect PASS.**
-- [ ] **Step 10: `go vet ./... && gofmt -l . && go test ./internal/taxrate/ -race` clean.**
-- [ ] **Step 11: Commit** — `refactor(taxrate): address by uuid (path + json + queries)`
+- [x] **Step 9: Run — expect PASS.**
+- [x] **Step 10: `go vet ./... && gofmt -l . && go test ./internal/taxrate/ -race` clean.**
+- [x] **Step 11: Commit** — `refactor(taxrate): address by uuid (path + json + queries)`
 
 ### Task 2.1 — custom-items, plan-managers
 Pure template copies (plan-managers has no inbound FK; custom-items none). Same 11 steps each. Plan-managers is referenced BY participants — its by-uuid lookup is also reused in 2.2.
