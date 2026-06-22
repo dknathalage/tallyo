@@ -95,29 +95,54 @@ pricing zone", "Support catalogue") appear only when relevant (NDIS client type
 
 - `items`: `code` (optional), `name` (required), `unit`, `category` (optional
   text — replaces `support_category` + `registration_group` + `claim_type`),
-  `taxable` (default true), plus the existing `item_prices` rows.
-- `item_prices`: keep `zone` + `price_cap` columns, **nullable**. Only NDIS
-  price-guide rows carry zone caps; generic items have a single base price and no
-  cap.
+  `taxable` (default true), and a new nullable `unit_price` (the **generic base
+  price**).
+- **Two pricing models, by tenant kind:**
+  - *Generic* items carry their price in `items.unit_price` — a single base
+    price used to prefill a line's `unit_price` on the client. No cap, no zones.
+  - *NDIS* items keep the existing `item_prices` rows (`zone` + `price_cap`),
+    which carry the NDIS zone caps. These columns stay; they are simply unused by
+    generic tenants.
 - **Versioning kept.** A generic tenant gets one auto-created "Default price
   list" version on first item creation; an NDIS tenant keeps dated versions. A
   line still pins `price_list_version_id` when it references a catalogue item.
+- **Lost as structured fields:** `registration_group` and `claim_type` collapse
+  into free `category` text. Acceptable under clean-break; NDIS users no longer
+  get those as separate columns.
 
 ### `LineValidator` (in `internal/billing`) → conditional
 
-Steps fire on data, not mode. Refactor the existing 6-step validator so each
-NDIS-specific step short-circuits when its data is absent:
+The current validator (`internal/billing/validation.go`) runs, per coded line:
+catalogue-version resolve → item lookup + snapshot → zone-price resolve
+(`ResolveZonePrice(versionID, code, tenantZone)`, where `tenantZone` reads
+`business_profile.zone`, default `"national"`) → `unit_price ≤ price_cap` assert
+(or, in **fill mode**, *overwrite* `unit_price` with the cap — the
+catalogue-authoritative path the agent uses) → plan-window assert → force
+`gst_free` from the item. Custom-item lines skip all of it (non-negativity +
+tax only).
 
-1. Catalogue lookup + snapshot (code, name) — **only if** the line references an
-   `item_id`. Free-form/custom lines skip this entirely.
-2. Price-cap assertion (`unit_price ≤ cap`) — **only if** the resolved item row
-   carries a non-null cap. Generic items → no cap → skip.
-3. Plan-window assertion (`service_date ∈ [plan_start, plan_end]`) — **only if**
-   the client has both plan dates set.
-4. Tax: driven by the per-line `taxable` flag. Default `true` for generic lines;
-   catalogue items default the flag from the item's `taxable` value. No
-   NDIS-authoritative override.
-5. Non-negativity (`quantity ≥ 0`, `unit_price ≥ 0`) — always.
+The refactor makes each NDIS-specific step **gate on data presence**, so generic
+data short-circuits it. No step is deleted; each gains a guard:
+
+1. **Catalogue lookup + snapshot** (code, name, pin `price_list_version_id`) —
+   only if the line references an `item_id` / carries a `code`. Free-form and
+   custom lines skip entirely (unchanged).
+2. **Zone-cap resolution + assertion** (`unit_price ≤ price_cap`, and **fill
+   mode**) — gated on `business_profile.zone` being **set**. NDIS tenants
+   configure a zone, so this runs exactly as today (including fill mode for the
+   agent path). Generic tenants leave `zone` null → the whole zone block is
+   skipped; the line's `unit_price` (entered, or prefilled from
+   `items.unit_price` on the client) is taken as-is. **Fill mode is preserved,
+   reachable only on the NDIS zone path.**
+3. **Plan-window assertion** (`service_date ∈ [plan_start, plan_end]`) — only if
+   the client has plan dates set (already permissive on empty bounds today; the
+   change is that generic clients never set them).
+4. **Tax / GST defaulting.** For NDIS catalogue lines, `gst_free` continues to be
+   forced from the item (catalogue-authoritative — clients cannot flip it). For
+   generic and custom lines, the per-line `taxable` flag governs (default
+   `true`). The rename inverts `gst_free` ↔ `taxable`; the authoritative-override
+   behaviour is retained for NDIS coded lines, not removed.
+5. **Non-negativity** (`quantity ≥ 0`, `unit_price ≥ 0`) — always.
 
 `ValidationResult` / `FieldError` / `ValidationError` shapes unchanged.
 
@@ -125,8 +150,13 @@ NDIS-specific step short-circuits when its data is absent:
 
 - Generic billable session / work-log: `service_date`, `note`, `tags`, status
   lifecycle, owns line-items, links to an invoice once billed.
-- Rename status labels to generic terms (e.g. `recorded → delivered`,
-  `drafted → billed`; keep `sent`, `paid`). Lifecycle structure unchanged.
+- **Status values are kept unchanged** — the full lifecycle
+  `scheduled → recorded → drafted → sent → paid`, plus the revert-to-`recorded`
+  path when an invoice is cleared (`ClearForInvoice`) and the
+  not-yet-billed guard (`Status != "scheduled" && != "recorded"`). These terms
+  are already generic enough; renaming the state machine would be churn with no
+  payoff and risk an inconsistent enum. **Only the slice/table/entity name
+  changes** (`shift → session`, `participant_id → client_id`).
 - Optional for everyone — an invoice can be created directly from items/custom
   lines without a session.
 
@@ -139,6 +169,9 @@ NDIS-specific step short-circuits when its data is absent:
 - No structural change beyond the field renames (`item_id`,
   `price_list_version_id`, `taxable`). The dual-mode line (catalogue item OR
   custom item OR free-form) already exists and is the generalization hook.
+- **`internal/customitem` is untouched** (beyond the `gst_free → taxable`
+  field rename). It remains the tenant-defined free-form item escape hatch and is
+  already generic; it does not merge into `pricelist`.
 
 ## Generic Catalogue Import (replaces fixed NDIS XLSX ingest)
 
