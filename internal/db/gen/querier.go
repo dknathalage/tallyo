@@ -49,6 +49,7 @@ type Querier interface {
 	DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error
 	DeleteParticipantByID(ctx context.Context, arg DeleteParticipantByIDParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
+	DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error
 	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
 	DeletePlanManagerByID(ctx context.Context, arg DeletePlanManagerByIDParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
@@ -69,11 +70,14 @@ type Querier interface {
 	GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEstimateRow, error)
 	GetInviteByToken(ctx context.Context, token string) (Invite, error)
 	GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvoiceRow, error)
+	GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) (GetInvoiceByIDRow, error)
+	GetInvoiceIDByUUID(ctx context.Context, arg GetInvoiceIDByUUIDParams) (int64, error)
 	GetLineItem(ctx context.Context, arg GetLineItemParams) (LineItem, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
 	GetParticipantByID(ctx context.Context, arg GetParticipantByIDParams) (GetParticipantByIDRow, error)
 	GetParticipantIDByUUID(ctx context.Context, arg GetParticipantIDByUUIDParams) (int64, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
+	GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error)
 	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
 	GetPlanManagerByID(ctx context.Context, arg GetPlanManagerByIDParams) (PlanManager, error)
 	GetPlanManagerIDByUUID(ctx context.Context, arg GetPlanManagerIDByUUIDParams) (int64, error)

@@ -98,15 +98,16 @@ func (q *Queries) DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) er
 }
 
 const getInvoice = `-- name: GetInvoice :one
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.id = ?
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
+WHERE i.tenant_id = ? AND i.uuid = ?
 `
 
 type GetInvoiceParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
 }
 
 type GetInvoiceRow struct {
@@ -129,10 +130,12 @@ type GetInvoiceRow struct {
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
 	ParticipantName  sql.NullString `json:"participant_name"`
+	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvoiceRow, error) {
-	row := q.db.QueryRowContext(ctx, getInvoice, arg.TenantID, arg.ID)
+	row := q.db.QueryRowContext(ctx, getInvoice, arg.TenantID, arg.Uuid)
 	var i GetInvoiceRow
 	err := row.Scan(
 		&i.ID,
@@ -154,14 +157,99 @@ func (q *Queries) GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvo
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParticipantName,
+		&i.ParticipantUuid,
+		&i.PlanManagerUuid,
 	)
 	return i, err
 }
 
-const listInvoices = `-- name: ListInvoices :many
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name
+const getInvoiceByID = `-- name: GetInvoiceByID :one
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
+WHERE i.tenant_id = ? AND i.id = ?
+`
+
+type GetInvoiceByIDParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+type GetInvoiceByIDRow struct {
+	ID               int64          `json:"id"`
+	Uuid             string         `json:"uuid"`
+	TenantID         int64          `json:"tenant_id"`
+	Number           string         `json:"number"`
+	ParticipantID    int64          `json:"participant_id"`
+	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
+	Status           string         `json:"status"`
+	IssueDate        string         `json:"issue_date"`
+	DueDate          string         `json:"due_date"`
+	Subtotal         float64        `json:"subtotal"`
+	Tax              float64        `json:"tax"`
+	Total            float64        `json:"total"`
+	Notes            sql.NullString `json:"notes"`
+	BusinessSnapshot sql.NullString `json:"business_snapshot"`
+	ClientSnapshot   sql.NullString `json:"client_snapshot"`
+	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	ParticipantName  sql.NullString `json:"participant_name"`
+	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
+}
+
+func (q *Queries) GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) (GetInvoiceByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getInvoiceByID, arg.TenantID, arg.ID)
+	var i GetInvoiceByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.Number,
+		&i.ParticipantID,
+		&i.PlanManagerID,
+		&i.Status,
+		&i.IssueDate,
+		&i.DueDate,
+		&i.Subtotal,
+		&i.Tax,
+		&i.Total,
+		&i.Notes,
+		&i.BusinessSnapshot,
+		&i.ClientSnapshot,
+		&i.PayerSnapshot,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ParticipantName,
+		&i.ParticipantUuid,
+		&i.PlanManagerUuid,
+	)
+	return i, err
+}
+
+const getInvoiceIDByUUID = `-- name: GetInvoiceIDByUUID :one
+SELECT id FROM invoices WHERE tenant_id = ? AND uuid = ?
+`
+
+type GetInvoiceIDByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) GetInvoiceIDByUUID(ctx context.Context, arg GetInvoiceIDByUUIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getInvoiceIDByUUID, arg.TenantID, arg.Uuid)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const listInvoices = `-- name: ListInvoices :many
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ?
 ORDER BY i.created_at DESC
 `
@@ -186,6 +274,8 @@ type ListInvoicesRow struct {
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
 	ParticipantName  sql.NullString `json:"participant_name"`
+	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoicesRow, error) {
@@ -217,6 +307,8 @@ func (q *Queries) ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoi
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantName,
+			&i.ParticipantUuid,
+			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -232,9 +324,10 @@ func (q *Queries) ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoi
 }
 
 const listInvoicesByStatus = `-- name: ListInvoicesByStatus :many
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.status = ?
 ORDER BY i.created_at DESC
 `
@@ -264,6 +357,8 @@ type ListInvoicesByStatusRow struct {
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
 	ParticipantName  sql.NullString `json:"participant_name"`
+	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) ListInvoicesByStatus(ctx context.Context, arg ListInvoicesByStatusParams) ([]ListInvoicesByStatusRow, error) {
@@ -295,6 +390,8 @@ func (q *Queries) ListInvoicesByStatus(ctx context.Context, arg ListInvoicesBySt
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantName,
+			&i.ParticipantUuid,
+			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -310,9 +407,10 @@ func (q *Queries) ListInvoicesByStatus(ctx context.Context, arg ListInvoicesBySt
 }
 
 const listParticipantInvoices = `-- name: ListParticipantInvoices :many
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.participant_id = ?
 ORDER BY i.created_at DESC
 `
@@ -342,6 +440,8 @@ type ListParticipantInvoicesRow struct {
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
 	ParticipantName  sql.NullString `json:"participant_name"`
+	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) ListParticipantInvoices(ctx context.Context, arg ListParticipantInvoicesParams) ([]ListParticipantInvoicesRow, error) {
@@ -373,6 +473,8 @@ func (q *Queries) ListParticipantInvoices(ctx context.Context, arg ListParticipa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParticipantName,
+			&i.ParticipantUuid,
+			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
 		}

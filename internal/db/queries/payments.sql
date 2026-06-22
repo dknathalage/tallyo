@@ -14,3 +14,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
 
 -- name: DeletePayment :exec
 DELETE FROM payments WHERE tenant_id = ? AND id = ?;
+
+-- name: GetPaymentByUUID :one
+SELECT * FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?;
+
+-- name: DeletePaymentByUUID :exec
+DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?;

@@ -26,9 +26,9 @@ func NewPaymentHandler(svc *PaymentService) *PaymentHandler {
 // Routes registers the payment routes on r. Mounted inside the authenticated
 // /api group by the composition root.
 func (h *PaymentHandler) Routes(r chi.Router) {
-	r.Get("/invoices/{id}/payments", h.ListForInvoice)
-	r.Post("/invoices/{id}/payments", h.Create)
-	r.Delete("/payments/{id}", h.Delete)
+	r.Get("/invoices/{invoiceUUID}/payments", h.ListForInvoice)
+	r.Post("/invoices/{invoiceUUID}/payments", h.Create)
+	r.Delete("/invoices/{invoiceUUID}/payments/{paymentUUID}", h.Delete)
 }
 
 // paymentRequest is the write payload for recording a payment. The invoice id
@@ -40,12 +40,31 @@ type paymentRequest struct {
 	Notes       string  `json:"notes"`
 }
 
-// ListForInvoice returns one invoice's payments. The {id} path param is the
-// invoice id.
-func (h *PaymentHandler) ListForInvoice(w http.ResponseWriter, r *http.Request) {
-	invoiceID, ok := httpx.ParseID(r)
+// resolveInvoice translates the {invoiceUUID} path param into the invoice int
+// PK. Writes a 400 (bad uuid) or 404 (unknown) and returns ok=false on failure.
+func (h *PaymentHandler) resolveInvoice(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	invoiceUUID, ok := httpx.ParseUUID(r, "invoiceUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
+		return 0, false
+	}
+	invoiceID, err := h.svc.ResolveInvoiceID(r.Context(), invoiceUUID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return 0, false
+	}
+	if invoiceID == 0 {
+		httpx.WriteError(w, http.StatusNotFound, "not found")
+		return 0, false
+	}
+	return invoiceID, true
+}
+
+// ListForInvoice returns one invoice's payments. The {invoiceUUID} path param is
+// the invoice uuid (resolved to the int FK).
+func (h *PaymentHandler) ListForInvoice(w http.ResponseWriter, r *http.Request) {
+	invoiceID, ok := h.resolveInvoice(w, r)
+	if !ok {
 		return
 	}
 	payments, err := h.svc.ListForInvoice(r.Context(), invoiceID)
@@ -56,12 +75,11 @@ func (h *PaymentHandler) ListForInvoice(w http.ResponseWriter, r *http.Request) 
 	httpx.WriteJSON(w, http.StatusOK, payments)
 }
 
-// Create records a payment against an invoice. The {id} path param is the
-// invoice id. A non-positive amount → 400.
+// Create records a payment against an invoice. The {invoiceUUID} path param is
+// the invoice uuid (resolved to the int FK). A non-positive amount → 400.
 func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
-	invoiceID, ok := httpx.ParseID(r)
+	invoiceID, ok := h.resolveInvoice(w, r)
 	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	var req paymentRequest
@@ -87,15 +105,19 @@ func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
-// Delete removes a payment. The {id} path param is the payment id. A missing
-// payment → 404.
+// Delete removes a payment addressed by {paymentUUID} under its invoice
+// {invoiceUUID}. A missing payment (or one belonging to another invoice) → 404.
 func (h *PaymentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	invoiceID, ok := h.resolveInvoice(w, r)
 	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	err := h.svc.Delete(r.Context(), id)
+	paymentUUID, ok := httpx.ParseUUID(r, "paymentUUID")
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid payment id")
+		return
+	}
+	err := h.svc.DeleteByUUID(r.Context(), invoiceID, paymentUUID)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.WriteError(w, http.StatusNotFound, "not found")
 		return

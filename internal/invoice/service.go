@@ -81,6 +81,42 @@ func (s *Service) Get(ctx context.Context, id int64) (*Invoice, error) {
 	return s.repo.Get(ctx, tenantID, id)
 }
 
+// GetByUUID returns an invoice by uuid, or (nil, nil) when absent. Public HTTP read.
+func (s *Service) GetByUUID(ctx context.Context, invoiceUUID string) (*Invoice, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.GetByUUID(ctx, tenantID, invoiceUUID)
+}
+
+// ResolveParticipant translates a participant uuid into its int FK for the
+// tenant. Returns (0, nil) when no participant matches (caller 400s).
+func (s *Service) ResolveParticipant(ctx context.Context, participantUUID string) (int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+}
+
+// ResolvePlanManager translates a plan-manager uuid into its int FK for the
+// tenant. Returns (0, nil) when no plan manager matches (caller 400s).
+func (s *Service) ResolvePlanManager(ctx context.Context, planManagerUUID string) (int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolvePlanManagerID(ctx, tenantID, planManagerUUID)
+}
+
+// ResolveShiftIDs translates a list of shift uuids into their int PKs for the
+// tenant (preserving order). An unknown uuid surfaces as an error so the caller
+// can 400 — draft-from-shifts must not silently drop a shift.
+func (s *Service) ResolveShiftIDs(ctx context.Context, shiftUUIDs []string) ([]int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveShiftIDs(ctx, tenantID, shiftUUIDs)
+}
+
+// ResolveInvoiceIDs translates a list of invoice uuids into their int PKs for
+// the tenant (preserving order). An unknown uuid surfaces as an error so the
+// caller can 400 — bulk operations must not silently drop a member.
+func (s *Service) ResolveInvoiceIDs(ctx context.Context, invoiceUUIDs []string) ([]int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveInvoiceIDs(ctx, tenantID, invoiceUUIDs)
+}
+
 // ParticipantStats resolves the participant uuid to its int PK (tenant-scoped)
 // then aggregates that participant's invoices. Returns (nil, nil) when no
 // participant matches the uuid so the handler can 404.
@@ -182,6 +218,48 @@ func (s *Service) Update(ctx context.Context, id int64, in InvoiceInput, items [
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: id, Action: "update"})
 	return inv, nil
+}
+
+// UpdateByUUID resolves the invoice uuid → int PK, then rewrites the invoice.
+// Returns (nil, nil) when no invoice matches the uuid so the handler can 404.
+func (s *Service) UpdateByUUID(ctx context.Context, invoiceUUID string, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
+	if err != nil {
+		return nil, err
+	}
+	if id == 0 {
+		return nil, nil
+	}
+	return s.Update(ctx, id, in, items)
+}
+
+// DeleteByUUID resolves the invoice uuid → int PK, then deletes the invoice.
+// A no-match uuid is a no-op (the int Delete is idempotent).
+func (s *Service) DeleteByUUID(ctx context.Context, invoiceUUID string) error {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
+	if err != nil {
+		return err
+	}
+	if id == 0 {
+		return nil
+	}
+	return s.Delete(ctx, id)
+}
+
+// UpdateStatusByUUID resolves the invoice uuid → int PK, then flips its status.
+// A no-match uuid is a no-op.
+func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status string) error {
+	tenantID := reqctx.MustTenant(ctx)
+	id, err := s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
+	if err != nil {
+		return err
+	}
+	if id == 0 {
+		return nil
+	}
+	return s.UpdateStatus(ctx, id, status)
 }
 
 // UpdateStatus sets the invoice status, then broadcasts on success. When the

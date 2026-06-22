@@ -32,6 +32,13 @@ func (s *PaymentService) ListForInvoice(ctx context.Context, invoiceID int64) ([
 	return s.repo.ListForInvoice(ctx, tenantID, invoiceID)
 }
 
+// ResolveInvoiceID translates an invoice uuid into its int PK for the tenant.
+// Returns (0, nil) when no invoice matches (caller 404s).
+func (s *PaymentService) ResolveInvoiceID(ctx context.Context, invoiceUUID string) (int64, error) {
+	tenantID := reqctx.MustTenant(ctx)
+	return s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
+}
+
 // Create records a payment, then broadcasts a payment create plus an invoice
 // update so the invoice's balance refreshes.
 func (s *PaymentService) Create(ctx context.Context, in PaymentInput) (*Payment, error) {
@@ -59,5 +66,24 @@ func (s *PaymentService) Delete(ctx context.Context, id int64) error {
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: id, Action: "delete"})
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: invoiceID, Action: "update"})
+	return nil
+}
+
+// DeleteByUUID removes a payment addressed by its uuid under the given invoice
+// int id. A missing payment (or one under another invoice) surfaces
+// sql.ErrNoRows so the handler can 404; on success it broadcasts a payment
+// delete plus an invoice update so the balance refreshes. The SSE Event.ID keeps
+// the int PK (resolved from the deleted row's invoice id; Phase 2.8 retypes it).
+func (s *PaymentService) DeleteByUUID(ctx context.Context, invoiceID int64, paymentUUID string) error {
+	tenantID := reqctx.MustTenant(ctx)
+	deletedInvoiceID, err := s.repo.DeleteByUUID(ctx, tenantID, invoiceID, paymentUUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", ID: 0, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", ID: deletedInvoiceID, Action: "update"})
 	return nil
 }

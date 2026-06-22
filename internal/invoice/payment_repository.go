@@ -16,9 +16,9 @@ import (
 // Payment is the domain view of a row in the payments table. Nullable columns
 // are unwrapped to plain strings.
 type Payment struct {
-	ID        int64   `json:"id"`
-	UUID      string  `json:"uuid"`
-	InvoiceID int64   `json:"invoiceId"`
+	ID        int64   `json:"-"`  // internal PK; the public identifier is the uuid
+	UUID      string  `json:"id"` // public identifier (payment uuid)
+	InvoiceID int64   `json:"-"`  // internal FK (the payment hangs under its invoice's uuid path)
 	Amount    float64 `json:"amount"`
 	PaidAt    string  `json:"paidAt"`
 	Method    string  `json:"method"`
@@ -154,6 +154,51 @@ func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (int64, e
 		return 0, fmt.Errorf("delete payment: %w", err)
 	}
 	return invoiceID, nil
+}
+
+// ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
+// tenant. Returns (0, nil) when no invoice matches (caller 404s).
+func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID int64, invoiceUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, Uuid: invoiceUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve invoice uuid: %w", err)
+	}
+	return id, nil
+}
+
+// DeleteByUUID removes a payment addressed by its uuid, scoped to the owning
+// invoice's int id (so a payment uuid from another invoice 404s), writing one
+// audit row. Returns the invoice id so the caller can broadcast an invoice
+// update. A missing payment surfaces sql.ErrNoRows so the caller can 404.
+func (r *PaymentsRepo) DeleteByUUID(ctx context.Context, tenantID, invoiceID int64, paymentUUID string) (int64, error) {
+	var deletedInvoiceID int64
+	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		p, e := q.GetPaymentByUUID(ctx, gen.GetPaymentByUUIDParams{TenantID: tenantID, InvoiceID: invoiceID, Uuid: paymentUUID})
+		if e != nil {
+			return e // sql.ErrNoRows surfaces unwrapped for errors.Is
+		}
+		if e := q.DeletePaymentByUUID(ctx, gen.DeletePaymentByUUIDParams{TenantID: tenantID, InvoiceID: invoiceID, Uuid: paymentUUID}); e != nil {
+			return fmt.Errorf("delete: %w", e)
+		}
+		deletedInvoiceID = p.InvoiceID
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "payment",
+			EntityID:   p.ID,
+			Action:     "delete",
+			Changes:    audit.Changes(map[string]any{"invoiceId": p.InvoiceID}),
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, sql.ErrNoRows
+	}
+	if err != nil {
+		return 0, fmt.Errorf("delete payment: %w", err)
+	}
+	return deletedInvoiceID, nil
 }
 
 // toPayment maps a generated row to the domain Payment.

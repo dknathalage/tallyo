@@ -72,6 +72,21 @@ func (q *Queries) DeletePayment(ctx context.Context, arg DeletePaymentParams) er
 	return err
 }
 
+const deletePaymentByUUID = `-- name: DeletePaymentByUUID :exec
+DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?
+`
+
+type DeletePaymentByUUIDParams struct {
+	TenantID  int64  `json:"tenant_id"`
+	InvoiceID int64  `json:"invoice_id"`
+	Uuid      string `json:"uuid"`
+}
+
+func (q *Queries) DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error {
+	_, err := q.db.ExecContext(ctx, deletePaymentByUUID, arg.TenantID, arg.InvoiceID, arg.Uuid)
+	return err
+}
+
 const getPayment = `-- name: GetPayment :one
 SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND id = ?
 `
@@ -83,6 +98,35 @@ type GetPaymentParams struct {
 
 func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error) {
 	row := q.db.QueryRowContext(ctx, getPayment, arg.TenantID, arg.ID)
+	var i Payment
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.InvoiceID,
+		&i.Amount,
+		&i.PaidAt,
+		&i.Method,
+		&i.Reference,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPaymentByUUID = `-- name: GetPaymentByUUID :one
+SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?
+`
+
+type GetPaymentByUUIDParams struct {
+	TenantID  int64  `json:"tenant_id"`
+	InvoiceID int64  `json:"invoice_id"`
+	Uuid      string `json:"uuid"`
+}
+
+func (q *Queries) GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error) {
+	row := q.db.QueryRowContext(ctx, getPaymentByUUID, arg.TenantID, arg.InvoiceID, arg.Uuid)
 	var i Payment
 	err := row.Scan(
 		&i.ID,

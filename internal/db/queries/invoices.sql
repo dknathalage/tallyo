@@ -1,29 +1,43 @@
 -- name: ListInvoices :many
-SELECT i.*, p.name AS participant_name
+SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ?
 ORDER BY i.created_at DESC;
 
 -- name: ListInvoicesByStatus :many
-SELECT i.*, p.name AS participant_name
+SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.status = ?
 ORDER BY i.created_at DESC;
 
 -- name: ListParticipantInvoices :many
-SELECT i.*, p.name AS participant_name
+SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.participant_id = ?
 ORDER BY i.created_at DESC;
 
 -- name: GetInvoice :one
-SELECT i.*, p.name AS participant_name
+SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
+WHERE i.tenant_id = ? AND i.uuid = ?;
+
+-- name: GetInvoiceByID :one
+SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+FROM invoices i
+LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.id = ?;
+
+-- name: GetInvoiceIDByUUID :one
+SELECT id FROM invoices WHERE tenant_id = ? AND uuid = ?;
 
 -- name: CreateInvoice :one
 INSERT INTO invoices (

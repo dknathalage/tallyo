@@ -3,6 +3,7 @@ package invoice
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
@@ -33,19 +34,76 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/invoices/draft-from-shifts", h.DraftFromShifts)
 	r.Post("/invoices/bulk-delete", h.BulkDelete)
 	r.Post("/invoices/bulk-status", h.BulkStatus)
-	r.Get("/invoices/{id}", h.Get)
-	r.Put("/invoices/{id}", h.Update)
-	r.Delete("/invoices/{id}", h.Delete)
-	r.Post("/invoices/{id}/status", h.Status)
-	r.Get("/invoices/{id}/pdf", h.Pdf)
+	r.Get("/invoices/{uuid}", h.Get)
+	r.Put("/invoices/{uuid}", h.Update)
+	r.Delete("/invoices/{uuid}", h.Delete)
+	r.Post("/invoices/{uuid}/status", h.Status)
+	r.Get("/invoices/{uuid}/pdf", h.Pdf)
 	r.Get("/participants/{participantUUID}/stats", h.ParticipantStats)
 }
 
-// invoiceRequest is the flat write payload: every InvoiceInput field (embedded so
-// its json tags flatten) plus the line items. The frontend posts this shape.
+// invoiceRequest is the flat write payload. ParticipantUUID/PlanManagerUUID
+// arrive as uuids under the public field names (participantId/planManagerId) and
+// are resolved to int FKs before the service is called; the remaining fields
+// mirror InvoiceInput. LineItems carry the priced lines (catalogue refs already
+// uuid TEXT — passed through unchanged).
 type invoiceRequest struct {
-	InvoiceInput
-	LineItems []billing.LineItemInput `json:"lineItems"`
+	ParticipantUUID  string                  `json:"participantId"`
+	PlanManagerUUID  *string                 `json:"planManagerId"`
+	Status           string                  `json:"status"`
+	IssueDate        string                  `json:"issueDate"`
+	DueDate          string                  `json:"dueDate"`
+	Tax              float64                 `json:"tax"`
+	Notes            string                  `json:"notes"`
+	BusinessSnapshot string                  `json:"businessSnapshot"`
+	ClientSnapshot   string                  `json:"participantSnapshot"`
+	PayerSnapshot    string                  `json:"planManagerSnapshot"`
+	LineItems        []billing.LineItemInput `json:"lineItems"`
+}
+
+// resolveInput translates an invoiceRequest's participant/plan-manager uuids into
+// int FKs and returns the int-keyed InvoiceInput. Writes a 400 and returns
+// ok=false when the participant uuid is missing/unknown for the tenant. A
+// missing/empty plan-manager uuid stays NULL; a present-but-unknown one 400s.
+func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req invoiceRequest) (InvoiceInput, bool) {
+	if req.ParticipantUUID == "" || len(req.LineItems) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+		return InvoiceInput{}, false
+	}
+	pid, err := h.svc.ResolveParticipant(r.Context(), req.ParticipantUUID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return InvoiceInput{}, false
+	}
+	if pid == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		return InvoiceInput{}, false
+	}
+	var pmID *int64
+	if req.PlanManagerUUID != nil && *req.PlanManagerUUID != "" {
+		id, err := h.svc.ResolvePlanManager(r.Context(), *req.PlanManagerUUID)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return InvoiceInput{}, false
+		}
+		if id == 0 {
+			httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+			return InvoiceInput{}, false
+		}
+		pmID = &id
+	}
+	return InvoiceInput{
+		ParticipantID:    pid,
+		PlanManagerID:    pmID,
+		Status:           req.Status,
+		IssueDate:        req.IssueDate,
+		DueDate:          req.DueDate,
+		Tax:              req.Tax,
+		Notes:            req.Notes,
+		BusinessSnapshot: req.BusinessSnapshot,
+		ClientSnapshot:   req.ClientSnapshot,
+		PayerSnapshot:    req.PayerSnapshot,
+	}, true
 }
 
 // writeValidationError, when err is (or wraps) a *billing.ValidationError,
@@ -80,10 +138,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, res)
 		return
 	}
-	if pid := q.Get("participantId"); pid != "" {
-		participantID, ok := parseIDFromString(pid)
-		if !ok {
-			httpx.WriteError(w, http.StatusBadRequest, "invalid participantId")
+	if pUUID := participantFilter(q); pUUID != "" {
+		participantID, err := h.svc.ResolveParticipant(r.Context(), pUUID)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if participantID == 0 {
+			httpx.WriteJSON(w, http.StatusOK, []*Invoice{})
 			return
 		}
 		invs, err := h.svc.ListParticipantInvoices(r.Context(), participantID)
@@ -111,14 +173,23 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, invs)
 }
 
+// participantFilter returns the participant uuid filter from the query, accepting
+// the canonical ?participant= and the legacy ?participantId= key.
+func participantFilter(q url.Values) string {
+	if v := q.Get("participant"); v != "" {
+		return v
+	}
+	return q.Get("participantId")
+}
+
 // Get returns a single invoice (with line items), or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	inv, err := h.svc.Get(r.Context(), id)
+	inv, err := h.svc.GetByUUID(r.Context(), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -130,18 +201,18 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, inv)
 }
 
-// Create inserts an invoice. A missing participant or empty line items → 400.
+// Create inserts an invoice. A missing/unknown participant or empty line items → 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req invoiceRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+	in, ok := h.resolveInput(w, r, req)
+	if !ok {
 		return
 	}
-	inv, err := h.svc.Create(r.Context(), req.InvoiceInput, req.LineItems)
+	inv, err := h.svc.Create(r.Context(), in, req.LineItems)
 	if err != nil {
 		if writeValidationError(w, err) {
 			return
@@ -157,7 +228,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // non-recorded shift) → 400.
 func (h *Handler) DraftFromShifts(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ShiftIds []int64 `json:"shiftIds"`
+		ShiftIds []string `json:"shiftIds"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
@@ -167,7 +238,12 @@ func (h *Handler) DraftFromShifts(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "at least one shift is required")
 		return
 	}
-	inv, err := h.svc.DraftFromShifts(r.Context(), body.ShiftIds)
+	shiftIDs, err := h.svc.ResolveShiftIDs(r.Context(), body.ShiftIds)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	inv, err := h.svc.DraftFromShifts(r.Context(), shiftIDs)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
@@ -175,9 +251,9 @@ func (h *Handler) DraftFromShifts(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, inv)
 }
 
-// Update rewrites an invoice. Missing participant/items → 400; unknown id → 404.
+// Update rewrites an invoice. Missing participant/items → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -187,11 +263,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.ParticipantID == 0 || len(req.LineItems) == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+	in, ok := h.resolveInput(w, r, req)
+	if !ok {
 		return
 	}
-	inv, err := h.svc.Update(r.Context(), id, req.InvoiceInput, req.LineItems)
+	inv, err := h.svc.UpdateByUUID(r.Context(), uid, in, req.LineItems)
 	if err != nil {
 		if writeValidationError(w, err) {
 			return
@@ -206,14 +282,14 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, inv)
 }
 
-// Delete removes an invoice by id.
+// Delete removes an invoice by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
+	if err := h.svc.DeleteByUUID(r.Context(), uid); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -222,7 +298,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // Status flips just the invoice status. An empty status → 400.
 func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -238,40 +314,52 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	if err := h.svc.UpdateStatus(r.Context(), id, body.Status); err != nil {
+	if err := h.svc.UpdateStatusByUUID(r.Context(), uid, body.Status); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": body.Status})
 }
 
-// BulkDelete removes every invoice whose id is in the request body.
+// BulkDelete removes every invoice whose uuid is in the request body. The uuids
+// are resolved to int PKs first; an unknown uuid → 400.
 func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ids []int64 `json:"ids"`
+		Ids []string `json:"ids"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if err := h.svc.BulkDelete(r.Context(), body.Ids); err != nil {
+	ids, err := h.svc.ResolveInvoiceIDs(r.Context(), body.Ids)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.BulkDelete(r.Context(), ids); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// BulkStatus sets the status of every invoice whose id is in the request body.
+// BulkStatus sets the status of every invoice whose uuid is in the request body.
+// The uuids are resolved to int PKs first; an unknown uuid → 400.
 func (h *Handler) BulkStatus(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ids    []int64 `json:"ids"`
-		Status string  `json:"status"`
+		Ids    []string `json:"ids"`
+		Status string   `json:"status"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if err := h.svc.BulkUpdateStatus(r.Context(), body.Ids, body.Status); err != nil {
+	ids, err := h.svc.ResolveInvoiceIDs(r.Context(), body.Ids)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.BulkUpdateStatus(r.Context(), ids, body.Status); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -300,12 +388,12 @@ func (h *Handler) ParticipantStats(w http.ResponseWriter, r *http.Request) {
 
 // Pdf renders an invoice to PDF and returns it as a file download.
 func (h *Handler) Pdf(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	inv, err := h.svc.Get(r.Context(), id)
+	inv, err := h.svc.GetByUUID(r.Context(), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return

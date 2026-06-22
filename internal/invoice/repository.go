@@ -36,9 +36,10 @@ import (
 // invoiceListSelect mirrors the ListInvoices sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/invoices.sql. The tenant filter is the
 // FIRST and ONLY ? in the base; listquery's c.Where is appended as " AND ...".
-const invoiceListSelect = `SELECT i.*, p.name AS participant_name
+const invoiceListSelect = `SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
 LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ?`
 
 // InvoiceCols is the listquery allowlist for invoices. Keys match the JSON field
@@ -55,12 +56,13 @@ var InvoiceCols = listquery.Spec{
 // Invoice is the domain view of an invoice with its resolved participant name
 // and embedded line items.
 type Invoice struct {
-	ID               int64               `json:"id"`
-	UUID             string              `json:"uuid"`
+	ID               int64               `json:"-"`  // internal PK; the public identifier is the uuid
+	UUID             string              `json:"id"` // public identifier (invoice uuid)
 	Number           string              `json:"number"`
-	ParticipantID    int64               `json:"participantId"`
+	ParticipantID    int64               `json:"-"`             // internal FK; the public ref is participantId (uuid)
+	ParticipantUUID  string              `json:"participantId"` // participant uuid
 	ParticipantName  string              `json:"participantName"`
-	PlanManagerID    *int64              `json:"planManagerId"`
+	PlanManagerUUID  *string             `json:"planManagerId"` // plan-manager uuid (nil when none)
 	Status           string              `json:"status"`
 	IssueDate        string              `json:"issueDate"`
 	DueDate          string              `json:"dueDate"`
@@ -413,26 +415,60 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 // when absent.
 func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, error) {
 	q := gen.New(r.db)
-	row, err := q.GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, ID: id})
+	row, err := q.GetInvoiceByID(ctx, gen.GetInvoiceByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get invoice: %w", err)
 	}
+	inv := toInvoiceFromRow(invoiceFieldsFromGetByID(row))
+	return r.enrichInvoice(ctx, q, tenantID, inv)
+}
+
+// GetByUUID returns the invoice (with line items) addressed by its uuid, or
+// (nil, nil) when no invoice matches the uuid for the tenant. Public HTTP read.
+func (r *InvoicesRepo) GetByUUID(ctx context.Context, tenantID int64, invoiceUUID string) (*Invoice, error) {
+	q := gen.New(r.db)
+	row, err := q.GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, Uuid: invoiceUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get invoice by uuid: %w", err)
+	}
 	inv := toInvoiceFromRow(invoiceFieldsFromGet(row))
-	rows, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true}})
+	return r.enrichInvoice(ctx, q, tenantID, inv)
+}
+
+// enrichInvoice loads an invoice's line items and total-paid/balance. The
+// invoice's int PK (inv.ID) keys the lookups.
+func (r *InvoicesRepo) enrichInvoice(ctx context.Context, q *gen.Queries, tenantID int64, inv *Invoice) (*Invoice, error) {
+	rows, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true}})
 	if err != nil {
 		return nil, fmt.Errorf("list line items: %w", err)
 	}
 	inv.LineItems = mapLineItems(rows)
-	tp, err := q.InvoiceTotalPaid(ctx, gen.InvoiceTotalPaidParams{TenantID: tenantID, InvoiceID: id})
+	tp, err := q.InvoiceTotalPaid(ctx, gen.InvoiceTotalPaidParams{TenantID: tenantID, InvoiceID: inv.ID})
 	if err != nil {
 		return nil, fmt.Errorf("invoice total paid: %w", err)
 	}
 	inv.TotalPaid = tp
 	inv.Balance = billing.Round2(inv.Total - tp)
 	return inv, nil
+}
+
+// ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
+// tenant. Returns (0, nil) when no invoice matches the uuid (caller 404s).
+func (r *InvoicesRepo) ResolveInvoiceID(ctx context.Context, tenantID int64, invoiceUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, Uuid: invoiceUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve invoice uuid: %w", err)
+	}
+	return id, nil
 }
 
 // List returns every invoice for the tenant (header only), newest first.
@@ -480,7 +516,7 @@ func (r *InvoicesRepo) Query(ctx context.Context, tenantID int64, c listquery.Cl
 		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.participantID,
 			&f.planManagerID, &f.status, &f.issueDate, &f.dueDate, &f.subtotal,
 			&f.tax, &f.total, &f.notes, &f.businessSnap, &f.clientSnap, &f.payerSnap,
-			&f.createdAt, &f.updatedAt, &f.participantName); err != nil {
+			&f.createdAt, &f.updatedAt, &f.participantName, &f.participantUUID, &f.planManagerUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan invoice: %w", err)
 		}
 		out = append(out, toInvoiceFromRow(f))
@@ -533,7 +569,7 @@ func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in Invoic
 	if len(items) == 0 {
 		return nil, errors.New("update invoice: at least one line item is required")
 	}
-	existing, err := gen.New(r.db).GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, ID: id})
+	existing, err := gen.New(r.db).GetInvoiceByID(ctx, gen.GetInvoiceByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -561,7 +597,7 @@ func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in Invoic
 }
 
 // keepSnapshots preserves the stored snapshots for any snapshot input left empty.
-func keepSnapshots(in *InvoiceInput, existing gen.GetInvoiceRow) {
+func keepSnapshots(in *InvoiceInput, existing gen.GetInvoiceByIDRow) {
 	if in.BusinessSnapshot == "" {
 		in.BusinessSnapshot = existing.BusinessSnapshot.String
 	}
@@ -761,6 +797,55 @@ func (r *InvoicesRepo) ResolveParticipantID(ctx context.Context, tenantID int64,
 	return id, nil
 }
 
+// ResolvePlanManagerID translates a plan-manager uuid into its int PK, scoped to
+// the tenant. Returns (0, nil) when no plan manager matches (caller 400s).
+func (r *InvoicesRepo) ResolvePlanManagerID(ctx context.Context, tenantID int64, planManagerUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetPlanManagerIDByUUID(ctx, gen.GetPlanManagerIDByUUIDParams{TenantID: tenantID, Uuid: planManagerUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve plan manager uuid: %w", err)
+	}
+	return id, nil
+}
+
+// ResolveShiftIDs translates shift uuids into their int PKs (preserving order),
+// tenant-scoped. An unknown uuid is an error so draft-from-shifts can 400.
+func (r *InvoicesRepo) ResolveShiftIDs(ctx context.Context, tenantID int64, shiftUUIDs []string) ([]int64, error) {
+	q := gen.New(r.db)
+	out := make([]int64, 0, len(shiftUUIDs))
+	for i := range shiftUUIDs { // bounded by len(shiftUUIDs)
+		id, err := q.GetShiftIDByUUID(ctx, gen.GetShiftIDByUUIDParams{TenantID: tenantID, Uuid: shiftUUIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("unknown shift %q", shiftUUIDs[i])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve shift uuid: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// ResolveInvoiceIDs translates invoice uuids into their int PKs (preserving
+// order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
+func (r *InvoicesRepo) ResolveInvoiceIDs(ctx context.Context, tenantID int64, invoiceUUIDs []string) ([]int64, error) {
+	q := gen.New(r.db)
+	out := make([]int64, 0, len(invoiceUUIDs))
+	for i := range invoiceUUIDs { // bounded by len(invoiceUUIDs)
+		id, err := q.GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, Uuid: invoiceUUIDs[i]})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("unknown invoice %q", invoiceUUIDs[i])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve invoice uuid: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // ParticipantStats returns the count and summed totals of a participant's
 // invoices.
 func (r *InvoicesRepo) ParticipantStats(ctx context.Context, tenantID, participantID int64) (*ParticipantStats, error) {
@@ -788,6 +873,8 @@ type invoiceFields struct {
 	businessSnap, clientSnap, payerSnap sql.NullString
 	createdAt, updatedAt                string
 	participantName                     sql.NullString
+	participantUUID                     sql.NullString
+	planManagerUUID                     sql.NullString
 }
 
 // toInvoiceFromRow builds a domain Invoice (without line items) from the
@@ -798,8 +885,9 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 		UUID:             f.uuid,
 		Number:           f.number,
 		ParticipantID:    f.participantID,
+		ParticipantUUID:  f.participantUUID.String,
 		ParticipantName:  f.participantName.String,
-		PlanManagerID:    db.PtrID(f.planManagerID),
+		PlanManagerUUID:  nullStrPtr(f.planManagerUUID),
 		Status:           f.status,
 		IssueDate:        f.issueDate,
 		DueDate:          f.dueDate,
@@ -824,6 +912,19 @@ func invoiceFieldsFromGet(r gen.GetInvoiceRow) invoiceFields {
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
+	}
+}
+
+func invoiceFieldsFromGetByID(r gen.GetInvoiceByIDRow) invoiceFields {
+	return invoiceFields{
+		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		planManagerID: r.PlanManagerID,
+		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
+		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
+		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
@@ -835,6 +936,7 @@ func invoiceFieldsFromList(r gen.ListInvoicesRow) invoiceFields {
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
@@ -846,6 +948,7 @@ func invoiceFieldsFromStatus(r gen.ListInvoicesByStatusRow) invoiceFields {
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
@@ -857,7 +960,17 @@ func invoiceFieldsFromParticipant(r gen.ListParticipantInvoicesRow) invoiceField
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
 	}
+}
+
+// nullStrPtr returns a *string for a non-empty NullString, else nil.
+func nullStrPtr(ns sql.NullString) *string {
+	if !ns.Valid || ns.String == "" {
+		return nil
+	}
+	s := ns.String
+	return &s
 }
 
 // mapLineItems maps generated line item rows to domain line items (non-nil).
