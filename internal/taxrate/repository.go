@@ -33,8 +33,8 @@ var TaxRateCols = listquery.Spec{
 
 // TaxRate is the domain view of a row in the tax_rates table.
 type TaxRate struct {
-	ID        int64   `json:"id"`
-	UUID      string  `json:"uuid"`
+	ID        int64   `json:"-"`
+	UUID      string  `json:"id"`
 	Name      string  `json:"name"`
 	Rate      float64 `json:"rate"`
 	IsDefault bool    `json:"isDefault"`
@@ -121,9 +121,9 @@ func (r *TaxRatesRepo) Query(ctx context.Context, tenantID int64, c listquery.Cl
 	return out, total, nil
 }
 
-// Get returns the tenant's tax rate, or (nil, nil) when none matches.
-func (r *TaxRatesRepo) Get(ctx context.Context, tenantID, id int64) (*TaxRate, error) {
-	row, err := gen.New(r.db).GetTaxRate(ctx, gen.GetTaxRateParams{TenantID: tenantID, ID: id})
+// Get returns the tenant's tax rate by uuid, or (nil, nil) when none matches.
+func (r *TaxRatesRepo) Get(ctx context.Context, tenantID int64, uuid string) (*TaxRate, error) {
+	row, err := gen.New(r.db).GetTaxRate(ctx, gen.GetTaxRateParams{TenantID: tenantID, Uuid: uuid})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -194,7 +194,7 @@ func (r *TaxRatesRepo) Create(ctx context.Context, tenantID int64, in TaxRateInp
 // Update writes the tax rate's fields and one audit row, atomically. When
 // in.IsDefault is true, the tenant's other rows are cleared in the same tx
 // first. Returns (nil, nil) when the row does not exist so the caller can 404.
-func (r *TaxRatesRepo) Update(ctx context.Context, tenantID, id int64, in TaxRateInput) (*TaxRate, error) {
+func (r *TaxRatesRepo) Update(ctx context.Context, tenantID int64, uuid string, in TaxRateInput) (*TaxRate, error) {
 	if in.Name == "" {
 		return nil, errors.New("update tax rate: name is required")
 	}
@@ -214,7 +214,7 @@ func (r *TaxRatesRepo) Update(ctx context.Context, tenantID, id int64, in TaxRat
 			IsDefault: db.B2i(in.IsDefault),
 			UpdatedAt: now,
 			TenantID:  tenantID,
-			ID:        id,
+			Uuid:      uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			return errTaxNotFound
@@ -239,17 +239,26 @@ func (r *TaxRatesRepo) Update(ctx context.Context, tenantID, id int64, in TaxRat
 	return toTaxRate(updated), nil
 }
 
-// Delete removes a tax rate and writes one audit row, atomically.
-func (r *TaxRatesRepo) Delete(ctx context.Context, tenantID, id int64) error {
-	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "tax_rate",
-		EntityID:   id,
-		Action:     "delete",
-	}, func(tx *sql.Tx) error {
-		if e := gen.New(tx).DeleteTaxRate(ctx, gen.DeleteTaxRateParams{TenantID: tenantID, ID: id}); e != nil {
+// Delete removes a tax rate by uuid and writes one audit row, atomically. The
+// audit entry records the row's int PK, resolved by-uuid in the same tx.
+func (r *TaxRatesRepo) Delete(ctx context.Context, tenantID int64, uuid string) error {
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		q := gen.New(tx)
+		row, e := q.GetTaxRate(ctx, gen.GetTaxRateParams{TenantID: tenantID, Uuid: uuid})
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
+		}
+		if e != nil {
+			return fmt.Errorf("lookup: %w", e)
+		}
+		if e := q.DeleteTaxRate(ctx, gen.DeleteTaxRateParams{TenantID: tenantID, Uuid: uuid}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
-		return nil
+		return audit.Log(ctx, tx, audit.Entry{
+			EntityType: "tax_rate",
+			EntityID:   row.ID,
+			Action:     "delete",
+		})
 	})
 }
 

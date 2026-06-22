@@ -26,9 +26,9 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/tax-rates", h.List)
 	r.Post("/tax-rates", h.Create)
-	r.Get("/tax-rates/{id}", h.Get)
-	r.Put("/tax-rates/{id}", h.Update)
-	r.Delete("/tax-rates/{id}", h.Delete)
+	r.Get("/tax-rates/{uuid}", h.Get)
+	r.Put("/tax-rates/{uuid}", h.Update)
+	r.Delete("/tax-rates/{uuid}", h.Delete)
 }
 
 // List returns tax rates. With DataTable query params (sort/page/limit/f.*) it
@@ -53,9 +53,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, rates)
 }
 
-// Get returns a single tax rate by id, or 404 when not found.
+// Get returns a single tax rate by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -91,9 +91,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, t)
 }
 
-// Update mutates a tax rate. Empty name → 400; unknown id → 404.
+// Update mutates a tax rate. Empty name → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -119,9 +119,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, t)
 }
 
-// Delete removes a tax rate by id.
+// Delete removes a tax rate by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
