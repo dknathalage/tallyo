@@ -236,7 +236,7 @@
 			endTime: unitClass(niUnit) === 'time' ? niEnd : '',
 			quantity: qty,
 			unitPrice: coded ? 0 : Number(niUnitPrice) || 0,
-			gstFree: true,
+			taxable: false,
 			sortOrder: items.length
 		};
 		itemsBusy = true;

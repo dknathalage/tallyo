@@ -24,9 +24,9 @@ func (q *Queries) CountSupportItems(ctx context.Context, catalogVersionID int64)
 const createSupportItem = `-- name: CreateSupportItem :one
 INSERT INTO support_items (
     uuid, catalog_version_id, code, name, unit, support_category,
-    registration_group, claim_type, gst_free, metadata
+    registration_group, claim_type, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata
+RETURNING id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, taxable, metadata
 `
 
 type CreateSupportItemParams struct {
@@ -38,7 +38,7 @@ type CreateSupportItemParams struct {
 	SupportCategory   sql.NullString `json:"support_category"`
 	RegistrationGroup sql.NullString `json:"registration_group"`
 	ClaimType         sql.NullString `json:"claim_type"`
-	GstFree           int64          `json:"gst_free"`
+	Taxable           int64          `json:"taxable"`
 	Metadata          sql.NullString `json:"metadata"`
 }
 
@@ -52,7 +52,7 @@ func (q *Queries) CreateSupportItem(ctx context.Context, arg CreateSupportItemPa
 		arg.SupportCategory,
 		arg.RegistrationGroup,
 		arg.ClaimType,
-		arg.GstFree,
+		arg.Taxable,
 		arg.Metadata,
 	)
 	var i SupportItem
@@ -66,7 +66,7 @@ func (q *Queries) CreateSupportItem(ctx context.Context, arg CreateSupportItemPa
 		&i.SupportCategory,
 		&i.RegistrationGroup,
 		&i.ClaimType,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 	)
 	return i, err
@@ -82,7 +82,7 @@ func (q *Queries) DeleteSupportItemsForVersion(ctx context.Context, catalogVersi
 }
 
 const getSupportItem = `-- name: GetSupportItem :one
-SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata FROM support_items WHERE id = ?
+SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, taxable, metadata FROM support_items WHERE id = ?
 `
 
 func (q *Queries) GetSupportItem(ctx context.Context, id int64) (SupportItem, error) {
@@ -98,14 +98,14 @@ func (q *Queries) GetSupportItem(ctx context.Context, id int64) (SupportItem, er
 		&i.SupportCategory,
 		&i.RegistrationGroup,
 		&i.ClaimType,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 	)
 	return i, err
 }
 
 const getSupportItemByCode = `-- name: GetSupportItemByCode :one
-SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata FROM support_items WHERE catalog_version_id = ? AND code = ?
+SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, taxable, metadata FROM support_items WHERE catalog_version_id = ? AND code = ?
 `
 
 type GetSupportItemByCodeParams struct {
@@ -126,7 +126,7 @@ func (q *Queries) GetSupportItemByCode(ctx context.Context, arg GetSupportItemBy
 		&i.SupportCategory,
 		&i.RegistrationGroup,
 		&i.ClaimType,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 	)
 	return i, err
@@ -145,7 +145,7 @@ func (q *Queries) GetSupportItemIDByUUID(ctx context.Context, uuid string) (int6
 
 const listSupportItems = `-- name: ListSupportItems :many
 
-SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata FROM support_items WHERE catalog_version_id = ? ORDER BY code
+SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, taxable, metadata FROM support_items WHERE catalog_version_id = ? ORDER BY code
 `
 
 // Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
@@ -168,7 +168,7 @@ func (q *Queries) ListSupportItems(ctx context.Context, catalogVersionID int64) 
 			&i.SupportCategory,
 			&i.RegistrationGroup,
 			&i.ClaimType,
-			&i.GstFree,
+			&i.Taxable,
 			&i.Metadata,
 		); err != nil {
 			return nil, err
@@ -185,7 +185,7 @@ func (q *Queries) ListSupportItems(ctx context.Context, catalogVersionID int64) 
 }
 
 const searchSupportItems = `-- name: SearchSupportItems :many
-SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata FROM support_items
+SELECT id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, taxable, metadata FROM support_items
 WHERE catalog_version_id = ? AND ((code LIKE ? ESCAPE '\') OR (name LIKE ? ESCAPE '\'))
 ORDER BY code
 `
@@ -215,7 +215,7 @@ func (q *Queries) SearchSupportItems(ctx context.Context, arg SearchSupportItems
 			&i.SupportCategory,
 			&i.RegistrationGroup,
 			&i.ClaimType,
-			&i.GstFree,
+			&i.Taxable,
 			&i.Metadata,
 		); err != nil {
 			return nil, err
@@ -234,7 +234,7 @@ func (q *Queries) SearchSupportItems(ctx context.Context, arg SearchSupportItems
 const upsertSupportItem = `-- name: UpsertSupportItem :one
 INSERT INTO support_items (
     uuid, catalog_version_id, code, name, unit, support_category,
-    registration_group, claim_type, gst_free, metadata
+    registration_group, claim_type, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (catalog_version_id, code) DO UPDATE SET
     name = excluded.name,
@@ -242,9 +242,9 @@ ON CONFLICT (catalog_version_id, code) DO UPDATE SET
     support_category = excluded.support_category,
     registration_group = excluded.registration_group,
     claim_type = excluded.claim_type,
-    gst_free = excluded.gst_free,
+    taxable = excluded.taxable,
     metadata = excluded.metadata
-RETURNING id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, gst_free, metadata
+RETURNING id, uuid, catalog_version_id, code, name, unit, support_category, registration_group, claim_type, taxable, metadata
 `
 
 type UpsertSupportItemParams struct {
@@ -256,7 +256,7 @@ type UpsertSupportItemParams struct {
 	SupportCategory   sql.NullString `json:"support_category"`
 	RegistrationGroup sql.NullString `json:"registration_group"`
 	ClaimType         sql.NullString `json:"claim_type"`
-	GstFree           int64          `json:"gst_free"`
+	Taxable           int64          `json:"taxable"`
 	Metadata          sql.NullString `json:"metadata"`
 }
 
@@ -270,7 +270,7 @@ func (q *Queries) UpsertSupportItem(ctx context.Context, arg UpsertSupportItemPa
 		arg.SupportCategory,
 		arg.RegistrationGroup,
 		arg.ClaimType,
-		arg.GstFree,
+		arg.Taxable,
 		arg.Metadata,
 	)
 	var i SupportItem
@@ -284,7 +284,7 @@ func (q *Queries) UpsertSupportItem(ctx context.Context, arg UpsertSupportItemPa
 		&i.SupportCategory,
 		&i.RegistrationGroup,
 		&i.ClaimType,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 	)
 	return i, err

@@ -76,7 +76,7 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 		t.Fatalf("CreateCatalogVersion: %v", err)
 	}
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, GstFree: 1,
+		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem: %v", err)

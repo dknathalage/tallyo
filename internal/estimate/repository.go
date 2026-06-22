@@ -252,7 +252,7 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 			Unit:             db.NzMaybe(it.Unit),
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
-			GstFree:          db.B2i(it.GstFree),
+			Taxable:          db.B2i(it.Taxable),
 			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
@@ -750,7 +750,7 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 			Unit:             db.NzMaybe(it.Unit),
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
-			GstFree:          db.B2i(it.GstFree),
+			Taxable:          db.B2i(it.Taxable),
 			LineTotal:        it.LineTotal,
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
@@ -776,7 +776,7 @@ func lineItemsToInput(items []*billing.LineItem) []billing.LineItemInput {
 			Unit:             it.Unit,
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
-			GstFree:          it.GstFree,
+			Taxable:          it.Taxable,
 			SortOrder:        it.SortOrder,
 		})
 	}
@@ -916,7 +916,7 @@ func toEstimateLineItem(row gen.ListEstimateLineItemsRow) *billing.LineItem {
 		Unit:             row.Unit.String,
 		Quantity:         row.Quantity,
 		UnitPrice:        row.UnitPrice,
-		GstFree:          row.GstFree == 1,
+		Taxable:          row.Taxable == 1,
 		LineTotal:        row.LineTotal,
 		SortOrder:        row.SortOrder.Int64,
 	}

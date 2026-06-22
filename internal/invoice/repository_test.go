@@ -17,7 +17,7 @@ func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 	inv, err := repo.Create(ctx, tid, InvoiceInput{
 		ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31", Tax: 10,
 	}, []billing.LineItemInput{
-		{Code: "01_011_0107_1_1", Description: "Support", Quantity: 2, UnitPrice: 50, GstFree: true},
+		{Code: "01_011_0107_1_1", Description: "Support", Quantity: 2, UnitPrice: 50, Taxable: true},
 		{Description: "Travel", Quantity: 1, UnitPrice: 5},
 	})
 	if err != nil {
@@ -29,7 +29,7 @@ func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 	if inv.Subtotal != 105 || inv.Tax != 10 || inv.Total != 115 {
 		t.Fatalf("totals = %.2f/%.2f/%.2f, want 105/10/115", inv.Subtotal, inv.Tax, inv.Total)
 	}
-	if len(inv.LineItems) != 2 || !inv.LineItems[0].GstFree || inv.LineItems[0].LineTotal != 100 {
+	if len(inv.LineItems) != 2 || !inv.LineItems[0].Taxable || inv.LineItems[0].LineTotal != 100 {
 		t.Fatalf("line items = %+v", inv.LineItems)
 	}
 

@@ -27,7 +27,7 @@ WHERE li.tenant_id = ? AND li.shift_id = ? AND li.uuid = ?;
 INSERT INTO line_items (
     uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id,
     catalog_version_id, code, description, service_date, unit, start_time,
-    end_time, quantity, unit_price, gst_free, line_total, sort_order
+    end_time, quantity, unit_price, taxable, line_total, sort_order
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -35,7 +35,7 @@ RETURNING *;
 UPDATE line_items SET
     support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
-    quantity = ?, unit_price = ?, gst_free = ?, line_total = ?
+    quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
 RETURNING *;
 
@@ -47,7 +47,7 @@ DELETE FROM line_items WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL;
 UPDATE line_items SET
     support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
-    quantity = ?, unit_price = ?, gst_free = ?, line_total = ?
+    quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND shift_id = ? AND uuid = ? AND invoice_id IS NULL
 RETURNING *;
 

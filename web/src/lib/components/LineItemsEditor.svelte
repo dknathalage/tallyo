@@ -19,7 +19,7 @@
 		unit: string;
 		quantity: number;
 		unitPrice: number;
-		gstFree: boolean;
+		taxable: boolean;
 		sortOrder: number;
 	}
 
@@ -109,7 +109,7 @@
 			unit: '',
 			quantity: 1,
 			unitPrice: 0,
-			gstFree: true,
+			taxable: false,
 			sortOrder: lines.length
 		});
 		void ensureCatalog();
@@ -126,7 +126,7 @@
 			unit: '',
 			quantity: 1,
 			unitPrice: 0,
-			gstFree: true,
+			taxable: false,
 			sortOrder: lines.length
 		});
 	}
@@ -146,7 +146,7 @@
 		row.code = item.code;
 		row.description = item.name;
 		row.unit = item.unit;
-		row.gstFree = item.gstFree; // server-authoritative; shown read-only.
+		row.taxable = item.taxable; // server-authoritative; shown read-only.
 		pickerOpen = null;
 		const cap = await capFor(item);
 		rowCap = { ...rowCap, [index]: cap };
@@ -165,7 +165,7 @@
 			row.description = ci.name;
 			row.unit = ci.unit;
 			row.unitPrice = ci.rate;
-			row.gstFree = ci.gstFree;
+			row.taxable = ci.taxable;
 		}
 	}
 </script>
@@ -273,7 +273,7 @@
 											class="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-white"
 										>
 											<span><span class="font-mono text-xs">{it.code}</span> — {it.name}</span>
-											<span class="text-xs text-gray-500">{it.gstFree ? 'GST-free' : 'Taxable'}</span>
+											<span class="text-xs text-gray-500">{it.taxable ? 'Taxable' : 'GST-free'}</span>
 										</button>
 									</li>
 								{:else}
@@ -350,12 +350,12 @@
 					<span class="mb-1 block text-xs font-medium text-gray-500">GST</span>
 					{#if line.kind === 'support'}
 						<p class="px-1 py-1 text-sm text-gray-700">
-							{line.gstFree ? 'GST-free' : 'Taxable'}
+							{line.taxable ? 'Taxable' : 'GST-free'}
 						</p>
 					{:else}
 						<label class="flex items-center gap-1 py-1">
-							<input type="checkbox" bind:checked={line.gstFree} class="h-4 w-4" />
-							<span class="text-xs">GST-free</span>
+							<input type="checkbox" bind:checked={line.taxable} class="h-4 w-4" />
+							<span class="text-xs">Taxable</span>
 						</label>
 					{/if}
 				</div>

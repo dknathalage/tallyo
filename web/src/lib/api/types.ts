@@ -111,7 +111,7 @@ export interface CustomItem {
 	name: string;
 	rate: number;
 	unit: string;
-	gstFree: boolean;
+	taxable: boolean;
 	metadata: string;
 	createdAt: string;
 	updatedAt: string;
@@ -121,7 +121,7 @@ export interface CustomItemInput {
 	name: string;
 	rate: number;
 	unit: string;
-	gstFree: boolean;
+	taxable: boolean;
 	metadata: string;
 }
 
@@ -149,7 +149,7 @@ export interface SupportItem {
 	supportCategory: string;
 	registrationGroup: string;
 	claimType: string;
-	gstFree: boolean;
+	taxable: boolean;
 	metadata: string;
 }
 
@@ -175,7 +175,7 @@ export interface LineItem {
 	endTime: string;
 	quantity: number;
 	unitPrice: number;
-	gstFree: boolean;
+	taxable: boolean;
 	lineTotal: number;
 	sortOrder: number;
 }
@@ -194,7 +194,7 @@ export interface LineItemInput {
 	endTime: string;
 	quantity: number;
 	unitPrice: number;
-	gstFree: boolean;
+	taxable: boolean;
 	sortOrder: number;
 }
 
@@ -306,7 +306,7 @@ export interface RecurringLine {
 	unit: string;
 	quantity: number;
 	unitPrice: number;
-	gstFree: boolean;
+	taxable: boolean;
 	sortOrder: number;
 }
 

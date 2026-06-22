@@ -56,7 +56,7 @@ type CustomItem struct {
 	Name      string         `json:"name"`
 	Rate      float64        `json:"rate"`
 	Unit      sql.NullString `json:"unit"`
-	GstFree   int64          `json:"gst_free"`
+	Taxable   int64          `json:"taxable"`
 	Metadata  sql.NullString `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
@@ -98,7 +98,7 @@ type EstimateLineItem struct {
 	Unit             sql.NullString `json:"unit"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 }
@@ -154,7 +154,7 @@ type LineItem struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 }
@@ -252,7 +252,7 @@ type SupportItem struct {
 	SupportCategory   sql.NullString `json:"support_category"`
 	RegistrationGroup sql.NullString `json:"registration_group"`
 	ClaimType         sql.NullString `json:"claim_type"`
-	GstFree           int64          `json:"gst_free"`
+	Taxable           int64          `json:"taxable"`
 	Metadata          sql.NullString `json:"metadata"`
 }
 

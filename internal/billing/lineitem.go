@@ -54,7 +54,7 @@ type LineItemRow struct {
 	EndTime          sql.NullString
 	Quantity         float64
 	UnitPrice        float64
-	GstFree          int64
+	Taxable          int64
 	LineTotal        float64
 	SortOrder        sql.NullInt64
 }
@@ -81,7 +81,7 @@ func LineItemFromRow(row LineItemRow) *LineItem {
 		EndTime:          row.EndTime.String,
 		Quantity:         row.Quantity,
 		UnitPrice:        row.UnitPrice,
-		GstFree:          row.GstFree == 1,
+		Taxable:          row.Taxable == 1,
 		LineTotal:        row.LineTotal,
 		SortOrder:        row.SortOrder.Int64,
 	}
@@ -95,7 +95,7 @@ func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
-		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
 }
 
@@ -105,7 +105,7 @@ func LineItemRowFromShiftList(r gen.ListLineItemsForShiftRow) LineItemRow {
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
-		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
 }
 
@@ -115,7 +115,7 @@ func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
-		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
 }
 
@@ -125,7 +125,7 @@ func LineItemRowFromShiftUUID(r gen.GetShiftLineItemByUUIDRow) LineItemRow {
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
-		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
 }
 
@@ -165,7 +165,7 @@ type LineItem struct {
 	EndTime          string  `json:"endTime"`   // time-class units only
 	Quantity         float64 `json:"quantity"`
 	UnitPrice        float64 `json:"unitPrice"`
-	GstFree          bool    `json:"gstFree"`
+	Taxable          bool    `json:"taxable"`
 	LineTotal        float64 `json:"lineTotal"`
 	SortOrder        int64   `json:"sortOrder"`
 }
@@ -184,6 +184,6 @@ type LineItemInput struct {
 	EndTime          string  `json:"endTime"`   // time-class units only
 	Quantity         float64 `json:"quantity"`
 	UnitPrice        float64 `json:"unitPrice"`
-	GstFree          bool    `json:"gstFree"`
+	Taxable          bool    `json:"taxable"`
 	SortOrder        int64   `json:"sortOrder"`
 }

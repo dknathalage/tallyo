@@ -11,11 +11,11 @@ func TestCustomItemCRUD(t *testing.T) {
 	repo := NewRepo(conn)
 	ctx := context.Background()
 
-	ci, err := repo.Create(ctx, tid, CustomItemInput{Name: "Travel", Rate: 1.5, Unit: "km", GstFree: true})
+	ci, err := repo.Create(ctx, tid, CustomItemInput{Name: "Travel", Rate: 1.5, Unit: "km", Taxable: true})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if ci.ID == 0 || ci.Rate != 1.5 || !ci.GstFree || ci.Unit != "km" {
+	if ci.ID == 0 || ci.Rate != 1.5 || !ci.Taxable || ci.Unit != "km" {
 		t.Fatalf("Create = %+v", ci)
 	}
 	got, err := repo.Get(ctx, tid, ci.UUID)

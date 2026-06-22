@@ -17,7 +17,7 @@ package billing
 //	4. assert unit_price ≤ price_cap (skipped when the cap is NULL — a quotable
 //	   item, spec §6 step 4);
 //	5. assert service_date ∈ [participant.plan_start, participant.plan_end];
-//	6. default gst_free from the support item when not explicitly set.
+//	6. set taxable from the support item (the catalogue is authoritative).
 //
 // For a CUSTOM-ITEM line it skips steps 1-5 and only checks quantity ≥ 0 and
 // unit_price ≥ 0. Either way the line_total is recomputed (Round2) and the
@@ -25,7 +25,7 @@ package billing
 //
 // TAX-CONTRACT DECISION (2026-06-16, for J12): tax is now COMPUTED from the
 // lines, not trusted from the client. NDIS supports are largely GST-free, so a
-// gst_free line contributes 0 tax; every other line contributes
+// non-taxable line contributes 0 tax; every taxable line contributes
 // Round2(line_total * defaultTaxRate). The tenant default tax rate is read from
 // tax_rates (is_default = 1); when no default exists, tax is 0. The result is
 // handed to the repository through the existing InvoiceInput.Tax /
@@ -120,8 +120,8 @@ func NewLineValidator(tenant, control db.Executor) *LineValidator {
 	}
 }
 
-// ValidationResult carries the normalised line items (snapshots pinned, gst_free
-// defaulted, line_total recomputed) plus the engine-computed tax. The caller
+// ValidationResult carries the normalised line items (snapshots pinned, taxable
+// set, line_total recomputed) plus the engine-computed tax. The caller
 // passes Items and Tax straight to the repository write path.
 type ValidationResult struct {
 	Items []LineItemInput
@@ -212,7 +212,7 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planSta
 }
 
 // validateSupportLine runs steps 1-6 for a support-item line, mutating the line
-// (snapshots, pinned version, defaulted gst_free) and appending failures to ve.
+// (snapshots, pinned version, set taxable) and appending failures to ve.
 func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for an NDIS support item"})
@@ -348,11 +348,11 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 // identity onto the line (spec §6 step 2 + step 6). The description is filled
 // from the item name only when the caller left it blank.
 //
-// gst_free is set UNCONDITIONALLY from the catalogue item: the NDIS catalogue is
-// authoritative for a support item's GST status (spec §6 step 6). A client must
-// not be able to flip a taxable item to GST-free (or vice versa) by sending its
-// own gstFree, which would corrupt the computed tax. Custom-item lines keep
-// their client-controlled gst_free (they never reach this function).
+// taxable is set UNCONDITIONALLY from the catalogue item: the NDIS catalogue is
+// authoritative for a support item's tax status (spec §6 step 6). A client must
+// not be able to flip a taxable item to non-taxable (or vice versa) by sending
+// its own taxable flag, which would corrupt the computed tax. Custom-item lines
+// keep their client-controlled taxable (they never reach this function).
 func snapshotSupportItem(line *LineItemInput, versionUUID string, item *catalog.SupportItem) {
 	id := item.UUID
 	line.SupportItemID = &id
@@ -362,7 +362,7 @@ func snapshotSupportItem(line *LineItemInput, versionUUID string, item *catalog.
 	if line.Description == "" {
 		line.Description = item.Name
 	}
-	line.GstFree = item.GstFree
+	line.Taxable = item.Taxable
 }
 
 // isSupportItemLine reports whether a line is an NDIS support-item line (it
@@ -375,9 +375,9 @@ func isSupportItemLine(line *LineItemInput) bool {
 	return strings.TrimSpace(line.Code) != ""
 }
 
-// computeLineTax sums Round2(line_total * rate) over the non-gst-free lines,
+// computeLineTax sums Round2(line_total * rate) over the taxable lines,
 // where line_total = Round2(qty*unitPrice) — matching the repository's own
-// rounding so the engine's tax agrees with the persisted subtotal. gst_free
+// rounding so the engine's tax agrees with the persisted subtotal. Non-taxable
 // lines contribute zero. The total is rounded to the cent (spec §6 money note).
 func computeLineTax(items []LineItemInput, rate float64) float64 {
 	if rate <= 0 {
@@ -385,7 +385,7 @@ func computeLineTax(items []LineItemInput, rate float64) float64 {
 	}
 	var tax float64
 	for i := range items { // bounded by len(items)
-		if items[i].GstFree {
+		if !items[i].Taxable {
 			continue
 		}
 		lineTotal := Round2(items[i].Quantity * items[i].UnitPrice)

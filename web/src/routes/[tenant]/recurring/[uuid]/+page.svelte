@@ -17,7 +17,7 @@
 		unit: string;
 		quantity: number;
 		unitPrice: number;
-		gstFree: boolean;
+		taxable: boolean;
 	}
 
 	const FREQUENCIES: RecurringFrequency[] = ['weekly', 'monthly', 'quarterly'];
@@ -54,7 +54,7 @@
 	}
 
 	function newLine(): LineRow {
-		return { code: '', description: '', unit: '', quantity: 1, unitPrice: 0, gstFree: true };
+		return { code: '', description: '', unit: '', quantity: 1, unitPrice: 0, taxable: false };
 	}
 
 	function addLine(): void {
@@ -122,7 +122,7 @@
 					unit: li.unit,
 					quantity: li.quantity,
 					unitPrice: li.unitPrice,
-					gstFree: li.gstFree
+					taxable: li.taxable
 				}));
 			if (lines.length === 0) lines = [newLine()];
 		} catch (err) {
@@ -141,7 +141,7 @@
 			unit: row.unit,
 			quantity: Number(row.quantity),
 			unitPrice: Number(row.unitPrice),
-			gstFree: row.gstFree,
+			taxable: row.taxable,
 			sortOrder: i
 		}));
 		return {
@@ -281,7 +281,7 @@
 								<th class="px-3 py-2 font-medium">Description</th>
 								<th class="w-20 px-3 py-2 font-medium">Qty</th>
 								<th class="w-28 px-3 py-2 font-medium">Unit price</th>
-								<th class="w-16 px-3 py-2 font-medium">GST-free</th>
+								<th class="w-16 px-3 py-2 font-medium">Taxable</th>
 								<th class="w-24 px-3 py-2 font-medium text-right">Amount</th>
 								<th class="w-12 px-3 py-2"></th>
 							</tr>
@@ -321,7 +321,7 @@
 										/>
 									</td>
 									<td class="px-3 py-2 text-center">
-										<input type="checkbox" bind:checked={line.gstFree} class="h-4 w-4" />
+										<input type="checkbox" bind:checked={line.taxable} class="h-4 w-4" />
 									</td>
 									<td class="px-3 py-2 text-right whitespace-nowrap">
 										{money(lineAmount(line))}

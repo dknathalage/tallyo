@@ -20,14 +20,14 @@ SELECT * FROM support_items WHERE catalog_version_id = ? AND code = ?;
 -- name: CreateSupportItem :one
 INSERT INTO support_items (
     uuid, catalog_version_id, code, name, unit, support_category,
-    registration_group, claim_type, gst_free, metadata
+    registration_group, claim_type, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpsertSupportItem :one
 INSERT INTO support_items (
     uuid, catalog_version_id, code, name, unit, support_category,
-    registration_group, claim_type, gst_free, metadata
+    registration_group, claim_type, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (catalog_version_id, code) DO UPDATE SET
     name = excluded.name,
@@ -35,7 +35,7 @@ ON CONFLICT (catalog_version_id, code) DO UPDATE SET
     support_category = excluded.support_category,
     registration_group = excluded.registration_group,
     claim_type = excluded.claim_type,
-    gst_free = excluded.gst_free,
+    taxable = excluded.taxable,
     metadata = excluded.metadata
 RETURNING *;
 

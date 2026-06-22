@@ -51,7 +51,7 @@
 			endTime: li.endTime,
 			quantity: li.quantity,
 			unitPrice: li.unitPrice,
-			gstFree: li.gstFree,
+			taxable: li.taxable,
 			sortOrder: li.sortOrder ?? i
 		}));
 		return {
@@ -118,7 +118,7 @@
 				unit: '',
 				quantity: 1,
 				unitPrice: 0,
-				gstFree: true,
+				taxable: false,
 				sortOrder: 0
 			}
 		];
@@ -146,7 +146,7 @@
 			endTime: '',
 			quantity: Number(row.quantity),
 			unitPrice: Number(row.unitPrice),
-			gstFree: row.gstFree,
+			taxable: row.taxable,
 			sortOrder: i
 		}));
 		return {

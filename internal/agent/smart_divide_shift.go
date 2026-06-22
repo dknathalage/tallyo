@@ -55,7 +55,7 @@ const divideShiftSchema = `{
           "unit": { "type": "string" },
           "quantity": { "type": "number", "description": "Billable quantity (hours, km, each); must be greater than 0." },
           "unitPrice": { "type": "number", "description": "Custom-line price only. IGNORED for a catalogue code (the platform applies the NDIS price)." },
-          "gstFree": { "type": "boolean" }
+          "taxable": { "type": "boolean" }
         },
         "additionalProperties": false
       }

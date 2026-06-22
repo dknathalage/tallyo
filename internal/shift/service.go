@@ -489,7 +489,7 @@ func itemToInput(it *billing.LineItem) billing.LineItemInput {
 		EndTime:          it.EndTime,
 		Quantity:         it.Quantity,
 		UnitPrice:        it.UnitPrice,
-		GstFree:          it.GstFree,
+		Taxable:          it.Taxable,
 		SortOrder:        it.SortOrder,
 	}
 }

@@ -46,12 +46,12 @@ func seedZonedCatalog(t *testing.T, conn *sql.DB, label, from, to, code string, 
 	if err != nil {
 		t.Fatalf("CreateCatalogVersion: %v", err)
 	}
-	gf := int64(0)
+	tx := int64(1) // taxable is the inverse of gst-free
 	if gstFree {
-		gf = 1
+		tx = 0
 	}
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, GstFree: gf,
+		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem: %v", err)
@@ -74,12 +74,12 @@ func addItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, 
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
-	gf := int64(0)
+	tx := int64(1) // taxable is the inverse of gst-free
 	if gstFree {
-		gf = 1
+		tx = 0
 	}
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: "Item " + code, GstFree: gf,
+		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem %s: %v", code, err)

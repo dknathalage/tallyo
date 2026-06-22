@@ -3,7 +3,7 @@ package billing
 // Tests for the NDIS line validation engine (spec §6 / §10). This is the
 // heaviest-coverage unit per the testing strategy: over-cap rejection, at-cap
 // acceptance, quotable (NULL cap), unknown code, plan-window boundaries,
-// version resolution by service date, zone selection, gst_free defaulting, the
+// version resolution by service date, zone selection, taxable defaulting, the
 // custom-item path, totals rounding, and the field-level error shape.
 
 import (
@@ -38,12 +38,12 @@ func seedZonedCatalog(t *testing.T, conn *sql.DB, label, from, to, code string, 
 	if err != nil {
 		t.Fatalf("CreateCatalogVersion: %v", err)
 	}
-	gf := int64(0)
+	tx := int64(1) // taxable is the inverse of gst-free
 	if gstFree {
-		gf = 1
+		tx = 0
 	}
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, GstFree: gf,
+		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem: %v", err)
@@ -67,12 +67,12 @@ func addItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, 
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
-	gf := int64(0)
+	tx := int64(1) // taxable is the inverse of gst-free
 	if gstFree {
-		gf = 1
+		tx = 0
 	}
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: "Item " + code, GstFree: gf,
+		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem %s: %v", code, err)
@@ -328,31 +328,31 @@ func TestValidateDefaultsToNationalZoneWhenNoProfile(t *testing.T) {
 	}
 }
 
-// --- gst_free defaulting (spec §6 step 6) ---------------------------------
+// --- taxable defaulting (spec §6 step 6) ----------------------------------
 
-func TestValidateGstFreeDefaultedFromItem(t *testing.T) {
+func TestValidateTaxableDefaultedFromItem(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 
-	// Line leaves gstFree false; the item is GST-free so it should default true.
+	// Line leaves taxable false; the item is GST-free so taxable stays false.
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", 1, 50),
 	})
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if !res.Items[0].GstFree {
-		t.Fatal("gstFree should default true from the support item")
+	if res.Items[0].Taxable {
+		t.Fatal("taxable should be false for a GST-free support item")
 	}
 	if res.Items[0].SupportItemID == nil || res.Items[0].CatalogVersionID == nil {
 		t.Fatal("support item id + catalog version should be pinned (snapshot)")
 	}
 }
 
-func TestValidateGstFreeNotDefaultedWhenItemTaxable(t *testing.T) {
+func TestValidateTaxableSetWhenItemTaxable(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
@@ -365,16 +365,16 @@ func TestValidateGstFreeNotDefaultedWhenItemTaxable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if res.Items[0].GstFree {
-		t.Fatal("gstFree should stay false for a taxable item")
+	if !res.Items[0].Taxable {
+		t.Fatal("taxable should be true for a taxable item")
 	}
 }
 
-// TestValidateClientGstFreeOverrideIgnoredForSupportItem guards the compliance
-// fix: the catalogue is authoritative for a support item's GST status, so a
-// client that sends gstFree:true on a TAXABLE catalogue item must be ignored —
+// TestValidateClientTaxableOverrideIgnoredForSupportItem guards the compliance
+// fix: the catalogue is authoritative for a support item's tax status, so a
+// client that sends taxable:false on a TAXABLE catalogue item must be ignored —
 // the line ends up taxable AND contributes tax.
-func TestValidateClientGstFreeOverrideIgnoredForSupportItem(t *testing.T) {
+func TestValidateClientTaxableOverrideIgnoredForSupportItem(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
@@ -386,15 +386,15 @@ func TestValidateClientGstFreeOverrideIgnoredForSupportItem(t *testing.T) {
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(1000)})
 	v := NewLineValidator(conn, conn)
 
-	// Client lies: gstFree:true on a taxable catalogue item.
+	// Client lies: taxable:false on a taxable catalogue item.
 	line := supportLine("02_022", "2026-01-15", 1, 200)
-	line.GstFree = true
+	line.Taxable = false
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{line})
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if res.Items[0].GstFree {
-		t.Fatal("catalogue is authoritative: a taxable item must stay taxable despite client gstFree:true")
+	if !res.Items[0].Taxable {
+		t.Fatal("catalogue is authoritative: a taxable item must stay taxable despite client taxable:false")
 	}
 	if res.Tax != 20 {
 		t.Fatalf("tax = %v, want 20 (the override must NOT zero the tax)", res.Tax)
@@ -470,7 +470,7 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 
 // --- tax computation + totals rounding ------------------------------------
 
-func TestValidateComputesTaxFromNonGstFreeLines(t *testing.T) {
+func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")

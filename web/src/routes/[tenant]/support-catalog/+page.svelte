@@ -255,7 +255,7 @@
 								<td class="px-3 py-2 font-medium">{item.name}</td>
 								<td class="px-3 py-2 text-gray-600">{item.unit || '—'}</td>
 								<td class="px-3 py-2 text-gray-600">{item.supportCategory || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{item.gstFree ? 'GST-free' : 'Taxable'}</td>
+								<td class="px-3 py-2 text-gray-600">{item.taxable ? 'Taxable' : 'GST-free'}</td>
 								<td class="px-3 py-2 text-right">
 									<button
 										type="button"

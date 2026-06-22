@@ -3,7 +3,7 @@ package recurring
 // NOTE (J4): rewritten for the tenant-scoped NDIS recurring_templates schema.
 // Templates carry participant_id / plan_manager_id and a JSON line_items column.
 // The stored line shape is NDIS-aware (code, serviceDate, unit, unitPrice,
-// gstFree). tax_rate is a stored percentage on the template; generation computes
+// taxable). tax_rate is a stored percentage on the template; generation computes
 // the tax amount from it. NDIS price-cap / plan-window validation is J10.
 
 import (
@@ -80,7 +80,7 @@ type RecurringLine struct {
 	Unit          string  `json:"unit"`
 	Quantity      float64 `json:"quantity"`
 	UnitPrice     float64 `json:"unitPrice"`
-	GstFree       bool    `json:"gstFree"`
+	Taxable       bool    `json:"taxable"`
 	SortOrder     int64   `json:"sortOrder"`
 }
 
@@ -622,7 +622,7 @@ func parseLines(lines []*RecurringLine) []billing.LineItemInput {
 			Unit:          l.Unit,
 			Quantity:      l.Quantity,
 			UnitPrice:     l.UnitPrice,
-			GstFree:       l.GstFree,
+			Taxable:       l.Taxable,
 			SortOrder:     l.SortOrder,
 		})
 	}

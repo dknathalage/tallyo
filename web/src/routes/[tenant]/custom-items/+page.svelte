@@ -26,11 +26,11 @@
 		},
 		{ key: 'unit', label: 'Unit', sortable: true, filter: 'text' },
 		{
-			key: 'gstFree',
+			key: 'taxable',
 			label: 'GST',
 			sortable: true,
 			input: 'checkbox',
-			cell: (c) => (c.gstFree ? 'GST-free' : '—')
+			cell: (c) => (c.taxable ? 'Taxable' : '—')
 		}
 	];
 

@@ -10,11 +10,11 @@
 		{ key: 'name', label: 'Name', filter: 'text' },
 		{ key: 'rate', label: 'Rate', input: 'number' },
 		{ key: 'unit', label: 'Unit', filter: 'text' },
-		{ key: 'gstFree', label: 'GST-free', input: 'checkbox' }
+		{ key: 'taxable', label: 'Taxable', input: 'checkbox' }
 	];
 
 	function toInput(c: CustomItem): CustomItemInput {
-		return { name: c.name, rate: Number(c.rate), unit: c.unit, gstFree: c.gstFree, metadata: c.metadata ?? '' };
+		return { name: c.name, rate: Number(c.rate), unit: c.unit, taxable: c.taxable, metadata: c.metadata ?? '' };
 	}
 
 	function validate(key: string, value: unknown): string | null {
@@ -33,7 +33,7 @@
 		id={idParam}
 		{toInput}
 		{validate}
-		blank={{ gstFree: true }}
+		blank={{ taxable: false }}
 		backHref={t('/custom-items')}
 	/>
 {/key}

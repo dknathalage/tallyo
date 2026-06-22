@@ -50,7 +50,7 @@ type SupportItem struct {
 	SupportCategory   string `json:"supportCategory"`
 	RegistrationGroup string `json:"registrationGroup"`
 	ClaimType         string `json:"claimType"`
-	GstFree           bool   `json:"gstFree"`
+	Taxable           bool   `json:"taxable"`
 	Metadata          string `json:"metadata"`
 }
 
@@ -276,7 +276,7 @@ type IngestItem struct {
 	SupportCategory   string
 	RegistrationGroup string
 	ClaimType         string
-	GstFree           bool
+	Taxable           bool
 	Prices            map[string]*float64 // zone → cap (nil = quotable)
 }
 
@@ -339,7 +339,7 @@ func (r *CatalogRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFi
 				SupportCategory:   db.NzMaybe(it.SupportCategory),
 				RegistrationGroup: db.NzMaybe(it.RegistrationGroup),
 				ClaimType:         db.NzMaybe(it.ClaimType),
-				GstFree:           db.B2i(it.GstFree),
+				Taxable:           db.B2i(it.Taxable),
 				Metadata:          sql.NullString{String: "{}", Valid: true},
 			})
 			if e != nil {
@@ -409,7 +409,7 @@ func toSupportItem(row gen.SupportItem) *SupportItem {
 		SupportCategory:   row.SupportCategory.String,
 		RegistrationGroup: row.RegistrationGroup.String,
 		ClaimType:         row.ClaimType.String,
-		GstFree:           row.GstFree == 1,
+		Taxable:           row.Taxable == 1,
 		Metadata:          row.Metadata.String,
 	}
 }

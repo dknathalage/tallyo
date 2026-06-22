@@ -22,7 +22,7 @@ func seedNamedSupportItem(t *testing.T, conn *sql.DB, versionID int64, code, nam
 		CatalogVersionID: versionID,
 		Code:             code,
 		Name:             name,
-		GstFree:          1,
+		Taxable:          0,
 	}); err != nil {
 		t.Fatalf("CreateSupportItem %q: %v", name, err)
 	}

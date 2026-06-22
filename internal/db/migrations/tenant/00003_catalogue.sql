@@ -25,7 +25,7 @@ CREATE TABLE support_items (
     support_category   TEXT DEFAULT '' CHECK (support_category IN ('Core','CB','Capital','')),
     registration_group TEXT DEFAULT '',
     claim_type         TEXT DEFAULT '',
-    gst_free           INTEGER NOT NULL DEFAULT 1,
+    taxable            INTEGER NOT NULL DEFAULT 1,
     metadata           TEXT DEFAULT '{}',
     UNIQUE (catalog_version_id, code)
 );

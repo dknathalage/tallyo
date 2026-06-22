@@ -11,9 +11,9 @@ import (
 )
 
 const createCustomItem = `-- name: CreateCustomItem :one
-INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at)
+INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at
+RETURNING id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at
 `
 
 type CreateCustomItemParams struct {
@@ -22,7 +22,7 @@ type CreateCustomItemParams struct {
 	Name      string         `json:"name"`
 	Rate      float64        `json:"rate"`
 	Unit      sql.NullString `json:"unit"`
-	GstFree   int64          `json:"gst_free"`
+	Taxable   int64          `json:"taxable"`
 	Metadata  sql.NullString `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
@@ -35,7 +35,7 @@ func (q *Queries) CreateCustomItem(ctx context.Context, arg CreateCustomItemPara
 		arg.Name,
 		arg.Rate,
 		arg.Unit,
-		arg.GstFree,
+		arg.Taxable,
 		arg.Metadata,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -48,7 +48,7 @@ func (q *Queries) CreateCustomItem(ctx context.Context, arg CreateCustomItemPara
 		&i.Name,
 		&i.Rate,
 		&i.Unit,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -85,7 +85,7 @@ func (q *Queries) DeleteCustomItemByID(ctx context.Context, arg DeleteCustomItem
 }
 
 const getCustomItem = `-- name: GetCustomItem :one
-SELECT id, uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND uuid = ?
+SELECT id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND uuid = ?
 `
 
 type GetCustomItemParams struct {
@@ -103,7 +103,7 @@ func (q *Queries) GetCustomItem(ctx context.Context, arg GetCustomItemParams) (C
 		&i.Name,
 		&i.Rate,
 		&i.Unit,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -128,7 +128,7 @@ func (q *Queries) GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemID
 }
 
 const listCustomItems = `-- name: ListCustomItems :many
-SELECT id, uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? ORDER BY name
+SELECT id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? ORDER BY name
 `
 
 func (q *Queries) ListCustomItems(ctx context.Context, tenantID int64) ([]CustomItem, error) {
@@ -147,7 +147,7 @@ func (q *Queries) ListCustomItems(ctx context.Context, tenantID int64) ([]Custom
 			&i.Name,
 			&i.Rate,
 			&i.Unit,
-			&i.GstFree,
+			&i.Taxable,
 			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -166,7 +166,7 @@ func (q *Queries) ListCustomItems(ctx context.Context, tenantID int64) ([]Custom
 }
 
 const searchCustomItems = `-- name: SearchCustomItems :many
-SELECT id, uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND name LIKE ? ORDER BY name
+SELECT id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND name LIKE ? ORDER BY name
 `
 
 type SearchCustomItemsParams struct {
@@ -190,7 +190,7 @@ func (q *Queries) SearchCustomItems(ctx context.Context, arg SearchCustomItemsPa
 			&i.Name,
 			&i.Rate,
 			&i.Unit,
-			&i.GstFree,
+			&i.Taxable,
 			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -209,16 +209,16 @@ func (q *Queries) SearchCustomItems(ctx context.Context, arg SearchCustomItemsPa
 }
 
 const updateCustomItem = `-- name: UpdateCustomItem :one
-UPDATE custom_items SET name = ?, rate = ?, unit = ?, gst_free = ?, metadata = ?, updated_at = ?
+UPDATE custom_items SET name = ?, rate = ?, unit = ?, taxable = ?, metadata = ?, updated_at = ?
 WHERE tenant_id = ? AND uuid = ?
-RETURNING id, uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at
+RETURNING id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at
 `
 
 type UpdateCustomItemParams struct {
 	Name      string         `json:"name"`
 	Rate      float64        `json:"rate"`
 	Unit      sql.NullString `json:"unit"`
-	GstFree   int64          `json:"gst_free"`
+	Taxable   int64          `json:"taxable"`
 	Metadata  sql.NullString `json:"metadata"`
 	UpdatedAt string         `json:"updated_at"`
 	TenantID  int64          `json:"tenant_id"`
@@ -230,7 +230,7 @@ func (q *Queries) UpdateCustomItem(ctx context.Context, arg UpdateCustomItemPara
 		arg.Name,
 		arg.Rate,
 		arg.Unit,
-		arg.GstFree,
+		arg.Taxable,
 		arg.Metadata,
 		arg.UpdatedAt,
 		arg.TenantID,
@@ -244,7 +244,7 @@ func (q *Queries) UpdateCustomItem(ctx context.Context, arg UpdateCustomItemPara
 		&i.Name,
 		&i.Rate,
 		&i.Unit,
-		&i.GstFree,
+		&i.Taxable,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,

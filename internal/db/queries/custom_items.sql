@@ -11,12 +11,12 @@ SELECT * FROM custom_items WHERE tenant_id = ? AND uuid = ?;
 SELECT id FROM custom_items WHERE tenant_id = ? AND uuid = ?;
 
 -- name: CreateCustomItem :one
-INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, gst_free, metadata, created_at, updated_at)
+INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateCustomItem :one
-UPDATE custom_items SET name = ?, rate = ?, unit = ?, gst_free = ?, metadata = ?, updated_at = ?
+UPDATE custom_items SET name = ?, rate = ?, unit = ?, taxable = ?, metadata = ?, updated_at = ?
 WHERE tenant_id = ? AND uuid = ?
 RETURNING *;
 

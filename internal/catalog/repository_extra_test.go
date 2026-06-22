@@ -90,7 +90,7 @@ func TestCatalogIngest(t *testing.T) {
 
 	cap := 100.0
 	res, err := repo.Ingest(ctx, "2025-26", "2025-07-01", "prices.csv", []IngestItem{
-		{Code: "01_011_0107_1_1", Name: "Support A", Unit: "H", GstFree: true,
+		{Code: "01_011_0107_1_1", Name: "Support A", Unit: "H", Taxable: false,
 			Prices: map[string]*float64{"national": &cap}},
 		{Code: "01_011_0107_8_1", Name: "Support B (quotable)",
 			Prices: map[string]*float64{"national": nil}},

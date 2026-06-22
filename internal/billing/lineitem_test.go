@@ -7,7 +7,7 @@ import (
 
 func TestLineItemTypes(t *testing.T) {
 	var in LineItemInput
-	if in.Quantity != 0 || in.GstFree {
+	if in.Quantity != 0 || in.Taxable {
 		t.Fatalf("unexpected zero value: %+v", in)
 	}
 	li := LineItem{Code: "01_011", Quantity: 2, UnitPrice: 10}

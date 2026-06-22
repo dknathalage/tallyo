@@ -80,7 +80,7 @@ type CatalogMatch struct {
 	Code      string   `json:"code"`
 	Name      string   `json:"name"`
 	Unit      string   `json:"unit"`
-	GstFree   bool     `json:"gstFree"`
+	Taxable   bool     `json:"taxable"`
 	Zone      string   `json:"zone"`
 	PriceCap  *float64 `json:"priceCap"`
 	Quotable  bool     `json:"quotable"`
@@ -120,7 +120,7 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone st
 		}
 		it := items[i]
 		m := &CatalogMatch{
-			Code: it.Code, Name: it.Name, Unit: it.Unit, GstFree: it.GstFree,
+			Code: it.Code, Name: it.Name, Unit: it.Unit, Taxable: it.Taxable,
 			Zone: zone, VersionID: ver.ID,
 		}
 		price, perr := s.repo.ResolveZonePrice(ctx, ver.ID, it.Code, zone)
@@ -288,9 +288,9 @@ func buildIngestItems(rows []map[string]string, norm map[string]string) ([]Inges
 			Unit:              cell(row, colUnit),
 			SupportCategory:   cell(row, colCategory),
 			RegistrationGroup: cell(row, colRegGroup),
-			// NDIS supports are GST-free by default (matches the gst_free DEFAULT 1
-			// column); the standard catalogue export carries no taxable column.
-			GstFree: true,
+			// NDIS supports are GST-free by default, so taxable is false; the
+			// standard catalogue export carries no taxable column.
+			Taxable: false,
 			Prices:  zonePrices(row, norm),
 		}
 		out = append(out, it)

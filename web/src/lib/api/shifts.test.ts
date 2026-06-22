@@ -75,7 +75,7 @@ const fakeItemInput: LineItemInput = {
 	endTime: '',
 	quantity: 7,
 	unitPrice: 0,
-	gstFree: true,
+	taxable: false,
 	sortOrder: 0
 };
 

@@ -15,7 +15,7 @@ func TestIngestClosesPriorVersionWindow(t *testing.T) {
 	conn := newTestDB(t) // per-tenant catalogue, empty by default
 	repo := NewCatalog(conn)
 	ctx := context.Background()
-	item := []IngestItem{{Code: "X", Name: "X", GstFree: true, Prices: map[string]*float64{"national": capPtr(10)}}}
+	item := []IngestItem{{Code: "X", Name: "X", Taxable: false, Prices: map[string]*float64{"national": capPtr(10)}}}
 
 	if _, err := repo.Ingest(ctx, "v1", "2025-07-01", "f1", item); err != nil {
 		t.Fatalf("ingest v1: %v", err)

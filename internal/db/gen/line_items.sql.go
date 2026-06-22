@@ -30,9 +30,9 @@ const createLineItem = `-- name: CreateLineItem :one
 INSERT INTO line_items (
     uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id,
     catalog_version_id, code, description, service_date, unit, start_time,
-    end_time, quantity, unit_price, gst_free, line_total, sort_order
+    end_time, quantity, unit_price, taxable, line_total, sort_order
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order
+RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type CreateLineItemParams struct {
@@ -51,7 +51,7 @@ type CreateLineItemParams struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 }
@@ -73,7 +73,7 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 		arg.EndTime,
 		arg.Quantity,
 		arg.UnitPrice,
-		arg.GstFree,
+		arg.Taxable,
 		arg.LineTotal,
 		arg.SortOrder,
 	)
@@ -95,7 +95,7 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 		&i.EndTime,
 		&i.Quantity,
 		&i.UnitPrice,
-		&i.GstFree,
+		&i.Taxable,
 		&i.LineTotal,
 		&i.SortOrder,
 	)
@@ -160,7 +160,7 @@ func (q *Queries) DeleteUnbilledItemsForShift(ctx context.Context, arg DeleteUnb
 }
 
 const getLineItem = `-- name: GetLineItem :one
-SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.gst_free, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.id = ?
@@ -188,7 +188,7 @@ type GetLineItemRow struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 	CustomItemUuid   sql.NullString `json:"custom_item_uuid"`
@@ -214,7 +214,7 @@ func (q *Queries) GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLi
 		&i.EndTime,
 		&i.Quantity,
 		&i.UnitPrice,
-		&i.GstFree,
+		&i.Taxable,
 		&i.LineTotal,
 		&i.SortOrder,
 		&i.CustomItemUuid,
@@ -223,7 +223,7 @@ func (q *Queries) GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLi
 }
 
 const getShiftLineItemByUUID = `-- name: GetShiftLineItemByUUID :one
-SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.gst_free, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.shift_id = ? AND li.uuid = ?
@@ -252,7 +252,7 @@ type GetShiftLineItemByUUIDRow struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 	CustomItemUuid   sql.NullString `json:"custom_item_uuid"`
@@ -279,7 +279,7 @@ func (q *Queries) GetShiftLineItemByUUID(ctx context.Context, arg GetShiftLineIt
 		&i.EndTime,
 		&i.Quantity,
 		&i.UnitPrice,
-		&i.GstFree,
+		&i.Taxable,
 		&i.LineTotal,
 		&i.SortOrder,
 		&i.CustomItemUuid,
@@ -310,7 +310,7 @@ func (q *Queries) LinkShiftItemsToInvoice(ctx context.Context, arg LinkShiftItem
 }
 
 const listLineItemsForInvoice = `-- name: ListLineItemsForInvoice :many
-SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.gst_free, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.invoice_id = ? ORDER BY li.sort_order, li.id
@@ -338,7 +338,7 @@ type ListLineItemsForInvoiceRow struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 	CustomItemUuid   sql.NullString `json:"custom_item_uuid"`
@@ -370,7 +370,7 @@ func (q *Queries) ListLineItemsForInvoice(ctx context.Context, arg ListLineItems
 			&i.EndTime,
 			&i.Quantity,
 			&i.UnitPrice,
-			&i.GstFree,
+			&i.Taxable,
 			&i.LineTotal,
 			&i.SortOrder,
 			&i.CustomItemUuid,
@@ -389,7 +389,7 @@ func (q *Queries) ListLineItemsForInvoice(ctx context.Context, arg ListLineItems
 }
 
 const listLineItemsForShift = `-- name: ListLineItemsForShift :many
-SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.gst_free, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.uuid, li.tenant_id, li.shift_id, li.invoice_id, li.support_item_id, li.custom_item_id, li.catalog_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.shift_id = ? ORDER BY li.id
@@ -417,7 +417,7 @@ type ListLineItemsForShiftRow struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 	CustomItemUuid   sql.NullString `json:"custom_item_uuid"`
@@ -449,7 +449,7 @@ func (q *Queries) ListLineItemsForShift(ctx context.Context, arg ListLineItemsFo
 			&i.EndTime,
 			&i.Quantity,
 			&i.UnitPrice,
-			&i.GstFree,
+			&i.Taxable,
 			&i.LineTotal,
 			&i.SortOrder,
 			&i.CustomItemUuid,
@@ -502,9 +502,9 @@ const updateShiftLineItem = `-- name: UpdateShiftLineItem :one
 UPDATE line_items SET
     support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
-    quantity = ?, unit_price = ?, gst_free = ?, line_total = ?
+    quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
-RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order
+RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type UpdateShiftLineItemParams struct {
@@ -519,7 +519,7 @@ type UpdateShiftLineItemParams struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	TenantID         int64          `json:"tenant_id"`
 	ID               int64          `json:"id"`
@@ -538,7 +538,7 @@ func (q *Queries) UpdateShiftLineItem(ctx context.Context, arg UpdateShiftLineIt
 		arg.EndTime,
 		arg.Quantity,
 		arg.UnitPrice,
-		arg.GstFree,
+		arg.Taxable,
 		arg.LineTotal,
 		arg.TenantID,
 		arg.ID,
@@ -561,7 +561,7 @@ func (q *Queries) UpdateShiftLineItem(ctx context.Context, arg UpdateShiftLineIt
 		&i.EndTime,
 		&i.Quantity,
 		&i.UnitPrice,
-		&i.GstFree,
+		&i.Taxable,
 		&i.LineTotal,
 		&i.SortOrder,
 	)
@@ -572,9 +572,9 @@ const updateShiftLineItemByUUID = `-- name: UpdateShiftLineItemByUUID :one
 UPDATE line_items SET
     support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
-    quantity = ?, unit_price = ?, gst_free = ?, line_total = ?
+    quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND shift_id = ? AND uuid = ? AND invoice_id IS NULL
-RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, gst_free, line_total, sort_order
+RETURNING id, uuid, tenant_id, shift_id, invoice_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type UpdateShiftLineItemByUUIDParams struct {
@@ -589,7 +589,7 @@ type UpdateShiftLineItemByUUIDParams struct {
 	EndTime          sql.NullString `json:"end_time"`
 	Quantity         float64        `json:"quantity"`
 	UnitPrice        float64        `json:"unit_price"`
-	GstFree          int64          `json:"gst_free"`
+	Taxable          int64          `json:"taxable"`
 	LineTotal        float64        `json:"line_total"`
 	TenantID         int64          `json:"tenant_id"`
 	ShiftID          sql.NullInt64  `json:"shift_id"`
@@ -610,7 +610,7 @@ func (q *Queries) UpdateShiftLineItemByUUID(ctx context.Context, arg UpdateShift
 		arg.EndTime,
 		arg.Quantity,
 		arg.UnitPrice,
-		arg.GstFree,
+		arg.Taxable,
 		arg.LineTotal,
 		arg.TenantID,
 		arg.ShiftID,
@@ -634,7 +634,7 @@ func (q *Queries) UpdateShiftLineItemByUUID(ctx context.Context, arg UpdateShift
 		&i.EndTime,
 		&i.Quantity,
 		&i.UnitPrice,
-		&i.GstFree,
+		&i.Taxable,
 		&i.LineTotal,
 		&i.SortOrder,
 	)

@@ -7,7 +7,7 @@ WHERE eli.tenant_id = ? AND eli.estimate_id = ? ORDER BY eli.sort_order, eli.id;
 -- name: CreateEstimateLineItem :one
 INSERT INTO estimate_line_items (
     uuid, tenant_id, estimate_id, support_item_id, custom_item_id, catalog_version_id,
-    code, description, service_date, unit, quantity, unit_price, gst_free, line_total, sort_order
+    code, description, service_date, unit, quantity, unit_price, taxable, line_total, sort_order
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 

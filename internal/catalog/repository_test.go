@@ -29,7 +29,7 @@ func seedCatalog(t *testing.T, conn *sql.DB, label, from, to, code string, cap *
 		t.Fatalf("CreateCatalogVersion: %v", err)
 	}
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, GstFree: 1,
+		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem: %v", err)
@@ -79,8 +79,8 @@ func TestCatalogGetByCodeAndZonePrice(t *testing.T) {
 	if err != nil || si == nil || si.ID != itemID {
 		t.Fatalf("GetSupportItemByCode = %+v err=%v", si, err)
 	}
-	if !si.GstFree {
-		t.Fatalf("expected GstFree true")
+	if si.Taxable {
+		t.Fatalf("expected Taxable false (GST-free item)")
 	}
 
 	price, err := repo.ResolveZonePrice(ctx, vID, "01_011_0107_1_1", "national")

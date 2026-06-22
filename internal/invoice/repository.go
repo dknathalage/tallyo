@@ -3,7 +3,7 @@ package invoice
 // NOTE (J4): rewritten to the NDIS invoice/line-item domain (spec §4.2). The
 // header no longer carries payment_terms / currency / tax_rate / tax_rate_id;
 // it carries participant_id, optional plan_manager_id, and subtotal/tax/total.
-// Line items carry NDIS fields: code, service_date, unit, unit_price, gst_free,
+// Line items carry NDIS fields: code, service_date, unit, unit_price, taxable,
 // line_total, and optional support_item_id / custom_item_id / catalog_version_id.
 //
 // Design decisions (deferred concerns belong to J8/J10):
@@ -404,7 +404,7 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 			EndTime:          db.NzMaybe(it.EndTime),
 			Quantity:         it.Quantity,
 			UnitPrice:        it.UnitPrice,
-			GstFree:          db.B2i(it.GstFree),
+			Taxable:          db.B2i(it.Taxable),
 			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
 			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})

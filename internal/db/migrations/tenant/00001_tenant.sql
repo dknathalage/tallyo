@@ -68,7 +68,7 @@ CREATE TABLE custom_items (
     name       TEXT NOT NULL,
     rate       REAL NOT NULL DEFAULT 0,
     unit       TEXT DEFAULT '',
-    gst_free   INTEGER NOT NULL DEFAULT 0,
+    taxable    INTEGER NOT NULL DEFAULT 1,
     metadata   TEXT DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -153,7 +153,7 @@ CREATE TABLE line_items (
     end_time           TEXT,
     quantity           REAL NOT NULL DEFAULT 1,
     unit_price         REAL NOT NULL DEFAULT 0,
-    gst_free           INTEGER NOT NULL DEFAULT 0,
+    taxable            INTEGER NOT NULL DEFAULT 1,
     line_total         REAL NOT NULL DEFAULT 0,
     sort_order         INTEGER DEFAULT 0,
     CHECK (shift_id IS NOT NULL OR invoice_id IS NOT NULL)
@@ -203,7 +203,7 @@ CREATE TABLE estimate_line_items (
     unit               TEXT DEFAULT '',
     quantity           REAL NOT NULL DEFAULT 1,
     unit_price         REAL NOT NULL DEFAULT 0,
-    gst_free           INTEGER NOT NULL DEFAULT 0,
+    taxable            INTEGER NOT NULL DEFAULT 1,
     line_total         REAL NOT NULL DEFAULT 0,
     sort_order         INTEGER DEFAULT 0
 );

@@ -25,7 +25,7 @@ var CustomItemCols = listquery.Spec{
 	"name":    {Col: "name", Filter: listquery.Text},
 	"rate":    {Col: "rate", Filter: listquery.Number},
 	"unit":    {Col: "unit", Filter: listquery.Text},
-	"gstFree": {Col: "gst_free", Filter: listquery.None},
+	"taxable": {Col: "taxable", Filter: listquery.None},
 }
 
 // CustomItem is the domain view of a row in the custom_items table.
@@ -35,7 +35,7 @@ type CustomItem struct {
 	Name      string  `json:"name"`
 	Rate      float64 `json:"rate"`
 	Unit      string  `json:"unit"`
-	GstFree   bool    `json:"gstFree"`
+	Taxable   bool    `json:"taxable"`
 	Metadata  string  `json:"metadata"`
 	CreatedAt string  `json:"createdAt"`
 	UpdatedAt string  `json:"updatedAt"`
@@ -46,7 +46,7 @@ type CustomItemInput struct {
 	Name     string  `json:"name"`
 	Rate     float64 `json:"rate"`
 	Unit     string  `json:"unit"`
-	GstFree  bool    `json:"gstFree"`
+	Taxable  bool    `json:"taxable"`
 	Metadata string  `json:"metadata"`
 }
 
@@ -106,13 +106,13 @@ func (r *Repo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([
 			name      string
 			rate      float64
 			unit      sql.NullString
-			gstFree   int64
+			taxable   int64
 			metadata  sql.NullString
 			createdAt string
 			updatedAt string
 		)
 		if err := rows.Scan(&id, &uuid, &tenant, &name, &rate, &unit,
-			&gstFree, &metadata, &createdAt, &updatedAt); err != nil {
+			&taxable, &metadata, &createdAt, &updatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan custom item: %w", err)
 		}
 		out = append(out, &CustomItem{
@@ -121,7 +121,7 @@ func (r *Repo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([
 			Name:      name,
 			Rate:      rate,
 			Unit:      unit.String,
-			GstFree:   gstFree == 1,
+			Taxable:   taxable == 1,
 			Metadata:  metadata.String,
 			CreatedAt: createdAt,
 			UpdatedAt: updatedAt,
@@ -180,7 +180,7 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in CustomItemInput) (
 			Name:      in.Name,
 			Rate:      in.Rate,
 			Unit:      db.NzMaybe(in.Unit),
-			GstFree:   db.B2i(in.GstFree),
+			Taxable:   db.B2i(in.Taxable),
 			Metadata:  db.Nz(metadata),
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -222,7 +222,7 @@ func (r *Repo) Update(ctx context.Context, tenantID int64, uuid string, in Custo
 			Name:      in.Name,
 			Rate:      in.Rate,
 			Unit:      db.NzMaybe(in.Unit),
-			GstFree:   db.B2i(in.GstFree),
+			Taxable:   db.B2i(in.Taxable),
 			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
@@ -331,7 +331,7 @@ func toCustomItem(row gen.CustomItem) *CustomItem {
 		Name:      row.Name,
 		Rate:      row.Rate,
 		Unit:      row.Unit.String,
-		GstFree:   row.GstFree == 1,
+		Taxable:   row.Taxable == 1,
 		Metadata:  row.Metadata.String,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,

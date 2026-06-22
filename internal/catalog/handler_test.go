@@ -34,7 +34,7 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 	}
 	iUUID := uuid.NewString()
 	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: iUUID, CatalogVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", GstFree: 1,
+		Uuid: iUUID, CatalogVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
 	})
 	if err != nil {
 		t.Fatalf("CreateSupportItem: %v", err)

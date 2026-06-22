@@ -75,7 +75,7 @@ func seedNoteItem(t *testing.T, conn *sql.DB, versionID int64, code, name string
 	t.Helper()
 	q := gen.New(conn)
 	si, err := q.CreateSupportItem(context.Background(), gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: name, GstFree: 1,
+		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: name, Taxable: 0,
 	})
 	if err != nil {
 		t.Fatalf("seed support item %s: %v", code, err)

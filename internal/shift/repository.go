@@ -526,7 +526,7 @@ func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in 
 			EndTime:          db.NzMaybe(in.EndTime),
 			Quantity:         in.Quantity,
 			UnitPrice:        in.UnitPrice,
-			GstFree:          db.B2i(in.GstFree),
+			Taxable:          db.B2i(in.Taxable),
 			LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
 			TenantID:         tenantID,
 			ID:               itemID,
@@ -633,7 +633,7 @@ func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int
 			EndTime:          db.NzMaybe(in.EndTime),
 			Quantity:         in.Quantity,
 			UnitPrice:        in.UnitPrice,
-			GstFree:          db.B2i(in.GstFree),
+			Taxable:          db.B2i(in.Taxable),
 			LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
 			TenantID:         tenantID,
 			ShiftID:          sql.NullInt64{Int64: shiftID, Valid: true},
@@ -696,7 +696,7 @@ func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItem
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: db.NullStr(customItemUUID),
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
-		Quantity: r.Quantity, UnitPrice: r.UnitPrice, GstFree: r.GstFree, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
+		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
 }
 
@@ -720,7 +720,7 @@ func lineItemParams(tenantID int64, shiftID *int64, customItemID sql.NullInt64, 
 		EndTime:          db.NzMaybe(in.EndTime),
 		Quantity:         in.Quantity,
 		UnitPrice:        in.UnitPrice,
-		GstFree:          db.B2i(in.GstFree),
+		Taxable:          db.B2i(in.Taxable),
 		LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
 		SortOrder:        sql.NullInt64{Int64: in.SortOrder, Valid: true},
 	}
