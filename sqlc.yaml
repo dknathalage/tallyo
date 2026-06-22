@@ -9,6 +9,7 @@ sql:
     schema:
       - "internal/db/migrations/control"
       - "internal/db/migrations/tenant/00001_tenant.sql"
+      - "internal/db/migrations/tenant/00003_catalogue.sql"
     queries: "internal/db/queries"
     gen:
       go:

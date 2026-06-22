@@ -16,16 +16,16 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// newCatalogIngestServer wires the platform-admin catalogue ingest route behind
-// httpx.RequireAuth + httpx.RequirePlatformAdmin. seedTenantOwner creates the "o@x.com"
-// owner as a platform admin; we additionally seed a non-admin "member" so the
-// 403 path is exercised.
+// newCatalogIngestServer wires the per-tenant catalogue ingest route behind
+// httpx.RequireSession + httpx.RequireRole("owner","admin"). seedTenantOwner
+// creates the "o@x.com" owner; we additionally seed a non-owner/admin "member"
+// so the 403 path is exercised.
 func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "catalog_ingest.db")
 	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 
-	// A non-platform-admin tenant member.
+	// A non-owner/admin tenant member.
 	hash, err := auth.HashPassword("password1")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
@@ -50,7 +50,7 @@ func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Get("/support-catalog/versions", scH.ListVersions)
-			pr.With(httpx.RequirePlatformAdmin).Post("/support-catalog/versions", scH.Ingest)
+			pr.With(httpx.RequireRole("owner", "admin")).Post("/support-catalog/versions", scH.Ingest)
 		})
 	})
 
@@ -116,9 +116,9 @@ func uploadCatalog(t *testing.T, c *http.Client, base, uuid string, xlsx []byte,
 	return resp
 }
 
-func TestCatalogIngestPlatformAdminSucceeds(t *testing.T) {
+func TestCatalogIngestOwnerSucceeds(t *testing.T) {
 	srv, uuid := newCatalogIngestServer(t)
-	c := loggedInClient(t, srv.URL) // o@x.com is a platform admin
+	c := loggedInClient(t, srv.URL) // o@x.com is the tenant owner
 	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "2025-26 v1.1", "2025-07-01")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {

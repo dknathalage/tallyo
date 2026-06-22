@@ -17,7 +17,7 @@ const (
 )
 
 // MigrateControl applies the control-plane migrations to the control DB.
-// Idempotent. Holds tenants/users/invites/sessions/catalogue/audit.
+// Idempotent. Holds tenants/users/invites/sessions/audit.
 func MigrateControl(conn *sql.DB) error {
 	return migrate(conn, "migrations/control", controlVersionTable)
 }

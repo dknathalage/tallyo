@@ -9,16 +9,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handler serves read access to the GLOBAL NDIS Support Catalogue
-// (versions, support items, zone prices). It is NOT tenant-scoped. The
-// platform-admin XLSX ingest is served via Ingest (gated by RequirePlatformAdmin).
+// Handler serves access to the per-tenant NDIS Support Catalogue
+// (versions, support items, zone prices). It is tenant-scoped: each tenant owns
+// and populates its own catalogue. Reads are open to any authenticated tenant
+// user; the XLSX ingest (write) is gated to owner/admin via Ingest.
 type Handler struct {
 	svc    *Service
 	ingest *IngestService
 }
 
 // NewHandler constructs the handler. A nil svc is a programmer error. ingest may
-// be nil when the platform-admin upload route is not mounted.
+// be nil when the upload route is not mounted.
 func NewHandler(svc *Service, ingest *IngestService) *Handler {
 	if svc == nil {
 		panic("catalog.NewHandler: nil svc")
@@ -32,7 +33,10 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/support-catalog/versions", h.ListVersions)
 	r.Get("/support-catalog/versions/{id}/items", h.ListItems)
 	r.Get("/support-catalog/items/{itemId}/prices", h.ListPrices)
-	r.With(httpx.RequirePlatformAdmin).Post("/support-catalog/versions", h.Ingest)
+	// DEFERRED: catalogue XLSX ingest. Route reserved + wired (ParseXLSX is
+	// retained), now gated to owner/admin like other tenant resources rather
+	// than platform-admin. No new upload UI this pass.
+	r.With(httpx.RequireRole("owner", "admin")).Post("/support-catalog/versions", h.Ingest)
 }
 
 // maxCatalogUpload caps the multipart catalogue upload (the official NDIS
@@ -40,8 +44,8 @@ func (h *Handler) Routes(r chi.Router) {
 const maxCatalogUpload = 32 << 20
 
 // Ingest accepts a multipart XLSX upload (field "file") plus "label" and
-// "effectiveFrom" form fields and loads a new catalogue version. Platform-admin
-// only (gated by RequirePlatformAdmin at the route). Returns the created version
+// "effectiveFrom" form fields and loads a new catalogue version. Owner/admin
+// only (gated by RequireRole at the route). Returns the created version
 // summary as JSON. The whole upload is rejected (400) when parsing fails or a
 // required column is missing — no partial version is created (the tx rolls back).
 func (h *Handler) Ingest(w http.ResponseWriter, r *http.Request) {

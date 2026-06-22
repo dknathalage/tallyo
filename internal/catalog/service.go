@@ -199,9 +199,7 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 // ParseXLSX parses fixed-format NDIS Support Catalogue XLSX bytes into the
 // IngestItem domain values that repo.Ingest persists. The whole upload is
 // rejected (no partial state) when a required column is missing or zero data
-// rows parse. Shared by the HTTP ingest path (IngestXLSX) and the build-time
-// migration generator (cmd/cataloguegen) so both use identical
-// column mapping.
+// rows parse. Retained for the deferred per-tenant ingest path (IngestXLSX).
 func ParseXLSX(data []byte) ([]IngestItem, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty file")

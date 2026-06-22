@@ -41,7 +41,7 @@ type Deps struct {
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
 	Participants    *participant.Handler     // participant CRUD + bulk-delete
 	CustomItems     *customitem.Handler      // per-tenant custom-item CRUD + bulk-delete
-	SupportCatalog  *catalog.Handler         // read-only global NDIS catalogue (+ admin ingest)
+	SupportCatalog  *catalog.Handler         // per-tenant NDIS catalogue (reads + owner/admin ingest)
 	Invoices        *invoice.Handler         // invoice CRUD, status, bulk, per-participant stats
 	Shifts          *shift.Handler           // shift lifecycle, billing suggestions, CRUD
 	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert
@@ -140,9 +140,9 @@ func NewServer(deps Deps) *Server {
 			if deps.CustomItems != nil {
 				deps.CustomItems.Routes(pr)
 			}
-			// SupportCatalog is the GLOBAL NDIS catalogue. Reads are open to
-			// any authenticated tenant user; the XLSX ingest (write) is gated
-			// to platform admins (spec §5).
+			// SupportCatalog is the per-tenant NDIS catalogue. Reads are open
+			// to any authenticated tenant user; the XLSX ingest (write) is
+			// gated to owner/admin within the handler's Routes.
 			if deps.SupportCatalog != nil {
 				deps.SupportCatalog.Routes(pr)
 			}
