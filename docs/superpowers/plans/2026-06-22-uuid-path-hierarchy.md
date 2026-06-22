@@ -174,9 +174,9 @@ Template + FK translation:
 - [x] Filtered cross-link: `GET /participants?…` unchanged; participant's shifts/invoices are served by those slices' `?participant={uuid}` filters (Task 2.4/2.5).
 
 ### Task 2.3 — recurring (FK: participant_id, plan_manager_id, tax_rate_id, etc.)
-- [ ] Template + resolve each inbound FK uuid→int; expose each as the related uuid out.
-- [ ] Queries: `ListRecurringTemplates`/`GetRecurringTemplate` currently JOIN participant for name only. Add `participant.uuid` to those joins, and add `LEFT JOIN plan_managers pm ON r.plan_manager_id = pm.id` exposing `pm.uuid`. Add a `GetPlanManagerIDByUUID :one SELECT id FROM plan_managers WHERE tenant_id=? AND uuid=?` (reused by Task 2.2 inbound resolution too — declare it once in `plan_managers.sql`).
-- [ ] `/recurring/{recurringUUID}` and `POST /recurring/{recurringUUID}/generate`.
+- [x] Template + resolve each inbound FK uuid→int; expose each as the related uuid out.
+- [x] Queries: `ListRecurringTemplates`/`GetRecurringTemplate` currently JOIN participant for name only. Add `participant.uuid` to those joins, and add `LEFT JOIN plan_managers pm ON r.plan_manager_id = pm.id` exposing `pm.uuid`. Add a `GetPlanManagerIDByUUID :one SELECT id FROM plan_managers WHERE tenant_id=? AND uuid=?` (reused by Task 2.2 inbound resolution too — declare it once in `plan_managers.sql`).
+- [x] `/recurring/{recurringUUID}` and `POST /recurring/{recurringUUID}/generate`.
 
 ### Task 2.4 — shifts (FK: participant_id; owned child: line items)
 - [ ] Template for the shift itself; `/shifts/{shiftUUID}`, `/shifts/{shiftUUID}/status`, `/shifts/{shiftUUID}/divide`. **Note:** `POST /shifts/import` is currently wired in `internal/app/server.go` (not the shift `Routes`) → it has no `{id}`, so no path change, but keep it consistent; leave the wiring as-is unless trivially movable.
