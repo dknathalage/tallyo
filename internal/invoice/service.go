@@ -81,8 +81,18 @@ func (s *Service) Get(ctx context.Context, id int64) (*Invoice, error) {
 	return s.repo.Get(ctx, tenantID, id)
 }
 
-func (s *Service) ParticipantStats(ctx context.Context, participantID int64) (*ParticipantStats, error) {
+// ParticipantStats resolves the participant uuid to its int PK (tenant-scoped)
+// then aggregates that participant's invoices. Returns (nil, nil) when no
+// participant matches the uuid so the handler can 404.
+func (s *Service) ParticipantStats(ctx context.Context, participantUUID string) (*ParticipantStats, error) {
 	tenantID := reqctx.MustTenant(ctx)
+	participantID, err := s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	if err != nil {
+		return nil, err
+	}
+	if participantID == 0 {
+		return nil, nil
+	}
 	return s.repo.ParticipantStats(ctx, tenantID, participantID)
 }
 

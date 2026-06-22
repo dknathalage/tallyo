@@ -38,7 +38,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Delete("/invoices/{id}", h.Delete)
 	r.Post("/invoices/{id}/status", h.Status)
 	r.Get("/invoices/{id}/pdf", h.Pdf)
-	r.Get("/participants/{id}/stats", h.ParticipantStats)
+	r.Get("/participants/{participantUUID}/stats", h.ParticipantStats)
 }
 
 // invoiceRequest is the flat write payload: every InvoiceInput field (embedded so
@@ -279,9 +279,9 @@ func (h *Handler) BulkStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // ParticipantStats returns the count and summed total of one participant's
-// invoices. The {id} path param is the participant id.
+// invoices. The {participantUUID} path param is the participant uuid.
 func (h *Handler) ParticipantStats(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "participantUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -289,6 +289,10 @@ func (h *Handler) ParticipantStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.svc.ParticipantStats(r.Context(), id)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if stats == nil {
+		httpx.WriteError(w, http.StatusNotFound, "not found")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, stats)

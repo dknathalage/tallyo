@@ -410,7 +410,7 @@ func (v *LineValidator) tenantZone(ctx context.Context, tenantID int64) (string,
 // planWindow reads the participant's plan window. A missing participant is a
 // caller error (the repository would reject the write anyway).
 func (v *LineValidator) planWindow(ctx context.Context, tenantID, participantID int64) (start, end string, err error) {
-	p, err := v.participants.Get(ctx, tenantID, participantID)
+	p, err := v.participants.GetByID(ctx, tenantID, participantID)
 	if err != nil {
 		return "", "", fmt.Errorf("validate lines: read participant: %w", err)
 	}

@@ -62,7 +62,7 @@ func TestParticipantCreateGet(t *testing.T) {
 	if p == nil || p.ID == 0 || p.Name != "Jane" || p.NDISNumber != "430000001" || p.MgmtType != "self" {
 		t.Fatalf("Create = %+v", p)
 	}
-	got, err := repo.Get(ctx, tid, p.ID)
+	got, err := repo.Get(ctx, tid, p.UUID)
 	if err != nil || got == nil || got.PlanEnd != "2026-12-31" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
@@ -89,7 +89,7 @@ func TestParticipantWithPlanManagerName(t *testing.T) {
 		t.Fatalf("Create PM: %v", err)
 	}
 	repo := NewParticipants(conn)
-	p, err := repo.Create(ctx, tid, ParticipantInput{Name: "Jane", MgmtType: "plan", PlanManagerID: &pm.ID})
+	p, err := repo.Create(ctx, tid, ParticipantInput{Name: "Jane", MgmtType: "plan", PlanManagerUUID: &pm.UUID})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -127,14 +127,14 @@ func TestParticipantUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, p.ID, ParticipantInput{Name: "Janet", MgmtType: "self"})
+	up, err := repo.Update(ctx, tid, p.UUID, ParticipantInput{Name: "Janet", MgmtType: "self"})
 	if err != nil || up == nil || up.Name != "Janet" || up.MgmtType != "self" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
-	if err := repo.Delete(ctx, tid, p.ID); err != nil {
+	if err := repo.Delete(ctx, tid, p.UUID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, p.ID); got != nil {
+	if got, _ := repo.Get(ctx, tid, p.UUID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -151,17 +151,17 @@ func TestParticipantTenantIsolation(t *testing.T) {
 		t.Fatalf("Create A: %v", err)
 	}
 	// Tenant B cannot read tenant A's participant.
-	if got, _ := repo.Get(ctx, b, p.ID); got != nil {
+	if got, _ := repo.Get(ctx, b, p.UUID); got != nil {
 		t.Fatalf("tenant B read tenant A's participant: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, ""); len(list) != 0 {
 		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 	// Tenant B's update of A's row must not affect it (no rows match → nil).
-	if got, _ := repo.Update(ctx, b, p.ID, ParticipantInput{Name: "Hijack"}); got != nil {
+	if got, _ := repo.Update(ctx, b, p.UUID, ParticipantInput{Name: "Hijack"}); got != nil {
 		t.Fatalf("tenant B updated tenant A's participant: %+v", got)
 	}
-	stillA, _ := repo.Get(ctx, a, p.ID)
+	stillA, _ := repo.Get(ctx, a, p.UUID)
 	if stillA == nil || stillA.Name != "Tenant A Person" {
 		t.Fatalf("tenant A's participant was mutated cross-tenant: %+v", stillA)
 	}

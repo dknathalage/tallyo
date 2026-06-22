@@ -74,29 +74,43 @@ func (q *Queries) CreateParticipant(ctx context.Context, arg CreateParticipantPa
 }
 
 const deleteParticipant = `-- name: DeleteParticipant :exec
-DELETE FROM participants WHERE tenant_id = ? AND id = ?
+DELETE FROM participants WHERE tenant_id = ? AND uuid = ?
 `
 
 type DeleteParticipantParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error {
+	_, err := q.db.ExecContext(ctx, deleteParticipant, arg.TenantID, arg.Uuid)
+	return err
+}
+
+const deleteParticipantByID = `-- name: DeleteParticipantByID :exec
+DELETE FROM participants WHERE tenant_id = ? AND id = ?
+`
+
+type DeleteParticipantByIDParams struct {
 	TenantID int64 `json:"tenant_id"`
 	ID       int64 `json:"id"`
 }
 
-func (q *Queries) DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error {
-	_, err := q.db.ExecContext(ctx, deleteParticipant, arg.TenantID, arg.ID)
+func (q *Queries) DeleteParticipantByID(ctx context.Context, arg DeleteParticipantByIDParams) error {
+	_, err := q.db.ExecContext(ctx, deleteParticipantByID, arg.TenantID, arg.ID)
 	return err
 }
 
 const getParticipant = `-- name: GetParticipant :one
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name
+SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name, pm.uuid AS plan_manager_uuid
 FROM participants p
 LEFT JOIN plan_managers pm ON p.plan_manager_id = pm.id AND pm.tenant_id = p.tenant_id
-WHERE p.tenant_id = ? AND p.id = ?
+WHERE p.tenant_id = ? AND p.uuid = ?
 `
 
 type GetParticipantParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
 }
 
 type GetParticipantRow struct {
@@ -116,10 +130,11 @@ type GetParticipantRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	PlanManagerName sql.NullString `json:"plan_manager_name"`
+	PlanManagerUuid sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error) {
-	row := q.db.QueryRowContext(ctx, getParticipant, arg.TenantID, arg.ID)
+	row := q.db.QueryRowContext(ctx, getParticipant, arg.TenantID, arg.Uuid)
 	var i GetParticipantRow
 	err := row.Scan(
 		&i.ID,
@@ -138,12 +153,86 @@ func (q *Queries) GetParticipant(ctx context.Context, arg GetParticipantParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PlanManagerName,
+		&i.PlanManagerUuid,
 	)
 	return i, err
 }
 
+const getParticipantByID = `-- name: GetParticipantByID :one
+SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name, pm.uuid AS plan_manager_uuid
+FROM participants p
+LEFT JOIN plan_managers pm ON p.plan_manager_id = pm.id AND pm.tenant_id = p.tenant_id
+WHERE p.tenant_id = ? AND p.id = ?
+`
+
+type GetParticipantByIDParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+type GetParticipantByIDRow struct {
+	ID              int64          `json:"id"`
+	Uuid            string         `json:"uuid"`
+	TenantID        int64          `json:"tenant_id"`
+	Name            string         `json:"name"`
+	NdisNumber      sql.NullString `json:"ndis_number"`
+	PlanStart       sql.NullString `json:"plan_start"`
+	PlanEnd         sql.NullString `json:"plan_end"`
+	MgmtType        string         `json:"mgmt_type"`
+	PlanManagerID   sql.NullInt64  `json:"plan_manager_id"`
+	Email           sql.NullString `json:"email"`
+	Phone           sql.NullString `json:"phone"`
+	Address         sql.NullString `json:"address"`
+	Metadata        sql.NullString `json:"metadata"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
+	PlanManagerName sql.NullString `json:"plan_manager_name"`
+	PlanManagerUuid sql.NullString `json:"plan_manager_uuid"`
+}
+
+func (q *Queries) GetParticipantByID(ctx context.Context, arg GetParticipantByIDParams) (GetParticipantByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getParticipantByID, arg.TenantID, arg.ID)
+	var i GetParticipantByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Uuid,
+		&i.TenantID,
+		&i.Name,
+		&i.NdisNumber,
+		&i.PlanStart,
+		&i.PlanEnd,
+		&i.MgmtType,
+		&i.PlanManagerID,
+		&i.Email,
+		&i.Phone,
+		&i.Address,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PlanManagerName,
+		&i.PlanManagerUuid,
+	)
+	return i, err
+}
+
+const getParticipantIDByUUID = `-- name: GetParticipantIDByUUID :one
+SELECT id FROM participants WHERE tenant_id = ? AND uuid = ?
+`
+
+type GetParticipantIDByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) GetParticipantIDByUUID(ctx context.Context, arg GetParticipantIDByUUIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getParticipantIDByUUID, arg.TenantID, arg.Uuid)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listParticipants = `-- name: ListParticipants :many
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name
+SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name, pm.uuid AS plan_manager_uuid
 FROM participants p
 LEFT JOIN plan_managers pm ON p.plan_manager_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ?
@@ -167,6 +256,7 @@ type ListParticipantsRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	PlanManagerName sql.NullString `json:"plan_manager_name"`
+	PlanManagerUuid sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) ListParticipants(ctx context.Context, tenantID int64) ([]ListParticipantsRow, error) {
@@ -195,6 +285,7 @@ func (q *Queries) ListParticipants(ctx context.Context, tenantID int64) ([]ListP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.PlanManagerName,
+			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -210,7 +301,7 @@ func (q *Queries) ListParticipants(ctx context.Context, tenantID int64) ([]ListP
 }
 
 const searchParticipants = `-- name: SearchParticipants :many
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name
+SELECT p.id, p.uuid, p.tenant_id, p.name, p.ndis_number, p.plan_start, p.plan_end, p.mgmt_type, p.plan_manager_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS plan_manager_name, pm.uuid AS plan_manager_uuid
 FROM participants p
 LEFT JOIN plan_managers pm ON p.plan_manager_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ? AND (p.name LIKE ? OR p.email LIKE ? OR p.ndis_number LIKE ?)
@@ -241,6 +332,7 @@ type SearchParticipantsRow struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	PlanManagerName sql.NullString `json:"plan_manager_name"`
+	PlanManagerUuid sql.NullString `json:"plan_manager_uuid"`
 }
 
 func (q *Queries) SearchParticipants(ctx context.Context, arg SearchParticipantsParams) ([]SearchParticipantsRow, error) {
@@ -274,6 +366,7 @@ func (q *Queries) SearchParticipants(ctx context.Context, arg SearchParticipants
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.PlanManagerName,
+			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
 		}
@@ -292,7 +385,7 @@ const updateParticipant = `-- name: UpdateParticipant :one
 UPDATE participants SET
     name = ?, ndis_number = ?, plan_start = ?, plan_end = ?, mgmt_type = ?, plan_manager_id = ?,
     email = ?, phone = ?, address = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+WHERE tenant_id = ? AND uuid = ?
 RETURNING id, uuid, tenant_id, name, ndis_number, plan_start, plan_end, mgmt_type, plan_manager_id, email, phone, address, metadata, created_at, updated_at
 `
 
@@ -309,7 +402,7 @@ type UpdateParticipantParams struct {
 	Metadata      sql.NullString `json:"metadata"`
 	UpdatedAt     string         `json:"updated_at"`
 	TenantID      int64          `json:"tenant_id"`
-	ID            int64          `json:"id"`
+	Uuid          string         `json:"uuid"`
 }
 
 func (q *Queries) UpdateParticipant(ctx context.Context, arg UpdateParticipantParams) (Participant, error) {
@@ -326,7 +419,7 @@ func (q *Queries) UpdateParticipant(ctx context.Context, arg UpdateParticipantPa
 		arg.Metadata,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.ID,
+		arg.Uuid,
 	)
 	var i Participant
 	err := row.Scan(

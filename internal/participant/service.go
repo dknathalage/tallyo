@@ -51,10 +51,10 @@ func (s *Service) Query(ctx context.Context, c listquery.Clause) (QueryResult, e
 	return QueryResult{Rows: rows, Total: total}, nil
 }
 
-// Get returns a single participant by id, or (nil, nil) when not found.
-func (s *Service) Get(ctx context.Context, id int64) (*Participant, error) {
+// Get returns a single participant by uuid, or (nil, nil) when not found.
+func (s *Service) Get(ctx context.Context, uuid string) (*Participant, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.Get(ctx, tenantID, id)
+	return s.repo.Get(ctx, tenantID, uuid)
 }
 
 // Create inserts a participant, then broadcasts AFTER the commit succeeds.
@@ -68,28 +68,37 @@ func (s *Service) Create(ctx context.Context, in ParticipantInput) (*Participant
 	return c, nil
 }
 
-// Update mutates a participant, then broadcasts on success. A nil result means
-// the row was not found, in which case no event is published.
-func (s *Service) Update(ctx context.Context, id int64, in ParticipantInput) (*Participant, error) {
+// Update mutates a participant by uuid, then broadcasts on success. A nil result
+// means the row was not found, in which case no event is published. The SSE
+// event carries the row's int PK (Phase 2.8 retypes the SSE payload).
+func (s *Service) Update(ctx context.Context, uuid string, in ParticipantInput) (*Participant, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	c, err := s.repo.Update(ctx, tenantID, id, in)
+	c, err := s.repo.Update(ctx, tenantID, uuid, in)
 	if err != nil {
 		return nil, err
 	}
 	if c == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "participant", ID: id, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "participant", ID: c.ID, Action: "update"})
 	return c, nil
 }
 
-// Delete removes a participant, then broadcasts on success.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+// Delete removes a participant by uuid, then broadcasts on success. The row is
+// resolved first so the post-commit event still carries the int PK.
+func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
+	p, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "participant", ID: id, Action: "delete"})
+	if p == nil {
+		return nil
+	}
+	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
+		return err
+	}
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "participant", ID: p.ID, Action: "delete"})
 	return nil
 }
 

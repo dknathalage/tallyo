@@ -748,6 +748,19 @@ func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID int64) (b
 	return inv != nil, nil
 }
 
+// ResolveParticipantID translates a participant uuid into its int PK, scoped to
+// the tenant. Returns (0, nil) when no participant matches (caller 404s).
+func (r *InvoicesRepo) ResolveParticipantID(ctx context.Context, tenantID int64, participantUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: participantUUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("resolve participant uuid: %w", err)
+	}
+	return id, nil
+}
+
 // ParticipantStats returns the count and summed totals of a participant's
 // invoices.
 func (r *InvoicesRepo) ParticipantStats(ctx context.Context, tenantID, participantID int64) (*ParticipantStats, error) {

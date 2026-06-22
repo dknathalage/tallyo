@@ -52,7 +52,7 @@ func (b *SnapshotBuilder) Business(ctx context.Context, tenantID int64) string {
 
 // Participant reads the participant and renders a default snapshot.
 func (b *SnapshotBuilder) Participant(ctx context.Context, tenantID, participantID int64) string {
-	p, err := gen.New(b.db).GetParticipant(ctx, gen.GetParticipantParams{TenantID: tenantID, ID: participantID})
+	p, err := gen.New(b.db).GetParticipantByID(ctx, gen.GetParticipantByIDParams{TenantID: tenantID, ID: participantID})
 	if err != nil {
 		return "{}"
 	}

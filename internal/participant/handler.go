@@ -1,6 +1,7 @@
 package participant
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,9 +30,9 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/participants", h.List)
 	r.Post("/participants", h.Create)
 	r.Post("/participants/bulk-delete", h.BulkDelete)
-	r.Get("/participants/{id}", h.Get)
-	r.Put("/participants/{id}", h.Update)
-	r.Delete("/participants/{id}", h.Delete)
+	r.Get("/participants/{participantUUID}", h.Get)
+	r.Put("/participants/{participantUUID}", h.Update)
+	r.Delete("/participants/{participantUUID}", h.Delete)
 }
 
 // List returns participants. With DataTable query params (sort/page/limit/f.*)
@@ -70,9 +71,9 @@ func isListQuery(q url.Values) bool {
 	return false
 }
 
-// Get returns a single participant by id, or 404 when not found.
+// Get returns a single participant by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "participantUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -101,6 +102,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Create(r.Context(), in)
+	if errors.Is(err, errPlanManagerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -108,9 +113,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
-// Update mutates a participant. Empty name → 400; unknown id → 404.
+// Update mutates a participant. Empty name → 400; unknown id → 404; unknown
+// plan-manager uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "participantUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -125,6 +131,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Update(r.Context(), id, in)
+	if errors.Is(err, errPlanManagerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -136,9 +146,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Delete removes a participant by id.
+// Delete removes a participant by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := httpx.ParseID(r)
+	id, ok := httpx.ParseUUID(r, "participantUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return

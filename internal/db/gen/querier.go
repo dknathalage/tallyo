@@ -47,6 +47,7 @@ type Querier interface {
 	DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) error
 	DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error
 	DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error
+	DeleteParticipantByID(ctx context.Context, arg DeleteParticipantByIDParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
 	DeletePlanManagerByID(ctx context.Context, arg DeletePlanManagerByIDParams) error
@@ -69,6 +70,8 @@ type Querier interface {
 	GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvoiceRow, error)
 	GetLineItem(ctx context.Context, arg GetLineItemParams) (LineItem, error)
 	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
+	GetParticipantByID(ctx context.Context, arg GetParticipantByIDParams) (GetParticipantByIDRow, error)
+	GetParticipantIDByUUID(ctx context.Context, arg GetParticipantIDByUUIDParams) (int64, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
 	GetPlanManagerByID(ctx context.Context, arg GetPlanManagerByIDParams) (PlanManager, error)

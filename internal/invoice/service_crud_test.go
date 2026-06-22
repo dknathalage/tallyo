@@ -74,7 +74,11 @@ func TestInvoiceListByStatusSvc(t *testing.T) {
 }
 
 func TestInvoiceListParticipantInvoicesAndStats(t *testing.T) {
-	svc, _, tenantID, participantID := newInvoiceSvc(t)
+	conn := newTestDB(t)
+	tenantID := seedTenant(t, conn, "Acme NDIS")
+	participantID, participantUUID := seedParticipantUUID(t, conn, tenantID, "Jane Participant")
+	hub := realtime.NewHub()
+	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, participantID)
@@ -87,12 +91,22 @@ func TestInvoiceListParticipantInvoicesAndStats(t *testing.T) {
 		t.Fatalf("ListParticipantInvoices = %+v, want one id %d", rows, inv.ID)
 	}
 
-	stats, err := svc.ParticipantStats(ctx, participantID)
+	// ParticipantStats now resolves the participant uuid → int PK.
+	stats, err := svc.ParticipantStats(ctx, participantUUID)
 	if err != nil {
 		t.Fatalf("ParticipantStats: %v", err)
 	}
 	if stats == nil {
 		t.Fatal("ParticipantStats returned nil")
+	}
+
+	// An unknown participant uuid yields no stats (handler 404s).
+	none, err := svc.ParticipantStats(ctx, "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
+	if err != nil {
+		t.Fatalf("ParticipantStats unknown: %v", err)
+	}
+	if none != nil {
+		t.Fatalf("ParticipantStats unknown = %+v, want nil", none)
 	}
 }
 

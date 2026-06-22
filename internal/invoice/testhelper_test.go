@@ -69,11 +69,19 @@ func tctx(tenantID int64) context.Context {
 // seedParticipant inserts a minimal participant for a tenant and returns its id.
 func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
 	t.Helper()
+	id, _ := seedParticipantUUID(t, conn, tenantID, name)
+	return id
+}
+
+// seedParticipantUUID seeds a participant and returns both its int PK and uuid.
+// The uuid is the public identifier the participant-stats route now resolves.
+func seedParticipantUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (int64, string) {
+	t.Helper()
 	p, err := participant.NewParticipants(conn).Create(context.Background(), tenantID, participant.ParticipantInput{Name: name})
 	if err != nil {
 		t.Fatalf("seedParticipant %q: %v", name, err)
 	}
-	return p.ID
+	return p.ID, p.UUID
 }
 
 // seedDraftInvoice inserts a minimal draft invoice and returns its id.
