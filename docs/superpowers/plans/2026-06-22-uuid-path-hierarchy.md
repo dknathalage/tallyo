@@ -236,9 +236,9 @@ Any enrichment join that surfaced an int FK for the SPA to link on must now surf
 
 ### Task 3.1 — `customItemId` line-item FK by uuid (genuine leak found in Phase 3 audit)
 `customItemId` is a real `custom_items` int FK on `billing.LineItem`/`LineItemInput` and `recurring.RecurringLine`, round-tripped by the SPA both ways — currently leaks the int. The resolver `gen.GetCustomItemIDByUUID` already exists (Task 2.10).
-- [ ] **Read:** add a `custom_items` uuid join to every line-item read so the row carries the custom-item uuid — central `line_items`, `estimate_line_items`, shift items. `billing.LineItemFromRow` currently gets a bare `gen.LineItem` (no join) — adjust its row source / add a joined variant. Expose `customItemId` as the custom-item uuid string (nil when none); int FK → `json:"-"`.
-- [ ] **Write:** on every line-item write path (invoice create/update lineItems[], estimate lineItems[], shift item add/patch, recurring lines), resolve inbound `customItemId` uuid → int via `gen.GetCustomItemIDByUUID`; unknown → 400; empty/null → NULL.
-- [ ] Tests: a line item with a custom item round-trips `customItemId` as the same uuid (create→get); unknown custom-item uuid → 400.
+- [x] **Read:** add a `custom_items` uuid join to every line-item read so the row carries the custom-item uuid — central `line_items`, `estimate_line_items`, shift items. `billing.LineItemFromRow` currently gets a bare `gen.LineItem` (no join) — adjust its row source / add a joined variant. Expose `customItemId` as the custom-item uuid string (nil when none); int FK → `json:"-"`.
+- [x] **Write:** on every line-item write path (invoice create/update lineItems[], estimate lineItems[], shift item add/patch, recurring lines), resolve inbound `customItemId` uuid → int via `gen.GetCustomItemIDByUUID`; unknown → 400; empty/null → NULL.
+- [x] Tests: a line item with a custom item round-trips `customItemId` as the same uuid (create→get); unknown custom-item uuid → 400.
 - [ ] Gate: `go test ./... -race`, `go build ./...`, `go vet ./...`, `gofmt -l .` all clean. Commit — `refactor(api): address line-item customItemId by uuid`.
 
 ---
