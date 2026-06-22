@@ -497,6 +497,40 @@ func TestValidateComputesTaxFromNonGstFreeLines(t *testing.T) {
 	}
 }
 
+// TestCharacterizeMixedTaxMath pins today's tax math on a mixed invoice BEFORE
+// the gst_free→taxable inversion: a gst_free line contributes NO tax, and a
+// taxable (gst_free=false) line is taxed at the default rate. The computed tax
+// must equal ONLY the taxed line's Round2(lineTotal*rate). This characterizes
+// existing behaviour so the inversion can be proven to preserve it.
+func TestCharacterizeMixedTaxMath(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn)
+	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	const rate = 0.10
+	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
+		Name: "GST", Rate: rate, IsDefault: true,
+	}); err != nil {
+		t.Fatalf("seed tax rate: %v", err)
+	}
+	// One version carrying a gst_free item (no tax) and a taxable item (taxed).
+	verID := seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, map[string]*float64{"national": fptr(1000)})
+	addItemToVersion(t, conn, verID, "TAX", false, map[string]*float64{"national": fptr(1000)})
+	v := NewLineValidator(conn, conn)
+
+	const taxedQty, taxedPrice = 1.0, 200.0
+	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
+		supportLine("GF", "2026-01-15", 1, 100),                // gst-free → 0 tax
+		supportLine("TAX", "2026-01-15", taxedQty, taxedPrice), // taxable → taxed
+	})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	wantTax := Round2(Round2(taxedQty*taxedPrice) * rate)
+	if res.Tax != wantTax {
+		t.Fatalf("tax = %v, want %v (only the taxable line)", res.Tax, wantTax)
+	}
+}
+
 func TestValidateTotalsRoundToCents(t *testing.T) {
 	// 0.1 * 3 = 0.30000000000000004 in float; round2 must collapse it to 0.30.
 	conn := newTestDB(t)
