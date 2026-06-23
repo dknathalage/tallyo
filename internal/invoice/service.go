@@ -10,17 +10,17 @@ import (
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// ShiftLinker is the narrow interface the invoice service requires to cascade
-// status changes to linked shifts. It breaks the invoice↔shift import cycle:
+// SessionLinker is the narrow interface the invoice service requires to cascade
+// status changes to linked sessions. It breaks the invoice↔session import cycle:
 // the invoice package declares this interface; the caller (main.go) injects a
-// concrete *repository.ShiftsRepo which satisfies it.
-type ShiftLinker interface {
+// concrete *repository.SessionsRepo which satisfies it.
+type SessionLinker interface {
 	SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error
 	ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error
-	// MarkDrafted links the given recorded shifts to invoiceID and advances them
-	// to status 'drafted'. Called by DraftFromShifts AFTER the invoice + its
-	// linked lines are committed, so the shift→invoice reference is satisfiable.
-	MarkDrafted(ctx context.Context, invoiceID int64, shiftIDs []int64) error
+	// MarkDrafted links the given recorded sessions to invoiceID and advances them
+	// to status 'drafted'. Called by DraftFromSessions AFTER the invoice + its
+	// linked lines are committed, so the session→invoice reference is satisfiable.
+	MarkDrafted(ctx context.Context, invoiceID int64, sessionIDs []int64) error
 }
 
 // Service orchestrates invoice reads/writes and publishes change events
@@ -28,20 +28,20 @@ type ShiftLinker interface {
 // (validator) on create/update before reaching the repository.
 type Service struct {
 	repo      *InvoicesRepo
-	shifts    ShiftLinker
+	sessions  SessionLinker
 	validator *billing.LineValidator
 	hub       *realtime.Hub
 }
 
 // NewService constructs the invoice service. A nil hub is a programmer error.
-// shifts may be nil (shift cascade is skipped when nil).
-func NewService(db, control db.Executor, hub *realtime.Hub, shifts ShiftLinker) *Service {
+// sessions may be nil (session cascade is skipped when nil).
+func NewService(db, control db.Executor, hub *realtime.Hub, sessions SessionLinker) *Service {
 	if hub == nil {
 		panic("invoice.NewService: nil hub")
 	}
 	return &Service{
 		repo:      NewInvoices(db),
-		shifts:    shifts,
+		sessions:  sessions,
 		validator: billing.NewLineValidator(db, control),
 		hub:       hub,
 	}
@@ -101,12 +101,12 @@ func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (int64, er
 	return s.repo.ResolvePayerID(ctx, tenantID, payerUUID)
 }
 
-// ResolveShiftIDs translates a list of shift uuids into their int PKs for the
+// ResolveSessionIDs translates a list of session uuids into their int PKs for the
 // tenant (preserving order). An unknown uuid surfaces as an error so the caller
-// can 400 — draft-from-shifts must not silently drop a shift.
-func (s *Service) ResolveShiftIDs(ctx context.Context, shiftUUIDs []string) ([]int64, error) {
+// can 400 — draft-from-sessions must not silently drop a session.
+func (s *Service) ResolveSessionIDs(ctx context.Context, sessionUUIDs []string) ([]int64, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ResolveShiftIDs(ctx, tenantID, shiftUUIDs)
+	return s.repo.ResolveSessionIDs(ctx, tenantID, sessionUUIDs)
 }
 
 // ResolveInvoiceIDs translates a list of invoice uuids into their int PKs for
@@ -174,29 +174,29 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 	return inv, nil
 }
 
-// DraftFromShifts drafts a new invoice from N recorded, unbilled shifts — pure
+// DraftFromSessions drafts a new invoice from N recorded, unbilled sessions — pure
 // deterministic linking, no model, no re-pricing (the items are already priced
-// on each shift). Shifts must share one client and each carry at least one
+// on each session). Sessions must share one client and each carry at least one
 // item (G5). The invoice and its linked lines commit atomically; only AFTER that
-// commit are the shifts advanced to 'drafted' (via the ShiftLinker, a separate
-// tx), so the shift→invoice reference and MarkDrafted's existence check hold.
-func (s *Service) DraftFromShifts(ctx context.Context, shiftIDs []int64) (*Invoice, error) {
+// commit are the sessions advanced to 'drafted' (via the SessionLinker, a separate
+// tx), so the session→invoice reference and MarkDrafted's existence check hold.
+func (s *Service) DraftFromSessions(ctx context.Context, sessionIDs []int64) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	clientID, facts, err := s.repo.validateDraftShifts(ctx, tenantID, shiftIDs)
+	clientID, facts, err := s.repo.validateDraftSessions(ctx, tenantID, sessionIDs)
 	if err != nil {
 		return nil, err
 	}
-	inv, err := s.repo.DraftFromShifts(ctx, tenantID, clientID, facts)
+	inv, err := s.repo.DraftFromSessions(ctx, tenantID, clientID, facts)
 	if err != nil {
 		return nil, err
 	}
-	if s.shifts != nil {
-		if err := s.shifts.MarkDrafted(ctx, inv.ID, shiftIDs); err != nil {
+	if s.sessions != nil {
+		if err := s.sessions.MarkDrafted(ctx, inv.ID, sessionIDs); err != nil {
 			return nil, err
 		}
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "bill"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "bill"})
 	return inv, nil
 }
 
@@ -263,7 +263,7 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status st
 }
 
 // UpdateStatus sets the invoice status, then broadcasts on success. When the
-// invoice advances to a terminal billing status ('sent'/'paid'), the shifts
+// invoice advances to a terminal billing status ('sent'/'paid'), the sessions
 // attached to it advance in lockstep (recorded→drafted→sent→paid lifecycle).
 func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
@@ -278,20 +278,20 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 		return err
 	}
 	cascade := status == "sent" || status == "paid"
-	if cascade && s.shifts != nil {
-		if err := s.shifts.SetStatusForInvoice(ctx, tenantID, id, status); err != nil {
+	if cascade && s.sessions != nil {
+		if err := s.sessions.SetStatusForInvoice(ctx, tenantID, id, status); err != nil {
 			return err
 		}
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "status"})
 	if cascade {
-		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "status"})
+		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "status"})
 	}
 	return nil
 }
 
 // Delete removes an invoice, then broadcasts on success. Before deleting, any
-// shifts attached to the invoice are reverted to 'recorded' with a NULL
+// sessions attached to the invoice are reverted to 'recorded' with a NULL
 // invoice_id, so the work returns to the unbilled pool rather than being orphaned
 // at status 'drafted' by the FK's ON DELETE SET NULL.
 func (s *Service) Delete(ctx context.Context, id int64) error {
@@ -303,8 +303,8 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if inv == nil {
 		return nil
 	}
-	if s.shifts != nil {
-		if err := s.shifts.ClearForInvoice(ctx, tenantID, id); err != nil {
+	if s.sessions != nil {
+		if err := s.sessions.ClearForInvoice(ctx, tenantID, id); err != nil {
 			return err
 		}
 	}
@@ -312,19 +312,19 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "shift", UUID: "", Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "status"})
 	return nil
 }
 
 // BulkDelete removes several invoices, then broadcasts a single bulk event.
-// Like Delete, each invoice's shifts are first reverted to 'recorded' (NULL
+// Like Delete, each invoice's sessions are first reverted to 'recorded' (NULL
 // invoice_id) so bulk-deleted work returns to the unbilled pool rather than
 // being orphaned at status 'drafted'.
 func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 	tenantID := reqctx.MustTenant(ctx)
-	if s.shifts != nil {
+	if s.sessions != nil {
 		for i := range ids { // bounded by len(ids)
-			if err := s.shifts.ClearForInvoice(ctx, tenantID, ids[i]); err != nil {
+			if err := s.sessions.ClearForInvoice(ctx, tenantID, ids[i]); err != nil {
 				return err
 			}
 		}

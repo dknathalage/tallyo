@@ -12,7 +12,7 @@ import (
 )
 
 // SmartsHandler serves the one-shot AI "Smarts" routes: import-shifts (the
-// per-shift divide route is served by the shift handler via a ShiftDivider
+// per-session divide route is served by the session handler via a SessionDivider
 // interface). Every handler 503s when the feature is disabled.
 type SmartsHandler struct {
 	smarts  *Smarts

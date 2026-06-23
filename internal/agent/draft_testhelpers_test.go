@@ -1,10 +1,10 @@
 package agent
 
-// Shared seeding helpers for the divide-shift Smarts tests
-// (smart_divide_shift_test.go). They reproduce the reference nursing-note
+// Shared seeding helpers for the divide-session Smarts tests
+// (smart_divide_session_test.go). They reproduce the reference nursing-note
 // fixture — client "Tania Hangevelled", a FY26 catalogue carrying the two
 // reference support items, and the four-day timesheet (referenceWeek) — as a
-// tenant + client + catalogue plus recorded note-only shifts.
+// tenant + client + catalogue plus recorded note-only sessions.
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/google/uuid"
 )
 
@@ -87,12 +87,12 @@ func seedNoteItem(t *testing.T, conn *sql.DB, versionID int64, code, name string
 	}
 }
 
-// shiftToolsFixture opens a migrated temp DB and seeds the same tenant,
+// sessionToolsFixture opens a migrated temp DB and seeds the same tenant,
 // client and catalogue as the reference invoice fixture, returning the open
 // connection plus the seeded tenant and client ids.
-func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) {
+func sessionToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) {
 	t.Helper()
-	c, err := appdb.Open(filepath.Join(t.TempDir(), "shifts.db"))
+	c, err := appdb.Open(filepath.Join(t.TempDir(), "sessions.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -118,20 +118,20 @@ func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) {
 	return c, tenantID, p.ID
 }
 
-// seedReferenceShift inserts ONE nursing-note day as a recorded note-only shift
-// (post-unification a shift carries no hours/km — those live on its line items)
-// and returns the created shift. The note carries the activity narrative so the
+// seedReferenceSession inserts ONE nursing-note day as a recorded note-only session
+// (post-unification a session carries no hours/km — those live on its line items)
+// and returns the created session. The note carries the activity narrative so the
 // divide Smart has something to ground against.
-func seedReferenceShift(t *testing.T, shifts *shift.Service, ctx context.Context, clientID int64, serviceDate string) *shift.Shift {
+func seedReferenceSession(t *testing.T, sessions *session.Service, ctx context.Context, clientID int64, serviceDate string) *session.Session {
 	t.Helper()
-	sh, err := shifts.Create(ctx, shift.ShiftInput{
+	sh, err := sessions.Create(ctx, session.SessionInput{
 		ClientID:    clientID,
 		ServiceDate: serviceDate,
 		Note:        "Supported Tania with self care and community access.",
 		Status:      "recorded",
 	})
 	if err != nil {
-		t.Fatalf("seed shift %s: %v", serviceDate, err)
+		t.Fatalf("seed session %s: %v", serviceDate, err)
 	}
 	return sh
 }

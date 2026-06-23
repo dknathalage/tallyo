@@ -22,6 +22,12 @@ type AuditLog struct {
 	CreatedAt  string         `json:"created_at"`
 }
 
+type AuthSession struct {
+	Token  string  `json:"token"`
+	Data   []byte  `json:"data"`
+	Expiry float64 `json:"expiry"`
+}
+
 type BusinessProfile struct {
 	ID              int64          `json:"id"`
 	Uuid            string         `json:"uuid"`
@@ -160,7 +166,7 @@ type LineItem struct {
 	ID               int64          `json:"id"`
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
-	ShiftID          sql.NullInt64  `json:"shift_id"`
+	SessionID        sql.NullInt64  `json:"session_id"`
 	InvoiceID        sql.NullInt64  `json:"invoice_id"`
 	SupportItemID    sql.NullString `json:"support_item_id"`
 	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
@@ -222,27 +228,6 @@ type RecurringTemplate struct {
 	UpdatedAt string        `json:"updated_at"`
 }
 
-type Session struct {
-	Token  string  `json:"token"`
-	Data   []byte  `json:"data"`
-	Expiry float64 `json:"expiry"`
-}
-
-type Shift struct {
-	ID           int64         `json:"id"`
-	Uuid         string        `json:"uuid"`
-	TenantID     int64         `json:"tenant_id"`
-	ClientID     int64         `json:"client_id"`
-	ServiceDate  string        `json:"service_date"`
-	Note         string        `json:"note"`
-	Tags         string        `json:"tags"`
-	Status       string        `json:"status"`
-	InvoiceID    sql.NullInt64 `json:"invoice_id"`
-	AuthorUserID sql.NullInt64 `json:"author_user_id"`
-	CreatedAt    string        `json:"created_at"`
-	UpdatedAt    string        `json:"updated_at"`
-}
-
 type SupportItem struct {
 	ID                int64          `json:"id"`
 	Uuid              string         `json:"uuid"`
@@ -296,4 +281,19 @@ type User struct {
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	LastLoginAt     sql.NullString `json:"last_login_at"`
+}
+
+type WorkSession struct {
+	ID           int64         `json:"id"`
+	Uuid         string        `json:"uuid"`
+	TenantID     int64         `json:"tenant_id"`
+	ClientID     int64         `json:"client_id"`
+	ServiceDate  string        `json:"service_date"`
+	Note         string        `json:"note"`
+	Tags         string        `json:"tags"`
+	Status       string        `json:"status"`
+	InvoiceID    sql.NullInt64 `json:"invoice_id"`
+	AuthorUserID sql.NullInt64 `json:"author_user_id"`
+	CreatedAt    string        `json:"created_at"`
+	UpdatedAt    string        `json:"updated_at"`
 }

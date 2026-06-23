@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
-	import * as shiftsApi from '$lib/api/shifts';
-	import { shortDate } from '$lib/shifts/format';
-	import type { ShiftSuggestion } from '$lib/api/types';
+	import * as sessionsApi from '$lib/api/sessions';
+	import { shortDate } from '$lib/sessions/format';
+	import type { SessionSuggestion } from '$lib/api/types';
 
 	type Props = {
-		suggestions: ShiftSuggestion[];
+		suggestions: SessionSuggestion[];
 		/** Resolve a client uuid to a display name. */
 		nameFor: (clientId: string) => string;
 		/** Restrict to a single client (the profile view), by uuid. */
@@ -24,11 +24,11 @@
 	let drafting = $state<string | null>(null);
 	let error = $state<string | null>(null);
 
-	async function draft(s: ShiftSuggestion): Promise<void> {
+	async function draft(s: SessionSuggestion): Promise<void> {
 		error = null;
 		drafting = s.clientId;
 		try {
-			const inv = await shiftsApi.draftFromShifts(s.ids);
+			const inv = await sessionsApi.draftFromSessions(s.ids);
 			await goto(t(`/invoices/${inv.id}`));
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to draft the invoice.';
@@ -41,7 +41,7 @@
 {#if visible.length > 0}
 	<div class="space-y-2">
 		<p class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
-			Suggested invoices (from recorded shifts)
+			Suggested invoices (from recorded sessions)
 		</p>
 		{#if error}
 			<p class="text-sm text-red-600">{error}</p>
@@ -52,7 +52,7 @@
 			>
 				<div class="flex-1 text-sm">
 					<span class="font-semibold">{nameFor(s.clientId)}</span> — {s.count} recorded
-					{s.count === 1 ? 'shift' : 'shifts'} · {shortDate(s.from)}–{shortDate(s.to)}
+					{s.count === 1 ? 'session' : 'sessions'} · {shortDate(s.from)}–{shortDate(s.to)}
 				</div>
 				<button
 					type="button"

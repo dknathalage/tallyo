@@ -114,9 +114,11 @@ CREATE INDEX idx_invoices_status      ON invoices (status);
 CREATE INDEX idx_invoices_client ON invoices (client_id);
 CREATE INDEX idx_invoices_created_at  ON invoices (created_at);
 
--- sessions: final shape (00008) — no hours/km/measures/start_time/end_time.
+-- work_sessions: final shape (00008) — no hours/km/measures/start_time/end_time.
+-- Physical table is work_sessions (the control DB owns the scs `sessions` table);
+-- the domain slice maps gen.WorkSession to the domain type Session.
 -- author_user_id references control-DB users: column kept, FK dropped.
-CREATE TABLE sessions (
+CREATE TABLE work_sessions (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid           TEXT NOT NULL UNIQUE,
     tenant_id      INTEGER NOT NULL,
@@ -131,9 +133,9 @@ CREATE TABLE sessions (
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
-CREATE INDEX idx_sessions_client_date ON sessions(tenant_id, client_id, service_date);
-CREATE INDEX idx_sessions_status          ON sessions(tenant_id, status);
-CREATE INDEX idx_sessions_invoice         ON sessions(invoice_id);
+CREATE INDEX idx_work_sessions_client_date ON work_sessions(tenant_id, client_id, service_date);
+CREATE INDEX idx_work_sessions_status          ON work_sessions(tenant_id, status);
+CREATE INDEX idx_work_sessions_invoice         ON work_sessions(invoice_id);
 
 -- line_items: final shape (00008) — session_id + invoice_id (one required),
 -- start/end time. Catalogue links are control-DB UUIDs (TEXT, no FK).
@@ -141,7 +143,7 @@ CREATE TABLE line_items (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid               TEXT NOT NULL UNIQUE,
     tenant_id          INTEGER NOT NULL,
-    session_id           INTEGER REFERENCES sessions(id) ON DELETE CASCADE,
+    session_id           INTEGER REFERENCES work_sessions(id) ON DELETE CASCADE,
     invoice_id         INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
     support_item_id    TEXT DEFAULT '',     -- control-DB support_items.uuid (no FK)
     custom_item_id     INTEGER REFERENCES custom_items(id) ON DELETE SET NULL,
@@ -253,7 +255,7 @@ DROP TABLE payments;
 DROP TABLE estimate_line_items;
 DROP TABLE estimates;
 DROP TABLE line_items;
-DROP TABLE sessions;
+DROP TABLE work_sessions;
 DROP TABLE invoices;
 DROP TABLE tax_rates;
 DROP TABLE custom_items;

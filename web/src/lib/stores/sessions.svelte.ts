@@ -1,22 +1,22 @@
 /**
- * Rune-based store for the tenant's shifts. Holds the full shift list (powering
- * the shifts table, pipeline counts and calendar) plus the derived to-record and
- * suggestion prompts. Refetches on the SSE "shift" entity invalidation (the
- * backend broadcasts entity "shift" on every shift mutation, and "invoice" when
- * a draft cascades shift statuses).
+ * Rune-based store for the tenant's sessions. Holds the full session list (powering
+ * the sessions table, pipeline counts and calendar) plus the derived to-record and
+ * suggestion prompts. Refetches on the SSE "session" entity invalidation (the
+ * backend broadcasts entity "session" on every session mutation, and "invoice" when
+ * a draft cascades session statuses).
  *
  * Follows collection.svelte.ts conventions: reactive list + loading + error
  * getters, a load(), and a one-shot subscribe.
  */
 
 import { onEntity } from '$lib/realtime/events';
-import { listAll, suggestions as fetchSuggestions, toRecord as fetchToRecord } from '$lib/api/shifts';
-import type { Shift, ShiftSuggestion } from '$lib/api/types';
+import { listAll, suggestions as fetchSuggestions, toRecord as fetchToRecord } from '$lib/api/sessions';
+import type { Session, SessionSuggestion } from '$lib/api/types';
 
-export function createShiftsStore() {
-	let items = $state<Shift[]>([]);
-	let toRecordItems = $state<Shift[]>([]);
-	let suggestionItems = $state<ShiftSuggestion[]>([]);
+export function createSessionsStore() {
+	let items = $state<Session[]>([]);
+	let toRecordItems = $state<Session[]>([]);
+	let suggestionItems = $state<SessionSuggestion[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let registered = false;
@@ -40,11 +40,11 @@ export function createShiftsStore() {
 		}
 	}
 
-	/** Subscribe to the "shift" + "invoice" SSE invalidations once (browser only). */
+	/** Subscribe to the "session" + "invoice" SSE invalidations once (browser only). */
 	function ensureSubscribed(): void {
 		if (registered) return;
 		registered = true;
-		onEntity('shift', () => {
+		onEntity('session', () => {
 			void load();
 		});
 		onEntity('invoice', () => {
@@ -73,4 +73,4 @@ export function createShiftsStore() {
 	};
 }
 
-export const shifts = createShiftsStore();
+export const sessions = createSessionsStore();

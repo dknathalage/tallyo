@@ -32,7 +32,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/dknathalage/tallyo/internal/tenantdb"
 	tallyoweb "github.com/dknathalage/tallyo/web"
@@ -169,8 +169,8 @@ func Run(cfg Config, version string) error {
 	customItemSvc := customitem.NewService(tdb, hub)
 	supportCatalogSvc := catalog.NewService(tdb)
 	catalogIngestSvc := catalog.NewIngestService(tdb, hub)
-	shiftSvc := shift.NewService(tdb, control, hub, invoice.NewInvoices(tdb))
-	invoiceSvc := invoice.NewService(tdb, control, hub, shiftSvc)
+	sessionSvc := session.NewService(tdb, control, hub, invoice.NewInvoices(tdb))
+	invoiceSvc := invoice.NewService(tdb, control, hub, sessionSvc)
 	estimateSvc := estimate.NewService(tdb, control, hub)
 	paymentSvc := invoice.NewPaymentService(tdb, hub)
 	recurringSvc := recurring.NewService(tdb, hub)
@@ -181,12 +181,12 @@ func Run(cfg Config, version string) error {
 	// Smart routes are registered and return a clean 503 instead of falling
 	// through to the SPA catch-all (200 index.html).
 	var smartsHandler *agent.SmartsHandler
-	var shiftDivider shift.ShiftDivider // nil when AI is disabled → /divide 503s
+	var sessionDivider session.SessionDivider // nil when AI is disabled → /divide 503s
 	if cfg.FeatureAgent && agentCfg.APIKey != "" {
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
-		smarts := agent.NewSmarts(agentCfg, llmClient, shiftSvc, supportCatalogSvc)
+		smarts := agent.NewSmarts(agentCfg, llmClient, sessionSvc, supportCatalogSvc)
 		smartsHandler = agent.NewSmartsHandler(smarts, true)
-		shiftDivider = smarts
+		sessionDivider = smarts
 	} else {
 		smartsHandler = agent.NewSmartsHandler(nil, false)
 	}
@@ -216,7 +216,7 @@ func Run(cfg Config, version string) error {
 		CustomItems:     customitem.NewHandler(customItemSvc),
 		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
-		Shifts:          shift.NewHandler(shiftSvc, shiftDivider),
+		Sessions:        session.NewHandler(sessionSvc, sessionDivider),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),

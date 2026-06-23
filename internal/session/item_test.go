@@ -1,4 +1,4 @@
-package shift
+package session
 
 import (
 	"context"
@@ -17,24 +17,24 @@ func customItem(desc string, qty, price float64) billing.LineItemInput {
 	return billing.LineItemInput{Description: desc, Unit: "EA", Quantity: qty, UnitPrice: price}
 }
 
-func TestShiftItemCRUDAndUnbilledGuards(t *testing.T) {
+func TestSessionItemCRUDAndUnbilledGuards(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedClient(t, conn, tid, "Jane")
-	repo := NewShifts(conn)
+	repo := NewSessions(conn)
 	ctx := context.Background()
 
-	sh, err := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
+	sh, err := repo.Create(ctx, tid, nil, sampleSessionInput(pid))
 	if err != nil {
-		t.Fatalf("Create shift: %v", err)
+		t.Fatalf("Create session: %v", err)
 	}
 
 	it, err := repo.CreateItem(ctx, tid, sh.ID, customItem("travel", 36, 1.0))
 	if err != nil || it == nil {
 		t.Fatalf("CreateItem = %+v err=%v", it, err)
 	}
-	if it.ShiftID == nil || *it.ShiftID != sh.ID || it.InvoiceID != nil {
-		t.Fatalf("new item must be shift-scoped + unbilled: %+v", it)
+	if it.SessionID == nil || *it.SessionID != sh.ID || it.InvoiceID != nil {
+		t.Fatalf("new item must be session-scoped + unbilled: %+v", it)
 	}
 	if it.LineTotal != 36 {
 		t.Fatalf("line total = %v, want 36", it.LineTotal)
@@ -56,10 +56,10 @@ func TestShiftItemCRUDAndUnbilledGuards(t *testing.T) {
 
 	// Link the item to an invoice → it becomes billed.
 	invID := seedInvoice(t, conn, tid, pid, 100)
-	if err := gen.New(conn).LinkShiftItemsToInvoice(ctx, gen.LinkShiftItemsToInvoiceParams{
+	if err := gen.New(conn).LinkSessionItemsToInvoice(ctx, gen.LinkSessionItemsToInvoiceParams{
 		InvoiceID: sql.NullInt64{Int64: invID, Valid: true},
 		SortOrder: sql.NullInt64{Int64: 0, Valid: true},
-		TenantID:  tid, ShiftID: sql.NullInt64{Int64: sh.ID, Valid: true},
+		TenantID:  tid, SessionID: sql.NullInt64{Int64: sh.ID, Valid: true},
 	}); err != nil {
 		t.Fatalf("link item: %v", err)
 	}
@@ -80,22 +80,22 @@ func TestShiftItemCRUDAndUnbilledGuards(t *testing.T) {
 	}
 }
 
-func TestShiftDeleteBilledGuard(t *testing.T) {
+func TestSessionDeleteBilledGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedClient(t, conn, tid, "Jane")
 	svc := NewService(conn, conn, realtime.NewHub(), nil)
-	repo := NewShifts(conn)
+	repo := NewSessions(conn)
 	ctx := tctx(tid)
 
-	sh, err := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
+	sh, err := repo.Create(ctx, tid, nil, sampleSessionInput(pid))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Recorded shift deletes fine.
-	other, _ := repo.Create(ctx, tid, nil, sampleShiftInput(pid))
+	// Recorded session deletes fine.
+	other, _ := repo.Create(ctx, tid, nil, sampleSessionInput(pid))
 	if err := svc.Delete(ctx, other.UUID); err != nil {
-		t.Fatalf("Delete recorded shift: %v", err)
+		t.Fatalf("Delete recorded session: %v", err)
 	}
 
 	// Draft it (status past 'recorded') → delete must be refused.
@@ -103,10 +103,10 @@ func TestShiftDeleteBilledGuard(t *testing.T) {
 	if err := repo.SetInvoice(ctx, tid, sh.ID, invID, "drafted"); err != nil {
 		t.Fatalf("SetInvoice: %v", err)
 	}
-	if err := svc.Delete(ctx, sh.UUID); !errors.Is(err, ErrShiftBilled) {
-		t.Fatalf("Delete billed shift err = %v, want ErrShiftBilled", err)
+	if err := svc.Delete(ctx, sh.UUID); !errors.Is(err, ErrSessionBilled) {
+		t.Fatalf("Delete billed session err = %v, want ErrSessionBilled", err)
 	}
 	if got, _ := repo.Get(ctx, tid, sh.ID); got == nil {
-		t.Fatal("billed shift must survive a refused delete")
+		t.Fatal("billed session must survive a refused delete")
 	}
 }

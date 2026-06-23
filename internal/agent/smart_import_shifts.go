@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 )
 
 // ImportShifts turns a free-text timesheet into recorded shifts for one
@@ -13,7 +13,7 @@ import (
 // (ExtractShifts), then persists one recorded shift per extracted day via the
 // shift service. The client is taken from the caller (resolution by name is
 // intentionally out of scope here). Returns the created shifts.
-func (s *Smarts) ImportShifts(ctx context.Context, clientID int64, text string) ([]*shift.Shift, error) {
+func (s *Smarts) ImportShifts(ctx context.Context, clientID int64, text string) ([]*session.Session, error) {
 	if clientID <= 0 {
 		return nil, fmt.Errorf("import shifts: clientId is required")
 	}
@@ -34,7 +34,7 @@ func (s *Smarts) ImportShifts(ctx context.Context, clientID int64, text string) 
 		return nil, fmt.Errorf("import shifts: load existing: %w", err)
 	}
 
-	created := make([]*shift.Shift, 0, len(drafts))
+	created := make([]*session.Session, 0, len(drafts))
 	for i := range drafts { // bounded by len(drafts)
 		d := drafts[i]
 		key := shiftDedupKey(d.ServiceDate)
@@ -42,7 +42,7 @@ func (s *Smarts) ImportShifts(ctx context.Context, clientID int64, text string) 
 			continue // already recorded (or an in-batch duplicate)
 		}
 		seen[key] = struct{}{}
-		sh, e := s.shifts.Create(ctx, shift.ShiftInput{
+		sh, e := s.sessions.Create(ctx, session.SessionInput{
 			ClientID:    clientID,
 			ServiceDate: d.ServiceDate,
 			Note:        composeNote(d.Note, d.Hours, d.Km),
@@ -73,7 +73,7 @@ func (s *Smarts) existingShiftKeys(ctx context.Context, clientID int64, drafts [
 			to = d
 		}
 	}
-	existing, err := s.shifts.ListClient(ctx, clientID, from, to)
+	existing, err := s.sessions.ListClient(ctx, clientID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("list existing shifts: %w", err)
 	}
@@ -84,7 +84,7 @@ func (s *Smarts) existingShiftKeys(ctx context.Context, clientID int64, drafts [
 }
 
 // composeNote folds the extracted hours/km quantities into the shift note so a
-// later DivideShift (or the user) can recover them — post-unification a shift
+// later DivideSession (or the user) can recover them — post-unification a session
 // carries no hours/km columns. A summary like "[support 7.0h; travel 36km]" is
 // appended only for the non-zero quantities; with neither, the note is returned
 // unchanged.

@@ -23,7 +23,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -40,7 +40,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, shift.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
+	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, session.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
 	estH := estimate.NewHandler(estimate.NewService(conn, conn, hub))
 	pH := client.NewHandler(client.NewService(conn, hub))
 

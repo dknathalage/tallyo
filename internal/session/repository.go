@@ -1,8 +1,8 @@
-// Package shift is the shift vertical slice: domain types, the audited
-// repository over the shifts table, the service (with SSE broadcast), and the
+// Package session is the session vertical slice: domain types, the audited
+// repository over the sessions table, the service (with SSE broadcast), and the
 // HTTP handler. It depends only on platform packages (db/gen, audit, reqctx,
 // realtime, httpx), never on other domain slices.
-package shift
+package session
 
 import (
 	"context"
@@ -19,13 +19,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Shift is the domain view of a row in the shifts table — the delivered-support
-// unit a provider records for a client. A shift's billable quantities live
-// on its line_items rows (see ListItems), not on the shift itself. Tags is
+// Session is the domain view of a row in the sessions table — the delivered-support
+// unit a provider records for a client. A session's billable quantities live
+// on its line_items rows (see ListItems), not on the session itself. Tags is
 // stored as JSON TEXT and is never nil. Status moves through the lifecycle
-// scheduled→recorded→drafted→sent→paid; InvoiceID is set once the shift is
+// scheduled→recorded→drafted→sent→paid; InvoiceID is set once the session is
 // drafted onto an invoice.
-type Shift struct {
+type Session struct {
 	ID           int64    `json:"-"`
 	UUID         string   `json:"id"`
 	ClientID     int64    `json:"-"`
@@ -35,14 +35,14 @@ type Shift struct {
 	Tags         []string `json:"tags"`
 	Status       string   `json:"status"`
 	InvoiceID    *int64   `json:"-"`         // internal FK; the public ref is invoiceId (the linked invoice's uuid)
-	InvoiceUUID  *string  `json:"invoiceId"` // linked invoice uuid (nil until the shift is drafted onto an invoice)
+	InvoiceUUID  *string  `json:"invoiceId"` // linked invoice uuid (nil until the session is drafted onto an invoice)
 	AuthorUserID *int64   `json:"-"`         // internal author user FK; not linked from the SPA
 	CreatedAt    string   `json:"createdAt"`
 	UpdatedAt    string   `json:"updatedAt"`
 }
 
-// ShiftInput is the writable subset of a shift.
-type ShiftInput struct {
+// SessionInput is the writable subset of a session.
+type SessionInput struct {
 	ClientID    int64    `json:"clientId"`
 	ServiceDate string   `json:"serviceDate"`
 	Note        string   `json:"note"`
@@ -50,7 +50,7 @@ type ShiftInput struct {
 	Status      string   `json:"status"`
 }
 
-// UnbilledAgg summarises a client's recorded-but-unbilled shifts: how many there
+// UnbilledAgg summarises a client's recorded-but-unbilled sessions: how many there
 // are and the service-date span they cover.
 type UnbilledAgg struct {
 	ClientID int64  `json:"clientId"`
@@ -59,32 +59,32 @@ type UnbilledAgg struct {
 	To       string `json:"to"`
 }
 
-// ShiftsRepo reads and writes the shifts table (tenant-scoped) with audited
+// SessionsRepo reads and writes the sessions table (tenant-scoped) with audited
 // mutations.
-type ShiftsRepo struct {
+type SessionsRepo struct {
 	db db.Executor
 }
 
-// NewShifts constructs a repository. A nil db is a programmer error.
-func NewShifts(db db.Executor) *ShiftsRepo {
+// NewSessions constructs a repository. A nil db is a programmer error.
+func NewSessions(db db.Executor) *SessionsRepo {
 	if db == nil {
-		panic("shift: NewShifts requires a non-nil *sql.DB")
+		panic("session: NewSessions requires a non-nil *sql.DB")
 	}
-	return &ShiftsRepo{db: db}
+	return &SessionsRepo{db: db}
 }
 
-// Create inserts a shift and writes one audit row, atomically. authorUserID is
-// the user the shift is attributed to (nil when unknown). Status defaults to
+// Create inserts a session and writes one audit row, atomically. authorUserID is
+// the user the session is attributed to (nil when unknown). Status defaults to
 // 'recorded' when the input leaves it empty.
-func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *int64, in ShiftInput) (*Shift, error) {
+func (r *SessionsRepo) Create(ctx context.Context, tenantID int64, authorUserID *int64, in SessionInput) (*Session, error) {
 	if tenantID == 0 {
-		return nil, errors.New("create shift: tenant id required")
+		return nil, errors.New("create session: tenant id required")
 	}
 	if in.ClientID == 0 {
-		return nil, errors.New("create shift: client id required")
+		return nil, errors.New("create session: client id required")
 	}
 	if !validISODate(in.ServiceDate) {
-		return nil, errors.New("create shift: service date must be a valid YYYY-MM-DD date")
+		return nil, errors.New("create session: service date must be a valid YYYY-MM-DD date")
 	}
 	tags, err := encodeTags(in.Tags)
 	if err != nil {
@@ -98,7 +98,7 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 	var newID int64
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
-		s, e := gen.New(tx).CreateShift(ctx, gen.CreateShiftParams{
+		s, e := gen.New(tx).CreateSession(ctx, gen.CreateSessionParams{
 			Uuid:         uuid.NewString(),
 			TenantID:     tenantID,
 			ClientID:     in.ClientID,
@@ -115,61 +115,61 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 		}
 		newID = s.ID
 		return audit.Log(ctx, tx, audit.Entry{
-			EntityType: "shift", EntityID: s.ID, Action: "create",
+			EntityType: "session", EntityID: s.ID, Action: "create",
 			Changes: audit.Changes(map[string]any{"clientId": in.ClientID, "serviceDate": in.ServiceDate}),
 		})
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create shift: %w", err)
+		return nil, fmt.Errorf("create session: %w", err)
 	}
 	return r.Get(ctx, tenantID, newID)
 }
 
-// Get returns the tenant's shift by int PK, or (nil, nil) when absent. This is
-// the internal/cross-slice read (agent ShiftReader, the service's own pricing
-// path); the public HTTP path addresses shifts by uuid via GetByUUID.
-func (r *ShiftsRepo) Get(ctx context.Context, tenantID, id int64) (*Shift, error) {
-	row, err := gen.New(r.db).GetShiftByID(ctx, gen.GetShiftByIDParams{TenantID: tenantID, ID: id})
+// Get returns the tenant's session by int PK, or (nil, nil) when absent. This is
+// the internal/cross-slice read (agent SessionReader, the service's own pricing
+// path); the public HTTP path addresses sessions by uuid via GetByUUID.
+func (r *SessionsRepo) Get(ctx context.Context, tenantID, id int64) (*Session, error) {
+	row, err := gen.New(r.db).GetSessionByID(ctx, gen.GetSessionByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get shift: %w", err)
+		return nil, fmt.Errorf("get session: %w", err)
 	}
-	return mapShift(shiftFieldsFromByID(row))
+	return mapSession(sessionFieldsFromByID(row))
 }
 
-// GetByUUID returns the tenant's shift by uuid, or (nil, nil) when absent (or
+// GetByUUID returns the tenant's session by uuid, or (nil, nil) when absent (or
 // owned by another tenant — the query is tenant-scoped). This is the public
 // HTTP read.
-func (r *ShiftsRepo) GetByUUID(ctx context.Context, tenantID int64, shiftUUID string) (*Shift, error) {
-	row, err := gen.New(r.db).GetShift(ctx, gen.GetShiftParams{TenantID: tenantID, Uuid: shiftUUID})
+func (r *SessionsRepo) GetByUUID(ctx context.Context, tenantID int64, sessionUUID string) (*Session, error) {
+	row, err := gen.New(r.db).GetSession(ctx, gen.GetSessionParams{TenantID: tenantID, Uuid: sessionUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get shift by uuid: %w", err)
+		return nil, fmt.Errorf("get session by uuid: %w", err)
 	}
-	return mapShift(shiftFieldsFromGet(row))
+	return mapSession(sessionFieldsFromGet(row))
 }
 
-// ResolveID translates a shift uuid into its int PK for the tenant. Returns
-// (0, nil) when no such shift exists (so callers can 404 without an error).
-func (r *ShiftsRepo) ResolveID(ctx context.Context, tenantID int64, shiftUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetShiftIDByUUID(ctx, gen.GetShiftIDByUUIDParams{TenantID: tenantID, Uuid: shiftUUID})
+// ResolveID translates a session uuid into its int PK for the tenant. Returns
+// (0, nil) when no such session exists (so callers can 404 without an error).
+func (r *SessionsRepo) ResolveID(ctx context.Context, tenantID int64, sessionUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, Uuid: sessionUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve shift uuid: %w", err)
+		return 0, fmt.Errorf("resolve session uuid: %w", err)
 	}
 	return id, nil
 }
 
 // ResolveClientID translates a client uuid into its int PK for the
-// tenant (used by the ?client= shift filter and inbound clientId
+// tenant (used by the ?client= session filter and inbound clientId
 // resolution). Returns (0, nil) when absent.
-func (r *ShiftsRepo) ResolveClientID(ctx context.Context, tenantID int64, clientUUID string) (int64, error) {
+func (r *SessionsRepo) ResolveClientID(ctx context.Context, tenantID int64, clientUUID string) (int64, error) {
 	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
@@ -180,70 +180,70 @@ func (r *ShiftsRepo) ResolveClientID(ctx context.Context, tenantID int64, client
 	return id, nil
 }
 
-// ListClient returns a client's shifts. When both from and to are
+// ListClient returns a client's sessions. When both from and to are
 // non-empty it restricts to service_date ∈ [from, to]; otherwise it returns all.
-func (r *ShiftsRepo) ListClient(ctx context.Context, tenantID, clientID int64, from, to string) ([]*Shift, error) {
+func (r *SessionsRepo) ListClient(ctx context.Context, tenantID, clientID int64, from, to string) ([]*Session, error) {
 	if tenantID == 0 || clientID == 0 {
-		return nil, errors.New("list shifts: tenant and client id required")
+		return nil, errors.New("list sessions: tenant and client id required")
 	}
 	q := gen.New(r.db)
 	if from != "" && to != "" {
-		rows, err := q.ListShiftsByClientRange(ctx, gen.ListShiftsByClientRangeParams{
+		rows, err := q.ListSessionsByClientRange(ctx, gen.ListSessionsByClientRangeParams{
 			TenantID: tenantID, ClientID: clientID, ServiceDate: from, ServiceDate_2: to,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("list client shifts range: %w", err)
+			return nil, fmt.Errorf("list client sessions range: %w", err)
 		}
-		return mapShifts(rows, shiftFieldsFromByPartRange)
+		return mapSessions(rows, sessionFieldsFromByPartRange)
 	}
-	rows, err := q.ListShiftsByClient(ctx, gen.ListShiftsByClientParams{
+	rows, err := q.ListSessionsByClient(ctx, gen.ListSessionsByClientParams{
 		TenantID: tenantID, ClientID: clientID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list client shifts: %w", err)
+		return nil, fmt.Errorf("list client sessions: %w", err)
 	}
-	return mapShifts(rows, shiftFieldsFromByPart)
+	return mapSessions(rows, sessionFieldsFromByPart)
 }
 
-// List returns all of the tenant's shifts (newest service date first).
-func (r *ShiftsRepo) List(ctx context.Context, tenantID int64) ([]*Shift, error) {
+// List returns all of the tenant's sessions (newest service date first).
+func (r *SessionsRepo) List(ctx context.Context, tenantID int64) ([]*Session, error) {
 	if tenantID == 0 {
-		return nil, errors.New("list shifts: tenant id required")
+		return nil, errors.New("list sessions: tenant id required")
 	}
-	rows, err := gen.New(r.db).ListShifts(ctx, tenantID)
+	rows, err := gen.New(r.db).ListSessions(ctx, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("list shifts: %w", err)
+		return nil, fmt.Errorf("list sessions: %w", err)
 	}
-	return mapShifts(rows, shiftFieldsFromList)
+	return mapSessions(rows, sessionFieldsFromList)
 }
 
-// ListByStatus returns the tenant's shifts in a given lifecycle status.
-func (r *ShiftsRepo) ListByStatus(ctx context.Context, tenantID int64, status string) ([]*Shift, error) {
+// ListByStatus returns the tenant's sessions in a given lifecycle status.
+func (r *SessionsRepo) ListByStatus(ctx context.Context, tenantID int64, status string) ([]*Session, error) {
 	if tenantID == 0 {
-		return nil, errors.New("list shifts by status: tenant id required")
+		return nil, errors.New("list sessions by status: tenant id required")
 	}
-	rows, err := gen.New(r.db).ListShiftsByStatus(ctx, gen.ListShiftsByStatusParams{TenantID: tenantID, Status: status})
+	rows, err := gen.New(r.db).ListSessionsByStatus(ctx, gen.ListSessionsByStatusParams{TenantID: tenantID, Status: status})
 	if err != nil {
-		return nil, fmt.Errorf("list shifts by status: %w", err)
+		return nil, fmt.Errorf("list sessions by status: %w", err)
 	}
-	return mapShifts(rows, shiftFieldsFromByStatus)
+	return mapSessions(rows, sessionFieldsFromByStatus)
 }
 
-// ListScheduled returns the tenant's scheduled (not yet recorded) shifts.
-func (r *ShiftsRepo) ListScheduled(ctx context.Context, tenantID int64) ([]*Shift, error) {
+// ListScheduled returns the tenant's scheduled (not yet recorded) sessions.
+func (r *SessionsRepo) ListScheduled(ctx context.Context, tenantID int64) ([]*Session, error) {
 	if tenantID == 0 {
-		return nil, errors.New("list scheduled shifts: tenant id required")
+		return nil, errors.New("list scheduled sessions: tenant id required")
 	}
-	rows, err := gen.New(r.db).ListScheduledShifts(ctx, tenantID)
+	rows, err := gen.New(r.db).ListScheduledSessions(ctx, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("list scheduled shifts: %w", err)
+		return nil, fmt.Errorf("list scheduled sessions: %w", err)
 	}
-	return mapShifts(rows, shiftFieldsFromScheduled)
+	return mapSessions(rows, sessionFieldsFromScheduled)
 }
 
-// ListRecordedUnbilled returns a client's recorded shifts that are not yet
+// ListRecordedUnbilled returns a client's recorded sessions that are not yet
 // linked to an invoice (status 'recorded', invoice_id NULL).
-func (r *ShiftsRepo) ListRecordedUnbilled(ctx context.Context, tenantID, clientID int64) ([]*Shift, error) {
+func (r *SessionsRepo) ListRecordedUnbilled(ctx context.Context, tenantID, clientID int64) ([]*Session, error) {
 	if tenantID == 0 || clientID == 0 {
 		return nil, errors.New("list recorded unbilled: tenant and client id required")
 	}
@@ -253,15 +253,15 @@ func (r *ShiftsRepo) ListRecordedUnbilled(ctx context.Context, tenantID, clientI
 	if err != nil {
 		return nil, fmt.Errorf("list recorded unbilled: %w", err)
 	}
-	return mapShifts(rows, shiftFieldsFromRecorded)
+	return mapSessions(rows, sessionFieldsFromRecorded)
 }
 
-// Update rewrites a shift's editable fields by uuid and writes one audit row,
-// atomically. Returns (nil, nil) when the shift does not exist for the tenant.
+// Update rewrites a session's editable fields by uuid and writes one audit row,
+// atomically. Returns (nil, nil) when the session does not exist for the tenant.
 // The audit EntityID keeps the int PK, recovered from the RETURNING row.
-func (r *ShiftsRepo) Update(ctx context.Context, tenantID int64, shiftUUID string, in ShiftInput) (*Shift, error) {
+func (r *SessionsRepo) Update(ctx context.Context, tenantID int64, sessionUUID string, in SessionInput) (*Session, error) {
 	if !validISODate(in.ServiceDate) {
-		return nil, errors.New("update shift: service date must be a valid YYYY-MM-DD date")
+		return nil, errors.New("update session: service date must be a valid YYYY-MM-DD date")
 	}
 	tags, err := encodeTags(in.Tags)
 	if err != nil {
@@ -275,14 +275,14 @@ func (r *ShiftsRepo) Update(ctx context.Context, tenantID int64, shiftUUID strin
 	var missing bool
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
-		row, e := gen.New(tx).UpdateShift(ctx, gen.UpdateShiftParams{
+		row, e := gen.New(tx).UpdateSession(ctx, gen.UpdateSessionParams{
 			ServiceDate: in.ServiceDate,
 			Note:        in.Note,
 			Tags:        tags,
 			Status:      status,
 			UpdatedAt:   now,
 			TenantID:    tenantID,
-			Uuid:        shiftUUID,
+			Uuid:        sessionUUID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -291,59 +291,59 @@ func (r *ShiftsRepo) Update(ctx context.Context, tenantID int64, shiftUUID strin
 		if e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		return audit.Log(ctx, tx, audit.Entry{EntityType: "shift", EntityID: row.ID, Action: "update"})
+		return audit.Log(ctx, tx, audit.Entry{EntityType: "session", EntityID: row.ID, Action: "update"})
 	})
 	if missing {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("update shift: %w", err)
+		return nil, fmt.Errorf("update session: %w", err)
 	}
-	return r.GetByUUID(ctx, tenantID, shiftUUID)
+	return r.GetByUUID(ctx, tenantID, sessionUUID)
 }
 
-// UpdateStatus sets a shift's lifecycle status by uuid and writes one audit row.
+// UpdateStatus sets a session's lifecycle status by uuid and writes one audit row.
 // The audit EntityID keeps the int PK, resolved in-tx; a missing row is a no-op.
-func (r *ShiftsRepo) UpdateStatus(ctx context.Context, tenantID int64, shiftUUID, status string) error {
+func (r *SessionsRepo) UpdateStatus(ctx context.Context, tenantID int64, sessionUUID, status string) error {
 	if status == "" {
-		return errors.New("update shift status: status required")
+		return errors.New("update session status: status required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		id, e := q.GetShiftIDByUUID(ctx, gen.GetShiftIDByUUIDParams{TenantID: tenantID, Uuid: shiftUUID})
+		id, e := q.GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, Uuid: sessionUUID})
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil // missing row → silent no-op
 		}
 		if e != nil {
-			return fmt.Errorf("resolve shift: %w", e)
+			return fmt.Errorf("resolve session: %w", e)
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		if err := q.UpdateShiftStatus(ctx, gen.UpdateShiftStatusParams{
-			Status: status, UpdatedAt: now, TenantID: tenantID, Uuid: shiftUUID,
+		if err := q.UpdateSessionStatus(ctx, gen.UpdateSessionStatusParams{
+			Status: status, UpdatedAt: now, TenantID: tenantID, Uuid: sessionUUID,
 		}); err != nil {
 			return fmt.Errorf("update status: %w", err)
 		}
 		return audit.Log(ctx, tx, audit.Entry{
-			EntityType: "shift", EntityID: id, Action: "status",
+			EntityType: "session", EntityID: id, Action: "status",
 			Changes: audit.Changes(map[string]any{"status": status}),
 		})
 	})
 }
 
-// SetInvoice links a shift to an invoice and sets its status, atomically.
-func (r *ShiftsRepo) SetInvoice(ctx context.Context, tenantID, id, invoiceID int64, status string) error {
+// SetInvoice links a session to an invoice and sets its status, atomically.
+func (r *SessionsRepo) SetInvoice(ctx context.Context, tenantID, id, invoiceID int64, status string) error {
 	if invoiceID == 0 {
-		return errors.New("set shift invoice: invoice id required")
+		return errors.New("set session invoice: invoice id required")
 	}
 	if status == "" {
-		return errors.New("set shift invoice: status required")
+		return errors.New("set session invoice: status required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "shift", EntityID: id, Action: "bill",
+		EntityType: "session", EntityID: id, Action: "bill",
 		Changes: audit.Changes(map[string]any{"invoiceId": invoiceID, "status": status}),
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
-		if err := gen.New(tx).SetShiftInvoice(ctx, gen.SetShiftInvoiceParams{
+		if err := gen.New(tx).SetSessionInvoice(ctx, gen.SetSessionInvoiceParams{
 			InvoiceID: sql.NullInt64{Int64: invoiceID, Valid: true}, Status: status,
 			UpdatedAt: now, TenantID: tenantID, ID: id,
 		}); err != nil {
@@ -353,9 +353,9 @@ func (r *ShiftsRepo) SetInvoice(ctx context.Context, tenantID, id, invoiceID int
 	})
 }
 
-// SetStatusForInvoice sets the status of every shift linked to an invoice (e.g.
+// SetStatusForInvoice sets the status of every session linked to an invoice (e.g.
 // cascading 'sent'/'paid' from the invoice), atomically.
-func (r *ShiftsRepo) SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error {
+func (r *SessionsRepo) SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error {
 	if invoiceID == 0 {
 		return errors.New("set status for invoice: invoice id required")
 	}
@@ -363,7 +363,7 @@ func (r *ShiftsRepo) SetStatusForInvoice(ctx context.Context, tenantID, invoiceI
 		return errors.New("set status for invoice: status required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "shift", EntityID: 0, Action: "status",
+		EntityType: "session", EntityID: 0, Action: "status",
 		Changes: audit.Changes(map[string]any{"invoiceId": invoiceID, "status": status}),
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
@@ -377,18 +377,18 @@ func (r *ShiftsRepo) SetStatusForInvoice(ctx context.Context, tenantID, invoiceI
 	})
 }
 
-// ClearForInvoice reverts every shift linked to an invoice back to 'recorded'
+// ClearForInvoice reverts every session linked to an invoice back to 'recorded'
 // with a NULL invoice_id (used when the invoice is deleted), atomically.
-func (r *ShiftsRepo) ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error {
+func (r *SessionsRepo) ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error {
 	if invoiceID == 0 {
-		return errors.New("clear shifts for invoice: invoice id required")
+		return errors.New("clear sessions for invoice: invoice id required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "shift", EntityID: 0, Action: "unbill",
+		EntityType: "session", EntityID: 0, Action: "unbill",
 		Changes: audit.Changes(map[string]any{"invoiceId": invoiceID}),
 	}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
-		if err := gen.New(tx).ClearShiftsForInvoice(ctx, gen.ClearShiftsForInvoiceParams{
+		if err := gen.New(tx).ClearSessionsForInvoice(ctx, gen.ClearSessionsForInvoiceParams{
 			UpdatedAt: now, TenantID: tenantID,
 			InvoiceID: sql.NullInt64{Int64: invoiceID, Valid: true},
 		}); err != nil {
@@ -398,91 +398,91 @@ func (r *ShiftsRepo) ClearForInvoice(ctx context.Context, tenantID, invoiceID in
 	})
 }
 
-// Delete removes a shift by uuid and writes one audit row, atomically. The audit
+// Delete removes a session by uuid and writes one audit row, atomically. The audit
 // EntityID keeps the int PK, resolved in-tx; a missing row is a no-op.
-func (r *ShiftsRepo) Delete(ctx context.Context, tenantID int64, shiftUUID string) error {
+func (r *SessionsRepo) Delete(ctx context.Context, tenantID int64, sessionUUID string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		id, e := q.GetShiftIDByUUID(ctx, gen.GetShiftIDByUUIDParams{TenantID: tenantID, Uuid: shiftUUID})
+		id, e := q.GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, Uuid: sessionUUID})
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil // missing row → silent no-op
 		}
 		if e != nil {
-			return fmt.Errorf("resolve shift: %w", e)
+			return fmt.Errorf("resolve session: %w", e)
 		}
-		if err := q.DeleteShift(ctx, gen.DeleteShiftParams{TenantID: tenantID, Uuid: shiftUUID}); err != nil {
+		if err := q.DeleteSession(ctx, gen.DeleteSessionParams{TenantID: tenantID, Uuid: sessionUUID}); err != nil {
 			return fmt.Errorf("delete: %w", err)
 		}
-		return audit.Log(ctx, tx, audit.Entry{EntityType: "shift", EntityID: id, Action: "delete"})
+		return audit.Log(ctx, tx, audit.Entry{EntityType: "session", EntityID: id, Action: "delete"})
 	})
 }
 
-// ListItems returns a shift's line items (billed and unbilled), oldest first.
-func (r *ShiftsRepo) ListItems(ctx context.Context, tenantID, shiftID int64) ([]*billing.LineItem, error) {
-	if tenantID == 0 || shiftID == 0 {
-		return nil, errors.New("list shift items: tenant and shift id required")
+// ListItems returns a session's line items (billed and unbilled), oldest first.
+func (r *SessionsRepo) ListItems(ctx context.Context, tenantID, sessionID int64) ([]*billing.LineItem, error) {
+	if tenantID == 0 || sessionID == 0 {
+		return nil, errors.New("list session items: tenant and session id required")
 	}
-	rows, err := gen.New(r.db).ListLineItemsForShift(ctx, gen.ListLineItemsForShiftParams{
-		TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true},
+	rows, err := gen.New(r.db).ListLineItemsForSession(ctx, gen.ListLineItemsForSessionParams{
+		TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionID, Valid: true},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list shift items: %w", err)
+		return nil, fmt.Errorf("list session items: %w", err)
 	}
 	out := make([]*billing.LineItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		out = append(out, billing.LineItemFromRow(billing.LineItemRowFromShiftList(rows[i])))
+		out = append(out, billing.LineItemFromRow(billing.LineItemRowFromSessionList(rows[i])))
 	}
 	return out, nil
 }
 
 // GetItem returns one line item by id, or (nil, nil) when absent for the tenant.
-func (r *ShiftsRepo) GetItem(ctx context.Context, tenantID, itemID int64) (*billing.LineItem, error) {
+func (r *SessionsRepo) GetItem(ctx context.Context, tenantID, itemID int64) (*billing.LineItem, error) {
 	if tenantID == 0 || itemID == 0 {
-		return nil, errors.New("get shift item: tenant and item id required")
+		return nil, errors.New("get session item: tenant and item id required")
 	}
 	row, err := gen.New(r.db).GetLineItem(ctx, gen.GetLineItemParams{TenantID: tenantID, ID: itemID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get shift item: %w", err)
+		return nil, fmt.Errorf("get session item: %w", err)
 	}
 	return billing.LineItemFromRow(billing.LineItemRowFromGet(row)), nil
 }
 
-// CountItems returns how many UNBILLED items the shift carries.
-func (r *ShiftsRepo) CountItems(ctx context.Context, tenantID, shiftID int64) (int64, error) {
-	if tenantID == 0 || shiftID == 0 {
-		return 0, errors.New("count shift items: tenant and shift id required")
+// CountItems returns how many UNBILLED items the session carries.
+func (r *SessionsRepo) CountItems(ctx context.Context, tenantID, sessionID int64) (int64, error) {
+	if tenantID == 0 || sessionID == 0 {
+		return 0, errors.New("count session items: tenant and session id required")
 	}
-	n, err := gen.New(r.db).CountShiftItems(ctx, gen.CountShiftItemsParams{
-		TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true},
+	n, err := gen.New(r.db).CountSessionItems(ctx, gen.CountSessionItemsParams{
+		TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionID, Valid: true},
 	})
 	if err != nil {
-		return 0, fmt.Errorf("count shift items: %w", err)
+		return 0, fmt.Errorf("count session items: %w", err)
 	}
 	return n, nil
 }
 
-// CreateItem inserts a line item on a shift (shift_id set, invoice_id NULL) and
+// CreateItem inserts a line item on a session (session_id set, invoice_id NULL) and
 // writes one audit row. in is expected pre-priced by the caller.
-func (r *ShiftsRepo) CreateItem(ctx context.Context, tenantID, shiftID int64, in billing.LineItemInput) (*billing.LineItem, error) {
-	if tenantID == 0 || shiftID == 0 {
-		return nil, errors.New("create shift item: tenant and shift id required")
+func (r *SessionsRepo) CreateItem(ctx context.Context, tenantID, sessionID int64, in billing.LineItemInput) (*billing.LineItem, error) {
+	if tenantID == 0 || sessionID == 0 {
+		return nil, errors.New("create session item: tenant and session id required")
 	}
 	if in.Quantity < 0 {
-		return nil, errors.New("create shift item: quantity must not be negative")
+		return nil, errors.New("create session item: quantity must not be negative")
 	}
 	var newID int64
 	err := audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "line_item", EntityID: shiftID, Action: "create",
+		EntityType: "line_item", EntityID: sessionID, Action: "create",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
 		if e != nil {
 			return e
 		}
-		row, e := q.CreateLineItem(ctx, lineItemParams(tenantID, &shiftID, customItemID, in))
+		row, e := q.CreateLineItem(ctx, lineItemParams(tenantID, &sessionID, customItemID, in))
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
 		}
@@ -490,20 +490,20 @@ func (r *ShiftsRepo) CreateItem(ctx context.Context, tenantID, shiftID int64, in
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create shift item: %w", err)
+		return nil, fmt.Errorf("create session item: %w", err)
 	}
 	return r.GetItem(ctx, tenantID, newID)
 }
 
-// UpdateItem rewrites an UNBILLED shift item (invoice_id IS NULL guard) and
+// UpdateItem rewrites an UNBILLED session item (invoice_id IS NULL guard) and
 // writes one audit row. Returns (nil, nil) when the item is absent or already
 // billed. in is expected pre-priced by the caller.
-func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in billing.LineItemInput) (*billing.LineItem, error) {
+func (r *SessionsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in billing.LineItemInput) (*billing.LineItem, error) {
 	if tenantID == 0 || itemID == 0 {
-		return nil, errors.New("update shift item: tenant and item id required")
+		return nil, errors.New("update session item: tenant and item id required")
 	}
 	if in.Quantity < 0 {
-		return nil, errors.New("update shift item: quantity must not be negative")
+		return nil, errors.New("update session item: quantity must not be negative")
 	}
 	var missing bool
 	err := audit.WithTx(ctx, r.db, audit.Entry{
@@ -514,7 +514,7 @@ func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in 
 		if e != nil {
 			return e
 		}
-		_, e = q.UpdateShiftLineItem(ctx, gen.UpdateShiftLineItemParams{
+		_, e = q.UpdateSessionLineItem(ctx, gen.UpdateSessionLineItemParams{
 			SupportItemID:    db.NullStr(in.SupportItemID),
 			CustomItemID:     customItemID,
 			CatalogVersionID: db.NullStr(in.CatalogVersionID),
@@ -544,22 +544,22 @@ func (r *ShiftsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, in 
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("update shift item: %w", err)
+		return nil, fmt.Errorf("update session item: %w", err)
 	}
 	return r.GetItem(ctx, tenantID, itemID)
 }
 
-// DeleteUnbilledItems removes ALL of a shift's unbilled items (invoice_id IS
+// DeleteUnbilledItems removes ALL of a session's unbilled items (invoice_id IS
 // NULL) in one audited mutation. Used to make a re-divide idempotent.
-func (r *ShiftsRepo) DeleteUnbilledItems(ctx context.Context, tenantID, shiftID int64) error {
-	if tenantID == 0 || shiftID == 0 {
-		return errors.New("delete unbilled items: tenant and shift id required")
+func (r *SessionsRepo) DeleteUnbilledItems(ctx context.Context, tenantID, sessionID int64) error {
+	if tenantID == 0 || sessionID == 0 {
+		return errors.New("delete unbilled items: tenant and session id required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{
-		EntityType: "line_item", EntityID: shiftID, Action: "delete",
+		EntityType: "line_item", EntityID: sessionID, Action: "delete",
 	}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).DeleteUnbilledItemsForShift(ctx, gen.DeleteUnbilledItemsForShiftParams{
-			TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true},
+		if err := gen.New(tx).DeleteUnbilledItemsForSession(ctx, gen.DeleteUnbilledItemsForSessionParams{
+			TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionID, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("delete unbilled items: %w", err)
 		}
@@ -567,51 +567,51 @@ func (r *ShiftsRepo) DeleteUnbilledItems(ctx context.Context, tenantID, shiftID 
 	})
 }
 
-// DeleteItem removes an UNBILLED shift item (invoice_id IS NULL guard) and writes
+// DeleteItem removes an UNBILLED session item (invoice_id IS NULL guard) and writes
 // one audit row.
-func (r *ShiftsRepo) DeleteItem(ctx context.Context, tenantID, itemID int64) error {
+func (r *SessionsRepo) DeleteItem(ctx context.Context, tenantID, itemID int64) error {
 	if tenantID == 0 || itemID == 0 {
-		return errors.New("delete shift item: tenant and item id required")
+		return errors.New("delete session item: tenant and item id required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "line_item", EntityID: itemID, Action: "delete",
 	}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).DeleteShiftLineItem(ctx, gen.DeleteShiftLineItemParams{TenantID: tenantID, ID: itemID}); err != nil {
+		if err := gen.New(tx).DeleteSessionLineItem(ctx, gen.DeleteSessionLineItemParams{TenantID: tenantID, ID: itemID}); err != nil {
 			return fmt.Errorf("delete: %w", err)
 		}
 		return nil
 	})
 }
 
-// GetItemByUUID returns a shift's line item addressed by uuid, scoped to the
-// owning shift's int id, or (nil, nil) when absent. The shift scope ensures an
-// item uuid from another shift (or tenant) 404s.
-func (r *ShiftsRepo) GetItemByUUID(ctx context.Context, tenantID, shiftID int64, itemUUID string) (*billing.LineItem, error) {
-	if tenantID == 0 || shiftID == 0 {
-		return nil, errors.New("get shift item: tenant and shift id required")
+// GetItemByUUID returns a session's line item addressed by uuid, scoped to the
+// owning session's int id, or (nil, nil) when absent. The session scope ensures an
+// item uuid from another session (or tenant) 404s.
+func (r *SessionsRepo) GetItemByUUID(ctx context.Context, tenantID, sessionID int64, itemUUID string) (*billing.LineItem, error) {
+	if tenantID == 0 || sessionID == 0 {
+		return nil, errors.New("get session item: tenant and session id required")
 	}
-	row, err := gen.New(r.db).GetShiftLineItemByUUID(ctx, gen.GetShiftLineItemByUUIDParams{
-		TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true}, Uuid: itemUUID,
+	row, err := gen.New(r.db).GetSessionLineItemByUUID(ctx, gen.GetSessionLineItemByUUIDParams{
+		TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionID, Valid: true}, Uuid: itemUUID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get shift item by uuid: %w", err)
+		return nil, fmt.Errorf("get session item by uuid: %w", err)
 	}
-	return billing.LineItemFromRow(billing.LineItemRowFromShiftUUID(row)), nil
+	return billing.LineItemFromRow(billing.LineItemRowFromSessionUUID(row)), nil
 }
 
-// UpdateItemByUUID rewrites an UNBILLED shift item addressed by uuid (scoped to
-// the owning shift, invoice_id IS NULL guard) and writes one audit row. Returns
+// UpdateItemByUUID rewrites an UNBILLED session item addressed by uuid (scoped to
+// the owning session, invoice_id IS NULL guard) and writes one audit row. Returns
 // (nil, nil) when the item is absent or already billed. in is expected
 // pre-priced by the caller. The audit EntityID keeps the item's int PK.
-func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int64, itemUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
-	if tenantID == 0 || shiftID == 0 {
-		return nil, errors.New("update shift item: tenant and shift id required")
+func (r *SessionsRepo) UpdateItemByUUID(ctx context.Context, tenantID, sessionID int64, itemUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
+	if tenantID == 0 || sessionID == 0 {
+		return nil, errors.New("update session item: tenant and session id required")
 	}
 	if in.Quantity < 0 {
-		return nil, errors.New("update shift item: quantity must not be negative")
+		return nil, errors.New("update session item: quantity must not be negative")
 	}
 	var item *billing.LineItem
 	var missing bool
@@ -621,7 +621,7 @@ func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int
 		if e != nil {
 			return e
 		}
-		row, e := q.UpdateShiftLineItemByUUID(ctx, gen.UpdateShiftLineItemByUUIDParams{
+		row, e := q.UpdateSessionLineItemByUUID(ctx, gen.UpdateSessionLineItemByUUIDParams{
 			SupportItemID:    db.NullStr(in.SupportItemID),
 			CustomItemID:     customItemID,
 			CatalogVersionID: db.NullStr(in.CatalogVersionID),
@@ -636,7 +636,7 @@ func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int
 			Taxable:          db.B2i(in.Taxable),
 			LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
 			TenantID:         tenantID,
-			ShiftID:          sql.NullInt64{Int64: shiftID, Valid: true},
+			SessionID:        sql.NullInt64{Int64: sessionID, Valid: true},
 			Uuid:             itemUUID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
@@ -653,23 +653,23 @@ func (r *ShiftsRepo) UpdateItemByUUID(ctx context.Context, tenantID, shiftID int
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("update shift item by uuid: %w", err)
+		return nil, fmt.Errorf("update session item by uuid: %w", err)
 	}
 	return item, nil
 }
 
-// DeleteItemByUUID removes an UNBILLED shift item addressed by uuid (scoped to
-// the owning shift, invoice_id IS NULL guard) and writes one audit row. A
+// DeleteItemByUUID removes an UNBILLED session item addressed by uuid (scoped to
+// the owning session, invoice_id IS NULL guard) and writes one audit row. A
 // missing/billed item is a no-op. The audit EntityID keeps the item's int PK,
 // resolved in-tx.
-func (r *ShiftsRepo) DeleteItemByUUID(ctx context.Context, tenantID, shiftID int64, itemUUID string) error {
-	if tenantID == 0 || shiftID == 0 {
-		return errors.New("delete shift item: tenant and shift id required")
+func (r *SessionsRepo) DeleteItemByUUID(ctx context.Context, tenantID, sessionID int64, itemUUID string) error {
+	if tenantID == 0 || sessionID == 0 {
+		return errors.New("delete session item: tenant and session id required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		row, e := q.GetShiftLineItemByUUID(ctx, gen.GetShiftLineItemByUUIDParams{
-			TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true}, Uuid: itemUUID,
+		row, e := q.GetSessionLineItemByUUID(ctx, gen.GetSessionLineItemByUUIDParams{
+			TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionID, Valid: true}, Uuid: itemUUID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil // missing → no-op
@@ -677,8 +677,8 @@ func (r *ShiftsRepo) DeleteItemByUUID(ctx context.Context, tenantID, shiftID int
 		if e != nil {
 			return fmt.Errorf("resolve item: %w", e)
 		}
-		if err := q.DeleteShiftLineItemByUUID(ctx, gen.DeleteShiftLineItemByUUIDParams{
-			TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftID, Valid: true}, Uuid: itemUUID,
+		if err := q.DeleteSessionLineItemByUUID(ctx, gen.DeleteSessionLineItemByUUIDParams{
+			TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionID, Valid: true}, Uuid: itemUUID,
 		}); err != nil {
 			return fmt.Errorf("delete: %w", err)
 		}
@@ -692,7 +692,7 @@ func (r *ShiftsRepo) DeleteItemByUUID(ctx context.Context, tenantID, shiftID int
 // round-trips without a re-read.
 func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItemRow {
 	return billing.LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: db.NullStr(customItemUUID),
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -700,15 +700,15 @@ func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItem
 	}
 }
 
-// lineItemParams builds the gen insert params for a line item. shiftID nil = an
-// invoice-only line; here it is always set (shift item, invoice_id NULL). The
+// lineItemParams builds the gen insert params for a line item. sessionID nil = an
+// invoice-only line; here it is always set (session item, invoice_id NULL). The
 // inbound custom-item uuid is resolved to the int FK by the caller and passed in.
-func lineItemParams(tenantID int64, shiftID *int64, customItemID sql.NullInt64, in billing.LineItemInput) gen.CreateLineItemParams {
+func lineItemParams(tenantID int64, sessionID *int64, customItemID sql.NullInt64, in billing.LineItemInput) gen.CreateLineItemParams {
 	return gen.CreateLineItemParams{
 		Uuid:             uuid.NewString(),
 		TenantID:         tenantID,
-		ShiftID:          db.NullID(shiftID),
-		InvoiceID:        sql.NullInt64{}, // unbilled shift item
+		SessionID:        db.NullID(sessionID),
+		InvoiceID:        sql.NullInt64{}, // unbilled session item
 		SupportItemID:    db.NullStr(in.SupportItemID),
 		CustomItemID:     customItemID,
 		CatalogVersionID: db.NullStr(in.CatalogVersionID),
@@ -726,9 +726,9 @@ func lineItemParams(tenantID int64, shiftID *int64, customItemID sql.NullInt64, 
 	}
 }
 
-// UnbilledByClient aggregates the tenant's recorded-but-unbilled shifts per
+// UnbilledByClient aggregates the tenant's recorded-but-unbilled sessions per
 // client (count and service-date span), ready for billing suggestions.
-func (r *ShiftsRepo) UnbilledByClient(ctx context.Context, tenantID int64) ([]UnbilledAgg, error) {
+func (r *SessionsRepo) UnbilledByClient(ctx context.Context, tenantID int64) ([]UnbilledAgg, error) {
 	if tenantID == 0 {
 		return nil, errors.New("unbilled by client: tenant id required")
 	}
@@ -756,7 +756,7 @@ func encodeTags(tags []string) (string, error) {
 	}
 	tb, err := json.Marshal(tags)
 	if err != nil {
-		return "", fmt.Errorf("shift: marshal tags: %w", err)
+		return "", fmt.Errorf("session: marshal tags: %w", err)
 	}
 	return string(tb), nil
 }
@@ -776,12 +776,12 @@ func anyToString(v any) string {
 	}
 }
 
-// shiftFields is the common projection shared by every enriched shift read row
+// sessionFields is the common projection shared by every enriched session read row
 // (Get/GetByID/List*). The gen row types are nominally distinct but identical in
-// shape; each is adapted into this struct so a single mapper (mapShift) builds
+// shape; each is adapted into this struct so a single mapper (mapSession) builds
 // the DTO. ClientUUID is the joined clients.uuid (NULL if the FK is
 // dangling, which the clean schema forbids).
-type shiftFields struct {
+type sessionFields struct {
 	id           int64
 	uuid         string
 	clientID     int64
@@ -797,17 +797,17 @@ type shiftFields struct {
 	updatedAt    string
 }
 
-func mapShift(f shiftFields) (*Shift, error) {
+func mapSession(f sessionFields) (*Session, error) {
 	tags := []string{}
 	if f.tags != "" {
 		if err := json.Unmarshal([]byte(f.tags), &tags); err != nil {
-			return nil, fmt.Errorf("shift %d: unmarshal tags: %w", f.id, err)
+			return nil, fmt.Errorf("session %d: unmarshal tags: %w", f.id, err)
 		}
 		if tags == nil {
 			tags = []string{}
 		}
 	}
-	return &Shift{
+	return &Session{
 		ID:           f.id,
 		UUID:         f.uuid,
 		ClientID:     f.clientID,
@@ -824,79 +824,79 @@ func mapShift(f shiftFields) (*Shift, error) {
 	}, nil
 }
 
-// shiftFieldsFromGet / *FromByID / *FromList* adapt the (nominally distinct but
-// identically shaped) enriched gen row types into the common shiftFields. They
+// sessionFieldsFromGet / *FromByID / *FromList* adapt the (nominally distinct but
+// identically shaped) enriched gen row types into the common sessionFields. They
 // keep the per-query row scanners while a single mapper builds the DTO.
-func shiftFieldsFromGet(r gen.GetShiftRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromGet(r gen.GetSessionRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromByID(r gen.GetShiftByIDRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromByID(r gen.GetSessionByIDRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromList(r gen.ListShiftsRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromList(r gen.ListSessionsRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromByPart(r gen.ListShiftsByClientRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromByPart(r gen.ListSessionsByClientRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromByPartRange(r gen.ListShiftsByClientRangeRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromByPartRange(r gen.ListSessionsByClientRangeRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromByStatus(r gen.ListShiftsByStatusRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromByStatus(r gen.ListSessionsByStatusRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromScheduled(r gen.ListScheduledShiftsRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromScheduled(r gen.ListScheduledSessionsRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromRecorded(r gen.ListRecordedUnbilledByClientRow) shiftFields {
-	return shiftFields{
+func sessionFieldsFromRecorded(r gen.ListRecordedUnbilledByClientRow) sessionFields {
+	return sessionFields{
 		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-// mapShifts maps a slice of enriched gen rows (via an adapter to shiftFields)
+// mapSessions maps a slice of enriched gen rows (via an adapter to sessionFields)
 // into DTOs. Bounded by len(rows).
-func mapShifts[T any](rows []T, adapt func(T) shiftFields) ([]*Shift, error) {
-	out := make([]*Shift, 0, len(rows))
+func mapSessions[T any](rows []T, adapt func(T) sessionFields) ([]*Session, error) {
+	out := make([]*Session, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
-		s, err := mapShift(adapt(rows[i]))
+		s, err := mapSession(adapt(rows[i]))
 		if err != nil {
 			return nil, err
 		}

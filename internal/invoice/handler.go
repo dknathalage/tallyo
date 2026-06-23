@@ -32,7 +32,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/invoices", h.List)
 	r.Post("/invoices", h.Create)
-	r.Post("/invoices/draft-from-shifts", h.DraftFromShifts)
+	r.Post("/invoices/draft-from-sessions", h.DraftFromSessions)
 	r.Post("/invoices/bulk-delete", h.BulkDelete)
 	r.Post("/invoices/bulk-status", h.BulkStatus)
 	r.Get("/invoices/{uuid}", h.Get)
@@ -228,27 +228,27 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, inv)
 }
 
-// DraftFromShifts drafts one invoice from the posted recorded shift ids. An
-// empty list or a validation failure (mixed clients, an empty shift, a
-// non-recorded shift) → 400.
-func (h *Handler) DraftFromShifts(w http.ResponseWriter, r *http.Request) {
+// DraftFromSessions drafts one invoice from the posted recorded session ids. An
+// empty list or a validation failure (mixed clients, an empty session, a
+// non-recorded session) → 400.
+func (h *Handler) DraftFromSessions(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ShiftIds []string `json:"shiftIds"`
+		SessionIds []string `json:"sessionIds"`
 	}
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if len(body.ShiftIds) == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "at least one shift is required")
+	if len(body.SessionIds) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "at least one session is required")
 		return
 	}
-	shiftIDs, err := h.svc.ResolveShiftIDs(r.Context(), body.ShiftIds)
+	sessionIDs, err := h.svc.ResolveSessionIDs(r.Context(), body.SessionIds)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	inv, err := h.svc.DraftFromShifts(r.Context(), shiftIDs)
+	inv, err := h.svc.DraftFromSessions(r.Context(), sessionIDs)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return

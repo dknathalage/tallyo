@@ -1,4 +1,4 @@
-package shift
+package session
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 // newTestDB opens a fresh migrated in-temp SQLite DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "shift.db"))
+	conn, err := appdb.Open(filepath.Join(t.TempDir(), "session.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

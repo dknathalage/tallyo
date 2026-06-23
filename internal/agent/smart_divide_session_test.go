@@ -1,8 +1,8 @@
 package agent
 
-// Tests for the DivideShift Smart: gather → propose → apply with a bounded
-// retry. They drive the deterministic apply over the real shift service (seeded
-// with a note-only reference shift) while scripting the model with a *llm.Fake so
+// Tests for the DivideSession Smart: gather → propose → apply with a bounded
+// retry. They drive the deterministic apply over the real session service (seeded
+// with a note-only reference session) while scripting the model with a *llm.Fake so
 // the gather/propose/retry wiring is exercised without a live provider.
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 )
 
 // toolUse builds a forced-tool model response carrying a single tool_use whose
@@ -28,24 +28,24 @@ func toolUse(name string, raw string) llm.Response {
 	}
 }
 
-// divideFixture builds a *Smarts wired over the real shift + catalogue services
-// (with one seeded note-only reference shift) and a scriptable *llm.Fake client,
-// returning the Smarts, the fake, the shift service, an authed context and the
-// seeded shift id.
-func divideFixture(t *testing.T) (*Smarts, *llm.Fake, *shift.Service, context.Context, int64) {
+// divideFixture builds a *Smarts wired over the real session + catalogue services
+// (with one seeded note-only reference session) and a scriptable *llm.Fake client,
+// returning the Smarts, the fake, the session service, an authed context and the
+// seeded session id.
+func divideFixture(t *testing.T) (*Smarts, *llm.Fake, *session.Service, context.Context, int64) {
 	t.Helper()
-	conn, tenantID, clientID := shiftToolsFixture(t)
+	conn, tenantID, clientID := sessionToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
-	shifts := shift.NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
-	sh := seedReferenceShift(t, shifts, ctx, clientID, referenceWeek[0].date)
+	sessions := session.NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	sh := seedReferenceSession(t, sessions, ctx, clientID, referenceWeek[0].date)
 	cat := catalog.NewService(conn)
 	fake := llm.NewFake()
-	s := &Smarts{client: fake, shifts: shifts, catalog: cat}
-	return s, fake, shifts, ctx, sh.ID
+	s := &Smarts{client: fake, sessions: sessions, catalog: cat}
+	return s, fake, sessions, ctx, sh.ID
 }
 
-// divideLine is one divide_shift item; serviceDate is intentionally omitted (the
-// shift service stamps the shift's date).
+// divideLine is one divide_session item; serviceDate is intentionally omitted (the
+// session service stamps the session's date).
 type divideLine struct {
 	Code        string  `json:"code,omitempty"`
 	Description string  `json:"description,omitempty"`
@@ -53,7 +53,7 @@ type divideLine struct {
 	UnitPrice   float64 `json:"unitPrice,omitempty"`
 }
 
-// divideInput renders the divide_shift JSON for the given lines.
+// divideInput renders the divide_session JSON for the given lines.
 func divideInput(t *testing.T, items []divideLine) string {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{"items": items})
@@ -64,7 +64,7 @@ func divideInput(t *testing.T, items []divideLine) string {
 }
 
 // codedLines is a valid two-line divide: a self-care support line + a transport
-// line, both catalogue-coded (prices resolved by the shift service).
+// line, both catalogue-coded (prices resolved by the session service).
 func codedLines() []divideLine {
 	return []divideLine{
 		{Code: codeSelfCare, Quantity: referenceWeek[0].hr, Description: "Self-care support for Tania"},
@@ -72,21 +72,21 @@ func codedLines() []divideLine {
 	}
 }
 
-// TestDivideShiftPersistsPricedItems scripts a single divide_shift call carrying
+// TestDivideSessionPersistsPricedItems scripts a single divide_session call carrying
 // a self-care H line + a transport KM line and asserts both are persisted on the
-// shift, priced from the catalogue, with invoice_id NULL.
-func TestDivideShiftPersistsPricedItems(t *testing.T) {
-	s, fake, shifts, ctx, shiftID := divideFixture(t)
-	fake.SetResponses(toolUse("divide_shift", divideInput(t, codedLines())))
+// session, priced from the catalogue, with invoice_id NULL.
+func TestDivideSessionPersistsPricedItems(t *testing.T) {
+	s, fake, sessions, ctx, sessionID := divideFixture(t)
+	fake.SetResponses(toolUse("divide_session", divideInput(t, codedLines())))
 
-	if err := s.DivideShift(ctx, shiftID); err != nil {
-		t.Fatalf("DivideShift: %v", err)
+	if err := s.DivideSession(ctx, sessionID); err != nil {
+		t.Fatalf("DivideSession: %v", err)
 	}
 	if fake.Calls() != 1 {
 		t.Fatalf("model calls = %d, want 1", fake.Calls())
 	}
 
-	items, err := shifts.ListItems(ctx, shiftID)
+	items, err := sessions.ListItems(ctx, sessionID)
 	if err != nil {
 		t.Fatalf("list items: %v", err)
 	}
@@ -98,8 +98,8 @@ func TestDivideShiftPersistsPricedItems(t *testing.T) {
 		if it.InvoiceID != nil {
 			t.Fatalf("item %d should be unbilled (invoiceId nil), got %v", i, it.InvoiceID)
 		}
-		if it.ShiftID == nil || *it.ShiftID != shiftID {
-			t.Fatalf("item %d shiftId = %v, want %d", i, it.ShiftID, shiftID)
+		if it.SessionID == nil || *it.SessionID != sessionID {
+			t.Fatalf("item %d sessionId = %v, want %d", i, it.SessionID, sessionID)
 		}
 		if it.Code == "" {
 			t.Fatalf("item %d should be catalogue-coded", i)
@@ -110,25 +110,25 @@ func TestDivideShiftPersistsPricedItems(t *testing.T) {
 	}
 }
 
-// TestDivideShiftSearchesCatalogueThenDivides drives the redesigned flow: the
+// TestDivideSessionSearchesCatalogueThenDivides drives the redesigned flow: the
 // model calls the read-only search_catalogue tool to ground its codes (turn 1),
-// then emits divide_shift (turn 2). Asserts the search ran and the items
+// then emits divide_session (turn 2). Asserts the search ran and the items
 // persisted with their narrative descriptions (not the catalogue name).
-func TestDivideShiftSearchesCatalogueThenDivides(t *testing.T) {
-	s, fake, shifts, ctx, shiftID := divideFixture(t)
+func TestDivideSessionSearchesCatalogueThenDivides(t *testing.T) {
+	s, fake, sessions, ctx, sessionID := divideFixture(t)
 	fake.SetResponses(
 		toolUse("search_catalogue", `{"query":"self care","serviceDate":"2026-06-09"}`),
-		toolUse("divide_shift", divideInput(t, codedLines())),
+		toolUse("divide_session", divideInput(t, codedLines())),
 	)
 
-	if err := s.DivideShift(ctx, shiftID); err != nil {
-		t.Fatalf("DivideShift: %v", err)
+	if err := s.DivideSession(ctx, sessionID); err != nil {
+		t.Fatalf("DivideSession: %v", err)
 	}
 	if fake.Calls() != 2 {
 		t.Fatalf("model calls = %d, want 2 (search then divide)", fake.Calls())
 	}
 
-	items, err := shifts.ListItems(ctx, shiftID)
+	items, err := sessions.ListItems(ctx, sessionID)
 	if err != nil {
 		t.Fatalf("list items: %v", err)
 	}
@@ -143,22 +143,22 @@ func TestDivideShiftSearchesCatalogueThenDivides(t *testing.T) {
 	}
 }
 
-// TestDivideShiftReplacesUnbilledItems asserts a re-divide is idempotent: it
+// TestDivideSessionReplacesUnbilledItems asserts a re-divide is idempotent: it
 // clears the prior unbilled items before adding the new ones (no accumulation).
-func TestDivideShiftReplacesUnbilledItems(t *testing.T) {
-	s, fake, shifts, ctx, shiftID := divideFixture(t)
+func TestDivideSessionReplacesUnbilledItems(t *testing.T) {
+	s, fake, sessions, ctx, sessionID := divideFixture(t)
 	fake.SetResponses(
-		toolUse("divide_shift", divideInput(t, codedLines())),
-		toolUse("divide_shift", divideInput(t, codedLines()[:1])), // re-divide → 1 line
+		toolUse("divide_session", divideInput(t, codedLines())),
+		toolUse("divide_session", divideInput(t, codedLines()[:1])), // re-divide → 1 line
 	)
 
-	if err := s.DivideShift(ctx, shiftID); err != nil {
-		t.Fatalf("first DivideShift: %v", err)
+	if err := s.DivideSession(ctx, sessionID); err != nil {
+		t.Fatalf("first DivideSession: %v", err)
 	}
-	if err := s.DivideShift(ctx, shiftID); err != nil {
-		t.Fatalf("second DivideShift: %v", err)
+	if err := s.DivideSession(ctx, sessionID); err != nil {
+		t.Fatalf("second DivideSession: %v", err)
 	}
-	items, err := shifts.ListItems(ctx, shiftID)
+	items, err := sessions.ListItems(ctx, sessionID)
 	if err != nil {
 		t.Fatalf("list items: %v", err)
 	}
@@ -167,23 +167,23 @@ func TestDivideShiftReplacesUnbilledItems(t *testing.T) {
 	}
 }
 
-// TestDivideShiftRetriesEmptyItems proves an empty-items proposal is recoverable
+// TestDivideSessionRetriesEmptyItems proves an empty-items proposal is recoverable
 // (errors.Is errRecoverableDivide) and re-proposed: attempt 1 has no items,
 // attempt 2 is the correct divide.
-func TestDivideShiftRetriesEmptyItems(t *testing.T) {
-	s, fake, shifts, ctx, shiftID := divideFixture(t)
+func TestDivideSessionRetriesEmptyItems(t *testing.T) {
+	s, fake, sessions, ctx, sessionID := divideFixture(t)
 	fake.SetResponses(
-		toolUse("divide_shift", divideInput(t, nil)),
-		toolUse("divide_shift", divideInput(t, codedLines())),
+		toolUse("divide_session", divideInput(t, nil)),
+		toolUse("divide_session", divideInput(t, codedLines())),
 	)
 
-	if err := s.DivideShift(ctx, shiftID); err != nil {
-		t.Fatalf("DivideShift: %v", err)
+	if err := s.DivideSession(ctx, sessionID); err != nil {
+		t.Fatalf("DivideSession: %v", err)
 	}
 	if fake.Calls() != 2 {
 		t.Fatalf("model calls = %d, want 2 (empty-items retried)", fake.Calls())
 	}
-	items, err := shifts.ListItems(ctx, shiftID)
+	items, err := sessions.ListItems(ctx, sessionID)
 	if err != nil {
 		t.Fatalf("list items: %v", err)
 	}
@@ -192,18 +192,18 @@ func TestDivideShiftRetriesEmptyItems(t *testing.T) {
 	}
 }
 
-// TestDivideShiftRetryExhausted scripts repeated empty-items proposals and
+// TestDivideSessionRetryExhausted scripts repeated empty-items proposals and
 // asserts the Smart gives up with a retry-exhaustion error and leaves no items.
-func TestDivideShiftRetryExhausted(t *testing.T) {
-	s, fake, shifts, ctx, shiftID := divideFixture(t)
+func TestDivideSessionRetryExhausted(t *testing.T) {
+	s, fake, sessions, ctx, sessionID := divideFixture(t)
 	empty := divideInput(t, nil)
 	fake.SetResponses(
-		toolUse("divide_shift", empty),
-		toolUse("divide_shift", empty),
-		toolUse("divide_shift", empty),
+		toolUse("divide_session", empty),
+		toolUse("divide_session", empty),
+		toolUse("divide_session", empty),
 	)
 
-	err := s.DivideShift(ctx, shiftID)
+	err := s.DivideSession(ctx, sessionID)
 	if err == nil {
 		t.Fatal("expected a retry-exhaustion error after repeated empty proposals")
 	}
@@ -213,7 +213,7 @@ func TestDivideShiftRetryExhausted(t *testing.T) {
 	if fake.Calls() != maxDivideRetries+1 {
 		t.Fatalf("model calls = %d, want %d (loop bound)", fake.Calls(), maxDivideRetries+1)
 	}
-	items, err := shifts.ListItems(ctx, shiftID)
+	items, err := sessions.ListItems(ctx, sessionID)
 	if err != nil {
 		t.Fatalf("list items: %v", err)
 	}

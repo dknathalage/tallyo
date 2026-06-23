@@ -5,55 +5,55 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 )
 
-// recordedShiftWithItems seeds a recorded, unbilled shift carrying nItems
+// recordedSessionWithItems seeds a recorded, unbilled session carrying nItems
 // pre-priced custom line items (qty 1, the given unit price each) and returns
-// its id. Items are created through the shift repo so no catalogue seeding is
+// its id. Items are created through the session repo so no catalogue seeding is
 // needed (custom lines keep their supplied price).
-func recordedShiftWithItems(t *testing.T, shiftSvc *shift.Service, repo *shift.ShiftsRepo, tenantID, clientID int64, date string, prices ...float64) int64 {
+func recordedSessionWithItems(t *testing.T, sessionSvc *session.Service, repo *session.SessionsRepo, tenantID, clientID int64, date string, prices ...float64) int64 {
 	t.Helper()
 	ctx := tctx(tenantID)
-	sh, err := shiftSvc.Create(ctx, shift.ShiftInput{ClientID: clientID, ServiceDate: date, Status: "recorded"})
+	sh, err := sessionSvc.Create(ctx, session.SessionInput{ClientID: clientID, ServiceDate: date, Status: "recorded"})
 	if err != nil {
-		t.Fatalf("recordedShiftWithItems create: %v", err)
+		t.Fatalf("recordedSessionWithItems create: %v", err)
 	}
 	for i := range prices { // bounded by len(prices)
 		in := billing.LineItemInput{Description: "work", Unit: "EA", Quantity: 1, UnitPrice: prices[i]}
 		if _, err := repo.CreateItem(ctx, tenantID, sh.ID, in); err != nil {
-			t.Fatalf("recordedShiftWithItems CreateItem: %v", err)
+			t.Fatalf("recordedSessionWithItems CreateItem: %v", err)
 		}
 	}
 	return sh.ID
 }
 
-// newDraftHarness builds an invoice service wired to a real *shift.Service over
-// one shared connection, plus the shift repo for seeding.
-func newDraftHarness(t *testing.T) (*Service, *shift.Service, *shift.ShiftsRepo, int64, int64) {
+// newDraftHarness builds an invoice service wired to a real *session.Service over
+// one shared connection, plus the session repo for seeding.
+func newDraftHarness(t *testing.T) (*Service, *session.Service, *session.SessionsRepo, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, conn, hub, shiftSvc)
-	return invSvc, shiftSvc, shift.NewShifts(conn), tenantID, clientID
+	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, conn, hub, sessionSvc)
+	return invSvc, sessionSvc, session.NewSessions(conn), tenantID, clientID
 }
 
-func TestDraftFromShiftsLinksItemsAndTotals(t *testing.T) {
-	invSvc, shiftSvc, repo, tenantID, clientID := newDraftHarness(t)
+func TestDraftFromSessionsLinksItemsAndTotals(t *testing.T) {
+	invSvc, sessionSvc, repo, tenantID, clientID := newDraftHarness(t)
 	ctx := tctx(tenantID)
 
-	s1 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-10", 10, 20)
-	s2 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-11", 30, 40)
+	s1 := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-10", 10, 20)
+	s2 := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-11", 30, 40)
 
-	inv, err := invSvc.DraftFromShifts(ctx, []int64{s1, s2})
+	inv, err := invSvc.DraftFromSessions(ctx, []int64{s1, s2})
 	if err != nil {
-		t.Fatalf("DraftFromShifts: %v", err)
+		t.Fatalf("DraftFromSessions: %v", err)
 	}
 	if inv == nil {
-		t.Fatal("DraftFromShifts returned nil invoice")
+		t.Fatal("DraftFromSessions returned nil invoice")
 	}
 	if inv.ClientID != clientID {
 		t.Fatalf("invoice client = %d, want %d", inv.ClientID, clientID)
@@ -65,8 +65,8 @@ func TestDraftFromShiftsLinksItemsAndTotals(t *testing.T) {
 		if li.InvoiceID == nil || *li.InvoiceID != inv.ID {
 			t.Fatalf("line item not linked to invoice: %+v", li)
 		}
-		if li.ShiftID == nil {
-			t.Fatalf("shift item lost its shift_id: %+v", li)
+		if li.SessionID == nil {
+			t.Fatalf("session item lost its session_id: %+v", li)
 		}
 	}
 	if inv.Subtotal != 100 || inv.Total != 100 {
@@ -74,54 +74,54 @@ func TestDraftFromShiftsLinksItemsAndTotals(t *testing.T) {
 	}
 
 	for _, sid := range []int64{s1, s2} {
-		sh, _ := shiftSvc.Get(ctx, sid)
+		sh, _ := sessionSvc.Get(ctx, sid)
 		if sh == nil || sh.Status != "drafted" || sh.InvoiceID == nil || *sh.InvoiceID != inv.ID {
-			t.Fatalf("shift %d after draft = %+v, want drafted + invoice %d", sid, sh, inv.ID)
+			t.Fatalf("session %d after draft = %+v, want drafted + invoice %d", sid, sh, inv.ID)
 		}
 	}
 }
 
-func TestDraftFromShiftsEmptyShiftErrors(t *testing.T) {
-	invSvc, shiftSvc, repo, tenantID, clientID := newDraftHarness(t)
+func TestDraftFromSessionsEmptySessionErrors(t *testing.T) {
+	invSvc, sessionSvc, repo, tenantID, clientID := newDraftHarness(t)
 	ctx := tctx(tenantID)
 
-	withItems := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-10", 10)
-	// A recorded shift with zero items (G5).
-	empty, err := shiftSvc.Create(ctx, shift.ShiftInput{ClientID: clientID, ServiceDate: "2026-01-11", Status: "recorded"})
+	withItems := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-10", 10)
+	// A recorded session with zero items (G5).
+	empty, err := sessionSvc.Create(ctx, session.SessionInput{ClientID: clientID, ServiceDate: "2026-01-11", Status: "recorded"})
 	if err != nil {
-		t.Fatalf("create empty shift: %v", err)
+		t.Fatalf("create empty session: %v", err)
 	}
 
-	if _, err := invSvc.DraftFromShifts(ctx, []int64{withItems, empty.ID}); err == nil {
-		t.Fatal("DraftFromShifts with an empty shift must error (G5)")
+	if _, err := invSvc.DraftFromSessions(ctx, []int64{withItems, empty.ID}); err == nil {
+		t.Fatal("DraftFromSessions with an empty session must error (G5)")
 	}
-	// Nothing should have been linked: the non-empty shift stays recorded.
-	sh, _ := shiftSvc.Get(ctx, withItems)
+	// Nothing should have been linked: the non-empty session stays recorded.
+	sh, _ := sessionSvc.Get(ctx, withItems)
 	if sh == nil || sh.Status != "recorded" || sh.InvoiceID != nil {
-		t.Fatalf("shift must stay recorded after a failed draft, got %+v", sh)
+		t.Fatalf("session must stay recorded after a failed draft, got %+v", sh)
 	}
 }
 
-func TestDraftFromShiftsSingleClientGuard(t *testing.T) {
+func TestDraftFromSessionsSingleClientGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T2")
 	p1 := seedClient(t, conn, tid, "P1")
 	p2 := seedClient(t, conn, tid, "P2")
 	hub := realtime.NewHub()
-	shSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
+	shSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
 	iSvc := NewService(conn, conn, hub, shSvc)
-	r := shift.NewShifts(conn)
+	r := session.NewSessions(conn)
 
-	a := recordedShiftWithItems(t, shSvc, r, tid, p1, "2026-01-10", 10)
-	b := recordedShiftWithItems(t, shSvc, r, tid, p2, "2026-01-11", 20)
+	a := recordedSessionWithItems(t, shSvc, r, tid, p1, "2026-01-10", 10)
+	b := recordedSessionWithItems(t, shSvc, r, tid, p2, "2026-01-11", 20)
 
-	if _, err := iSvc.DraftFromShifts(tctx(tid), []int64{a, b}); err == nil {
-		t.Fatal("DraftFromShifts across two clients must error")
+	if _, err := iSvc.DraftFromSessions(tctx(tid), []int64{a, b}); err == nil {
+		t.Fatal("DraftFromSessions across two clients must error")
 	}
 
 	// And a clean single-client pair still drafts.
-	c := recordedShiftWithItems(t, shSvc, r, tid, p1, "2026-01-12", 5)
-	if _, err := iSvc.DraftFromShifts(tctx(tid), []int64{c}); err != nil {
-		t.Fatalf("single-client DraftFromShifts: %v", err)
+	c := recordedSessionWithItems(t, shSvc, r, tid, p1, "2026-01-12", 5)
+	if _, err := iSvc.DraftFromSessions(tctx(tid), []int64{c}); err != nil {
+		t.Fatalf("single-client DraftFromSessions: %v", err)
 	}
 }

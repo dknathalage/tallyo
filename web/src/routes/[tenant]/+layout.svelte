@@ -88,9 +88,9 @@
 	// rendered links go through t() to add the active tenant.
 	const NAV_GROUPS: NavGroup[] = [
 		{
-			label: 'Shifts',
+			label: 'Sessions',
 			icon: LayoutGrid,
-			children: [{ href: '/', label: 'Shifts' }]
+			children: [{ href: '/', label: 'Sessions' }]
 		},
 		{
 			label: 'Clients',
@@ -132,7 +132,7 @@
 	// Match length of href against path (-1 = no match). Used to pick the most
 	// specific sibling when routes nest, e.g. /settings vs /settings/users.
 	function matchLen(href: string, path: string): number {
-		// The Shifts home route only matches exactly — otherwise it would match
+		// The Sessions home route only matches exactly — otherwise it would match
 		// every path (all paths start with '/').
 		if (href === '/') return path === '/' ? href.length : -1;
 		if (path === href || path.startsWith(href + '/')) return href.length;

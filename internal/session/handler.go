@@ -1,4 +1,4 @@
-package shift
+package session
 
 import (
 	"context"
@@ -12,71 +12,71 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ShiftDivider is the narrow interface the shift handler needs to divide ONE
-// shift's note into priced line items. It is declared here (not imported from the
+// SessionDivider is the narrow interface the session handler needs to divide ONE
+// session's note into priced line items. It is declared here (not imported from the
 // agent slice) and satisfied by *agent.Smarts, wired in internal/app — the same
 // consumer-declared pattern as InvoiceChecker. A nil divider (AI disabled) makes
 // the /divide route return 503.
-type ShiftDivider interface {
-	DivideShift(ctx context.Context, shiftID int64) error
+type SessionDivider interface {
+	DivideSession(ctx context.Context, sessionID int64) error
 }
 
-// Handler serves the shift lifecycle routes: per-client listing,
-// tenant-wide listing, the billing-suggestion and to-record prompts, plus shift
+// Handler serves the session lifecycle routes: per-client listing,
+// tenant-wide listing, the billing-suggestion and to-record prompts, plus session
 // CRUD, the status-transition endpoint, and the AI divide route.
 type Handler struct {
 	svc     *Service
-	divider ShiftDivider // nil when AI is disabled → /divide returns 503
+	divider SessionDivider // nil when AI is disabled → /divide returns 503
 }
 
 // NewHandler constructs the handler. A nil svc is a programmer error. divider may
 // be nil (AI disabled), in which case the /divide route returns 503.
-func NewHandler(svc *Service, divider ShiftDivider) *Handler {
+func NewHandler(svc *Service, divider SessionDivider) *Handler {
 	if svc == nil {
-		panic("shift.NewHandler: nil svc")
+		panic("session.NewHandler: nil svc")
 	}
 	return &Handler{svc: svc, divider: divider}
 }
 
-// Routes registers all shift routes on r. Mounted inside the authenticated
+// Routes registers all session routes on r. Mounted inside the authenticated
 // /api group by the composition root (server.go).
 func (h *Handler) Routes(r chi.Router) {
-	r.Get("/shifts", h.List)
-	r.Get("/shifts/suggestions", h.Suggestions)
-	r.Get("/shifts/to-record", h.ToRecord)
-	r.Post("/shifts", h.Create)
-	r.Get("/shifts/{shiftUUID}", h.Get)
-	r.Put("/shifts/{shiftUUID}", h.Update)
-	r.Delete("/shifts/{shiftUUID}", h.Delete)
-	r.Post("/shifts/{shiftUUID}/status", h.UpdateStatus)
-	r.Get("/shifts/{shiftUUID}/items", h.ListItems)
-	r.Post("/shifts/{shiftUUID}/items", h.AddItem)
-	r.Patch("/shifts/{shiftUUID}/items/{itemUUID}", h.UpdateItem)
-	r.Delete("/shifts/{shiftUUID}/items/{itemUUID}", h.DeleteItem)
-	r.Post("/shifts/{shiftUUID}/divide", h.Divide)
+	r.Get("/sessions", h.List)
+	r.Get("/sessions/suggestions", h.Suggestions)
+	r.Get("/sessions/to-record", h.ToRecord)
+	r.Post("/sessions", h.Create)
+	r.Get("/sessions/{sessionUUID}", h.Get)
+	r.Put("/sessions/{sessionUUID}", h.Update)
+	r.Delete("/sessions/{sessionUUID}", h.Delete)
+	r.Post("/sessions/{sessionUUID}/status", h.UpdateStatus)
+	r.Get("/sessions/{sessionUUID}/items", h.ListItems)
+	r.Post("/sessions/{sessionUUID}/items", h.AddItem)
+	r.Patch("/sessions/{sessionUUID}/items/{itemUUID}", h.UpdateItem)
+	r.Delete("/sessions/{sessionUUID}/items/{itemUUID}", h.DeleteItem)
+	r.Post("/sessions/{sessionUUID}/divide", h.Divide)
 }
 
-// List returns the tenant's shifts. With ?client={clientUUID} it
-// returns only that client's shifts (resolving the client uuid to its
-// int FK — this replaces the old nested client→shifts read). An optional
+// List returns the tenant's sessions. With ?client={clientUUID} it
+// returns only that client's sessions (resolving the client uuid to its
+// int FK — this replaces the old nested client→sessions read). An optional
 // ?status= filter restricts the lifecycle status in either mode.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	if clientUUID := r.URL.Query().Get("client"); clientUUID != "" {
-		shifts, err := h.svc.ListByClientUUID(r.Context(), clientUUID, status)
+		sessions, err := h.svc.ListByClientUUID(r.Context(), clientUUID, status)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, shifts)
+		httpx.WriteJSON(w, http.StatusOK, sessions)
 		return
 	}
-	shifts, err := h.svc.List(r.Context(), status)
+	sessions, err := h.svc.List(r.Context(), status)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, shifts)
+	httpx.WriteJSON(w, http.StatusOK, sessions)
 }
 
 // Suggestions returns each client's recorded-but-unbilled billing prompt.
@@ -89,7 +89,7 @@ func (h *Handler) Suggestions(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-// ToRecord returns the tenant's scheduled shifts still awaiting a record.
+// ToRecord returns the tenant's scheduled sessions still awaiting a record.
 func (h *Handler) ToRecord(w http.ResponseWriter, r *http.Request) {
 	out, err := h.svc.ToRecord(r.Context())
 	if err != nil {
@@ -99,11 +99,11 @@ func (h *Handler) ToRecord(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-// shiftBody is the HTTP write shape of a shift. ClientUUID arrives as the
+// sessionBody is the HTTP write shape of a session. ClientUUID arrives as the
 // client's uuid (resolved to the int FK before insert/update); the other
-// fields mirror ShiftInput. It is the inbound DTO — ShiftInput stays int-keyed
-// for the cross-slice ShiftCreator contract (agent import).
-type shiftBody struct {
+// fields mirror SessionInput. It is the inbound DTO — SessionInput stays int-keyed
+// for the cross-slice SessionCreator contract (agent import).
+type sessionBody struct {
 	ClientUUID  string   `json:"clientId"`
 	ServiceDate string   `json:"serviceDate"`
 	Note        string   `json:"note"`
@@ -111,14 +111,14 @@ type shiftBody struct {
 	Status      string   `json:"status"`
 }
 
-// Get returns a single shift by uuid, or 404 when not found.
+// Get returns a single session by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	sh, err := h.svc.GetByUUID(r.Context(), shiftUUID)
+	sh, err := h.svc.GetByUUID(r.Context(), sessionUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -130,9 +130,9 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sh)
 }
 
-// Create inserts a shift. A missing/unknown client uuid or service date → 400.
+// Create inserts a session. A missing/unknown client uuid or service date → 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	var body shiftBody
+	var body sessionBody
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
@@ -157,20 +157,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, sh)
 }
 
-// resolveBody translates a shiftBody's client uuid into the int FK and
-// returns the int-keyed ShiftInput. Writes a 400 and returns ok=false when the
+// resolveBody translates a sessionBody's client uuid into the int FK and
+// returns the int-keyed SessionInput. Writes a 400 and returns ok=false when the
 // client uuid is unknown for the tenant.
-func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body shiftBody) (ShiftInput, bool) {
+func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body sessionBody) (SessionInput, bool) {
 	pid, err := h.svc.ResolveClient(r.Context(), body.ClientUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return ShiftInput{}, false
+		return SessionInput{}, false
 	}
 	if pid == 0 {
 		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
-		return ShiftInput{}, false
+		return SessionInput{}, false
 	}
-	return ShiftInput{
+	return SessionInput{
 		ClientID:    pid,
 		ServiceDate: body.ServiceDate,
 		Note:        body.Note,
@@ -179,15 +179,15 @@ func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body shift
 	}, true
 }
 
-// Update mutates a shift. Empty service date → 400; unknown shift uuid → 404;
+// Update mutates a session. Empty service date → 400; unknown session uuid → 404;
 // unknown client uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	var body shiftBody
+	var body sessionBody
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
@@ -200,7 +200,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sh, err := h.svc.Update(r.Context(), shiftUUID, in)
+	sh, err := h.svc.Update(r.Context(), sessionUUID, in)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -212,16 +212,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sh)
 }
 
-// Delete removes a shift by uuid.
+// Delete removes a session by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), shiftUUID); err != nil {
-		if errors.Is(err, ErrShiftBilled) {
-			httpx.WriteError(w, http.StatusConflict, "cannot delete a billed shift")
+	if err := h.svc.Delete(r.Context(), sessionUUID); err != nil {
+		if errors.Is(err, ErrSessionBilled) {
+			httpx.WriteError(w, http.StatusConflict, "cannot delete a billed session")
 			return
 		}
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
@@ -230,15 +230,15 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListItems returns a shift's line items (billed + unbilled), [] when none.
-// Unknown shift uuid → 404.
+// ListItems returns a session's line items (billed + unbilled), [] when none.
+// Unknown session uuid → 404.
 func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	items, err := h.svc.ListItemsByShiftUUID(r.Context(), shiftUUID)
+	items, err := h.svc.ListItemsBySessionUUID(r.Context(), sessionUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -250,9 +250,9 @@ func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
-// AddItem adds one line item to a shift. Unknown shift → 404; invalid line → 400.
+// AddItem adds one line item to a session. Unknown session → 404; invalid line → 400.
 func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -261,7 +261,7 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := h.svc.AddItemByShiftUUID(r.Context(), shiftUUID, in)
+	item, err := h.svc.AddItemBySessionUUID(r.Context(), sessionUUID, in)
 	if err != nil {
 		if errors.Is(err, billing.ErrUnknownCustomItem) {
 			httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
@@ -277,10 +277,10 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, item)
 }
 
-// UpdateItem rewrites one unbilled item addressed by uuid under its shift uuid.
+// UpdateItem rewrites one unbilled item addressed by uuid under its session uuid.
 // Unknown/billed item → 404.
 func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -294,7 +294,7 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := h.svc.UpdateItemByShiftUUID(r.Context(), shiftUUID, itemUUID, in)
+	item, err := h.svc.UpdateItemBySessionUUID(r.Context(), sessionUUID, itemUUID, in)
 	if err != nil {
 		if errors.Is(err, billing.ErrUnknownCustomItem) {
 			httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
@@ -310,10 +310,10 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, item)
 }
 
-// DeleteItem removes one unbilled item by uuid under its shift uuid (no-op when
+// DeleteItem removes one unbilled item by uuid under its session uuid (no-op when
 // absent/billed).
 func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -323,16 +323,16 @@ func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
-	if err := h.svc.DeleteItemByShiftUUID(r.Context(), shiftUUID, itemUUID); err != nil {
+	if err := h.svc.DeleteItemBySessionUUID(r.Context(), sessionUUID, itemUUID); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Divide runs the AI divide Smart over ONE shift — turning its note into priced
-// catalogue line items (idempotent: a re-divide replaces the shift's unbilled
-// items) — then returns the shift's items. Returns 503 when AI is disabled.
+// Divide runs the AI divide Smart over ONE session — turning its note into priced
+// catalogue line items (idempotent: a re-divide replaces the session's unbilled
+// items) — then returns the session's items. Returns 503 when AI is disabled.
 // Synchronous: it blocks for the Smart run on a detached, bounded context so a
 // client disconnect does not abort the model call.
 func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
@@ -340,7 +340,7 @@ func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "AI not configured")
 		return
 	}
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -355,7 +355,7 @@ func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), uid), 5*time.Minute)
 	defer cancel()
 
-	id, err := h.svc.ResolveShiftID(ctx, shiftUUID)
+	id, err := h.svc.ResolveSessionID(ctx, sessionUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -364,8 +364,8 @@ func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if err := h.divider.DivideShift(ctx, id); err != nil {
-		httpx.WriteError(w, http.StatusBadGateway, "couldn't divide this shift into line items")
+	if err := h.divider.DivideSession(ctx, id); err != nil {
+		httpx.WriteError(w, http.StatusBadGateway, "couldn't divide this session into line items")
 		return
 	}
 	items, err := h.svc.ListItems(ctx, id)
@@ -404,9 +404,9 @@ type statusRequest struct {
 	Status string `json:"status"`
 }
 
-// UpdateStatus advances a shift's lifecycle status by uuid. An empty status → 400.
+// UpdateStatus advances a session's lifecycle status by uuid. An empty status → 400.
 func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
-	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
+	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -420,7 +420,7 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	if err := h.svc.UpdateStatus(r.Context(), shiftUUID, req.Status); err != nil {
+	if err := h.svc.UpdateStatus(r.Context(), sessionUUID, req.Status); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

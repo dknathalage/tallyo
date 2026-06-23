@@ -4,40 +4,40 @@
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import { clients } from '$lib/stores/clients.svelte';
-	import * as shiftsApi from '$lib/api/shifts';
-	import ShiftForm from '$lib/components/ShiftForm.svelte';
-	import type { Shift } from '$lib/api/types';
+	import * as sessionsApi from '$lib/api/sessions';
+	import SessionForm from '$lib/components/SessionForm.svelte';
+	import type { Session } from '$lib/api/types';
 
 	const idParam = $derived((page.params.uuid ?? 'new'));
 
-	let loadedShift = $state<Shift | null>(null);
+	let loadedSession = $state<Session | null>(null);
 	let loading = $state(false);
 	let loadError = $state<string | null>(null);
 
-	// A scheduled shift is being recorded (mirrors the old openRecord flow).
-	const recording = $derived(loadedShift?.status === 'scheduled');
+	// A scheduled session is being recorded (mirrors the old openRecord flow).
+	const recording = $derived(loadedSession?.status === 'scheduled');
 
 	onMount(() => {
 		clients.ensureSubscribed();
 		void clients.load();
 	});
 
-	// Load the target shift on id change. {#key idParam} remounts ShiftForm so its
+	// Load the target session on id change. {#key idParam} remounts SessionForm so its
 	// form state resets alongside this load (new → edit, edit → edit).
 	$effect(() => {
 		const current = idParam;
 		loadError = null;
-		loadedShift = null;
+		loadedSession = null;
 		if (current === 'new') return;
-		void loadShift(current);
+		void loadSession(current);
 	});
 
-	async function loadShift(id: string): Promise<void> {
+	async function loadSession(id: string): Promise<void> {
 		loading = true;
 		try {
-			loadedShift = await shiftsApi.get(id);
+			loadedSession = await sessionsApi.get(id);
 		} catch (err) {
-			loadError = err instanceof Error ? err.message : 'Failed to load shift.';
+			loadError = err instanceof Error ? err.message : 'Failed to load session.';
 		} finally {
 			loading = false;
 		}
@@ -53,11 +53,11 @@
 
 	{#if loadError}
 		<p class="text-sm text-red-600">{loadError}</p>
-	{:else if idParam !== 'new' && loading && loadedShift === null}
+	{:else if idParam !== 'new' && loading && loadedSession === null}
 		<p class="text-sm text-gray-500">Loading…</p>
-	{:else if idParam === 'new' || loadedShift !== null}
+	{:else if idParam === 'new' || loadedSession !== null}
 		{#key idParam}
-			<ShiftForm inline shift={loadedShift} {recording} onsaved={done} oncancel={done} />
+			<SessionForm inline session={loadedSession} {recording} onsaved={done} oncancel={done} />
 		{/key}
 	{/if}
 </div>

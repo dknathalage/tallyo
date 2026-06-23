@@ -42,7 +42,7 @@ func TestSessionRoundTripAgainstMigratedDB(t *testing.T) {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 
-	// store a value (sets session cookie, persists to auth_sessions table)
+	// store a value (sets session cookie, persists to sessions table)
 	resp, err := client.Get(srv.URL + "/put")
 	if err != nil {
 		t.Fatalf("put: %v", err)
@@ -54,11 +54,11 @@ func TestSessionRoundTripAgainstMigratedDB(t *testing.T) {
 
 	// the session row must exist in the migrated table
 	var rows int
-	if err := conn.QueryRow("SELECT COUNT(*) FROM auth_sessions").Scan(&rows); err != nil {
-		t.Fatalf("count auth_sessions: %v", err)
+	if err := conn.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&rows); err != nil {
+		t.Fatalf("count sessions: %v", err)
 	}
 	if rows != 1 {
-		t.Fatalf("auth_sessions rows=%d want 1", rows)
+		t.Fatalf("sessions rows=%d want 1", rows)
 	}
 
 	// retrieve it on a second request with the cookie

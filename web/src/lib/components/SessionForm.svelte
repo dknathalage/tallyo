@@ -3,12 +3,12 @@
 	import { clients } from '$lib/stores/clients.svelte';
 	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
 	import { features } from '$lib/stores/features.svelte';
-	import * as shiftsApi from '$lib/api/shifts';
-	import { hoursBetween, todayISO } from '$lib/shifts/format';
+	import * as sessionsApi from '$lib/api/sessions';
+	import { hoursBetween, todayISO } from '$lib/sessions/format';
 	import type {
-		Shift,
-		ShiftInput,
-		ShiftStatus,
+		Session,
+		SessionInput,
+		SessionStatus,
 		LineItem,
 		LineItemInput,
 		SupportItem
@@ -18,13 +18,13 @@
 		open?: boolean;
 		/** Render the form body without the Modal wrapper (full-page route host). */
 		inline?: boolean;
-		/** Editing target — null for a fresh shift. */
-		shift?: Shift | null;
-		/** Pre-filled date for a fresh shift (e.g. clicked calendar day). */
+		/** Editing target — null for a fresh session. */
+		session?: Session | null;
+		/** Pre-filled date for a fresh session (e.g. clicked calendar day). */
 		presetDate?: string;
-		/** Pre-selected client (uuid) for a fresh shift. */
+		/** Pre-selected client (uuid) for a fresh session. */
 		presetClientId?: string | null;
-		/** Recording a scheduled shift — adjusts the title + advances status. */
+		/** Recording a scheduled session — adjusts the title + advances status. */
 		recording?: boolean;
 		/** Called after a successful save (create/update). */
 		onsaved?: () => void;
@@ -35,7 +35,7 @@
 	let {
 		open = $bindable(false),
 		inline = false,
-		shift = null,
+		session = null,
 		presetDate = '',
 		presetClientId = null,
 		recording = false,
@@ -43,19 +43,19 @@
 		oncancel
 	}: Props = $props();
 
-	const editing = $derived(shift !== null);
-	const title = $derived(recording ? 'Record shift' : editing ? 'Edit shift' : 'Add shift');
+	const editing = $derived(session !== null);
+	const title = $derived(recording ? 'Record session' : editing ? 'Edit session' : 'Add session');
 	const saveLabel = $derived(recording ? 'Save recording' : editing ? 'Save' : 'Add');
 
 	// Form fields. Re-seeded whenever the modal opens (the form is reused).
 	let fClientId = $state('');
 	let fDate = $state('');
 	let fNote = $state('');
-	let fStatus = $state<ShiftStatus>('recorded');
+	let fStatus = $state<SessionStatus>('recorded');
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
-	// Shift line items (loaded for an existing shift only — a new shift is saved
+	// Session line items (loaded for an existing session only — a new session is saved
 	// note-only, then re-opened to add items). Each add/remove hits the API and
 	// refetches; the server prices coded lines authoritatively.
 	let items = $state<LineItem[]>([]);
@@ -86,12 +86,12 @@
 		itemError = null;
 		items = [];
 		resetDraft();
-		if (shift) {
-			fClientId = String(shift.clientId);
-			fDate = shift.serviceDate ? shift.serviceDate.slice(0, 10) : todayISO();
-			fNote = shift.note;
-			fStatus = shift.status;
-			void loadItems(shift.id);
+		if (session) {
+			fClientId = String(session.clientId);
+			fDate = session.serviceDate ? session.serviceDate.slice(0, 10) : todayISO();
+			fNote = session.note;
+			fStatus = session.status;
+			void loadItems(session.id);
 		} else {
 			const first = presetClientId ?? clients.items[0]?.id ?? null;
 			fClientId = first === null ? '' : String(first);
@@ -101,34 +101,34 @@
 		}
 	}
 
-	async function loadItems(shiftId: string): Promise<void> {
+	async function loadItems(sessionId: string): Promise<void> {
 		try {
-			items = await shiftsApi.listItems(shiftId);
+			items = await sessionsApi.listItems(sessionId);
 		} catch (err) {
 			itemError = err instanceof Error ? err.message : 'Failed to load items.';
 		}
 	}
 
 	async function divideAI(): Promise<void> {
-		if (!shift) return;
+		if (!session) return;
 		itemError = null;
 		itemsBusy = true;
 		try {
-			items = await shiftsApi.divideShift(shift.id);
+			items = await sessionsApi.divideSession(session.id);
 		} catch (err) {
-			itemError = err instanceof Error ? err.message : 'AI could not divide this shift.';
+			itemError = err instanceof Error ? err.message : 'AI could not divide this session.';
 		} finally {
 			itemsBusy = false;
 		}
 	}
 
 	async function removeItem(id: string): Promise<void> {
-		if (!shift) return;
+		if (!session) return;
 		itemError = null;
 		itemsBusy = true;
 		try {
-			await shiftsApi.deleteItem(shift.id, id);
-			await loadItems(shift.id);
+			await sessionsApi.deleteItem(session.id, id);
+			await loadItems(session.id);
 		} catch (err) {
 			itemError = err instanceof Error ? err.message : 'Failed to remove item.';
 		} finally {
@@ -212,7 +212,7 @@
 	}
 
 	async function addItem(): Promise<void> {
-		if (!shift) return;
+		if (!session) return;
 		itemError = null;
 		const qty = Number(niQuantity) || 0;
 		if (qty <= 0) {
@@ -241,8 +241,8 @@
 		};
 		itemsBusy = true;
 		try {
-			await shiftsApi.addItem(shift.id, input);
-			await loadItems(shift.id);
+			await sessionsApi.addItem(session.id, input);
+			await loadItems(session.id);
 			resetDraft();
 		} catch (err) {
 			itemError = err instanceof Error ? err.message : 'Failed to add item.';
@@ -266,26 +266,26 @@
 			error = 'Please pick a date.';
 			return;
 		}
-		// Recording a scheduled shift advances it to recorded.
-		const nextStatus: ShiftStatus = recording && fStatus === 'scheduled' ? 'recorded' : fStatus;
-		const input: ShiftInput = {
+		// Recording a scheduled session advances it to recorded.
+		const nextStatus: SessionStatus = recording && fStatus === 'scheduled' ? 'recorded' : fStatus;
+		const input: SessionInput = {
 			clientId: fClientId,
 			serviceDate: fDate,
 			note: fNote,
-			tags: shift?.tags ?? [],
+			tags: session?.tags ?? [],
 			status: nextStatus
 		};
 		saving = true;
 		try {
-			if (shift) {
-				await shiftsApi.update(shift.id, input);
+			if (session) {
+				await sessionsApi.update(session.id, input);
 			} else {
-				await shiftsApi.create(input);
+				await sessionsApi.create(input);
 			}
 			if (!inline) open = false;
 			onsaved?.();
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to save shift.';
+			error = err instanceof Error ? err.message : 'Failed to save session.';
 		} finally {
 			saving = false;
 		}
@@ -333,7 +333,7 @@
 			></textarea>
 		</label>
 
-		{#if editing && shift}
+		{#if editing && session}
 			<div class="rounded border border-gray-200 p-3">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm font-medium">Line items</span>
@@ -502,7 +502,7 @@
 				</div>
 			</div>
 		{:else}
-			<p class="text-xs text-gray-400">Save the shift first, then re-open it to add line items.</p>
+			<p class="text-xs text-gray-400">Save the session first, then re-open it to add line items.</p>
 		{/if}
 
 		{#if error}

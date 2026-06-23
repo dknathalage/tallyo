@@ -739,7 +739,7 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
-			ShiftID:          sql.NullInt64{}, // estimate-converted lines are not shift items
+			SessionID:        sql.NullInt64{}, // estimate-converted lines are not session items
 			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
 			SupportItemID:    db.NullStr(it.SupportItemID),
 			CustomItemID:     db.NullID(it.CustomItemID),

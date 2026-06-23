@@ -165,7 +165,7 @@ export interface SupportItemPrice {
 
 export interface LineItem {
 	id: string;
-	shiftId: string | null;
+	sessionId: string | null;
 	invoiceId: string | null;
 	supportItemId: string | null;
 	customItemId: string | null;
@@ -348,37 +348,37 @@ export interface ValidationDetail {
 	message: string;
 }
 
-// ---- Shifts (per-client service shifts with a billing lifecycle) ----
+// ---- Sessions (per-client service sessions with a billing lifecycle) ----
 
-export type ShiftStatus = 'scheduled' | 'recorded' | 'drafted' | 'sent' | 'paid';
+export type SessionStatus = 'scheduled' | 'recorded' | 'drafted' | 'sent' | 'paid';
 
-export interface Shift {
+export interface Session {
 	id: string;
 	clientId: string;
 	serviceDate: string;
 	note: string;
 	tags: string[];
-	status: ShiftStatus;
+	status: SessionStatus;
 	invoiceId: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
 
-export interface ShiftInput {
+export interface SessionInput {
 	clientId: string;
 	serviceDate: string;
 	note: string;
 	tags: string[];
-	status: ShiftStatus;
+	status: SessionStatus;
 }
 
 /**
- * A clustered invoice suggestion: a client's recorded-but-unbilled shifts,
+ * A clustered invoice suggestion: a client's recorded-but-unbilled sessions,
  * grouped to draft a single invoice. The backend supplies clientId/ids/
  * from/to/count; the client name and an estimated total are derived in the
- * UI from the loaded clients + shifts.
+ * UI from the loaded clients + sessions.
  */
-export interface ShiftSuggestion {
+export interface SessionSuggestion {
 	clientId: string;
 	ids: string[];
 	from: string;

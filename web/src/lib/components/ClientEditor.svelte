@@ -3,17 +3,17 @@
 	import { replaceState } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import { createAutosave, type SaveState } from './autosave';
-	import { shifts } from '$lib/stores/shifts.svelte';
+	import { sessions } from '$lib/stores/sessions.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { payers } from '$lib/stores/payers.svelte';
-	import * as shiftsApi from '$lib/api/shifts';
-	import ShiftTable from '$lib/components/ShiftTable.svelte';
-	import ShiftForm from '$lib/components/ShiftForm.svelte';
+	import * as sessionsApi from '$lib/api/sessions';
+	import SessionTable from '$lib/components/SessionTable.svelte';
+	import SessionForm from '$lib/components/SessionForm.svelte';
 	import Calendar from '$lib/components/Calendar.svelte';
 	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
-	import { todayISO } from '$lib/shifts/format';
-	import type { Client, ClientInput, Shift } from '$lib/api/types';
+	import { todayISO } from '$lib/sessions/format';
+	import type { Client, ClientInput, Session } from '$lib/api/types';
 
 	type Props = {
 		/** Existing client uuid, or 'new' to create. */
@@ -46,7 +46,7 @@
 	let nameError = $state<string | null>(null);
 	let status = $state<SaveState>('idle');
 	// currentId is the client uuid once the record exists ('' until created,
-	// or set in onCreated) — gates the shifts/invoices section, mirroring the old
+	// or set in onCreated) — gates the sessions/invoices section, mirroring the old
 	// `row.id > 0` guard.
 	// svelte-ignore state_referenced_locally -- intentional one-time seed; this component is remounted by a {#key idParam} on the route, so an id change is handled by remount, not reactivity. onCreated owns currentId thereafter.
 	let currentId = $state<string>(idParam === 'new' ? '' : idParam);
@@ -135,10 +135,10 @@
 		autosave.flush();
 	}
 
-	// ── Shifts / invoices section ──
+	// ── Sessions / invoices section ──
 	onMount(() => {
-		shifts.ensureSubscribed();
-		void shifts.load();
+		sessions.ensureSubscribed();
+		void sessions.load();
 		invoices.ensureSubscribed();
 		void invoices.load();
 		clients.ensureSubscribed();
@@ -170,17 +170,17 @@
 	}
 
 	const month = todayISO().slice(0, 7); // YYYY-MM
-	let shiftView = $state<'table' | 'calendar'>('table');
+	let sessionView = $state<'table' | 'calendar'>('table');
 
-	// ── Shift form ──
+	// ── Session form ──
 	let formOpen = $state(false);
-	let formShift = $state<Shift | null>(null);
+	let formSession = $state<Session | null>(null);
 	let formRecording = $state(false);
 	let formDate = $state('');
 	let formClientId = $state('');
 
 	function openAdd(pid: string): void {
-		formShift = null;
+		formSession = null;
 		formRecording = false;
 		formDate = '';
 		formClientId = pid;
@@ -188,32 +188,32 @@
 	}
 
 	function addDay(pid: string, dateISO: string): void {
-		formShift = null;
+		formSession = null;
 		formRecording = false;
 		formDate = dateISO;
 		formClientId = pid;
 		formOpen = true;
 	}
 
-	function openShift(s: Shift): void {
-		formShift = s;
+	function openSession(s: Session): void {
+		formSession = s;
 		formRecording = s.status === 'scheduled';
 		formClientId = s.clientId;
 		formOpen = true;
 	}
 
 	function onSaved(): void {
-		void shifts.load();
+		void sessions.load();
 	}
 
-	async function deleteShifts(ids: string[]): Promise<void> {
+	async function deleteSessions(ids: string[]): Promise<void> {
 		for (const id of ids) {
-			await shiftsApi.remove(id); // bounded by selection
+			await sessionsApi.remove(id); // bounded by selection
 		}
-		await shifts.load();
+		await sessions.load();
 	}
 
-	const myShifts = $derived(shifts.items.filter((s) => s.clientId === currentId));
+	const mySessions = $derived(sessions.items.filter((s) => s.clientId === currentId));
 	const myInvoices = $derived(invoices.items.filter((i) => i.clientId === currentId));
 	const payerOptions = $derived(payers.items);
 </script>
@@ -371,24 +371,24 @@
 
 		{#if currentId !== ''}
 			<div class="space-y-6">
-				<InvoiceSuggestions suggestions={shifts.suggestions} {nameFor} clientId={currentId} />
+				<InvoiceSuggestions suggestions={sessions.suggestions} {nameFor} clientId={currentId} />
 
 				<section class="space-y-3">
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div class="flex items-center gap-2">
-							<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Shifts</h2>
+							<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Sessions</h2>
 							<div class="flex overflow-hidden rounded border border-gray-300 text-xs">
 								<button
 									type="button"
-									onclick={() => (shiftView = 'table')}
-									class="px-2.5 py-1 {shiftView === 'table'
+									onclick={() => (sessionView = 'table')}
+									class="px-2.5 py-1 {sessionView === 'table'
 										? 'bg-gray-900 text-white'
 										: 'text-gray-600 hover:bg-gray-50'}">Table</button
 								>
 								<button
 									type="button"
-									onclick={() => (shiftView = 'calendar')}
-									class="px-2.5 py-1 {shiftView === 'calendar'
+									onclick={() => (sessionView = 'calendar')}
+									class="px-2.5 py-1 {sessionView === 'calendar'
 										? 'bg-gray-900 text-white'
 										: 'text-gray-600 hover:bg-gray-50'}">Calendar</button
 								>
@@ -399,29 +399,29 @@
 							onclick={() => openAdd(currentId)}
 							class="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
 						>
-							+ Ad-hoc shift
+							+ Ad-hoc session
 						</button>
 					</div>
 
-					{#if shiftView === 'table'}
-						<ShiftTable
-							shifts={myShifts}
+					{#if sessionView === 'table'}
+						<SessionTable
+							sessions={mySessions}
 							clientName={nameFor}
-							onopen={openShift}
-							ondelete={deleteShifts}
+							onopen={openSession}
+							ondelete={deleteSessions}
 						/>
 					{:else}
 						<div class="rounded-lg border border-gray-200 bg-white p-3">
 							<Calendar
-								shifts={myShifts}
+								sessions={mySessions}
 								{nameFor}
 								{month}
 								onaddday={(d) => addDay(currentId, d)}
-								onopen={openShift}
+								onopen={openSession}
 							/>
 						</div>
 						<p class="text-xs text-gray-500">
-							This client's shifts this month. Click a day to add, a chip to edit or record.
+							This client's sessions this month. Click a day to add, a chip to edit or record.
 						</p>
 					{/if}
 				</section>
@@ -452,14 +452,14 @@
 				</section>
 			</div>
 		{:else}
-			<p class="text-sm text-gray-500">Save this client to add shifts.</p>
+			<p class="text-sm text-gray-500">Save this client to add sessions.</p>
 		{/if}
 	{/if}
 </div>
 
-<ShiftForm
+<SessionForm
 	bind:open={formOpen}
-	shift={formShift}
+	session={formSession}
 	recording={formRecording}
 	presetDate={formDate}
 	presetClientId={formClientId}

@@ -197,61 +197,61 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 	return nil
 }
 
-// draftShiftItem holds the validated facts about one shift that DraftFromShifts
+// draftSessionItem holds the validated facts about one session that DraftFromSessions
 // needs: its client and the number of unbilled items it carries.
-type draftShiftItem struct {
-	shiftID   int64
+type draftSessionItem struct {
+	sessionID int64
 	clientID  int64
 	itemCount int64
 }
 
-// validateDraftShifts reads each shift (no writes) and enforces the draft
-// preconditions: the shift exists for the tenant, is status 'recorded' with no
-// invoice yet, carries at least one unbilled item (G5), and every shift shares
-// one client. Returns the shared client id and the per-shift facts.
-func (r *InvoicesRepo) validateDraftShifts(ctx context.Context, tenantID int64, shiftIDs []int64) (int64, []draftShiftItem, error) {
-	if len(shiftIDs) == 0 {
-		return 0, nil, errors.New("draft from shifts: at least one shift is required")
+// validateDraftSessions reads each session (no writes) and enforces the draft
+// preconditions: the session exists for the tenant, is status 'recorded' with no
+// invoice yet, carries at least one unbilled item (G5), and every session shares
+// one client. Returns the shared client id and the per-session facts.
+func (r *InvoicesRepo) validateDraftSessions(ctx context.Context, tenantID int64, sessionIDs []int64) (int64, []draftSessionItem, error) {
+	if len(sessionIDs) == 0 {
+		return 0, nil, errors.New("draft from sessions: at least one session is required")
 	}
 	q := gen.New(r.db)
 	var clientID int64
-	facts := make([]draftShiftItem, 0, len(shiftIDs))
-	for i := range shiftIDs { // bounded by len(shiftIDs)
-		sh, err := q.GetShiftByID(ctx, gen.GetShiftByIDParams{TenantID: tenantID, ID: shiftIDs[i]})
+	facts := make([]draftSessionItem, 0, len(sessionIDs))
+	for i := range sessionIDs { // bounded by len(sessionIDs)
+		sh, err := q.GetSessionByID(ctx, gen.GetSessionByIDParams{TenantID: tenantID, ID: sessionIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil, fmt.Errorf("draft from shifts: shift %d not found", shiftIDs[i])
+			return 0, nil, fmt.Errorf("draft from sessions: session %d not found", sessionIDs[i])
 		}
 		if err != nil {
-			return 0, nil, fmt.Errorf("draft from shifts: load shift %d: %w", shiftIDs[i], err)
+			return 0, nil, fmt.Errorf("draft from sessions: load session %d: %w", sessionIDs[i], err)
 		}
 		if sh.Status != "recorded" || sh.InvoiceID.Valid {
-			return 0, nil, fmt.Errorf("draft from shifts: shift %d is not recorded+unbilled", shiftIDs[i])
+			return 0, nil, fmt.Errorf("draft from sessions: session %d is not recorded+unbilled", sessionIDs[i])
 		}
 		if i == 0 {
 			clientID = sh.ClientID
 		} else if sh.ClientID != clientID {
-			return 0, nil, errors.New("draft from shifts: all shifts must share one client")
+			return 0, nil, errors.New("draft from sessions: all sessions must share one client")
 		}
-		n, err := q.CountShiftItems(ctx, gen.CountShiftItemsParams{TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftIDs[i], Valid: true}})
+		n, err := q.CountSessionItems(ctx, gen.CountSessionItemsParams{TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionIDs[i], Valid: true}})
 		if err != nil {
-			return 0, nil, fmt.Errorf("draft from shifts: count items %d: %w", shiftIDs[i], err)
+			return 0, nil, fmt.Errorf("draft from sessions: count items %d: %w", sessionIDs[i], err)
 		}
 		if n == 0 {
-			return 0, nil, fmt.Errorf("draft from shifts: shift %d has no items", shiftIDs[i])
+			return 0, nil, fmt.Errorf("draft from sessions: session %d has no items", sessionIDs[i])
 		}
-		facts = append(facts, draftShiftItem{shiftID: shiftIDs[i], clientID: sh.ClientID, itemCount: n})
+		facts = append(facts, draftSessionItem{sessionID: sessionIDs[i], clientID: sh.ClientID, itemCount: n})
 	}
 	return clientID, facts, nil
 }
 
-// DraftFromShifts creates a draft invoice header for clientID, links every
-// validated shift's unbilled items onto it, and persists totals computed from
-// the now-linked lines — all in ONE numbering-retried transaction. The shifts
-// table is NOT written here; the caller advances the shifts to 'drafted'
+// DraftFromSessions creates a draft invoice header for clientID, links every
+// validated session's unbilled items onto it, and persists totals computed from
+// the now-linked lines — all in ONE numbering-retried transaction. The sessions
+// table is NOT written here; the caller advances the sessions to 'drafted'
 // afterwards (a separate, post-commit step), mirroring Delete↔ClearForInvoice.
-func (r *InvoicesRepo) DraftFromShifts(ctx context.Context, tenantID, clientID int64, facts []draftShiftItem) (*Invoice, error) {
+func (r *InvoicesRepo) DraftFromSessions(ctx context.Context, tenantID, clientID int64, facts []draftSessionItem) (*Invoice, error) {
 	if tenantID == 0 || clientID == 0 {
-		return nil, errors.New("draft from shifts: tenant and client id required")
+		return nil, errors.New("draft from sessions: tenant and client id required")
 	}
 	in := InvoiceInput{ClientID: clientID, Status: "draft"}
 	now := time.Now().UTC().Format("2006-01-02")
@@ -264,15 +264,15 @@ func (r *InvoicesRepo) DraftFromShifts(ctx context.Context, tenantID, clientID i
 		return r.draftTx(ctx, tenantID, in, facts, &newID)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("draft from shifts: %w", err)
+		return nil, fmt.Errorf("draft from sessions: %w", err)
 	}
 	return r.Get(ctx, tenantID, newID)
 }
 
 // draftTx runs one draft attempt: allocate the number, insert a zero-total
-// header, link each shift's items (assigning a sort_order base), recompute
+// header, link each session's items (assigning a sort_order base), recompute
 // totals from the linked lines, persist them, and audit — all in one tx.
-func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceInput, facts []draftShiftItem, newID *int64) error {
+func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceInput, facts []draftSessionItem, newID *int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -290,13 +290,13 @@ func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceIn
 	}
 	var sortBase int64
 	for i := range facts { // bounded by len(facts)
-		if e := q.LinkShiftItemsToInvoice(ctx, gen.LinkShiftItemsToInvoiceParams{
+		if e := q.LinkSessionItemsToInvoice(ctx, gen.LinkSessionItemsToInvoiceParams{
 			InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true},
 			SortOrder: sql.NullInt64{Int64: sortBase, Valid: true},
 			TenantID:  tenantID,
-			ShiftID:   sql.NullInt64{Int64: facts[i].shiftID, Valid: true},
+			SessionID: sql.NullInt64{Int64: facts[i].sessionID, Valid: true},
 		}); e != nil {
-			return fmt.Errorf("link shift %d: %w", facts[i].shiftID, e)
+			return fmt.Errorf("link session %d: %w", facts[i].sessionID, e)
 		}
 		sortBase += facts[i].itemCount
 	}
@@ -315,7 +315,7 @@ func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceIn
 	}
 	if e := audit.Log(ctx, tx, audit.Entry{
 		EntityType: "invoice", EntityID: inv.ID, Action: "create",
-		Changes: audit.Changes(map[string]any{"number": num, "draftedFromShifts": len(facts)}),
+		Changes: audit.Changes(map[string]any{"number": num, "draftedFromSessions": len(facts)}),
 	}); e != nil {
 		return e
 	}
@@ -391,7 +391,7 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 		_, err = q.CreateLineItem(ctx, gen.CreateLineItemParams{
 			Uuid:             uuid.NewString(),
 			TenantID:         tenantID,
-			ShiftID:          sql.NullInt64{}, // invoice lines from this path are not shift items
+			SessionID:        sql.NullInt64{}, // invoice lines from this path are not session items
 			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
 			SupportItemID:    db.NullStr(it.SupportItemID),
 			CustomItemID:     customItemID,
@@ -654,19 +654,19 @@ func (r *InvoicesRepo) UpdateStatus(ctx context.Context, tenantID, id int64, sta
 	})
 }
 
-// Delete removes an invoice and writes one audit row. Shift items are unlinked
+// Delete removes an invoice and writes one audit row. Session items are unlinked
 // (invoice_id→NULL) BEFORE the delete so the line_items.invoice_id ON DELETE
-// CASCADE removes only shift-less manual lines; shift items survive (shift_id
-// intact) and return to their shift. Unlink + cascade are atomic in one tx.
+// CASCADE removes only session-less manual lines; session items survive (session_id
+// intact) and return to their session. Unlink + cascade are atomic in one tx.
 func (r *InvoicesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		if e := q.UnlinkShiftItemsFromInvoice(ctx, gen.UnlinkShiftItemsFromInvoiceParams{
+		if e := q.UnlinkSessionItemsFromInvoice(ctx, gen.UnlinkSessionItemsFromInvoiceParams{
 			TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true},
 		}); e != nil {
-			return fmt.Errorf("unlink shift items: %w", e)
+			return fmt.Errorf("unlink session items: %w", e)
 		}
 		if e := q.DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
@@ -683,10 +683,10 @@ func (r *InvoicesRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
-			if e := q.UnlinkShiftItemsFromInvoice(ctx, gen.UnlinkShiftItemsFromInvoiceParams{
+			if e := q.UnlinkSessionItemsFromInvoice(ctx, gen.UnlinkSessionItemsFromInvoiceParams{
 				TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true},
 			}); e != nil {
-				return fmt.Errorf("unlink shift items %d: %w", id, e)
+				return fmt.Errorf("unlink session items %d: %w", id, e)
 			}
 			if e := q.DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
 				return fmt.Errorf("delete %d: %w", id, e)
@@ -778,7 +778,7 @@ func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, tenantID, id i
 }
 
 // Exists reports whether the tenant has an invoice with the given id.
-// It satisfies the shift.InvoiceChecker interface so the shift service can
+// It satisfies the session.InvoiceChecker interface so the session service can
 // verify invoice ownership without importing the invoice package.
 func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID int64) (bool, error) {
 	inv, err := r.Get(ctx, tenantID, invoiceID)
@@ -814,18 +814,18 @@ func (r *InvoicesRepo) ResolvePayerID(ctx context.Context, tenantID int64, payer
 	return id, nil
 }
 
-// ResolveShiftIDs translates shift uuids into their int PKs (preserving order),
-// tenant-scoped. An unknown uuid is an error so draft-from-shifts can 400.
-func (r *InvoicesRepo) ResolveShiftIDs(ctx context.Context, tenantID int64, shiftUUIDs []string) ([]int64, error) {
+// ResolveSessionIDs translates session uuids into their int PKs (preserving order),
+// tenant-scoped. An unknown uuid is an error so draft-from-sessions can 400.
+func (r *InvoicesRepo) ResolveSessionIDs(ctx context.Context, tenantID int64, sessionUUIDs []string) ([]int64, error) {
 	q := gen.New(r.db)
-	out := make([]int64, 0, len(shiftUUIDs))
-	for i := range shiftUUIDs { // bounded by len(shiftUUIDs)
-		id, err := q.GetShiftIDByUUID(ctx, gen.GetShiftIDByUUIDParams{TenantID: tenantID, Uuid: shiftUUIDs[i]})
+	out := make([]int64, 0, len(sessionUUIDs))
+	for i := range sessionUUIDs { // bounded by len(sessionUUIDs)
+		id, err := q.GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, Uuid: sessionUUIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("unknown shift %q", shiftUUIDs[i])
+			return nil, fmt.Errorf("unknown session %q", sessionUUIDs[i])
 		}
 		if err != nil {
-			return nil, fmt.Errorf("resolve shift uuid: %w", err)
+			return nil, fmt.Errorf("resolve session uuid: %w", err)
 		}
 		out = append(out, id)
 	}

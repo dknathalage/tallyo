@@ -1,4 +1,4 @@
-package shift
+package session
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-func newShiftSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
+func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
@@ -18,38 +18,38 @@ func newShiftSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	return NewService(conn, conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
 }
 
-func shiftInput(pid int64, date string) ShiftInput {
-	return ShiftInput{
+func sessionInput(pid int64, date string) SessionInput {
+	return SessionInput{
 		ClientID: pid, ServiceDate: date,
 		Note: "supported community access",
 		Tags: []string{"t1"},
 	}
 }
 
-func TestShiftCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newShiftSvc(t)
+func TestSessionCreateBroadcasts(t *testing.T) {
+	svc, hub, tenantID, clientID := newSessionSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
+	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if sh == nil {
-		t.Fatal("Create returned nil shift")
+		t.Fatal("Create returned nil session")
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.UUID != sh.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want shift/%d/create", e, sh.ID)
+		if e.Entity != "session" || e.UUID != sh.UUID || e.Action != "create" {
+			t.Fatalf("event=%+v want session/%d/create", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
 	}
 }
 
-func TestShiftCreateAttributesAuthor(t *testing.T) {
+func TestSessionCreateAttributesAuthor(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
@@ -57,7 +57,7 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
-	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
+	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -66,12 +66,12 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	}
 }
 
-func TestShiftListClientRangeSvc(t *testing.T) {
-	svc, _, tenantID, clientID := newShiftSvc(t)
+func TestSessionListClientRangeSvc(t *testing.T) {
+	svc, _, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
 	for _, d := range []string{"2026-01-10", "2026-01-15", "2026-01-20"} {
-		if _, err := svc.Create(ctx, shiftInput(clientID, d)); err != nil {
+		if _, err := svc.Create(ctx, sessionInput(clientID, d)); err != nil {
 			t.Fatalf("Create %s: %v", d, err)
 		}
 	}
@@ -84,11 +84,11 @@ func TestShiftListClientRangeSvc(t *testing.T) {
 	}
 }
 
-func TestShiftUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newShiftSvc(t)
+func TestSessionUpdateStatusBroadcasts(t *testing.T) {
+	svc, hub, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
-	in := shiftInput(clientID, "2026-01-15")
+	in := sessionInput(clientID, "2026-01-15")
 	in.Status = "scheduled"
 	sh, err := svc.Create(ctx, in)
 	if err != nil {
@@ -102,8 +102,8 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.UUID != sh.UUID || e.Action != "update" {
-			t.Fatalf("event=%+v want shift/%d/update", e, sh.ID)
+		if e.Entity != "session" || e.UUID != sh.UUID || e.Action != "update" {
+			t.Fatalf("event=%+v want session/%d/update", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after UpdateStatus")
@@ -114,11 +114,11 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 	}
 }
 
-func TestShiftDeleteSvc(t *testing.T) {
-	svc, hub, tenantID, clientID := newShiftSvc(t)
+func TestSessionDeleteSvc(t *testing.T) {
+	svc, hub, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
-	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
+	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -129,27 +129,27 @@ func TestShiftDeleteSvc(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.UUID != sh.UUID || e.Action != "delete" {
-			t.Fatalf("event=%+v want shift/%d/delete", e, sh.ID)
+		if e.Entity != "session" || e.UUID != sh.UUID || e.Action != "delete" {
+			t.Fatalf("event=%+v want session/%d/delete", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Delete")
 	}
 	if got, _ := svc.Get(ctx, sh.ID); got != nil {
-		t.Fatalf("shift present after delete: %+v", got)
+		t.Fatalf("session present after delete: %+v", got)
 	}
 }
 
-func TestShiftToRecord(t *testing.T) {
-	svc, _, tenantID, clientID := newShiftSvc(t)
+func TestSessionToRecord(t *testing.T) {
+	svc, _, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
-	sched := shiftInput(clientID, "2026-01-15")
+	sched := sessionInput(clientID, "2026-01-15")
 	sched.Status = "scheduled"
 	if _, err := svc.Create(ctx, sched); err != nil {
 		t.Fatalf("Create scheduled: %v", err)
 	}
-	if _, err := svc.Create(ctx, shiftInput(clientID, "2026-01-16")); err != nil {
+	if _, err := svc.Create(ctx, sessionInput(clientID, "2026-01-16")); err != nil {
 		t.Fatalf("Create recorded: %v", err)
 	}
 
@@ -162,7 +162,7 @@ func TestShiftToRecord(t *testing.T) {
 	}
 }
 
-func TestShiftSuggestions(t *testing.T) {
+func TestSessionSuggestions(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	p1 := seedClient(t, conn, tenantID, "Jane")
@@ -172,13 +172,13 @@ func TestShiftSuggestions(t *testing.T) {
 
 	var p1ids []int64
 	for _, d := range []string{"2026-01-10", "2026-01-20"} {
-		sh, err := svc.Create(ctx, shiftInput(p1, d))
+		sh, err := svc.Create(ctx, sessionInput(p1, d))
 		if err != nil {
 			t.Fatalf("Create p1: %v", err)
 		}
 		p1ids = append(p1ids, sh.ID)
 	}
-	if _, err := svc.Create(ctx, shiftInput(p2, "2026-02-01")); err != nil {
+	if _, err := svc.Create(ctx, sessionInput(p2, "2026-02-01")); err != nil {
 		t.Fatalf("Create p2: %v", err)
 	}
 
@@ -202,7 +202,7 @@ func TestShiftSuggestions(t *testing.T) {
 	}
 }
 
-func TestShiftMarkDrafted(t *testing.T) {
+func TestSessionMarkDrafted(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
@@ -211,7 +211,7 @@ func TestShiftMarkDrafted(t *testing.T) {
 	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
-	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
+	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -223,8 +223,8 @@ func TestShiftMarkDrafted(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "shift" || e.Action != "bill" {
-			t.Fatalf("event=%+v want shift/bill", e)
+		if e.Entity != "session" || e.Action != "bill" {
+			t.Fatalf("event=%+v want session/bill", e)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after MarkDrafted")
@@ -235,7 +235,7 @@ func TestShiftMarkDrafted(t *testing.T) {
 	}
 }
 
-func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
+func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	conn := newTestDB(t)
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
@@ -248,7 +248,7 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
-	sh, err := svc.Create(ctxB, shiftInput(clientB, "2026-01-15"))
+	sh, err := svc.Create(ctxB, sessionInput(clientB, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -266,12 +266,12 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	}
 	got, _ := svc.Get(ctxB, sh.ID)
 	if got == nil || got.InvoiceID != nil || got.Status != "recorded" {
-		t.Fatalf("shift must remain unbilled: %+v", got)
+		t.Fatalf("session must remain unbilled: %+v", got)
 	}
 }
 
-func TestShiftMarkDraftedEmptyNoEvent(t *testing.T) {
-	svc, hub, tenantID, _ := newShiftSvc(t)
+func TestSessionMarkDraftedEmptyNoEvent(t *testing.T) {
+	svc, hub, tenantID, _ := newSessionSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 

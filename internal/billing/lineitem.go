@@ -40,7 +40,7 @@ var ErrUnknownCustomItem = errors.New("unknown custom item")
 type LineItemRow struct {
 	ID               int64
 	Uuid             string
-	ShiftID          sql.NullInt64
+	SessionID        sql.NullInt64
 	InvoiceID        sql.NullInt64
 	SupportItemID    sql.NullString
 	CustomItemID     sql.NullInt64
@@ -60,14 +60,14 @@ type LineItemRow struct {
 }
 
 // LineItemFromRow maps one joined central line_items row to the domain shape.
-// Shared by the invoice and shift slices (both read the central line_items
+// Shared by the invoice and session slices (both read the central line_items
 // table). customItemId surfaces as the custom-item uuid (nil when no custom
 // item); the int FK stays internal.
 func LineItemFromRow(row LineItemRow) *LineItem {
 	return &LineItem{
 		ID:               row.ID,
 		UUID:             row.Uuid,
-		ShiftID:          ptrInt(row.ShiftID),
+		SessionID:        ptrInt(row.SessionID),
 		InvoiceID:        ptrInt(row.InvoiceID),
 		SupportItemID:    ptrStr(row.SupportItemID),
 		CustomItemID:     ptrInt(row.CustomItemID),
@@ -87,11 +87,11 @@ func LineItemFromRow(row LineItemRow) *LineItem {
 	}
 }
 
-// LineItemRowFromInvoice/Shift/Get/ShiftUUID adapt the four generated joined
+// LineItemRowFromInvoice/Session/Get/SessionUUID adapt the four generated joined
 // row types (all structurally identical) into the shared LineItemRow.
 func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -99,9 +99,9 @@ func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 	}
 }
 
-func LineItemRowFromShiftList(r gen.ListLineItemsForShiftRow) LineItemRow {
+func LineItemRowFromSessionList(r gen.ListLineItemsForSessionRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -111,7 +111,7 @@ func LineItemRowFromShiftList(r gen.ListLineItemsForShiftRow) LineItemRow {
 
 func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -119,9 +119,9 @@ func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 	}
 }
 
-func LineItemRowFromShiftUUID(r gen.GetShiftLineItemByUUIDRow) LineItemRow {
+func LineItemRowFromSessionUUID(r gen.GetSessionLineItemByUUIDRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, ShiftID: r.ShiftID, InvoiceID: r.InvoiceID,
+		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -146,12 +146,12 @@ func ptrStr(n sql.NullString) *string {
 }
 
 // LineItem is the domain view of a row in the line_items table. A line item is
-// the same row whether it lives on a shift (ShiftID set, InvoiceID nil) or on an
+// the same row whether it lives on a session (SessionID set, InvoiceID nil) or on an
 // invoice (InvoiceID set); drafting links it by setting InvoiceID.
 type LineItem struct {
 	ID               int64   `json:"-"`                // internal PK; the public identifier is the uuid
 	UUID             string  `json:"id"`               // public identifier (item uuid)
-	ShiftID          *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent shift, so the parent ref is redundant on the API
+	SessionID        *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent session, so the parent ref is redundant on the API
 	InvoiceID        *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent invoice, so the parent ref is redundant on the API
 	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
 	CustomItemID     *int64  `json:"-"`                // internal tenant-local FK; the public ref is the uuid

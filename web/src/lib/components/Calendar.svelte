@@ -1,21 +1,21 @@
 <script lang="ts">
-	import { eventClass, todayISO } from '$lib/shifts/format';
-	import type { Shift } from '$lib/api/types';
+	import { eventClass, todayISO } from '$lib/sessions/format';
+	import type { Session } from '$lib/api/types';
 
 	type Props = {
-		shifts: Shift[];
+		sessions: Session[];
 		/** Resolve a client uuid to a display name (chips show the first name). */
 		nameFor: (clientId: string) => string;
 		/** Month to render, as a YYYY-MM string. Defaults to the current month. */
 		month?: string;
-		/** Click an empty day cell → add a shift on that date. */
+		/** Click an empty day cell → add a session on that date. */
 		onaddday?: (dateISO: string) => void;
-		/** Click a shift chip → edit (or record when scheduled). */
-		onopen?: (shift: Shift) => void;
+		/** Click a session chip → edit (or record when scheduled). */
+		onopen?: (session: Session) => void;
 	};
 
 	let {
-		shifts,
+		sessions,
 		nameFor,
 		month = todayISO().slice(0, 7),
 		onaddday,
@@ -39,11 +39,11 @@
 		return `${year}-${m}-${d}`;
 	}
 
-	// Group shifts by their day-of-month within this rendered month.
-	const byDay = $derived.by<Map<number, Shift[]>>(() => {
-		const map = new Map<number, Shift[]>();
-		for (let i = 0; i < shifts.length; i++) {
-			const s = shifts[i];
+	// Group sessions by their day-of-month within this rendered month.
+	const byDay = $derived.by<Map<number, Session[]>>(() => {
+		const map = new Map<number, Session[]>();
+		for (let i = 0; i < sessions.length; i++) {
+			const s = sessions[i];
 			if (s.serviceDate.slice(0, 7) !== month) continue;
 			const day = Number(s.serviceDate.slice(8, 10));
 			const list = map.get(day) ?? [];
@@ -60,7 +60,7 @@
 		return nameFor(clientId).split(' ')[0] ?? '';
 	}
 
-	function chipLabel(s: Shift): string {
+	function chipLabel(s: Session): string {
 		return firstName(s.clientId);
 	}
 </script>
@@ -74,7 +74,7 @@
 	{/each}
 	{#each days as day (day)}
 		{@const iso = isoFor(day)}
-		{@const dayShifts = byDay.get(day) ?? []}
+		{@const daySessions = byDay.get(day) ?? []}
 		<button
 			type="button"
 			onclick={() => onaddday?.(iso)}
@@ -83,7 +83,7 @@
 				: 'border-gray-200 hover:bg-gray-50'}"
 		>
 			<span class="block text-xs text-gray-500">{day}{iso === today ? ' • today' : ''}</span>
-			{#each dayShifts as s (s.id)}
+			{#each daySessions as s (s.id)}
 				<span
 					role="button"
 					tabindex="0"

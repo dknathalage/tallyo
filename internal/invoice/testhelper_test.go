@@ -13,7 +13,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/google/uuid"
 )
 
@@ -136,7 +136,7 @@ func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	return NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn))), hub, tenantID, clientID
+	return NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn))), hub, tenantID, clientID
 }
 
 // makeInvoice creates a single invoice for the tenant/client and returns it.

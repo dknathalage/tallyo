@@ -3,7 +3,7 @@ package agent
 // Tests for Smarts.ImportShifts: free-text timesheet → recorded shifts via a
 // forced emit_shifts extraction followed by a deterministic, idempotent create
 // step. The model call is driven by a scripted llm.Fake (an emit_shifts tool_use
-// carrying the drafts); persistence is driven by a stub ShiftWorker that records
+// carrying the drafts); persistence is driven by a stub SessionWorker that records
 // created shifts, returns a fixed set of "existing" shifts, and can be told to
 // fail on Create.
 
@@ -15,25 +15,25 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/catalog"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 )
 
-// stubShiftWorker is an in-memory ShiftWorker for ImportShifts tests. existing is
+// stubShiftWorker is an in-memory SessionWorker for ImportShifts tests. existing is
 // returned (the whole slice) by ListClient; created records every Create;
 // createErr makes Create fail. The item-writer/reader methods are unused by
 // ImportShifts and satisfy the interface only.
 type stubShiftWorker struct {
-	existing  []*shift.Shift
-	created   []*shift.Shift
+	existing  []*session.Session
+	created   []*session.Session
 	createErr error
 	nextID    int64
 }
 
-func (s *stubShiftWorker) ListClient(_ context.Context, _ int64, _, _ string) ([]*shift.Shift, error) {
+func (s *stubShiftWorker) ListClient(_ context.Context, _ int64, _, _ string) ([]*session.Session, error) {
 	return s.existing, nil
 }
 
-func (s *stubShiftWorker) Get(_ context.Context, _ int64) (*shift.Shift, error) { return nil, nil }
+func (s *stubShiftWorker) Get(_ context.Context, _ int64) (*session.Session, error) { return nil, nil }
 
 func (s *stubShiftWorker) AddItem(_ context.Context, _ int64, _ billing.LineItemInput) (*billing.LineItem, error) {
 	return nil, fmt.Errorf("not used")
@@ -41,12 +41,12 @@ func (s *stubShiftWorker) AddItem(_ context.Context, _ int64, _ billing.LineItem
 
 func (s *stubShiftWorker) ClearUnbilledItems(_ context.Context, _ int64) error { return nil }
 
-func (s *stubShiftWorker) Create(_ context.Context, in shift.ShiftInput) (*shift.Shift, error) {
+func (s *stubShiftWorker) Create(_ context.Context, in session.SessionInput) (*session.Session, error) {
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
 	s.nextID++
-	sh := &shift.Shift{
+	sh := &session.Session{
 		ID:          s.nextID,
 		ClientID:    in.ClientID,
 		ServiceDate: in.ServiceDate,
@@ -80,7 +80,7 @@ func TestImportShiftsReimportIdempotent(t *testing.T) {
 	drafts := []ShiftDraft{
 		{ClientName: "Tania", ServiceDate: "2026-06-09", StartTime: "9am", EndTime: "4pm", Hours: 7.0, Km: 36},
 	}
-	worker := &stubShiftWorker{existing: []*shift.Shift{
+	worker := &stubShiftWorker{existing: []*session.Session{
 		{ID: 1, ServiceDate: "2026-06-09"},
 	}}
 	s := newImportSmarts(t, drafts, worker)

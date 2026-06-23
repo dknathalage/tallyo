@@ -36,16 +36,16 @@ type catalogueMatchView struct {
 
 // proposeDivide runs the divide Smart's grounding loop: the model may call the
 // read-only search_catalogue tool (bounded by maxToolTurns) to find the right
-// NDIS codes itself, then emits divide_shift. It returns the decoded proposal.
-func (s *Smarts) proposeDivide(ctx context.Context, system, userContent string) (divideShiftInput, error) {
-	commit := llm.ToolDef{Name: "divide_shift", Description: "Emit the line items for this shift. Call exactly once, when you have resolved every code.", InputSchema: json.RawMessage(divideShiftSchema)}
+// NDIS codes itself, then emits divide_session. It returns the decoded proposal.
+func (s *Smarts) proposeDivide(ctx context.Context, system, userContent string) (divideSessionInput, error) {
+	commit := llm.ToolDef{Name: "divide_session", Description: "Emit the line items for this session. Call exactly once, when you have resolved every code.", InputSchema: json.RawMessage(divideSessionSchema)}
 	raw, err := s.proposeWithCommit(ctx, system, userContent, commit)
 	if err != nil {
-		return divideShiftInput{}, err
+		return divideSessionInput{}, err
 	}
-	var out divideShiftInput
+	var out divideSessionInput
 	if e := json.Unmarshal(raw, &out); e != nil {
-		return divideShiftInput{}, fmt.Errorf("propose divide: decode divide_shift: %w", e)
+		return divideSessionInput{}, fmt.Errorf("propose divide: decode divide_session: %w", e)
 	}
 	return out, nil
 }

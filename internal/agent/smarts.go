@@ -14,18 +14,18 @@ const requestMaxTokens = 64000
 // each gather → propose → apply. It depends only on the slice services it needs
 // and the model client; no conversation/step/checkpoint state.
 type Smarts struct {
-	cfg     Config
-	client  llm.Client
-	shifts  ShiftWorker
-	catalog CatalogueSearcher
+	cfg      Config
+	client   llm.Client
+	sessions SessionWorker
+	catalog  CatalogueSearcher
 }
 
 // NewSmarts constructs the Smarts service. A nil dependency is a programmer error.
-func NewSmarts(cfg Config, client llm.Client, shifts ShiftWorker, catalog CatalogueSearcher) *Smarts {
-	if client == nil || shifts == nil || catalog == nil {
-		panic("agent: NewSmarts requires non-nil client, shifts, catalog")
+func NewSmarts(cfg Config, client llm.Client, sessions SessionWorker, catalog CatalogueSearcher) *Smarts {
+	if client == nil || sessions == nil || catalog == nil {
+		panic("agent: NewSmarts requires non-nil client, sessions, catalog")
 	}
-	return &Smarts{cfg: cfg, client: client, shifts: shifts, catalog: catalog}
+	return &Smarts{cfg: cfg, client: client, sessions: sessions, catalog: catalog}
 }
 
 // wrapUntrusted fences arbitrary record text so the model treats it as data

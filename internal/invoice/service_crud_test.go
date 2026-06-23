@@ -6,7 +6,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 )
 
 func TestInvoiceListAndGet(t *testing.T) {
@@ -78,7 +78,7 @@ func TestInvoiceListClientInvoicesAndStats(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID, clientUUID := seedClientUUID(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, clientID)
@@ -241,7 +241,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 func TestInvoiceTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
 	partA := seedClient(t, conn, tenantA, "Jane")

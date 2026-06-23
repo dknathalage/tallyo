@@ -12,7 +12,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -39,7 +39,7 @@ func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, int64, string, 
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	pid, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
 	inv := makeInvoice(t, svc, tenantID, pid)
 	return NewHandler(svc), NewPaymentHandler(NewPaymentService(conn, hub)), tenantID, pUUID, inv
 }
@@ -163,23 +163,23 @@ func TestInvoicePaymentLifecycleByUUID(t *testing.T) {
 	}
 }
 
-func TestInvoiceDraftFromShiftsByUUID(t *testing.T) {
+func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	pid, _ := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, conn, hub, shiftSvc)
+	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, conn, hub, sessionSvc)
 	ih := NewHandler(invSvc)
 	ph := NewPaymentHandler(NewPaymentService(conn, hub))
 
-	// Seed one recorded shift with one item, capture its uuid.
-	sh, err := shiftSvc.Create(tctx(tenantID), shift.ShiftInput{ClientID: pid, ServiceDate: "2026-01-15", Status: "recorded"})
+	// Seed one recorded session with one item, capture its uuid.
+	sh, err := sessionSvc.Create(tctx(tenantID), session.SessionInput{ClientID: pid, ServiceDate: "2026-01-15", Status: "recorded"})
 	if err != nil {
-		t.Fatalf("seed shift: %v", err)
+		t.Fatalf("seed session: %v", err)
 	}
 	if _, err := gen.New(conn).CreateLineItem(context.Background(), gen.CreateLineItemParams{
-		Uuid: uuid.NewString(), TenantID: tenantID, ShiftID: sql.NullInt64{Int64: sh.ID, Valid: true},
+		Uuid: uuid.NewString(), TenantID: tenantID, SessionID: sql.NullInt64{Int64: sh.ID, Valid: true},
 		Description: "Work", Quantity: 1, UnitPrice: 10, LineTotal: 10,
 	}); err != nil {
 		t.Fatalf("seed item: %v", err)
@@ -188,14 +188,14 @@ func TestInvoiceDraftFromShiftsByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountInvoice(ih, ph, tenantID))
 	defer srv.Close()
 
-	body, _ := json.Marshal(map[string]any{"shiftIds": []string{sh.UUID}})
-	res, err := http.Post(srv.URL+"/invoices/draft-from-shifts", "application/json", bytes.NewReader(body))
+	body, _ := json.Marshal(map[string]any{"sessionIds": []string{sh.UUID}})
+	res, err := http.Post(srv.URL+"/invoices/draft-from-sessions", "application/json", bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("POST draft-from-shifts: %v", err)
+		t.Fatalf("POST draft-from-sessions: %v", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("draft-from-shifts status=%d want 201", res.StatusCode)
+		t.Fatalf("draft-from-sessions status=%d want 201", res.StatusCode)
 	}
 	var got map[string]any
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {

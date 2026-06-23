@@ -2,20 +2,20 @@
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { DataTable, type ColumnDef } from '@careswitch/svelte-data-table';
-	import { dowDate, statusLabel, statusBadgeClass } from '$lib/shifts/format';
-	import type { Shift, ShiftStatus } from '$lib/api/types';
+	import { dowDate, statusLabel, statusBadgeClass } from '$lib/sessions/format';
+	import type { Session, SessionStatus } from '$lib/api/types';
 
 	type Props = {
-		shifts: Shift[];
+		sessions: Session[];
 		/** Maps a client uuid → display name. */
 		clientName: (id: string) => string;
-		/** Row click — open the shift (edit / record). */
-		onopen?: (shift: Shift) => void;
-		/** Bulk delete — called with the selected shift uuids. */
+		/** Row click — open the session (edit / record). */
+		onopen?: (session: Session) => void;
+		/** Bulk delete — called with the selected session uuids. */
 		ondelete?: (ids: string[]) => void | Promise<void>;
 	};
 
-	let { shifts, clientName, onopen, ondelete }: Props = $props();
+	let { sessions, clientName, onopen, ondelete }: Props = $props();
 
 	// A flattened row carrying the derived client name + a single tag string,
 	// so the table can sort/search/filter on plain scalar columns.
@@ -25,11 +25,11 @@
 		client: string;
 		note: string;
 		tags: string;
-		status: ShiftStatus;
-		shift: Shift;
+		status: SessionStatus;
+		session: Session;
 	}
 
-	function toRow(s: Shift): Row {
+	function toRow(s: Session): Row {
 		return {
 			id: s.id,
 			date: s.serviceDate,
@@ -37,11 +37,11 @@
 			note: s.note,
 			tags: s.tags.join(', '),
 			status: s.status,
-			shift: s
+			session: s
 		};
 	}
 
-	const STATUSES: ShiftStatus[] = ['scheduled', 'recorded', 'drafted', 'sent', 'paid'];
+	const STATUSES: SessionStatus[] = ['scheduled', 'recorded', 'drafted', 'sent', 'paid'];
 
 	// Case-insensitive substring match, shared by the free-text column filters.
 	function textFilter(value: string, filterValue: string): boolean {
@@ -66,12 +66,12 @@
 			key: 'status',
 			name: 'Status',
 			sortable: true,
-			filter: (value: ShiftStatus, filterValue: ShiftStatus) => value === filterValue
+			filter: (value: SessionStatus, filterValue: SessionStatus) => value === filterValue
 		}
 	];
 
 	// Initialised empty; the effect below seeds + keeps baseRows in sync with the
-	// reactive `shifts` prop (reading it in the constructor would only capture the
+	// reactive `sessions` prop (reading it in the constructor would only capture the
 	// initial value).
 	const table = new DataTable<Row>({
 		data: [],
@@ -81,7 +81,7 @@
 	});
 
 	$effect(() => {
-		const rows = shifts.map(toRow);
+		const rows = sessions.map(toRow);
 		// setFilter/clearFilter below (and baseRows) read #filterState while writing
 		// it; running the table mutations untracked keeps these effects from
 		// subscribing to that write and looping (effect_update_depth_exceeded).
@@ -96,7 +96,7 @@
 	let noteQuery = $state('');
 	let clientFilter = $state('');
 	let tagFilter = $state('');
-	let statusFilter = $state<'all' | ShiftStatus>('all');
+	let statusFilter = $state<'all' | SessionStatus>('all');
 
 	$effect(() => {
 		const q = dateQuery;
@@ -123,9 +123,9 @@
 
 	// Distinct client names + tag codes for the dropdowns (from current data).
 	const clientNames = $derived(
-		Array.from(new Set(shifts.map((s) => clientName(s.clientId)))).sort()
+		Array.from(new Set(sessions.map((s) => clientName(s.clientId)))).sort()
 	);
-	const tagOptions = $derived(Array.from(new Set(shifts.flatMap((s) => s.tags))).sort());
+	const tagOptions = $derived(Array.from(new Set(sessions.flatMap((s) => s.tags))).sort());
 
 	function sortIndicator(columnId: string): string {
 		const dir = table.getSortState(columnId);
@@ -134,7 +134,7 @@
 		return ''; // no glyph until the column is the active sort
 	}
 
-	// Row selection for bulk actions. Keyed by shift id so it survives re-sorts
+	// Row selection for bulk actions. Keyed by session id so it survives re-sorts
 	// and filter changes; ids that filter out of view simply aren't acted on.
 	const selected = new SvelteSet<string>();
 
@@ -161,7 +161,7 @@
 	async function deleteSelected(): Promise<void> {
 		const ids = Array.from(selected);
 		if (ids.length === 0 || deleting) return;
-		if (!confirm(`Delete ${ids.length} shift${ids.length === 1 ? '' : 's'}? This cannot be undone.`))
+		if (!confirm(`Delete ${ids.length} session${ids.length === 1 ? '' : 's'}? This cannot be undone.`))
 			return;
 		deleting = true;
 		try {
@@ -205,7 +205,7 @@
 							type="checkbox"
 							checked={allVisibleSelected}
 							onchange={toggleAllVisible}
-							aria-label="Select all shifts"
+							aria-label="Select all sessions"
 							class="align-middle"
 						/>
 					</th>
@@ -287,7 +287,7 @@
 					<tr
 						class="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50"
 						class:bg-blue-50={selected.has(row.id)}
-						onclick={() => onopen?.(row.shift)}
+						onclick={() => onopen?.(row.session)}
 					>
 						<td class="px-3 py-1.5">
 							<input
@@ -295,7 +295,7 @@
 								checked={selected.has(row.id)}
 								onclick={(e) => e.stopPropagation()}
 								onchange={() => toggleRow(row.id)}
-								aria-label="Select shift"
+								aria-label="Select session"
 								class="align-middle"
 							/>
 						</td>
@@ -309,7 +309,7 @@
 							{/if}
 						</td>
 						<td class="px-3 py-1.5">
-							{#each row.shift.tags as tag (tag)}
+							{#each row.session.tags as tag (tag)}
 								<span
 									class="mr-1 mb-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200"
 								>
@@ -329,7 +329,7 @@
 					</tr>
 				{:else}
 					<tr>
-						<td colspan="9" class="px-3 py-6 text-center text-gray-500">No matching shifts.</td>
+						<td colspan="9" class="px-3 py-6 text-center text-gray-500">No matching sessions.</td>
 					</tr>
 				{/each}
 			</tbody>

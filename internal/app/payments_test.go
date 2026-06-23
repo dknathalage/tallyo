@@ -11,7 +11,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
@@ -28,7 +28,7 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
 	pH := client.NewHandler(client.NewService(conn, hub))
-	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, shift.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
+	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, session.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
 	payH := invoice.NewPaymentHandler(invoice.NewPaymentService(conn, hub))
 
 	router := chi.NewRouter()

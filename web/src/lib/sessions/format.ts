@@ -1,11 +1,11 @@
 /**
- * Pure display + date helpers shared by the shift views (home, calendar,
+ * Pure display + date helpers shared by the session views (home, calendar,
  * client profile). No I/O. Dates are YYYY-MM-DD strings in the browser's
  * local interpretation; we avoid `new Date(string)` parsing pitfalls by working
  * on the string parts directly where possible.
  */
 
-import type { ShiftStatus } from '$lib/api/types';
+import type { SessionStatus } from '$lib/api/types';
 
 const MONTHS = [
 	'Jan',
@@ -45,7 +45,7 @@ export function shortDate(iso: string): string {
 /** "Mon 12 Jun" — day-of-week + short date. */
 export function dowDate(iso: string): string {
 	if (typeof iso !== 'string' || iso.length < 10) return iso;
-	// Construct from parts in local time (no TZ shift for date-only strings).
+	// Construct from parts in local time (no TZ session for date-only strings).
 	const y = Number(iso.slice(0, 4));
 	const m = Number(iso.slice(5, 7));
 	const d = Number(iso.slice(8, 10));
@@ -54,7 +54,7 @@ export function dowDate(iso: string): string {
 	return `${dow} ${shortDate(iso)}`.trim();
 }
 
-const STATUS_LABELS: Record<ShiftStatus, string> = {
+const STATUS_LABELS: Record<SessionStatus, string> = {
 	scheduled: 'Scheduled',
 	recorded: 'Recorded',
 	drafted: 'Drafted',
@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<ShiftStatus, string> = {
 };
 
 export function statusLabel(status: string): string {
-	return STATUS_LABELS[status as ShiftStatus] ?? status;
+	return STATUS_LABELS[status as SessionStatus] ?? status;
 }
 
 /** Tailwind badge classes per lifecycle status (mirrors the prototype palette). */

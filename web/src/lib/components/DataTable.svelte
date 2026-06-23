@@ -171,9 +171,9 @@
 	}
 
 	// ── Selection ─────────────────────────────────────────────────────────────
-	function toggleRow(id: string, idx: number, shift: boolean): void {
+	function toggleRow(id: string, idx: number, session: boolean): void {
 		const next = new Set(selected);
-		if (shift && lastIdx !== null) {
+		if (session && lastIdx !== null) {
 			const [a, b] = [lastIdx, idx].sort((x, y) => x - y);
 			for (let i = a; i <= b; i++) next.add(rows[i].id);
 		} else if (next.has(id)) next.delete(id);

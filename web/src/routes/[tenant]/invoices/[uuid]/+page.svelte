@@ -12,8 +12,8 @@
 	import { clients } from '$lib/stores/clients.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
-	import { shifts } from '$lib/stores/shifts.svelte';
-	import { dowDate, statusLabel } from '$lib/shifts/format';
+	import { sessions } from '$lib/stores/sessions.svelte';
+	import { dowDate, statusLabel } from '$lib/sessions/format';
 	import type {
 		Invoice,
 		InvoiceInput,
@@ -80,8 +80,8 @@
 		void customItems.load();
 		businessProfile.subscribe();
 		void businessProfile.load();
-		shifts.ensureSubscribed();
-		void shifts.load();
+		sessions.ensureSubscribed();
+		void sessions.load();
 	});
 
 	// ────────────────────────── Create flow (id === 'new') ──────────────────────
@@ -240,7 +240,7 @@
 		try {
 			await apiPost(tenantPath(`invoices/${detail.id}/status`), { status });
 			await loadDetail();
-			await shifts.load();
+			await sessions.load();
 		} catch (err) {
 			if (err instanceof ApiError) detailError = err.message;
 			else detailError = err instanceof Error ? err.message : 'Failed to update status.';
@@ -249,11 +249,11 @@
 		}
 	}
 
-	// Source shifts: those attached to this invoice.
-	const sourceShifts = $derived(
+	// Source sessions: those attached to this invoice.
+	const sourceSessions = $derived(
 		idParam === 'new'
 			? []
-			: shifts.items
+			: sessions.items
 					.filter((s) => s.invoiceId === idParam)
 					.sort((a, b) => (a.serviceDate < b.serviceDate ? -1 : 1))
 	);
@@ -419,9 +419,9 @@
 
 		<section class="rounded-lg border border-gray-200 bg-white p-4">
 			<h2 class="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-				Source shifts ({sourceShifts.length})
+				Source sessions ({sourceSessions.length})
 			</h2>
-			{#each sourceShifts as s (s.id)}
+			{#each sourceSessions as s (s.id)}
 				<a
 					href={t(`/clients/${s.clientId}`)}
 					class="flex items-center justify-between gap-3 border-b border-gray-100 py-2 text-sm last:border-0"
@@ -433,7 +433,7 @@
 					<span class="text-gray-500">{statusLabel(s.status)}</span>
 				</a>
 			{:else}
-				<p class="text-sm text-gray-500">No shifts are linked to this invoice.</p>
+				<p class="text-sm text-gray-500">No sessions are linked to this invoice.</p>
 			{/each}
 		</section>
 

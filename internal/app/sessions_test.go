@@ -13,15 +13,15 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/shift"
+	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
 
-// shiftFixture bundles a migrated DB, the shift handler mounted on a real test
+// sessionFixture bundles a migrated DB, the session handler mounted on a real test
 // server, the seeded tenant context, and the seeded client uuid. Entities
 // are addressed by uuid in the path + JSON, matching the production contract.
-type shiftFixture struct {
+type sessionFixture struct {
 	srv            *httptest.Server
 	ctx            context.Context
 	tenantID       int64
@@ -29,11 +29,11 @@ type shiftFixture struct {
 	customItemUUID string
 }
 
-// newShiftFixture migrates a temp DB, seeds a tenant+client, and mounts the
-// shift routes behind a tenant-injecting middleware on a real test server.
-func newShiftFixture(t *testing.T) *shiftFixture {
+// newSessionFixture migrates a temp DB, seeds a tenant+client, and mounts the
+// session routes behind a tenant-injecting middleware on a real test server.
+func newSessionFixture(t *testing.T) *sessionFixture {
 	t.Helper()
-	conn := openMigratedDB(t, "shift.db")
+	conn := openMigratedDB(t, "session.db")
 	_, tenantID, _, _ := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
@@ -57,7 +57,7 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 		t.Fatalf("seed custom item: want uuid got %+v", ci)
 	}
 
-	h := shift.NewHandler(shift.NewService(conn, conn, hub, invoice.NewInvoices(conn)), nil)
+	h := session.NewHandler(session.NewService(conn, conn, hub, invoice.NewInvoices(conn)), nil)
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -69,7 +69,7 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 
-	return &shiftFixture{
+	return &sessionFixture{
 		srv:            srv,
 		ctx:            ctx,
 		tenantID:       tenantID,
@@ -78,8 +78,8 @@ func newShiftFixture(t *testing.T) *shiftFixture {
 	}
 }
 
-// do issues a request against the mounted shift router and returns the response.
-func (f *shiftFixture) do(t *testing.T, method, path, body string) *http.Response {
+// do issues a request against the mounted session router and returns the response.
+func (f *sessionFixture) do(t *testing.T, method, path, body string) *http.Response {
 	t.Helper()
 	var r *http.Request
 	var err error
@@ -99,25 +99,25 @@ func (f *shiftFixture) do(t *testing.T, method, path, body string) *http.Respons
 	return resp
 }
 
-// createShift posts a shift via the router and returns the decoded shift.
-func (f *shiftFixture) createShift(t *testing.T, body string) shift.Shift {
+// createSession posts a session via the router and returns the decoded session.
+func (f *sessionFixture) createSession(t *testing.T, body string) session.Session {
 	t.Helper()
-	resp := f.do(t, http.MethodPost, "/shifts", body)
+	resp := f.do(t, http.MethodPost, "/sessions", body)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		buf := new(bytes.Buffer)
 		_, _ = buf.ReadFrom(resp.Body)
-		t.Fatalf("create shift: want 201 got %d (%s)", resp.StatusCode, buf.String())
+		t.Fatalf("create session: want 201 got %d (%s)", resp.StatusCode, buf.String())
 	}
-	var out shift.Shift
+	var out session.Session
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode shift: %v", err)
+		t.Fatalf("decode session: %v", err)
 	}
 	return out
 }
 
-func TestShiftCreateRoundTripsFields(t *testing.T) {
-	f := newShiftFixture(t)
+func TestSessionCreateRoundTripsFields(t *testing.T) {
+	f := newSessionFixture(t)
 	body, err := json.Marshal(map[string]any{
 		"clientId":    f.clientUUID,
 		"serviceDate": "2026-01-05",
@@ -126,7 +126,7 @@ func TestShiftCreateRoundTripsFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	s := f.createShift(t, string(body))
+	s := f.createSession(t, string(body))
 	if s.UUID == "" {
 		t.Fatalf("create: want non-empty uuid got %q", s.UUID)
 	}
@@ -141,19 +141,19 @@ func TestShiftCreateRoundTripsFields(t *testing.T) {
 	}
 }
 
-func TestShiftCreateMissingServiceDate400(t *testing.T) {
-	f := newShiftFixture(t)
+func TestSessionCreateMissingServiceDate400(t *testing.T) {
+	f := newSessionFixture(t)
 	body, _ := json.Marshal(map[string]any{"clientId": f.clientUUID})
-	resp := f.do(t, http.MethodPost, "/shifts", string(body))
+	resp := f.do(t, http.MethodPost, "/sessions", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("missing service date: want 400 got %d", resp.StatusCode)
 	}
 }
 
-func TestShiftListForClientEmptyReturnsArray(t *testing.T) {
-	f := newShiftFixture(t)
-	resp := f.do(t, http.MethodGet, "/shifts?client="+f.clientUUID, "")
+func TestSessionListForClientEmptyReturnsArray(t *testing.T) {
+	f := newSessionFixture(t)
+	resp := f.do(t, http.MethodGet, "/sessions?client="+f.clientUUID, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
@@ -165,19 +165,19 @@ func TestShiftListForClientEmptyReturnsArray(t *testing.T) {
 	}
 }
 
-func TestShiftListForClientReturnsCreated(t *testing.T) {
-	f := newShiftFixture(t)
+func TestSessionListForClientReturnsCreated(t *testing.T) {
+	f := newSessionFixture(t)
 	body, _ := json.Marshal(map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05", "note": "Entry.",
 	})
-	created := f.createShift(t, string(body))
+	created := f.createSession(t, string(body))
 
-	resp := f.do(t, http.MethodGet, "/shifts?client="+f.clientUUID, "")
+	resp := f.do(t, http.MethodGet, "/sessions?client="+f.clientUUID, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
 	}
-	var out []shift.Shift
+	var out []session.Session
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -186,22 +186,22 @@ func TestShiftListForClientReturnsCreated(t *testing.T) {
 	}
 }
 
-func TestShiftListForClientStatusFilter(t *testing.T) {
-	f := newShiftFixture(t)
-	rec := f.createShift(t, mustJSON(t, map[string]any{
+func TestSessionListForClientStatusFilter(t *testing.T) {
+	f := newSessionFixture(t)
+	rec := f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-10", "status": "recorded",
 	}))
-	sched := f.createShift(t, mustJSON(t, map[string]any{
+	sched := f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-11", "status": "scheduled",
 	}))
 	_ = sched
 
-	resp := f.do(t, http.MethodGet, "/shifts?client="+f.clientUUID+"&status=recorded", "")
+	resp := f.do(t, http.MethodGet, "/sessions?client="+f.clientUUID+"&status=recorded", "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list status: want 200 got %d", resp.StatusCode)
 	}
-	var out []shift.Shift
+	var out []session.Session
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -210,21 +210,21 @@ func TestShiftListForClientStatusFilter(t *testing.T) {
 	}
 }
 
-func TestShiftListAllTenant(t *testing.T) {
-	f := newShiftFixture(t)
-	_ = f.createShift(t, mustJSON(t, map[string]any{
+func TestSessionListAllTenant(t *testing.T) {
+	f := newSessionFixture(t)
+	_ = f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-10",
 	}))
-	_ = f.createShift(t, mustJSON(t, map[string]any{
+	_ = f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-02-20",
 	}))
 
-	resp := f.do(t, http.MethodGet, "/shifts", "")
+	resp := f.do(t, http.MethodGet, "/sessions", "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list all: want 200 got %d", resp.StatusCode)
 	}
-	var out []shift.Shift
+	var out []session.Session
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -233,34 +233,34 @@ func TestShiftListAllTenant(t *testing.T) {
 	}
 }
 
-func TestShiftGetUnknown404(t *testing.T) {
-	f := newShiftFixture(t)
-	resp := f.do(t, http.MethodGet, "/shifts/"+uuidpkg.NewString(), "")
+func TestSessionGetUnknown404(t *testing.T) {
+	f := newSessionFixture(t)
+	resp := f.do(t, http.MethodGet, "/sessions/"+uuidpkg.NewString(), "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("get unknown: want 404 got %d", resp.StatusCode)
 	}
 }
 
-func TestShiftUpdateUnknown404(t *testing.T) {
-	f := newShiftFixture(t)
+func TestSessionUpdateUnknown404(t *testing.T) {
+	f := newSessionFixture(t)
 	body, _ := json.Marshal(map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-06", "note": "Nope.",
 	})
-	resp := f.do(t, http.MethodPut, "/shifts/"+uuidpkg.NewString(), string(body))
+	resp := f.do(t, http.MethodPut, "/sessions/"+uuidpkg.NewString(), string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("update unknown: want 404 got %d", resp.StatusCode)
 	}
 }
 
-func TestShiftStatusTransition(t *testing.T) {
-	f := newShiftFixture(t)
-	created := f.createShift(t, mustJSON(t, map[string]any{
+func TestSessionStatusTransition(t *testing.T) {
+	f := newSessionFixture(t)
+	created := f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05", "status": "scheduled",
 	}))
 
-	resp := f.do(t, http.MethodPost, "/shifts/"+created.UUID+"/status",
+	resp := f.do(t, http.MethodPost, "/sessions/"+created.UUID+"/status",
 		mustJSON(t, map[string]any{"status": "recorded"}))
 	if resp.StatusCode != http.StatusNoContent {
 		buf := new(bytes.Buffer)
@@ -270,12 +270,12 @@ func TestShiftStatusTransition(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	gr := f.do(t, http.MethodGet, "/shifts/"+created.UUID, "")
+	gr := f.do(t, http.MethodGet, "/sessions/"+created.UUID, "")
 	defer func() { _ = gr.Body.Close() }()
 	if gr.StatusCode != http.StatusOK {
 		t.Fatalf("get after status: want 200 got %d", gr.StatusCode)
 	}
-	var got shift.Shift
+	var got session.Session
 	if err := json.NewDecoder(gr.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -284,12 +284,12 @@ func TestShiftStatusTransition(t *testing.T) {
 	}
 }
 
-func TestShiftStatusEmpty400(t *testing.T) {
-	f := newShiftFixture(t)
-	created := f.createShift(t, mustJSON(t, map[string]any{
+func TestSessionStatusEmpty400(t *testing.T) {
+	f := newSessionFixture(t)
+	created := f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05",
 	}))
-	resp := f.do(t, http.MethodPost, "/shifts/"+created.UUID+"/status",
+	resp := f.do(t, http.MethodPost, "/sessions/"+created.UUID+"/status",
 		mustJSON(t, map[string]any{"status": ""}))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -297,23 +297,23 @@ func TestShiftStatusEmpty400(t *testing.T) {
 	}
 }
 
-func TestShiftDelete204(t *testing.T) {
-	f := newShiftFixture(t)
-	created := f.createShift(t, mustJSON(t, map[string]any{
+func TestSessionDelete204(t *testing.T) {
+	f := newSessionFixture(t)
+	created := f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05",
 	}))
 
-	resp := f.do(t, http.MethodDelete, "/shifts/"+created.UUID, "")
+	resp := f.do(t, http.MethodDelete, "/sessions/"+created.UUID, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
 	}
 }
 
-func TestShiftSuggestionsAndToRecordEmpty(t *testing.T) {
-	f := newShiftFixture(t)
+func TestSessionSuggestionsAndToRecordEmpty(t *testing.T) {
+	f := newSessionFixture(t)
 
-	sw := f.do(t, http.MethodGet, "/shifts/suggestions", "")
+	sw := f.do(t, http.MethodGet, "/sessions/suggestions", "")
 	defer func() { _ = sw.Body.Close() }()
 	if sw.StatusCode != http.StatusOK {
 		t.Fatalf("suggestions: want 200 got %d", sw.StatusCode)
@@ -324,7 +324,7 @@ func TestShiftSuggestionsAndToRecordEmpty(t *testing.T) {
 		t.Fatalf("suggestions empty: want %q got %q", "[]\n", got)
 	}
 
-	tw := f.do(t, http.MethodGet, "/shifts/to-record", "")
+	tw := f.do(t, http.MethodGet, "/sessions/to-record", "")
 	defer func() { _ = tw.Body.Close() }()
 	if tw.StatusCode != http.StatusOK {
 		t.Fatalf("to-record: want 200 got %d", tw.StatusCode)
@@ -346,17 +346,17 @@ func mustJSON(t *testing.T, v any) string {
 	return string(b)
 }
 
-// TestShiftItemCustomItemRoundTrips verifies a custom-item uuid set on a shift
+// TestSessionItemCustomItemRoundTrips verifies a custom-item uuid set on a session
 // line item round-trips on GET; an unknown custom-item uuid is rejected.
-func TestShiftItemCustomItemRoundTrips(t *testing.T) {
-	f := newShiftFixture(t)
-	shiftBody, err := json.Marshal(map[string]any{
+func TestSessionItemCustomItemRoundTrips(t *testing.T) {
+	f := newSessionFixture(t)
+	sessionBody, err := json.Marshal(map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05", "note": "x",
 	})
 	if err != nil {
-		t.Fatalf("marshal shift: %v", err)
+		t.Fatalf("marshal session: %v", err)
 	}
-	s := f.createShift(t, string(shiftBody))
+	s := f.createSession(t, string(sessionBody))
 
 	itemBody, err := json.Marshal(map[string]any{
 		"description": "Trip", "quantity": 3, "unitPrice": 0.85, "customItemId": f.customItemUUID,
@@ -364,7 +364,7 @@ func TestShiftItemCustomItemRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal item: %v", err)
 	}
-	resp := f.do(t, http.MethodPost, "/shifts/"+s.UUID+"/items", string(itemBody))
+	resp := f.do(t, http.MethodPost, "/sessions/"+s.UUID+"/items", string(itemBody))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		buf := new(bytes.Buffer)
@@ -382,7 +382,7 @@ func TestShiftItemCustomItemRoundTrips(t *testing.T) {
 		t.Fatalf("add customItemId: want %q got %v", f.customItemUUID, item.CustomItemID)
 	}
 
-	listResp := f.do(t, http.MethodGet, "/shifts/"+s.UUID+"/items", "")
+	listResp := f.do(t, http.MethodGet, "/sessions/"+s.UUID+"/items", "")
 	defer func() { _ = listResp.Body.Close() }()
 	if listResp.StatusCode != http.StatusOK {
 		t.Fatalf("list items: want 200 got %d", listResp.StatusCode)
@@ -398,17 +398,17 @@ func TestShiftItemCustomItemRoundTrips(t *testing.T) {
 	}
 }
 
-// TestShiftItemUnknownCustomItem400 verifies an unknown custom-item uuid on a
-// shift item add is rejected.
-func TestShiftItemUnknownCustomItem400(t *testing.T) {
-	f := newShiftFixture(t)
-	shiftBody, err := json.Marshal(map[string]any{
+// TestSessionItemUnknownCustomItem400 verifies an unknown custom-item uuid on a
+// session item add is rejected.
+func TestSessionItemUnknownCustomItem400(t *testing.T) {
+	f := newSessionFixture(t)
+	sessionBody, err := json.Marshal(map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05", "note": "x",
 	})
 	if err != nil {
-		t.Fatalf("marshal shift: %v", err)
+		t.Fatalf("marshal session: %v", err)
 	}
-	s := f.createShift(t, string(shiftBody))
+	s := f.createSession(t, string(sessionBody))
 
 	itemBody, err := json.Marshal(map[string]any{
 		"description": "Trip", "quantity": 1, "unitPrice": 5, "customItemId": uuidpkg.NewString(),
@@ -416,7 +416,7 @@ func TestShiftItemUnknownCustomItem400(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal item: %v", err)
 	}
-	resp := f.do(t, http.MethodPost, "/shifts/"+s.UUID+"/items", string(itemBody))
+	resp := f.do(t, http.MethodPost, "/sessions/"+s.UUID+"/items", string(itemBody))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown custom item: want 400 got %d", resp.StatusCode)

@@ -1,4 +1,4 @@
-package shift
+package session
 
 import (
 	"bytes"
@@ -26,19 +26,19 @@ func seedClientUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (in
 	return id, row.Uuid
 }
 
-// newShiftHandler builds a handler over a fresh DB, seeds a client + one
-// recorded shift, and returns the handler, tenant id, client uuid, and the
-// seeded shift.
-func newShiftHandler(t *testing.T) (*Handler, int64, string, *Shift) {
+// newSessionHandler builds a handler over a fresh DB, seeds a client + one
+// recorded session, and returns the handler, tenant id, client uuid, and the
+// seeded session.
+func newSessionHandler(t *testing.T) (*Handler, int64, string, *Session) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	_, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	svc := NewService(conn, conn, realtime.NewHub(), nil)
 	pid := clientIDFor(t, conn, tenantID, pUUID)
-	sh, err := svc.Create(tctx(tenantID), ShiftInput{ClientID: pid, ServiceDate: "2026-01-15", Note: "n"})
+	sh, err := svc.Create(tctx(tenantID), SessionInput{ClientID: pid, ServiceDate: "2026-01-15", Note: "n"})
 	if err != nil {
-		t.Fatalf("seed shift: %v", err)
+		t.Fatalf("seed session: %v", err)
 	}
 	return NewHandler(svc, nil), tenantID, pUUID, sh
 }
@@ -52,7 +52,7 @@ func clientIDFor(t *testing.T, conn *sql.DB, tenantID int64, pUUID string) int64
 	return id
 }
 
-func mountShift(h *Handler, tenantID int64) chi.Router {
+func mountSession(h *Handler, tenantID int64) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -63,12 +63,12 @@ func mountShift(h *Handler, tenantID int64) chi.Router {
 	return r
 }
 
-func TestShiftGetByUUID(t *testing.T) {
-	h, tenantID, pUUID, sh := newShiftHandler(t)
-	srv := httptest.NewServer(mountShift(h, tenantID))
+func TestSessionGetByUUID(t *testing.T) {
+	h, tenantID, pUUID, sh := newSessionHandler(t)
+	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/shifts/" + sh.UUID)
+	res, err := http.Get(srv.URL + "/sessions/" + sh.UUID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -81,19 +81,19 @@ func TestShiftGetByUUID(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if got["id"] != sh.UUID {
-		t.Fatalf("json id=%v want shift uuid %q", got["id"], sh.UUID)
+		t.Fatalf("json id=%v want session uuid %q", got["id"], sh.UUID)
 	}
 	if got["clientId"] != pUUID {
 		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
 	}
 }
 
-func TestShiftGetUnknownUUID404(t *testing.T) {
-	h, tenantID, _, _ := newShiftHandler(t)
-	srv := httptest.NewServer(mountShift(h, tenantID))
+func TestSessionGetUnknownUUID404(t *testing.T) {
+	h, tenantID, _, _ := newSessionHandler(t)
+	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/shifts/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
+	res, err := http.Get(srv.URL + "/sessions/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -103,12 +103,12 @@ func TestShiftGetUnknownUUID404(t *testing.T) {
 	}
 }
 
-func TestShiftGetNonUUID400(t *testing.T) {
-	h, tenantID, _, _ := newShiftHandler(t)
-	srv := httptest.NewServer(mountShift(h, tenantID))
+func TestSessionGetNonUUID400(t *testing.T) {
+	h, tenantID, _, _ := newSessionHandler(t)
+	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/shifts/123")
+	res, err := http.Get(srv.URL + "/sessions/123")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -118,16 +118,16 @@ func TestShiftGetNonUUID400(t *testing.T) {
 	}
 }
 
-// TestShiftItemLifecycleByUUID exercises POST/GET/PATCH/DELETE of a shift's line
-// items addressed by item uuid under the shift uuid.
-func TestShiftItemLifecycleByUUID(t *testing.T) {
-	h, tenantID, _, sh := newShiftHandler(t)
-	srv := httptest.NewServer(mountShift(h, tenantID))
+// TestSessionItemLifecycleByUUID exercises POST/GET/PATCH/DELETE of a session's line
+// items addressed by item uuid under the session uuid.
+func TestSessionItemLifecycleByUUID(t *testing.T) {
+	h, tenantID, _, sh := newSessionHandler(t)
+	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
 	// POST a custom (non-catalogue) line.
 	body, _ := json.Marshal(map[string]any{"description": "travel", "unit": "EA", "quantity": 2, "unitPrice": 1.5})
-	res, err := http.Post(srv.URL+"/shifts/"+sh.UUID+"/items", "application/json", bytes.NewReader(body))
+	res, err := http.Post(srv.URL+"/sessions/"+sh.UUID+"/items", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST item: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestShiftItemLifecycleByUUID(t *testing.T) {
 	}
 
 	// GET the items list — must contain the item with id == item uuid.
-	listRes, err := http.Get(srv.URL + "/shifts/" + sh.UUID + "/items")
+	listRes, err := http.Get(srv.URL + "/sessions/" + sh.UUID + "/items")
 	if err != nil {
 		t.Fatalf("GET items: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestShiftItemLifecycleByUUID(t *testing.T) {
 
 	// PATCH the item by uuid.
 	upBody, _ := json.Marshal(map[string]any{"description": "travel", "unit": "EA", "quantity": 3, "unitPrice": 1.5})
-	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/shifts/"+sh.UUID+"/items/"+itemUUID, bytes.NewReader(upBody))
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/sessions/"+sh.UUID+"/items/"+itemUUID, bytes.NewReader(upBody))
 	req.Header.Set("Content-Type", "application/json")
 	upRes, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -182,7 +182,7 @@ func TestShiftItemLifecycleByUUID(t *testing.T) {
 	}
 
 	// DELETE the item by uuid.
-	delReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/shifts/"+sh.UUID+"/items/"+itemUUID, nil)
+	delReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/sessions/"+sh.UUID+"/items/"+itemUUID, nil)
 	delRes, err := http.DefaultClient.Do(delReq)
 	if err != nil {
 		t.Fatalf("DELETE item: %v", err)
@@ -193,7 +193,7 @@ func TestShiftItemLifecycleByUUID(t *testing.T) {
 	}
 
 	// List is now empty.
-	finalRes, err := http.Get(srv.URL + "/shifts/" + sh.UUID + "/items")
+	finalRes, err := http.Get(srv.URL + "/sessions/" + sh.UUID + "/items")
 	if err != nil {
 		t.Fatalf("GET items after delete: %v", err)
 	}
@@ -207,9 +207,9 @@ func TestShiftItemLifecycleByUUID(t *testing.T) {
 	}
 }
 
-// TestShiftListByClientFilter proves GET /shifts?client={uuid} filters
-// to that client's shifts (resolving the client uuid→int internally).
-func TestShiftListByClientFilter(t *testing.T) {
+// TestSessionListByClientFilter proves GET /sessions?client={uuid} filters
+// to that client's sessions (resolving the client uuid→int internally).
+func TestSessionListByClientFilter(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	_, p1UUID := seedClientUUID(t, conn, tenantID, "Jane")
@@ -218,21 +218,21 @@ func TestShiftListByClientFilter(t *testing.T) {
 	p1 := clientIDFor(t, conn, tenantID, p1UUID)
 	p2 := clientIDFor(t, conn, tenantID, p2UUID)
 	ctx := tctx(tenantID)
-	if _, err := svc.Create(ctx, ShiftInput{ClientID: p1, ServiceDate: "2026-01-10"}); err != nil {
+	if _, err := svc.Create(ctx, SessionInput{ClientID: p1, ServiceDate: "2026-01-10"}); err != nil {
 		t.Fatalf("seed p1: %v", err)
 	}
-	if _, err := svc.Create(ctx, ShiftInput{ClientID: p1, ServiceDate: "2026-01-11"}); err != nil {
+	if _, err := svc.Create(ctx, SessionInput{ClientID: p1, ServiceDate: "2026-01-11"}); err != nil {
 		t.Fatalf("seed p1b: %v", err)
 	}
-	if _, err := svc.Create(ctx, ShiftInput{ClientID: p2, ServiceDate: "2026-01-12"}); err != nil {
+	if _, err := svc.Create(ctx, SessionInput{ClientID: p2, ServiceDate: "2026-01-12"}); err != nil {
 		t.Fatalf("seed p2: %v", err)
 	}
 
 	h := NewHandler(svc, nil)
-	srv := httptest.NewServer(mountShift(h, tenantID))
+	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/shifts?client=" + p1UUID)
+	res, err := http.Get(srv.URL + "/sessions?client=" + p1UUID)
 	if err != nil {
 		t.Fatalf("GET filtered: %v", err)
 	}
@@ -245,11 +245,11 @@ func TestShiftListByClientFilter(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("filtered shifts = %d, want 2", len(got))
+		t.Fatalf("filtered sessions = %d, want 2", len(got))
 	}
 	for i := range got {
 		if got[i]["clientId"] != p1UUID {
-			t.Fatalf("shift clientId=%v want %q", got[i]["clientId"], p1UUID)
+			t.Fatalf("session clientId=%v want %q", got[i]["clientId"], p1UUID)
 		}
 	}
 }
