@@ -2,13 +2,12 @@
 	import { goto } from '$app/navigation';
 	import { apiPost } from '$lib/api/client';
 	import { session } from '$lib/stores/session.svelte';
-	import type { User, Zone } from '$lib/api/types';
+	import type { User } from '$lib/api/types';
 
 	let businessName = $state('');
 	let name = $state('');
 	let email = $state('');
 	let password = $state('');
-	let zone = $state<Zone>('');
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
 
@@ -21,8 +20,7 @@
 				businessName,
 				name,
 				email,
-				password,
-				zone
+				password
 			});
 			// Signup establishes the session; land logged in on the new tenant.
 			session.set(user);
@@ -83,20 +81,6 @@
 			/>
 			<span class="mt-1 block text-xs text-gray-500">At least 8 characters.</span>
 		</label>
-		<label class="block">
-			<span class="mb-1 block text-sm font-medium">NDIS pricing zone (optional, NDIS only)</span>
-			<select bind:value={zone} class="w-full rounded border border-gray-300 px-3 py-2 text-sm">
-				<option value="">None (not NDIS)</option>
-				<option value="national">National</option>
-				<option value="remote">Remote</option>
-				<option value="very_remote">Very remote</option>
-			</select>
-			<span class="mt-1 block text-xs text-gray-500">
-				Leave as "None" unless you bill against NDIS price caps — you can change this later in
-				Settings.
-			</span>
-		</label>
-
 		{#if error}
 			<p class="text-sm text-red-600">{error}</p>
 		{/if}
