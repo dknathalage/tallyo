@@ -8,7 +8,7 @@ human-readable map. Update it whenever a migration changes a table or relationsh
 > DB** (`control.db`) holds `tenants, users, invites, sessions` and a global
 > `audit_log`. Each **tenant DB** (`tenants/tenant-<id>.db`) holds the business
 > tables below — including the **tenant-owned price list** (`price_list_versions,
-> items, item_prices`, each tenant populates its own) — plus its
+> items`, each tenant populates its own) — plus its
 > own `audit_log`. Relationships that cross the two DBs are **logical only — NOT
 > foreign keys**: `tenant_id` (→ control `tenants`) and `author_user_id` /
 > `user_id` (→ control `users`). Within a tenant DB, `item_id` /
@@ -42,7 +42,6 @@ erDiagram
     clients ||--o{ invoices : "billed for"
 
     price_list_versions ||--o{ items : contains
-    items ||--o{ item_prices : "priced by zone"
 
     invoices ||--o{ line_items : "lines (invoice_id)"
     work_sessions ||--o{ line_items : "items (session_id)"
@@ -71,8 +70,8 @@ erDiagram
         text    start_time "time-class units only"
         text    end_time   "time-class units only"
         real    quantity "derived (time/distance) or typed"
-        real    unit_price "resolved from price list (or zone cap when NDIS)"
-        int     taxable "1 = taxable (replaces gst_free)"
+        real    unit_price "resolved from price list (items.unit_price)"
+        int     taxable "1 = taxable"
         real    line_total "quantity * unit_price"
         int     sort_order
     }
@@ -100,22 +99,19 @@ erDiagram
     clients {
         int  id PK
         int  tenant_id FK
-        text type "ndis|standard (default standard)"
-        text reference "free-text (was ndis_number)"
-        int  payer_id FK "NULL = self-managed"
-        text plan_start "DATE, nullable (NDIS only)"
-        text plan_end "DATE, nullable (NDIS only)"
-        text mgmt_type "plan|self, nullable"
+        text name
+        text reference "free-text, nullable"
+        int  payer_id FK "NULL = self-billed"
     }
 
     items {
         int  id PK
-        int  tenant_id FK
         int  price_list_version_id FK "→ price_list_versions"
         text code
         text name
-        text category "nullable; collapsed NDIS support_category/registration_group/claim_type"
-        real unit_price "nullable generic base price"
+        text unit
+        text category "nullable"
+        real unit_price "generic base price"
         int  taxable
     }
 ```
@@ -127,11 +123,11 @@ erDiagram
   `tenants` lives in the control DB).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
   estimate); they are deliberately separate tables, not unified.
-- The price list (`price_list_versions`, `items`, `item_prices`)
-  is **tenant-owned** — each tenant DB holds its own copy. `items` collapses the
-  former NDIS metadata columns into one nullable `category` and adds a generic
-  `unit_price REAL`. `line_items` and `estimate_line_items` reference it by
-  **UUID TEXT** (`price_list_version_id` + `item_id`), not by FK.
+- The price list (`price_list_versions`, `items`)
+  is **tenant-owned** — each tenant DB holds its own copy. `items` carries a
+  nullable `category` and a generic `unit_price REAL`. `line_items` and
+  `estimate_line_items` reference it by **UUID TEXT**
+  (`price_list_version_id` + `item_id`), not by FK.
 - Prices are pinned per line via `price_list_version_id` + `item_id` (tenant
   price-list UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
   is never re-priced when a newer price-list version loads.
@@ -142,4 +138,4 @@ erDiagram
 
 Auth/infra and supporting tables omitted from the diagram for clarity:
 `invites`, `sessions`, `business_profile`, `custom_items`, `tax_rates`,
-`item_prices` (shown), `recurring_templates` (shown), `audit_log`.
+`recurring_templates` (shown), `audit_log`.

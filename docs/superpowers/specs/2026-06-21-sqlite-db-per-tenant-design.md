@@ -24,15 +24,16 @@ data dir.
 
 The current schema already supports the split with near-zero query rewrites:
 
-- Only **two** JOINs cross any table boundary, and **both sides are within one
-  DB**: `users ⋈ tenants` (control) and `item_prices ⋈ items` (tenant price list).
+- Only **one** JOIN crosses any table boundary, and **both sides are within one
+  DB**: `users ⋈ tenants` (control).
 - **No query joins a tenant table against a control table.** `line_items`
   already **snapshots** `code / description / unit / unit_price` per line and
   pins `price_list_version_id`, so price-list display needs no live join.
 
 > **Note (de-NDIS refactor, Phase 8).** The price list moved to the **tenant DB**
 > and the tables were renamed (`catalog_versions`→`price_list_versions`,
-> `support_items`→`items`, `support_item_prices`→`item_prices`); `shifts`→
+> `support_items`→`items`); the per-zone `support_item_prices` table was dropped
+> entirely (no pricing zones/caps in the generic model). `shifts`→
 > `work_sessions`, `participants`→`clients`, `plan_managers`→`payers`. The control
 > DB no longer holds catalogue tables. The control/tenant split below is updated;
 > the older "catalogue in control" prose is retained only as historical design
@@ -64,7 +65,7 @@ moved to the tenant DB in the de-NDIS refactor.)_
 **tenant-<id>.db** (one per tenant):
 `business_profile, payers, clients, custom_items, tax_rates,
 invoices, line_items, estimates, estimate_line_items, payments,
-recurring_templates, work_sessions, price_list_versions, items, item_prices,
+recurring_templates, work_sessions, price_list_versions, items,
 audit_log`.
 
 Rationale for users/invites/sessions in control: login is global
@@ -114,7 +115,6 @@ erDiagram
     custom_items  |o--o{ line_items : "custom line"
     custom_items  |o--o{ estimate_line_items : "custom line"
     price_list_versions ||--o{ items : contains
-    items         ||--o{ item_prices : "priced by zone"
     business_profile {
         text uuid
     }
@@ -126,8 +126,7 @@ erDiagram
 
 `business_profile` (1:1 per file) and `tax_rates` stand alone within the tenant
 file. `recurring_templates` also references `payers`. The tenant-owned price list
-(`price_list_versions`, `items`, `item_prices`) now lives in this file too — the
-`item_prices ⋈ items` join is the one tenant-internal cross-table join.
+(`price_list_versions`, `items`) now lives in this file too.
 
 ### Cross-DB logical references (no FK — validated in app)
 
@@ -229,7 +228,7 @@ Two embedded goose dirs, each with its own `goose_db_version` table:
   (Originally also held the catalogue + its seed; post-refactor the price-list
   tables and seed machinery were removed from control.)
 - `internal/db/migrations/tenant/*.sql` — the business tables, including the
-  tenant-owned price list (`price_list_versions`, `items`, `item_prices`).
+  tenant-owned price list (`price_list_versions`, `items`).
 
 `Migrate(control)` runs at startup. Tenant DBs migrate lazily on first open via
 the registry. Each file owns its own `goose_db_version` table; the DBs are

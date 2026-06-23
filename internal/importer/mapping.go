@@ -23,7 +23,7 @@ var validTargets = map[string]bool{
 // ApplyMapping turns parsed rows into ImportRows using a sourceHeader→targetField
 // map. "name" is required; unmapped/empty cells are zero values. taxable defaults
 // to true (generic items are taxable unless the source says otherwise).
-// ponytail: single price column; multi-zone NDIS cap import is a later extension.
+// Each item carries a single price column (unitPrice).
 func ApplyMapping(headers []string, rows []map[string]string, mapping map[string]string) ([]ImportRow, error) {
 	if len(mapping) == 0 {
 		return nil, fmt.Errorf("import mapping is empty")

@@ -47,9 +47,9 @@ interfaces declared by the consumer and wired in `internal/app`.
     parse/map: `ApplyMapping` turns header→field column mappings into typed rows).
 - `internal/billing/` — the shared **billing-document core**: `LineItem(Input)`
   types, `ComputeTotals`/`Round2`, `SnapshotBuilder` (reads gen), and the
-  `LineValidator`. NDIS rules in the validator are **data-gated** (zone caps run
-  only when `business_profile.zone` is set; plan-window only when the client has
-  plan dates), so a generic tenant gets tax + non-negativity only. The
+  `LineValidator`. Catalogue lines price from `items.unit_price`; the validator
+  applies tax (per-line `taxable` × the tenant default rate) and non-negativity —
+  there are no pricing zones, price caps, or plan windows. The
   invoice/estimate/recurring slices compose it.
 - **Domain slices:** `internal/{invoice,estimate,recurring,session,client,
   payer,taxrate,businessprofile,customitem,pricelist,auth,agent,export}`.
@@ -101,31 +101,24 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 ### Price list (versioned, tenant-owned)
 
-- The catalogue is a generic, **tenant-owned price list** — the three tables
-  (`price_list_versions`, `items`, `item_prices`) live in each **tenant DB**
-  (`internal/db/migrations/tenant/`), and every tenant populates its own. `items`
-  carries a nullable generic `unit_price` (base per-unit price) and a nullable
-  `category` (one column that collapsed the former NDIS
-  `support_category`/`registration_group`/`claim_type`); `item_prices` holds
-  per-zone caps used only when a tenant runs NDIS rules. Each release is its own
+- The catalogue is a generic, **tenant-owned price list** — the two tables
+  (`price_list_versions`, `items`) live in each **tenant DB**
+  (`internal/db/migrations/tenant/`), and every tenant populates its own. An
+  `items` row carries `code`, `name`, `unit`, a nullable `category`, a generic
+  `unit_price` (base per-unit price), and `taxable`. Each release is its own
   `price_list_versions` row; loading a newer one never mutates prior versions, and
   prices are pinned per invoice line (`price_list_version_id` + `item_id` on
   `line_items`, stored as tenant price-list UUIDs) so existing invoices are never
-  re-priced.
-- Read endpoints (`GET …/price-list/versions`, `…/versions/{versionUUID}/items`,
-  `…/items/{itemUUID}/prices`) serve the tenant tables.
+  re-priced. There are no pricing zones, price caps, plan windows, or client types.
+- Read endpoints (`GET …/price-list/versions`, `…/versions/{versionUUID}/items`)
+  serve the tenant tables.
 - **Generic upload-and-map import.** Ingest is a two-step, file-format-agnostic
   flow (CSV/XLSX), both gated by **owner/admin**: `POST …/price-list/import/inspect`
   returns the detected headers + a row sample; the SPA mapping wizard maps each
   source header to a target field; `POST …/price-list/import/commit` applies it.
   The pipeline is `importer.ApplyMapping` (header→field → typed rows) feeding the
-  `pricelist` slice's `Inspect` / `ImportMapped`. The old fixed NDIS XLSX parser
-  (`ParseXLSX` / `IngestService`) and the global-seed machinery (`cmd/cataloguegen`,
-  the seed migration, `data/catalogue/`) were removed.
-- **NDIS is now opt-in, data-driven.** A tenant runs NDIS behaviour when its
-  clients are `type = 'ndis'` and `business_profile.zone` is configured (which
-  turns on the price-cap + plan-window validation steps). Multi-zone NDIS cap
-  import is **deferred** — the generic importer sets a single `items.unit_price`.
+  `pricelist` slice's `Inspect` / `ImportMapped`. Each item gets a single
+  `unit_price`.
 
 ## Coding Rules (NASA Power of 10, adapted)
 
