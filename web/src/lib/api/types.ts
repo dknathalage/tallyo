@@ -3,9 +3,6 @@ export type Role = 'owner' | 'admin' | 'member' | string;
 // '' = generic (non-NDIS) tenant — no price caps applied.
 export type Zone = '' | 'national' | 'remote' | 'very_remote';
 
-export type MgmtType = 'plan' | 'self' | string;
-export type ClientType = 'ndis' | 'standard' | string;
-
 export interface User {
 	id: string;
 	tenantId: string;
@@ -81,11 +78,7 @@ export interface TaxRateInput {
 export interface Client {
 	id: string;
 	name: string;
-	type: ClientType;
 	reference: string;
-	planStart: string;
-	planEnd: string;
-	mgmtType: MgmtType;
 	payerId: string | null;
 	payerName: string;
 	email: string;
@@ -98,11 +91,7 @@ export interface Client {
 
 export interface ClientInput {
 	name: string;
-	type: ClientType;
 	reference: string;
-	planStart: string;
-	planEnd: string;
-	mgmtType: MgmtType;
 	payerId: string | null;
 	email: string;
 	phone: string;

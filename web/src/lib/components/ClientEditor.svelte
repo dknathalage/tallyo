@@ -23,17 +23,13 @@
 	let { idParam }: Props = $props();
 
 	// ── Editable fields (each its own $state, seeded from the client). ──
+	// A client is generic: a name, contact details, an optional free-text
+	// reference and an optional payer. (NDIS attributes — type, plan window,
+	// management type — were removed.)
 	let name = $state('');
-	// type defaults to 'standard'; the NDIS-only fields (reference, plan dates,
-	// management type, payer) are shown only when clientType === 'ndis' — a
-	// standard client sees just name + contact details (Phase 6).
-	let clientType = $state<'ndis' | 'standard'>('standard');
 	let reference = $state('');
-	let planStart = $state('');
-	let planEnd = $state('');
-	let mgmtType = $state<'plan' | 'self'>('plan');
 	// payerId is held as the <select> string ('' = none) and coerced to a
-	// number id in buildInput. It is relational (id → name), which is why this
+	// payer uuid in buildInput. It is relational (id → name), which is why this
 	// page manages it directly rather than via the generic flat editor.
 	let payer = $state('');
 	let email = $state('');
@@ -54,11 +50,7 @@
 
 	function seedFrom(p: Client): void {
 		name = p.name;
-		clientType = p.type === 'ndis' ? 'ndis' : 'standard';
 		reference = p.reference;
-		planStart = p.planStart;
-		planEnd = p.planEnd;
-		mgmtType = p.mgmtType === 'self' ? 'self' : 'plan';
 		payer = p.payerId === null ? '' : String(p.payerId);
 		email = p.email;
 		phone = p.phone;
@@ -99,15 +91,10 @@
 	// save of ANY field carries the latest value of EVERY field — neither name nor
 	// payerId can be reverted by the other's autosave.
 	function buildInput(): ClientInput {
-		const pmId = payer === '' ? null : payer;
 		return {
 			name,
-			type: clientType,
 			reference,
-			planStart,
-			planEnd,
-			mgmtType,
-			payerId: mgmtType === 'self' ? null : pmId,
+			payerId: payer === '' ? null : payer,
 			email,
 			phone,
 			address,
@@ -120,12 +107,6 @@
 		nameError = name.trim() === '' ? 'Name is required.' : null;
 		if (nameError) return;
 		autosave.schedule(buildInput());
-	}
-
-	function onMgmtTypeChange(v: string): void {
-		mgmtType = v === 'self' ? 'self' : 'plan';
-		if (mgmtType === 'self') payer = ''; // force none when self-managed
-		changed();
 	}
 
 	// Manual save — forces the current (valid) fields to persist immediately.
@@ -264,82 +245,31 @@
 			</label>
 
 			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Type</span>
+				<span class="mb-1 block text-sm font-medium">Reference</span>
+				<input
+					type="text"
+					bind:value={reference}
+					oninput={changed}
+					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+				/>
+			</label>
+
+			<label class="block">
+				<span class="mb-1 block text-sm font-medium">Payer</span>
 				<select
-					value={clientType}
+					value={payer}
 					onchange={(e) => {
-						clientType = e.currentTarget.value === 'ndis' ? 'ndis' : 'standard';
+						payer = e.currentTarget.value;
 						changed();
 					}}
 					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 				>
-					<option value="standard">Standard</option>
-					<option value="ndis">NDIS</option>
+					<option value="">— none —</option>
+					{#each payerOptions as pm (pm.id)}
+						<option value={String(pm.id)}>{pm.name}</option>
+					{/each}
 				</select>
 			</label>
-
-			{#if clientType === 'ndis'}
-				<label class="block">
-					<span class="mb-1 block text-sm font-medium">Reference</span>
-					<input
-						type="text"
-						bind:value={reference}
-						oninput={changed}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					/>
-				</label>
-
-				<label class="block">
-					<span class="mb-1 block text-sm font-medium">Plan start</span>
-					<input
-						type="date"
-						bind:value={planStart}
-						oninput={changed}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					/>
-				</label>
-
-				<label class="block">
-					<span class="mb-1 block text-sm font-medium">Plan end</span>
-					<input
-						type="date"
-						bind:value={planEnd}
-						oninput={changed}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					/>
-				</label>
-
-				<label class="block">
-					<span class="mb-1 block text-sm font-medium">Management type</span>
-					<select
-						value={mgmtType}
-						onchange={(e) => onMgmtTypeChange(e.currentTarget.value)}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-					>
-						<option value="plan">Plan-managed</option>
-						<option value="self">Self-managed</option>
-					</select>
-				</label>
-
-				{#if mgmtType !== 'self'}
-					<label class="block">
-						<span class="mb-1 block text-sm font-medium">Payer</span>
-						<select
-							value={payer}
-							onchange={(e) => {
-								payer = e.currentTarget.value;
-								changed();
-							}}
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						>
-							<option value="">— none —</option>
-							{#each payerOptions as pm (pm.id)}
-								<option value={String(pm.id)}>{pm.name}</option>
-							{/each}
-						</select>
-					</label>
-				{/if}
-			{/if}
 
 			<label class="block">
 				<span class="mb-1 block text-sm font-medium">Email</span>

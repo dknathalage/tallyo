@@ -16,37 +16,8 @@
 	// server allowlist), so one key drives filter, sort, and display.
 	const columns: Column<Client>[] = [
 		{ key: 'name', label: 'Name', sortable: true, filter: 'text' },
-		{
-			key: 'type',
-			label: 'Type',
-			sortable: true,
-			filter: 'enum',
-			values: ['standard', 'ndis'],
-			cell: (p) => (p.type === 'ndis' ? 'NDIS' : 'Standard')
-		},
 		{ key: 'reference', label: 'Ref #', sortable: true, filter: 'text' },
-		{
-			key: 'planStart',
-			label: 'Plan start',
-			sortable: true,
-			filter: 'date',
-			cell: (p) => (p.planStart ? p.planStart.slice(0, 10) : '—')
-		},
-		{
-			key: 'planEnd',
-			label: 'Plan end',
-			sortable: true,
-			filter: 'date',
-			cell: (p) => (p.planEnd ? p.planEnd.slice(0, 10) : '—')
-		},
-		{
-			key: 'mgmtType',
-			label: 'Management',
-			sortable: true,
-			filter: 'enum',
-			values: ['plan', 'self'],
-			cell: (p) => (p.mgmtType === 'self' ? 'Self-managed' : 'Plan-managed')
-		},
+		{ key: 'email', label: 'Email', sortable: true, filter: 'text' },
 		{ key: 'payerName', label: 'Payer', sortable: true, filter: 'text' }
 	];
 
@@ -67,9 +38,7 @@
 	<section>
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Clients</h1>
-			<p class="text-sm text-gray-500">
-				Clients you invoice — standard or NDIS.
-			</p>
+			<p class="text-sm text-gray-500">Clients you invoice.</p>
 		</div>
 	</section>
 
