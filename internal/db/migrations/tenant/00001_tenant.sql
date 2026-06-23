@@ -2,7 +2,7 @@
 -- Per-tenant baseline (DB-per-tenant). One of these files exists per tenant
 -- (tenants/tenant-<id>.db). Holds only that tenant's business data. Fresh
 -- clean-break schema reflecting the FINAL state after the old 00001..00008
--- sequence (agent_* and notes were dropped; shifts + line_items unified).
+-- sequence (agent_* and notes were dropped; sessions + line_items unified).
 --
 -- Cross-DB references are NOT foreign keys (the target tables live in
 -- control.db): `tenant_id` is a plain guard column; catalogue links
@@ -114,9 +114,9 @@ CREATE INDEX idx_invoices_status      ON invoices (status);
 CREATE INDEX idx_invoices_client ON invoices (client_id);
 CREATE INDEX idx_invoices_created_at  ON invoices (created_at);
 
--- shifts: final shape (00008) — no hours/km/measures/start_time/end_time.
+-- sessions: final shape (00008) — no hours/km/measures/start_time/end_time.
 -- author_user_id references control-DB users: column kept, FK dropped.
-CREATE TABLE shifts (
+CREATE TABLE sessions (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid           TEXT NOT NULL UNIQUE,
     tenant_id      INTEGER NOT NULL,
@@ -131,17 +131,17 @@ CREATE TABLE shifts (
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
-CREATE INDEX idx_shifts_client_date ON shifts(tenant_id, client_id, service_date);
-CREATE INDEX idx_shifts_status          ON shifts(tenant_id, status);
-CREATE INDEX idx_shifts_invoice         ON shifts(invoice_id);
+CREATE INDEX idx_sessions_client_date ON sessions(tenant_id, client_id, service_date);
+CREATE INDEX idx_sessions_status          ON sessions(tenant_id, status);
+CREATE INDEX idx_sessions_invoice         ON sessions(invoice_id);
 
--- line_items: final shape (00008) — shift_id + invoice_id (one required),
+-- line_items: final shape (00008) — session_id + invoice_id (one required),
 -- start/end time. Catalogue links are control-DB UUIDs (TEXT, no FK).
 CREATE TABLE line_items (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid               TEXT NOT NULL UNIQUE,
     tenant_id          INTEGER NOT NULL,
-    shift_id           INTEGER REFERENCES shifts(id) ON DELETE CASCADE,
+    session_id           INTEGER REFERENCES sessions(id) ON DELETE CASCADE,
     invoice_id         INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
     support_item_id    TEXT DEFAULT '',     -- control-DB support_items.uuid (no FK)
     custom_item_id     INTEGER REFERENCES custom_items(id) ON DELETE SET NULL,
@@ -157,12 +157,12 @@ CREATE TABLE line_items (
     taxable            INTEGER NOT NULL DEFAULT 1,
     line_total         REAL NOT NULL DEFAULT 0,
     sort_order         INTEGER DEFAULT 0,
-    CHECK (shift_id IS NOT NULL OR invoice_id IS NOT NULL)
+    CHECK (session_id IS NOT NULL OR invoice_id IS NOT NULL)
 );
 CREATE INDEX idx_line_items_tenant       ON line_items(tenant_id);
 CREATE INDEX idx_line_items_invoice      ON line_items(invoice_id);
 CREATE INDEX idx_line_items_support_item ON line_items(support_item_id);
-CREATE INDEX idx_line_items_shift        ON line_items(shift_id);
+CREATE INDEX idx_line_items_session        ON line_items(session_id);
 
 CREATE TABLE estimates (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,7 +253,7 @@ DROP TABLE payments;
 DROP TABLE estimate_line_items;
 DROP TABLE estimates;
 DROP TABLE line_items;
-DROP TABLE shifts;
+DROP TABLE sessions;
 DROP TABLE invoices;
 DROP TABLE tax_rates;
 DROP TABLE custom_items;

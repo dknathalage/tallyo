@@ -48,13 +48,15 @@ CREATE TABLE invites (
 CREATE INDEX idx_invites_token  ON invites (token);
 CREATE INDEX idx_invites_tenant ON invites (tenant_id);
 
--- scs sqlite3store session table (scs does NOT create this).
-CREATE TABLE sessions (
+-- scs sqlite3store session table (scs does NOT create this). Named
+-- auth_sessions (not "sessions") so it does not collide with the session
+-- entity table in the tenant DBs when sqlc builds one combined type catalog.
+CREATE TABLE auth_sessions (
     token  TEXT PRIMARY KEY,
     data   BLOB NOT NULL,
     expiry REAL NOT NULL
 );
-CREATE INDEX idx_sessions_expiry ON sessions (expiry);
+CREATE INDEX idx_auth_sessions_expiry ON auth_sessions (expiry);
 
 -- ---------------------------------------------------------------------------
 -- Global-admin audit log. The per-tenant files carry their OWN audit_log
@@ -82,7 +84,7 @@ CREATE INDEX idx_audit_created ON audit_log (created_at);
 
 -- +goose Down
 DROP TABLE audit_log;
-DROP TABLE sessions;
+DROP TABLE auth_sessions;
 DROP TABLE invites;
 DROP TABLE users;
 DROP TABLE tenants;
