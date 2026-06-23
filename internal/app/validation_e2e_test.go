@@ -68,23 +68,23 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 	ctx := context.Background()
 	q := gen.New(conn)
 	now := time.Now().UTC().Format(time.RFC3339)
-	v, err := q.CreateCatalogVersion(ctx, gen.CreateCatalogVersionParams{
+	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
 		Uuid: uuid.NewString(), Label: "v1", EffectiveFrom: from,
 		EffectiveTo: sql.NullString{String: to, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("CreateCatalogVersion: %v", err)
+		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
-	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
+	si, err := q.CreateItem(ctx, gen.CreateItemParams{
+		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 	})
 	if err != nil {
-		t.Fatalf("CreateSupportItem: %v", err)
+		t.Fatalf("CreateItem: %v", err)
 	}
-	if _, err := q.CreateSupportItemPrice(ctx, gen.CreateSupportItemPriceParams{
-		SupportItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: cap, Valid: true},
+	if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
+		ItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: cap, Valid: true},
 	}); err != nil {
-		t.Fatalf("CreateSupportItemPrice: %v", err)
+		t.Fatalf("CreateItemPrice: %v", err)
 	}
 }
 

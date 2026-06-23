@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	"github.com/dknathalage/tallyo/internal/catalog"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	"github.com/xuri/excelize/v2"
@@ -38,9 +38,9 @@ func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	scH := catalog.NewHandler(
-		catalog.NewService(conn),
-		catalog.NewIngestService(conn, hub),
+	scH := pricelist.NewHandler(
+		pricelist.NewService(conn),
+		pricelist.NewIngestService(conn, hub),
 	)
 
 	router := chi.NewRouter()
@@ -49,8 +49,8 @@ func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
-			pr.Get("/support-catalog/versions", scH.ListVersions)
-			pr.With(httpx.RequireRole("owner", "admin")).Post("/support-catalog/versions", scH.Ingest)
+			pr.Get("/price-list/versions", scH.ListVersions)
+			pr.With(httpx.RequireRole("owner", "admin")).Post("/price-list/versions", scH.Ingest)
 		})
 	})
 
@@ -104,7 +104,7 @@ func uploadCatalog(t *testing.T, c *http.Client, base, uuid string, xlsx []byte,
 	if err := w.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
-	req, err := http.NewRequest("POST", base+"/api/t/"+uuid+"/support-catalog/versions", &body)
+	req, err := http.NewRequest("POST", base+"/api/t/"+uuid+"/price-list/versions", &body)
 	if err != nil {
 		t.Fatalf("new req: %v", err)
 	}

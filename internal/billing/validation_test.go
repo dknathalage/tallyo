@@ -32,31 +32,31 @@ func seedZonedCatalog(t *testing.T, conn *sql.DB, label, from, to, code string, 
 	if to != "" {
 		et = sql.NullString{String: to, Valid: true}
 	}
-	v, err := q.CreateCatalogVersion(ctx, gen.CreateCatalogVersionParams{
+	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
 		Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("CreateCatalogVersion: %v", err)
+		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	tx := int64(1) // taxable is the inverse of gst-free
 	if gstFree {
 		tx = 0
 	}
-	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
+	si, err := q.CreateItem(ctx, gen.CreateItemParams{
+		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
 	})
 	if err != nil {
-		t.Fatalf("CreateSupportItem: %v", err)
+		t.Fatalf("CreateItem: %v", err)
 	}
 	for zone, capPtr := range prices { // bounded by len(prices)
 		var pc sql.NullFloat64
 		if capPtr != nil {
 			pc = sql.NullFloat64{Float64: *capPtr, Valid: true}
 		}
-		if _, err := q.CreateSupportItemPrice(ctx, gen.CreateSupportItemPriceParams{
-			SupportItemID: si.ID, Zone: zone, PriceCap: pc,
+		if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
+			ItemID: si.ID, Zone: zone, PriceCap: pc,
 		}); err != nil {
-			t.Fatalf("CreateSupportItemPrice %s: %v", zone, err)
+			t.Fatalf("CreateItemPrice %s: %v", zone, err)
 		}
 	}
 	return v.ID
@@ -71,21 +71,21 @@ func addItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, 
 	if gstFree {
 		tx = 0
 	}
-	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
+	si, err := q.CreateItem(ctx, gen.CreateItemParams{
+		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
 	})
 	if err != nil {
-		t.Fatalf("CreateSupportItem %s: %v", code, err)
+		t.Fatalf("CreateItem %s: %v", code, err)
 	}
 	for zone, capPtr := range prices { // bounded by len(prices)
 		var pc sql.NullFloat64
 		if capPtr != nil {
 			pc = sql.NullFloat64{Float64: *capPtr, Valid: true}
 		}
-		if _, err := q.CreateSupportItemPrice(ctx, gen.CreateSupportItemPriceParams{
-			SupportItemID: si.ID, Zone: zone, PriceCap: pc,
+		if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
+			ItemID: si.ID, Zone: zone, PriceCap: pc,
 		}); err != nil {
-			t.Fatalf("CreateSupportItemPrice %s/%s: %v", code, zone, err)
+			t.Fatalf("CreateItemPrice %s/%s: %v", code, zone, err)
 		}
 	}
 }
@@ -347,8 +347,8 @@ func TestValidateTaxableDefaultedFromItem(t *testing.T) {
 	if res.Items[0].Taxable {
 		t.Fatal("taxable should be false for a GST-free support item")
 	}
-	if res.Items[0].SupportItemID == nil || res.Items[0].CatalogVersionID == nil {
-		t.Fatal("support item id + catalog version should be pinned (snapshot)")
+	if res.Items[0].ItemID == nil || res.Items[0].PriceListVersionID == nil {
+		t.Fatal("item id + price-list version should be pinned (snapshot)")
 	}
 }
 

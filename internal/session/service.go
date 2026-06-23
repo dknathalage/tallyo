@@ -478,18 +478,18 @@ func (s *Service) priceItem(ctx context.Context, tenantID, clientID int64, in bi
 // itemToInput projects a stored line item back to its writable input shape.
 func itemToInput(it *billing.LineItem) billing.LineItemInput {
 	return billing.LineItemInput{
-		SupportItemID:    it.SupportItemID,
-		CustomItemID:     it.CustomItemUUID,
-		CatalogVersionID: it.CatalogVersionID,
-		Code:             it.Code,
-		Description:      it.Description,
-		ServiceDate:      it.ServiceDate,
-		Unit:             it.Unit,
-		StartTime:        it.StartTime,
-		EndTime:          it.EndTime,
-		Quantity:         it.Quantity,
-		UnitPrice:        it.UnitPrice,
-		Taxable:          it.Taxable,
-		SortOrder:        it.SortOrder,
+		ItemID:             it.ItemID,
+		CustomItemID:       it.CustomItemUUID,
+		PriceListVersionID: it.PriceListVersionID,
+		Code:               it.Code,
+		Description:        it.Description,
+		ServiceDate:        it.ServiceDate,
+		Unit:               it.Unit,
+		StartTime:          it.StartTime,
+		EndTime:            it.EndTime,
+		Quantity:           it.Quantity,
+		UnitPrice:          it.UnitPrice,
+		Taxable:            it.Taxable,
+		SortOrder:          it.SortOrder,
 	}
 }

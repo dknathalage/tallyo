@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Modal from '$lib/components/Modal.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
-	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
+	import { priceList } from '$lib/stores/priceList.svelte';
 	import { features } from '$lib/stores/features.svelte';
 	import * as sessionsApi from '$lib/api/sessions';
 	import { hoursBetween, todayISO } from '$lib/sessions/format';
@@ -11,7 +11,7 @@
 		SessionStatus,
 		LineItem,
 		LineItemInput,
-		SupportItem
+		Item
 	} from '$lib/api/types';
 
 	type Props = {
@@ -172,23 +172,23 @@
 
 	let pickerOpen = $state(false);
 	let pickerSearch = $state('');
-	let catalogItems = $state<SupportItem[]>([]);
+	let catalogItems = $state<Item[]>([]);
 	let catalogLoaded = $state(false);
 
 	async function ensureCatalog(): Promise<void> {
 		if (catalogLoaded) return;
 		catalogLoaded = true;
-		await supportCatalog.loadVersions();
-		if (supportCatalog.versions.length > 0) {
+		await priceList.loadVersions();
+		if (priceList.versions.length > 0) {
 			try {
-				catalogItems = await supportCatalog.loadItems(supportCatalog.versions[0].id);
+				catalogItems = await priceList.loadItems(priceList.versions[0].id);
 			} catch {
 				catalogItems = [];
 			}
 		}
 	}
 
-	const pickerResults = $derived.by<SupportItem[]>(() => {
+	const pickerResults = $derived.by<Item[]>(() => {
 		const q = pickerSearch.trim().toLowerCase();
 		if (q === '') return catalogItems.slice(0, 20);
 		return catalogItems
@@ -202,7 +202,7 @@
 		if (pickerOpen) await ensureCatalog();
 	}
 
-	function pickItem(it: SupportItem): void {
+	function pickItem(it: Item): void {
 		niCode = it.code;
 		niCustomItemId = null;
 		niDescription = it.name;
@@ -225,9 +225,9 @@
 		}
 		const coded = niCode.trim() !== '';
 		const input: LineItemInput = {
-			supportItemId: null,
+			itemId: null,
 			customItemId: niCustomItemId,
-			catalogVersionId: null,
+			priceListVersionId: null,
 			code: coded ? niCode.trim() : '',
 			description: niDescription.trim(),
 			serviceDate: fDate,

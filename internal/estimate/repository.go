@@ -240,21 +240,21 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 			return fmt.Errorf("insert estimate line item %d: %w", i, err)
 		}
 		_, err = q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
-			Uuid:             uuid.NewString(),
-			TenantID:         tenantID,
-			EstimateID:       estimateID,
-			SupportItemID:    db.NullStr(it.SupportItemID),
-			CustomItemID:     customItemID,
-			CatalogVersionID: db.NullStr(it.CatalogVersionID),
-			Code:             db.NzMaybe(it.Code),
-			Description:      it.Description,
-			ServiceDate:      db.NzMaybe(it.ServiceDate),
-			Unit:             db.NzMaybe(it.Unit),
-			Quantity:         it.Quantity,
-			UnitPrice:        it.UnitPrice,
-			Taxable:          db.B2i(it.Taxable),
-			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
-			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
+			Uuid:               uuid.NewString(),
+			TenantID:           tenantID,
+			EstimateID:         estimateID,
+			ItemID:             db.NullStr(it.ItemID),
+			CustomItemID:       customItemID,
+			PriceListVersionID: db.NullStr(it.PriceListVersionID),
+			Code:               db.NzMaybe(it.Code),
+			Description:        it.Description,
+			ServiceDate:        db.NzMaybe(it.ServiceDate),
+			Unit:               db.NzMaybe(it.Unit),
+			Quantity:           it.Quantity,
+			UnitPrice:          it.UnitPrice,
+			Taxable:            db.B2i(it.Taxable),
+			LineTotal:          billing.Round2(it.Quantity * it.UnitPrice),
+			SortOrder:          sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("insert estimate line item %d: %w", i, err)
@@ -737,22 +737,22 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:             uuid.NewString(),
-			TenantID:         tenantID,
-			SessionID:        sql.NullInt64{}, // estimate-converted lines are not session items
-			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
-			SupportItemID:    db.NullStr(it.SupportItemID),
-			CustomItemID:     db.NullID(it.CustomItemID),
-			CatalogVersionID: db.NullStr(it.CatalogVersionID),
-			Code:             db.NzMaybe(it.Code),
-			Description:      it.Description,
-			ServiceDate:      db.NzMaybe(it.ServiceDate),
-			Unit:             db.NzMaybe(it.Unit),
-			Quantity:         it.Quantity,
-			UnitPrice:        it.UnitPrice,
-			Taxable:          db.B2i(it.Taxable),
-			LineTotal:        it.LineTotal,
-			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
+			Uuid:               uuid.NewString(),
+			TenantID:           tenantID,
+			SessionID:          sql.NullInt64{}, // estimate-converted lines are not session items
+			InvoiceID:          sql.NullInt64{Int64: invoiceID, Valid: true},
+			ItemID:             db.NullStr(it.ItemID),
+			CustomItemID:       db.NullID(it.CustomItemID),
+			PriceListVersionID: db.NullStr(it.PriceListVersionID),
+			Code:               db.NzMaybe(it.Code),
+			Description:        it.Description,
+			ServiceDate:        db.NzMaybe(it.ServiceDate),
+			Unit:               db.NzMaybe(it.Unit),
+			Quantity:           it.Quantity,
+			UnitPrice:          it.UnitPrice,
+			Taxable:            db.B2i(it.Taxable),
+			LineTotal:          it.LineTotal,
+			SortOrder:          sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("copy estimate item %d: %w", i, err)
@@ -767,17 +767,17 @@ func lineItemsToInput(items []*billing.LineItem) []billing.LineItemInput {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		out = append(out, billing.LineItemInput{
-			SupportItemID:    it.SupportItemID,
-			CustomItemID:     it.CustomItemUUID,
-			CatalogVersionID: it.CatalogVersionID,
-			Code:             it.Code,
-			Description:      it.Description,
-			ServiceDate:      it.ServiceDate,
-			Unit:             it.Unit,
-			Quantity:         it.Quantity,
-			UnitPrice:        it.UnitPrice,
-			Taxable:          it.Taxable,
-			SortOrder:        it.SortOrder,
+			ItemID:             it.ItemID,
+			CustomItemID:       it.CustomItemUUID,
+			PriceListVersionID: it.PriceListVersionID,
+			Code:               it.Code,
+			Description:        it.Description,
+			ServiceDate:        it.ServiceDate,
+			Unit:               it.Unit,
+			Quantity:           it.Quantity,
+			UnitPrice:          it.UnitPrice,
+			Taxable:            it.Taxable,
+			SortOrder:          it.SortOrder,
 		})
 	}
 	return out
@@ -904,21 +904,21 @@ func mapEstimateLineItems(rows []gen.ListEstimateLineItemsRow) []*billing.LineIt
 // LineItem domain shape.
 func toEstimateLineItem(row gen.ListEstimateLineItemsRow) *billing.LineItem {
 	return &billing.LineItem{
-		ID:               row.ID,
-		UUID:             row.Uuid,
-		SupportItemID:    db.PtrStr(row.SupportItemID),
-		CustomItemID:     db.PtrID(row.CustomItemID),
-		CustomItemUUID:   db.PtrStr(row.CustomItemUuid),
-		CatalogVersionID: db.PtrStr(row.CatalogVersionID),
-		Code:             row.Code.String,
-		Description:      row.Description,
-		ServiceDate:      row.ServiceDate.String,
-		Unit:             row.Unit.String,
-		Quantity:         row.Quantity,
-		UnitPrice:        row.UnitPrice,
-		Taxable:          row.Taxable == 1,
-		LineTotal:        row.LineTotal,
-		SortOrder:        row.SortOrder.Int64,
+		ID:                 row.ID,
+		UUID:               row.Uuid,
+		ItemID:             db.PtrStr(row.ItemID),
+		CustomItemID:       db.PtrID(row.CustomItemID),
+		CustomItemUUID:     db.PtrStr(row.CustomItemUuid),
+		PriceListVersionID: db.PtrStr(row.PriceListVersionID),
+		Code:               row.Code.String,
+		Description:        row.Description,
+		ServiceDate:        row.ServiceDate.String,
+		Unit:               row.Unit.String,
+		Quantity:           row.Quantity,
+		UnitPrice:          row.UnitPrice,
+		Taxable:            row.Taxable == 1,
+		LineTotal:          row.LineTotal,
+		SortOrder:          row.SortOrder.Int64,
 	}
 }
 

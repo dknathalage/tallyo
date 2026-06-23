@@ -114,7 +114,7 @@
 			icon: BookOpen,
 			children: [
 				{ href: '/custom-items', label: 'Custom items' },
-				{ href: '/support-catalog', label: 'Support catalogue' },
+				{ href: '/price-list', label: 'Price list' },
 				{ href: '/tax-rates', label: 'Tax rates' }
 			]
 		},

@@ -25,15 +25,15 @@ WHERE li.tenant_id = ? AND li.session_id = ? AND li.uuid = ?;
 
 -- name: CreateLineItem :one
 INSERT INTO line_items (
-    uuid, tenant_id, session_id, invoice_id, support_item_id, custom_item_id,
-    catalog_version_id, code, description, service_date, unit, start_time,
+    uuid, tenant_id, session_id, invoice_id, item_id, custom_item_id,
+    price_list_version_id, code, description, service_date, unit, start_time,
     end_time, quantity, unit_price, taxable, line_total, sort_order
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateSessionLineItem :one
 UPDATE line_items SET
-    support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
+    item_id = ?, custom_item_id = ?, price_list_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
     quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
@@ -45,7 +45,7 @@ DELETE FROM line_items WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL;
 -- name: UpdateSessionLineItemByUUID :one
 -- Rewrite one UNBILLED session item addressed by uuid, scoped to the owning session.
 UPDATE line_items SET
-    support_item_id = ?, custom_item_id = ?, catalog_version_id = ?, code = ?,
+    item_id = ?, custom_item_id = ?, price_list_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
     quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND session_id = ? AND uuid = ? AND invoice_id IS NULL

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
+	import { priceList } from '$lib/stores/priceList.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { apiUpload, tenantPath } from '$lib/api/client';
-	import type { CatalogVersion, SupportItem, SupportItemPrice } from '$lib/api/types';
+	import type { PriceListVersion, Item, ItemPrice } from '$lib/api/types';
 
 	function money(n: number | null): string {
 		if (n === null) return 'Quote';
@@ -24,12 +24,12 @@
 
 	// Selected version + its items.
 	let selectedVersionId = $state<string | null>(null);
-	let items = $state<SupportItem[]>([]);
+	let items = $state<Item[]>([]);
 	let itemsLoading = $state(false);
 	let itemsError = $state<string | null>(null);
 	let itemSearch = $state('');
 
-	const filteredItems = $derived.by<SupportItem[]>(() => {
+	const filteredItems = $derived.by<Item[]>(() => {
 		const q = itemSearch.trim().toLowerCase();
 		if (q === '') return items;
 		return items.filter(
@@ -39,7 +39,7 @@
 
 	// Expanded item prices (one at a time).
 	let pricesItemId = $state<string | null>(null);
-	let prices = $state<SupportItemPrice[]>([]);
+	let prices = $state<ItemPrice[]>([]);
 	let pricesError = $state<string | null>(null);
 
 	// Platform-admin upload form.
@@ -51,32 +51,32 @@
 	let uploadNotice = $state<string | null>(null);
 
 	onMount(() => {
-		supportCatalog.ensureSubscribed();
+		priceList.ensureSubscribed();
 		void (async () => {
-			await supportCatalog.loadVersions();
-			if (supportCatalog.versions.length > 0) {
-				await selectVersion(supportCatalog.versions[0]);
+			await priceList.loadVersions();
+			if (priceList.versions.length > 0) {
+				await selectVersion(priceList.versions[0]);
 			}
 		})();
 	});
 
-	async function selectVersion(v: CatalogVersion): Promise<void> {
+	async function selectVersion(v: PriceListVersion): Promise<void> {
 		selectedVersionId = v.id;
 		pricesItemId = null;
 		prices = [];
 		itemsLoading = true;
 		itemsError = null;
 		try {
-			items = await supportCatalog.loadItems(v.id);
+			items = await priceList.loadItems(v.id);
 		} catch (err) {
-			itemsError = err instanceof Error ? err.message : 'Failed to load support items.';
+			itemsError = err instanceof Error ? err.message : 'Failed to load items.';
 			items = [];
 		} finally {
 			itemsLoading = false;
 		}
 	}
 
-	async function togglePrices(item: SupportItem): Promise<void> {
+	async function togglePrices(item: Item): Promise<void> {
 		if (pricesItemId === item.id) {
 			pricesItemId = null;
 			prices = [];
@@ -86,7 +86,7 @@
 		prices = [];
 		pricesError = null;
 		try {
-			prices = await supportCatalog.loadPrices(item.id);
+			prices = await priceList.loadPrices(item.id);
 		} catch (err) {
 			pricesError = err instanceof Error ? err.message : 'Failed to load prices.';
 		}
@@ -111,14 +111,14 @@
 			form.append('file', uploadFile);
 			form.append('label', uploadLabel);
 			form.append('effectiveFrom', uploadEffectiveFrom);
-			await apiUpload<CatalogVersion>(tenantPath('support-catalog/versions'), form);
-			uploadNotice = 'Catalogue version uploaded.';
+			await apiUpload<PriceListVersion>(tenantPath('price-list/versions'), form);
+			uploadNotice = 'Price-list version uploaded.';
 			uploadLabel = '';
 			uploadEffectiveFrom = '';
 			uploadFile = null;
-			await supportCatalog.loadVersions();
-			if (supportCatalog.versions.length > 0) {
-				await selectVersion(supportCatalog.versions[0]);
+			await priceList.loadVersions();
+			if (priceList.versions.length > 0) {
+				await selectVersion(priceList.versions[0]);
 			}
 		} catch (err) {
 			uploadError = err instanceof Error ? err.message : 'Upload failed.';
@@ -130,18 +130,18 @@
 
 <div class="space-y-8">
 	<section>
-		<h1 class="mb-1 text-xl font-semibold">Support catalogue</h1>
+		<h1 class="mb-1 text-xl font-semibold">Price list</h1>
 		<p class="text-sm text-gray-500">
-			The national NDIS Support Catalogue. Browse versions and their price caps by zone. This data is
+			Your tenant's price list. Browse versions and their price caps by zone. This data is
 			read-only.
 		</p>
 	</section>
 
 	{#if session.isPlatformAdmin}
 		<section class="rounded border border-amber-200 bg-amber-50 p-4">
-			<h2 class="mb-1 text-base font-semibold">Upload a new catalogue version</h2>
+			<h2 class="mb-1 text-base font-semibold">Upload a new price-list version</h2>
 			<p class="mb-4 text-sm text-gray-600">
-				Platform-admin only. Upload the official NDIS Support Catalogue XLSX.
+				Platform-admin only. Upload a price-list XLSX.
 			</p>
 			<form class="flex flex-wrap items-end gap-3" onsubmit={uploadVersion}>
 				<label class="text-sm">
@@ -191,17 +191,17 @@
 
 	<section>
 		<h2 class="mb-2 text-base font-semibold">Versions</h2>
-		{#if supportCatalog.loading}
+		{#if priceList.loading}
 			<p class="text-sm text-gray-500">Loading versions…</p>
 		{/if}
-		{#if supportCatalog.error}
-			<p class="text-sm text-red-600">{supportCatalog.error}</p>
+		{#if priceList.error}
+			<p class="text-sm text-red-600">{priceList.error}</p>
 		{/if}
-		{#if supportCatalog.versions.length === 0 && !supportCatalog.loading}
-			<p class="text-sm text-gray-500">No catalogue versions loaded yet.</p>
+		{#if priceList.versions.length === 0 && !priceList.loading}
+			<p class="text-sm text-gray-500">No price-list versions loaded yet.</p>
 		{:else}
 			<div class="flex flex-wrap gap-2">
-				{#each supportCatalog.versions as v (v.id)}
+				{#each priceList.versions as v (v.id)}
 					<button
 						type="button"
 						onclick={() => selectVersion(v)}
@@ -220,7 +220,7 @@
 	{#if selectedVersionId !== null}
 		<section>
 			<label class="mb-4 block max-w-sm">
-				<span class="mb-1 block text-sm font-medium">Search support items</span>
+				<span class="mb-1 block text-sm font-medium">Search items</span>
 				<input
 					type="text"
 					bind:value={itemSearch}
@@ -244,6 +244,7 @@
 							<th class="px-3 py-2 font-medium">Name</th>
 							<th class="px-3 py-2 font-medium">Unit</th>
 							<th class="px-3 py-2 font-medium">Category</th>
+							<th class="px-3 py-2 font-medium text-right">Unit price</th>
 							<th class="px-3 py-2 font-medium">GST</th>
 							<th class="px-3 py-2 font-medium text-right">Prices</th>
 						</tr>
@@ -254,7 +255,10 @@
 								<td class="px-3 py-2 font-mono text-xs">{item.code}</td>
 								<td class="px-3 py-2 font-medium">{item.name}</td>
 								<td class="px-3 py-2 text-gray-600">{item.unit || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{item.supportCategory || '—'}</td>
+								<td class="px-3 py-2 text-gray-600">{item.category || '—'}</td>
+								<td class="px-3 py-2 text-right text-gray-600"
+									>{item.unitPrice === null ? '—' : money(item.unitPrice)}</td
+								>
 								<td class="px-3 py-2 text-gray-600">{item.taxable ? 'Taxable' : 'GST-free'}</td>
 								<td class="px-3 py-2 text-right">
 									<button
@@ -268,7 +272,7 @@
 							</tr>
 							{#if pricesItemId === item.id}
 								<tr class="border-b border-gray-100 bg-gray-50">
-									<td colspan="6" class="px-3 py-3">
+									<td colspan="7" class="px-3 py-3">
 										{#if pricesError}
 											<p class="text-sm text-red-600">{pricesError}</p>
 										{:else if prices.length === 0}
@@ -288,8 +292,8 @@
 							{/if}
 						{:else}
 							<tr>
-								<td colspan="6" class="px-3 py-6 text-center text-gray-500">
-									No support items found.
+								<td colspan="7" class="px-3 py-6 text-center text-gray-500">
+									No items found.
 								</td>
 							</tr>
 						{/each}

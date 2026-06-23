@@ -14,7 +14,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/catalog"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -61,7 +61,7 @@ func (s *stubShiftWorker) Create(_ context.Context, in session.SessionInput) (*s
 // never calls it.
 type stubCatalogueSearcher struct{}
 
-func (stubCatalogueSearcher) SearchForDate(_ context.Context, _, _, _ string, _ int) ([]*catalog.CatalogMatch, error) {
+func (stubCatalogueSearcher) SearchForDate(_ context.Context, _, _, _ string, _ int) ([]*pricelist.Match, error) {
 	return nil, fmt.Errorf("not used")
 }
 

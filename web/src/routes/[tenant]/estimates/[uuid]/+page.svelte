@@ -40,9 +40,9 @@
 	// the existing line items pass through unchanged (server re-derives totals).
 	function toInput(est: Estimate): EstimateInput {
 		const items: EstimateLineItemInput[] = est.lineItems.map((li, i) => ({
-			supportItemId: li.supportItemId,
+			itemId: li.itemId,
 			customItemId: li.customItemId,
-			catalogVersionId: li.catalogVersionId,
+			priceListVersionId: li.priceListVersionId,
 			code: li.code,
 			description: li.description,
 			serviceDate: li.serviceDate,
@@ -111,7 +111,7 @@
 			{
 				kind: 'support',
 				customItemId: null,
-				catalogVersionId: null,
+				priceListVersionId: null,
 				code: '',
 				description: '',
 				serviceDate: today,
@@ -135,9 +135,9 @@
 
 	function buildCreatePayload(): EstimateInput {
 		const items: EstimateLineItemInput[] = lines.map((row, i) => ({
-			supportItemId: null,
+			itemId: null,
 			customItemId: row.kind === 'custom' ? row.customItemId : null,
-			catalogVersionId: row.kind === 'support' ? row.catalogVersionId : null,
+			priceListVersionId: row.kind === 'support' ? row.priceListVersionId : null,
 			code: row.kind === 'support' ? row.code : '',
 			description: row.description,
 			serviceDate: row.serviceDate,

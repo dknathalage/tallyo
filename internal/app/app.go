@@ -23,13 +23,13 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
-	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
@@ -138,7 +138,7 @@ func Run(cfg Config, version string) error {
 		dir = d
 	}
 
-	// DB-per-tenant: one shared control DB (registry, auth, sessions, catalogue)
+	// DB-per-tenant: one shared control DB (registry, auth, sessions)
 	// and one SQLite file per tenant, opened on demand by the registry. tdb is the
 	// per-request routing handle for tenant-plane repositories; control is the
 	// shared handle for control-plane repositories.
@@ -167,8 +167,8 @@ func Run(cfg Config, version string) error {
 	taxRateSvc := taxrate.NewService(tdb, hub)
 	clientSvc := client.NewService(tdb, hub)
 	customItemSvc := customitem.NewService(tdb, hub)
-	supportCatalogSvc := catalog.NewService(tdb)
-	catalogIngestSvc := catalog.NewIngestService(tdb, hub)
+	priceListSvc := pricelist.NewService(tdb)
+	priceListIngestSvc := pricelist.NewIngestService(tdb, hub)
 	sessionSvc := session.NewService(tdb, control, hub, invoice.NewInvoices(tdb))
 	invoiceSvc := invoice.NewService(tdb, control, hub, sessionSvc)
 	estimateSvc := estimate.NewService(tdb, control, hub)
@@ -184,7 +184,7 @@ func Run(cfg Config, version string) error {
 	var sessionDivider session.SessionDivider // nil when AI is disabled → /divide 503s
 	if cfg.FeatureAgent && agentCfg.APIKey != "" {
 		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
-		smarts := agent.NewSmarts(agentCfg, llmClient, sessionSvc, supportCatalogSvc)
+		smarts := agent.NewSmarts(agentCfg, llmClient, sessionSvc, priceListSvc)
 		smartsHandler = agent.NewSmartsHandler(smarts, true)
 		sessionDivider = smarts
 	} else {
@@ -214,7 +214,7 @@ func Run(cfg Config, version string) error {
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
 		Clients:         client.NewHandler(clientSvc),
 		CustomItems:     customitem.NewHandler(customItemSvc),
-		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
+		PriceList:       pricelist.NewHandler(priceListSvc, priceListIngestSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
 		Sessions:        session.NewHandler(sessionSvc, sessionDivider),
 		Estimates:       estimate.NewHandler(estimateSvc),

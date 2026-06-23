@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"context"
@@ -32,15 +32,15 @@ func TestSupportCatalogGetVersionAndListPrices(t *testing.T) {
 		t.Fatalf("GetVersion = %+v, want id %d", ver, summary.VersionID)
 	}
 
-	items, err := read.ListSupportItemsByVersionUUID(ctx, summary.VersionUUID)
+	items, err := read.ListItemsByVersionUUID(ctx, summary.VersionUUID)
 	if err != nil {
-		t.Fatalf("ListSupportItemsByVersionUUID: %v", err)
+		t.Fatalf("ListItemsByVersionUUID: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("items = %d, want 1", len(items))
 	}
-	if items[0].CatalogVersionUID != summary.VersionUUID {
-		t.Fatalf("item CatalogVersionUID = %q, want %q", items[0].CatalogVersionUID, summary.VersionUUID)
+	if items[0].PriceListVersionUID != summary.VersionUUID {
+		t.Fatalf("item PriceListVersionUID = %q, want %q", items[0].PriceListVersionUID, summary.VersionUUID)
 	}
 
 	prices, err := read.ListPricesByItemUUID(ctx, items[0].UUID)

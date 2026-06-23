@@ -8,15 +8,15 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/customitem"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
 
 // newCustomItemServer wires the per-tenant custom-item routes and the read-only
-// global support-catalog routes behind httpx.RequireAuth.
+// price-list routes behind httpx.RequireAuth.
 func newCustomItemServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "custom_items.db")
@@ -27,7 +27,7 @@ func newCustomItemServer(t *testing.T) (*httptest.Server, string) {
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
 	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
-	scH := catalog.NewHandler(catalog.NewService(conn), catalog.NewIngestService(conn, hub))
+	scH := pricelist.NewHandler(pricelist.NewService(conn), pricelist.NewIngestService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
@@ -36,9 +36,9 @@ func newCustomItemServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			ciH.Routes(pr)
-			pr.Get("/support-catalog/versions", scH.ListVersions)
-			pr.Get("/support-catalog/versions/{id}/items", scH.ListItems)
-			pr.Get("/support-catalog/items/{itemId}/prices", scH.ListPrices)
+			pr.Get("/price-list/versions", scH.ListVersions)
+			pr.Get("/price-list/versions/{id}/items", scH.ListItems)
+			pr.Get("/price-list/items/{itemId}/prices", scH.ListPrices)
 		})
 	})
 
@@ -203,12 +203,12 @@ func TestCustomItemListUnauthenticated401(t *testing.T) {
 	}
 }
 
-// TestSupportCatalogVersionsEmptyReturnsArray smoke-tests the read-only global
-// NDIS support-catalogue route: with no catalogue ingested (J7), it returns [].
-func TestSupportCatalogVersionsEmptyReturnsArray(t *testing.T) {
+// TestPriceListVersionsEmptyReturnsArray smoke-tests the read-only price-list
+// route: with no price list ingested, it returns [].
+func TestPriceListVersionsEmptyReturnsArray(t *testing.T) {
 	srv, uuid := newCustomItemServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/support-catalog/versions")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/price-list/versions")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("versions: want 200 got %d", resp.StatusCode)
@@ -220,10 +220,10 @@ func TestSupportCatalogVersionsEmptyReturnsArray(t *testing.T) {
 	}
 }
 
-func TestSupportCatalogUnauthenticated401(t *testing.T) {
+func TestPriceListUnauthenticated401(t *testing.T) {
 	srv, uuid := newCustomItemServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/support-catalog/versions")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/price-list/versions")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon versions: want 401 got %d", resp.StatusCode)

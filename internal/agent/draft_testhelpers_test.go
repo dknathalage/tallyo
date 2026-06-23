@@ -59,31 +59,31 @@ func seedNoteTenant(t *testing.T, conn *sql.DB) int64 {
 func seedNoteCatalogVersion(t *testing.T, conn *sql.DB, from, to string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
-	v, err := gen.New(conn).CreateCatalogVersion(context.Background(), gen.CreateCatalogVersionParams{
-		Uuid: uuid.NewString(), Label: "NDIS FY26", EffectiveFrom: from,
+	v, err := gen.New(conn).CreatePriceListVersion(context.Background(), gen.CreatePriceListVersionParams{
+		Uuid: uuid.NewString(), Label: "FY26", EffectiveFrom: from,
 		EffectiveTo: sql.NullString{String: to, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("seed catalog version: %v", err)
+		t.Fatalf("seed price-list version: %v", err)
 	}
 	return v.ID
 }
 
-// seedNoteItem adds a GST-free support item to a version, priced at `cap` in the
-// national zone (the validator's default zone when no business profile exists).
+// seedNoteItem adds a GST-free item to a version, priced at `cap` in the national
+// zone (the validator's default zone when no business profile exists).
 func seedNoteItem(t *testing.T, conn *sql.DB, versionID int64, code, name string, cap float64) {
 	t.Helper()
 	q := gen.New(conn)
-	si, err := q.CreateSupportItem(context.Background(), gen.CreateSupportItemParams{
-		Uuid: uuid.NewString(), CatalogVersionID: versionID, Code: code, Name: name, Taxable: 0,
+	si, err := q.CreateItem(context.Background(), gen.CreateItemParams{
+		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: name, Taxable: 0,
 	})
 	if err != nil {
-		t.Fatalf("seed support item %s: %v", code, err)
+		t.Fatalf("seed item %s: %v", code, err)
 	}
-	if _, err := q.CreateSupportItemPrice(context.Background(), gen.CreateSupportItemPriceParams{
-		SupportItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: cap, Valid: true},
+	if _, err := q.CreateItemPrice(context.Background(), gen.CreateItemPriceParams{
+		ItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: cap, Valid: true},
 	}); err != nil {
-		t.Fatalf("seed support item price %s: %v", code, err)
+		t.Fatalf("seed item price %s: %v", code, err)
 	}
 }
 

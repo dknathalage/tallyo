@@ -12,28 +12,28 @@ import (
 
 const createEstimateLineItem = `-- name: CreateEstimateLineItem :one
 INSERT INTO estimate_line_items (
-    uuid, tenant_id, estimate_id, support_item_id, custom_item_id, catalog_version_id,
+    uuid, tenant_id, estimate_id, item_id, custom_item_id, price_list_version_id,
     code, description, service_date, unit, quantity, unit_price, taxable, line_total, sort_order
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, estimate_id, support_item_id, custom_item_id, catalog_version_id, code, description, service_date, unit, quantity, unit_price, taxable, line_total, sort_order
+RETURNING id, uuid, tenant_id, estimate_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type CreateEstimateLineItemParams struct {
-	Uuid             string         `json:"uuid"`
-	TenantID         int64          `json:"tenant_id"`
-	EstimateID       int64          `json:"estimate_id"`
-	SupportItemID    sql.NullString `json:"support_item_id"`
-	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
-	CatalogVersionID sql.NullString `json:"catalog_version_id"`
-	Code             sql.NullString `json:"code"`
-	Description      string         `json:"description"`
-	ServiceDate      sql.NullString `json:"service_date"`
-	Unit             sql.NullString `json:"unit"`
-	Quantity         float64        `json:"quantity"`
-	UnitPrice        float64        `json:"unit_price"`
-	Taxable          int64          `json:"taxable"`
-	LineTotal        float64        `json:"line_total"`
-	SortOrder        sql.NullInt64  `json:"sort_order"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	EstimateID         int64          `json:"estimate_id"`
+	ItemID             sql.NullString `json:"item_id"`
+	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	PriceListVersionID sql.NullString `json:"price_list_version_id"`
+	Code               sql.NullString `json:"code"`
+	Description        string         `json:"description"`
+	ServiceDate        sql.NullString `json:"service_date"`
+	Unit               sql.NullString `json:"unit"`
+	Quantity           float64        `json:"quantity"`
+	UnitPrice          float64        `json:"unit_price"`
+	Taxable            int64          `json:"taxable"`
+	LineTotal          float64        `json:"line_total"`
+	SortOrder          sql.NullInt64  `json:"sort_order"`
 }
 
 func (q *Queries) CreateEstimateLineItem(ctx context.Context, arg CreateEstimateLineItemParams) (EstimateLineItem, error) {
@@ -41,9 +41,9 @@ func (q *Queries) CreateEstimateLineItem(ctx context.Context, arg CreateEstimate
 		arg.Uuid,
 		arg.TenantID,
 		arg.EstimateID,
-		arg.SupportItemID,
+		arg.ItemID,
 		arg.CustomItemID,
-		arg.CatalogVersionID,
+		arg.PriceListVersionID,
 		arg.Code,
 		arg.Description,
 		arg.ServiceDate,
@@ -60,9 +60,9 @@ func (q *Queries) CreateEstimateLineItem(ctx context.Context, arg CreateEstimate
 		&i.Uuid,
 		&i.TenantID,
 		&i.EstimateID,
-		&i.SupportItemID,
+		&i.ItemID,
 		&i.CustomItemID,
-		&i.CatalogVersionID,
+		&i.PriceListVersionID,
 		&i.Code,
 		&i.Description,
 		&i.ServiceDate,
@@ -91,7 +91,7 @@ func (q *Queries) DeleteEstimateLineItemsForEstimate(ctx context.Context, arg De
 }
 
 const listEstimateLineItems = `-- name: ListEstimateLineItems :many
-SELECT eli.id, eli.uuid, eli.tenant_id, eli.estimate_id, eli.support_item_id, eli.custom_item_id, eli.catalog_version_id, eli.code, eli.description, eli.service_date, eli.unit, eli.quantity, eli.unit_price, eli.taxable, eli.line_total, eli.sort_order, ci.uuid AS custom_item_uuid
+SELECT eli.id, eli.uuid, eli.tenant_id, eli.estimate_id, eli.item_id, eli.custom_item_id, eli.price_list_version_id, eli.code, eli.description, eli.service_date, eli.unit, eli.quantity, eli.unit_price, eli.taxable, eli.line_total, eli.sort_order, ci.uuid AS custom_item_uuid
 FROM estimate_line_items eli
 LEFT JOIN custom_items ci ON eli.custom_item_id = ci.id
 WHERE eli.tenant_id = ? AND eli.estimate_id = ? ORDER BY eli.sort_order, eli.id
@@ -103,23 +103,23 @@ type ListEstimateLineItemsParams struct {
 }
 
 type ListEstimateLineItemsRow struct {
-	ID               int64          `json:"id"`
-	Uuid             string         `json:"uuid"`
-	TenantID         int64          `json:"tenant_id"`
-	EstimateID       int64          `json:"estimate_id"`
-	SupportItemID    sql.NullString `json:"support_item_id"`
-	CustomItemID     sql.NullInt64  `json:"custom_item_id"`
-	CatalogVersionID sql.NullString `json:"catalog_version_id"`
-	Code             sql.NullString `json:"code"`
-	Description      string         `json:"description"`
-	ServiceDate      sql.NullString `json:"service_date"`
-	Unit             sql.NullString `json:"unit"`
-	Quantity         float64        `json:"quantity"`
-	UnitPrice        float64        `json:"unit_price"`
-	Taxable          int64          `json:"taxable"`
-	LineTotal        float64        `json:"line_total"`
-	SortOrder        sql.NullInt64  `json:"sort_order"`
-	CustomItemUuid   sql.NullString `json:"custom_item_uuid"`
+	ID                 int64          `json:"id"`
+	Uuid               string         `json:"uuid"`
+	TenantID           int64          `json:"tenant_id"`
+	EstimateID         int64          `json:"estimate_id"`
+	ItemID             sql.NullString `json:"item_id"`
+	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	PriceListVersionID sql.NullString `json:"price_list_version_id"`
+	Code               sql.NullString `json:"code"`
+	Description        string         `json:"description"`
+	ServiceDate        sql.NullString `json:"service_date"`
+	Unit               sql.NullString `json:"unit"`
+	Quantity           float64        `json:"quantity"`
+	UnitPrice          float64        `json:"unit_price"`
+	Taxable            int64          `json:"taxable"`
+	LineTotal          float64        `json:"line_total"`
+	SortOrder          sql.NullInt64  `json:"sort_order"`
+	CustomItemUuid     sql.NullString `json:"custom_item_uuid"`
 }
 
 func (q *Queries) ListEstimateLineItems(ctx context.Context, arg ListEstimateLineItemsParams) ([]ListEstimateLineItemsRow, error) {
@@ -136,9 +136,9 @@ func (q *Queries) ListEstimateLineItems(ctx context.Context, arg ListEstimateLin
 			&i.Uuid,
 			&i.TenantID,
 			&i.EstimateID,
-			&i.SupportItemID,
+			&i.ItemID,
 			&i.CustomItemID,
-			&i.CatalogVersionID,
+			&i.PriceListVersionID,
 			&i.Code,
 			&i.Description,
 			&i.ServiceDate,

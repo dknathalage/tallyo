@@ -47,7 +47,7 @@ func TestMigrateCreatesTenantBusinessTables(t *testing.T) {
 	}
 }
 
-func TestMigrateCreatesGlobalCatalogTables(t *testing.T) {
+func TestMigrateCreatesPriceListTables(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "cat.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -56,7 +56,7 @@ func TestMigrateCreatesGlobalCatalogTables(t *testing.T) {
 	if err := Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	for _, tbl := range []string{"catalog_versions", "support_items", "support_item_prices"} {
+	for _, tbl := range []string{"price_list_versions", "items", "item_prices"} {
 		var n string
 		if err := conn.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", tbl,

@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"context"
@@ -70,8 +70,8 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 		{"15_056_0128_1_3", "Assessment Recommendation", "Hour", "CB", "Therapeutic Supports", "Quote", "", "Quote"},
 	})
 
-	// Catalogue ingest is GLOBAL: it broadcasts with the GlobalTenantID sentinel,
-	// so a subscriber of any arbitrary tenant must receive it.
+	// The ingest broadcasts with the GlobalTenantID sentinel, so a subscriber of
+	// any arbitrary tenant must receive it.
 	ch, unsub := hub.Subscribe(1)
 	defer unsub()
 
@@ -90,8 +90,8 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "catalog_version" || e.Action != "ingest" || e.UUID != summary.VersionUUID {
-			t.Fatalf("event=%+v want catalog_version/ingest/%d", e, summary.VersionID)
+		if e.Entity != "price_list_version" || e.Action != "ingest" || e.UUID != summary.VersionUUID {
+			t.Fatalf("event=%+v want price_list_version/ingest/%d", e, summary.VersionID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after ingest")
@@ -106,9 +106,9 @@ func TestCatalogIngestCreatesVersionItemsAndPrices(t *testing.T) {
 		t.Fatalf("versions = %d, want 1", len(versions))
 	}
 
-	items, err := read.ListSupportItemsByVersionUUID(ctx, summary.VersionUUID)
+	items, err := read.ListItemsByVersionUUID(ctx, summary.VersionUUID)
 	if err != nil {
-		t.Fatalf("ListSupportItemsByVersionUUID: %v", err)
+		t.Fatalf("ListItemsByVersionUUID: %v", err)
 	}
 	if len(items) != 2 {
 		t.Fatalf("items = %d, want 2", len(items))

@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/agent/llm"
-	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/invoice"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
@@ -38,7 +38,7 @@ func divideFixture(t *testing.T) (*Smarts, *llm.Fake, *session.Service, context.
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 	sessions := session.NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	sh := seedReferenceSession(t, sessions, ctx, clientID, referenceWeek[0].date)
-	cat := catalog.NewService(conn)
+	cat := pricelist.NewService(conn)
 	fake := llm.NewFake()
 	s := &Smarts{client: fake, sessions: sessions, catalog: cat}
 	return s, fake, sessions, ctx, sh.ID

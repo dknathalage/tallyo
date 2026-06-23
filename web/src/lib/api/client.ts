@@ -138,7 +138,7 @@ export function apiDelete<T>(path: string): Promise<T | null> {
 }
 
 /**
- * Upload a multipart/form-data body (e.g. the support-catalogue XLSX). Does not
+ * Upload a multipart/form-data body (e.g. the price-list XLSX). Does not
  * set Content-Type (the browser adds the multipart boundary). Returns the parsed
  * JSON body, or throws ApiError on a non-2xx response.
  */

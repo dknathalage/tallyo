@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 func TestCatalogGetVersion(t *testing.T) {
 	conn := newTestDB(t)
-	repo := NewCatalog(conn)
+	repo := NewItems(conn)
 	ctx := context.Background()
 	cap := 10.0
 	vID, _ := seedCatalog(t, conn, "v1", "2025-07-01", "", "X", &cap)
@@ -23,33 +23,33 @@ func TestCatalogGetVersion(t *testing.T) {
 	}
 }
 
-func TestCatalogSearchSupportItems(t *testing.T) {
+func TestCatalogSearchItems(t *testing.T) {
 	conn := newTestDB(t)
-	repo := NewCatalog(conn)
+	repo := NewItems(conn)
 	ctx := context.Background()
 	cap := 50.0
 	vID, _ := seedCatalog(t, conn, "v", "2025-07-01", "", "01_011_0107_1_1", &cap)
 
 	// Match by code substring.
-	byCode, err := repo.SearchSupportItems(ctx, vID, "0107")
+	byCode, err := repo.SearchItems(ctx, vID, "0107")
 	if err != nil {
-		t.Fatalf("SearchSupportItems code: %v", err)
+		t.Fatalf("SearchItems code: %v", err)
 	}
 	if len(byCode) != 1 {
 		t.Fatalf("search by code = %d, want 1", len(byCode))
 	}
 	// Empty query matches everything in the version.
-	all, err := repo.SearchSupportItems(ctx, vID, "")
+	all, err := repo.SearchItems(ctx, vID, "")
 	if err != nil {
-		t.Fatalf("SearchSupportItems empty: %v", err)
+		t.Fatalf("SearchItems empty: %v", err)
 	}
 	if len(all) != 1 {
 		t.Fatalf("search empty = %d, want 1", len(all))
 	}
 	// No match.
-	none, err := repo.SearchSupportItems(ctx, vID, "zzz")
+	none, err := repo.SearchItems(ctx, vID, "zzz")
 	if err != nil {
-		t.Fatalf("SearchSupportItems none: %v", err)
+		t.Fatalf("SearchItems none: %v", err)
 	}
 	if len(none) != 0 {
 		t.Fatalf("search zzz = %d, want 0", len(none))
@@ -58,7 +58,7 @@ func TestCatalogSearchSupportItems(t *testing.T) {
 
 func TestCatalogListPrices(t *testing.T) {
 	conn := newTestDB(t)
-	repo := NewCatalog(conn)
+	repo := NewItems(conn)
 	ctx := context.Background()
 	cap := 75.0
 	_, itemID := seedCatalog(t, conn, "v", "2025-07-01", "", "X", &cap)
@@ -74,14 +74,14 @@ func TestCatalogListPrices(t *testing.T) {
 
 func TestCatalogIngest(t *testing.T) {
 	conn := newTestDB(t)
-	repo := NewCatalog(conn)
+	repo := NewItems(conn)
 	ctx := context.Background()
 
 	// Validation failures.
-	if _, err := repo.Ingest(ctx, "", "2025-07-01", "f.csv", []IngestItem{{Code: "X"}}); err == nil {
+	if _, err := repo.Ingest(ctx, "", "2025-07-01", "f.csv", []ImportItem{{Code: "X"}}); err == nil {
 		t.Fatal("Ingest empty label: want error")
 	}
-	if _, err := repo.Ingest(ctx, "v", "", "f.csv", []IngestItem{{Code: "X"}}); err == nil {
+	if _, err := repo.Ingest(ctx, "v", "", "f.csv", []ImportItem{{Code: "X"}}); err == nil {
 		t.Fatal("Ingest empty effectiveFrom: want error")
 	}
 	if _, err := repo.Ingest(ctx, "v", "2025-07-01", "f.csv", nil); err == nil {
@@ -89,7 +89,7 @@ func TestCatalogIngest(t *testing.T) {
 	}
 
 	cap := 100.0
-	res, err := repo.Ingest(ctx, "2025-26", "2025-07-01", "prices.csv", []IngestItem{
+	res, err := repo.Ingest(ctx, "2025-26", "2025-07-01", "prices.csv", []ImportItem{
 		{Code: "01_011_0107_1_1", Name: "Support A", Unit: "H", Taxable: false,
 			Prices: map[string]*float64{"national": &cap}},
 		{Code: "01_011_0107_8_1", Name: "Support B (quotable)",
@@ -103,9 +103,9 @@ func TestCatalogIngest(t *testing.T) {
 	}
 
 	// The created version is resolvable and carries the ingested items.
-	items, err := repo.ListSupportItems(ctx, res.Version.ID)
+	items, err := repo.ListItems(ctx, res.Version.ID)
 	if err != nil || len(items) != 2 {
-		t.Fatalf("ListSupportItems after ingest = %d err=%v, want 2", len(items), err)
+		t.Fatalf("ListItems after ingest = %d err=%v, want 2", len(items), err)
 	}
 	// Quotable item resolves with a nil price cap.
 	price, err := repo.ResolveZonePrice(ctx, res.Version.ID, "01_011_0107_8_1", "national")

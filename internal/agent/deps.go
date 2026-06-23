@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/catalog"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -29,7 +29,7 @@ type SessionReader interface {
 
 // SessionItemWriter is satisfied by *session.Service; the divide Smart persists
 // each proposed line on the session (AddItem prices coded lines from the
-// catalogue) and clears the prior unbilled items so a re-divide is idempotent.
+// price list) and clears the prior unbilled items so a re-divide is idempotent.
 type SessionItemWriter interface {
 	AddItem(ctx context.Context, sessionID int64, in billing.LineItemInput) (*billing.LineItem, error)
 	ClearUnbilledItems(ctx context.Context, sessionID int64) error
@@ -45,8 +45,8 @@ type SessionWorker interface {
 	SessionItemWriter
 }
 
-// CatalogueSearcher is satisfied by *catalog.Service; it covers the
-// search_catalogue tool and the inline catalogue enrichment of session rows.
+// CatalogueSearcher is satisfied by *pricelist.Service; it covers the
+// search tool and the inline price-list enrichment of session rows.
 type CatalogueSearcher interface {
-	SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*catalog.CatalogMatch, error)
+	SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*pricelist.Match, error)
 }

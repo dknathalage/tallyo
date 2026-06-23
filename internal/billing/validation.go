@@ -12,7 +12,7 @@ package billing
 //	1. resolve the catalog_version whose [effective_from, effective_to|∞] window
 //	   contains the line's service_date;
 //	2. find the support_item by code within that version, snapshotting code +
-//	   name/description and pinning catalog_version_id onto the line;
+//	   name/description and pinning price_list_version_id onto the line;
 //	3. look up the price_cap for the TENANT's configured zone (business_profile);
 //	4. assert unit_price ≤ price_cap (skipped when the cap is NULL — a quotable
 //	   item, spec §6 step 4);
@@ -45,8 +45,8 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/businessprofile"
-	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/client"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
@@ -98,7 +98,7 @@ func AsValidationError(err error) (*ValidationError, bool) {
 // clients (for the plan window) and the tenant's tax rates (for the
 // computed tax). It holds no mutable state beyond those repositories.
 type LineValidator struct {
-	cat      *catalog.CatalogRepo
+	cat      *pricelist.ItemsRepo
 	profiles *businessprofile.BusinessProfileRepo
 	clients  *client.ClientsRepo
 	taxRates *taxrate.TaxRatesRepo
@@ -113,7 +113,7 @@ func NewLineValidator(tenant, control db.Executor) *LineValidator {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
-		cat:      catalog.NewCatalog(control),
+		cat:      pricelist.NewItems(control),
 		profiles: businessprofile.NewBusinessProfile(tenant),
 		clients:  client.NewClients(tenant),
 		taxRates: taxrate.NewTaxRates(tenant),
@@ -229,8 +229,8 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 		return
 	}
 
-	// Step 2: find the support item by code within that version; snapshot.
-	item, err := v.cat.GetSupportItemByCode(ctx, versionID, line.Code)
+	// Step 2: find the item by code within that version; snapshot.
+	item, err := v.cat.GetItemByCode(ctx, versionID, line.Code)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "could not look up that support item code"})
 		return
@@ -257,8 +257,8 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 // Returns (versionID for downstream control-DB lookups, versionUUID to pin onto
 // the tenant line, label, ok).
 func (v *LineValidator) resolveVersion(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) (int64, string, string, bool) {
-	if line.CatalogVersionID != nil && *line.CatalogVersionID != "" {
-		ver, err := v.cat.GetVersionByUUID(ctx, *line.CatalogVersionID)
+	if line.PriceListVersionID != nil && *line.PriceListVersionID != "" {
+		ver, err := v.cat.GetVersionByUUID(ctx, *line.PriceListVersionID)
 		if err != nil || ver == nil {
 			ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "the price-catalogue version pinned to this line could not be found"})
 			return 0, "", "", false
@@ -353,11 +353,11 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 // not be able to flip a taxable item to non-taxable (or vice versa) by sending
 // its own taxable flag, which would corrupt the computed tax. Custom-item lines
 // keep their client-controlled taxable (they never reach this function).
-func snapshotSupportItem(line *LineItemInput, versionUUID string, item *catalog.SupportItem) {
+func snapshotSupportItem(line *LineItemInput, versionUUID string, item *pricelist.Item) {
 	id := item.UUID
-	line.SupportItemID = &id
+	line.ItemID = &id
 	vid := versionUUID
-	line.CatalogVersionID = &vid
+	line.PriceListVersionID = &vid
 	line.Code = item.Code
 	if line.Description == "" {
 		line.Description = item.Name

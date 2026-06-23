@@ -515,21 +515,21 @@ func (r *SessionsRepo) UpdateItem(ctx context.Context, tenantID, itemID int64, i
 			return e
 		}
 		_, e = q.UpdateSessionLineItem(ctx, gen.UpdateSessionLineItemParams{
-			SupportItemID:    db.NullStr(in.SupportItemID),
-			CustomItemID:     customItemID,
-			CatalogVersionID: db.NullStr(in.CatalogVersionID),
-			Code:             db.NzMaybe(in.Code),
-			Description:      in.Description,
-			ServiceDate:      db.NzMaybe(in.ServiceDate),
-			Unit:             db.NzMaybe(in.Unit),
-			StartTime:        db.NzMaybe(in.StartTime),
-			EndTime:          db.NzMaybe(in.EndTime),
-			Quantity:         in.Quantity,
-			UnitPrice:        in.UnitPrice,
-			Taxable:          db.B2i(in.Taxable),
-			LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
-			TenantID:         tenantID,
-			ID:               itemID,
+			ItemID:             db.NullStr(in.ItemID),
+			CustomItemID:       customItemID,
+			PriceListVersionID: db.NullStr(in.PriceListVersionID),
+			Code:               db.NzMaybe(in.Code),
+			Description:        in.Description,
+			ServiceDate:        db.NzMaybe(in.ServiceDate),
+			Unit:               db.NzMaybe(in.Unit),
+			StartTime:          db.NzMaybe(in.StartTime),
+			EndTime:            db.NzMaybe(in.EndTime),
+			Quantity:           in.Quantity,
+			UnitPrice:          in.UnitPrice,
+			Taxable:            db.B2i(in.Taxable),
+			LineTotal:          billing.Round2(in.Quantity * in.UnitPrice),
+			TenantID:           tenantID,
+			ID:                 itemID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -622,22 +622,22 @@ func (r *SessionsRepo) UpdateItemByUUID(ctx context.Context, tenantID, sessionID
 			return e
 		}
 		row, e := q.UpdateSessionLineItemByUUID(ctx, gen.UpdateSessionLineItemByUUIDParams{
-			SupportItemID:    db.NullStr(in.SupportItemID),
-			CustomItemID:     customItemID,
-			CatalogVersionID: db.NullStr(in.CatalogVersionID),
-			Code:             db.NzMaybe(in.Code),
-			Description:      in.Description,
-			ServiceDate:      db.NzMaybe(in.ServiceDate),
-			Unit:             db.NzMaybe(in.Unit),
-			StartTime:        db.NzMaybe(in.StartTime),
-			EndTime:          db.NzMaybe(in.EndTime),
-			Quantity:         in.Quantity,
-			UnitPrice:        in.UnitPrice,
-			Taxable:          db.B2i(in.Taxable),
-			LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
-			TenantID:         tenantID,
-			SessionID:        sql.NullInt64{Int64: sessionID, Valid: true},
-			Uuid:             itemUUID,
+			ItemID:             db.NullStr(in.ItemID),
+			CustomItemID:       customItemID,
+			PriceListVersionID: db.NullStr(in.PriceListVersionID),
+			Code:               db.NzMaybe(in.Code),
+			Description:        in.Description,
+			ServiceDate:        db.NzMaybe(in.ServiceDate),
+			Unit:               db.NzMaybe(in.Unit),
+			StartTime:          db.NzMaybe(in.StartTime),
+			EndTime:            db.NzMaybe(in.EndTime),
+			Quantity:           in.Quantity,
+			UnitPrice:          in.UnitPrice,
+			Taxable:            db.B2i(in.Taxable),
+			LineTotal:          billing.Round2(in.Quantity * in.UnitPrice),
+			TenantID:           tenantID,
+			SessionID:          sql.NullInt64{Int64: sessionID, Valid: true},
+			Uuid:               itemUUID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -693,8 +693,8 @@ func (r *SessionsRepo) DeleteItemByUUID(ctx context.Context, tenantID, sessionID
 func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItemRow {
 	return billing.LineItemRow{
 		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
-		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: db.NullStr(customItemUUID),
-		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: db.NullStr(customItemUUID),
+		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
@@ -705,24 +705,24 @@ func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItem
 // inbound custom-item uuid is resolved to the int FK by the caller and passed in.
 func lineItemParams(tenantID int64, sessionID *int64, customItemID sql.NullInt64, in billing.LineItemInput) gen.CreateLineItemParams {
 	return gen.CreateLineItemParams{
-		Uuid:             uuid.NewString(),
-		TenantID:         tenantID,
-		SessionID:        db.NullID(sessionID),
-		InvoiceID:        sql.NullInt64{}, // unbilled session item
-		SupportItemID:    db.NullStr(in.SupportItemID),
-		CustomItemID:     customItemID,
-		CatalogVersionID: db.NullStr(in.CatalogVersionID),
-		Code:             db.NzMaybe(in.Code),
-		Description:      in.Description,
-		ServiceDate:      db.NzMaybe(in.ServiceDate),
-		Unit:             db.NzMaybe(in.Unit),
-		StartTime:        db.NzMaybe(in.StartTime),
-		EndTime:          db.NzMaybe(in.EndTime),
-		Quantity:         in.Quantity,
-		UnitPrice:        in.UnitPrice,
-		Taxable:          db.B2i(in.Taxable),
-		LineTotal:        billing.Round2(in.Quantity * in.UnitPrice),
-		SortOrder:        sql.NullInt64{Int64: in.SortOrder, Valid: true},
+		Uuid:               uuid.NewString(),
+		TenantID:           tenantID,
+		SessionID:          db.NullID(sessionID),
+		InvoiceID:          sql.NullInt64{}, // unbilled session item
+		ItemID:             db.NullStr(in.ItemID),
+		CustomItemID:       customItemID,
+		PriceListVersionID: db.NullStr(in.PriceListVersionID),
+		Code:               db.NzMaybe(in.Code),
+		Description:        in.Description,
+		ServiceDate:        db.NzMaybe(in.ServiceDate),
+		Unit:               db.NzMaybe(in.Unit),
+		StartTime:          db.NzMaybe(in.StartTime),
+		EndTime:            db.NzMaybe(in.EndTime),
+		Quantity:           in.Quantity,
+		UnitPrice:          in.UnitPrice,
+		Taxable:            db.B2i(in.Taxable),
+		LineTotal:          billing.Round2(in.Quantity * in.UnitPrice),
+		SortOrder:          sql.NullInt64{Int64: in.SortOrder, Valid: true},
 	}
 }
 

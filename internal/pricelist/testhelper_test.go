@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"database/sql"

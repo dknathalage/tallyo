@@ -64,9 +64,9 @@ const fakeInput: SessionInput = {
 };
 
 const fakeItemInput: LineItemInput = {
-	supportItemId: null,
+	itemId: null,
 	customItemId: null,
-	catalogVersionId: null,
+	priceListVersionId: null,
 	code: '01_011_0107_1_1',
 	description: 'self-care',
 	serviceDate: '2026-06-10',

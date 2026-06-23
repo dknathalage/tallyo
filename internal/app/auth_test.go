@@ -27,10 +27,10 @@ func openMigratedDB(t *testing.T, name string) *sql.DB {
 	if err := appdb.Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	// Migrations seed the real NDIS catalogue (00006); app integration tests seed
-	// whatever catalogue data they need, so start from a clean catalogue.
-	if _, err := conn.Exec("DELETE FROM catalog_versions"); err != nil {
-		t.Fatalf("clear catalogue: %v", err)
+	// App integration tests seed whatever price-list data they need, so start
+	// from a clean price list.
+	if _, err := conn.Exec("DELETE FROM price_list_versions"); err != nil {
+		t.Fatalf("clear price list: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn

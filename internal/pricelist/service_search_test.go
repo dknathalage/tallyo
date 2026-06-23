@@ -1,12 +1,12 @@
-package catalog
+package pricelist
 
 import (
 	"context"
 	"testing"
 )
 
-// findMatch returns the CatalogMatch with the given code, or nil.
-func findMatch(ms []*CatalogMatch, code string) *CatalogMatch {
+// findMatch returns the Match with the given code, or nil.
+func findMatch(ms []*Match, code string) *Match {
 	for i := range ms { // bounded by len(ms)
 		if ms[i].Code == code {
 			return ms[i]

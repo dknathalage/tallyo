@@ -73,15 +73,15 @@ type RecurringTemplate struct {
 
 // RecurringLine is one line in a template's stored line_items JSON.
 type RecurringLine struct {
-	SupportItemID *string `json:"supportItemId"` // control-DB support_items.uuid
-	CustomItemID  *string `json:"customItemId"`  // tenant custom_items.uuid
-	Code          string  `json:"code"`
-	Description   string  `json:"description"`
-	Unit          string  `json:"unit"`
-	Quantity      float64 `json:"quantity"`
-	UnitPrice     float64 `json:"unitPrice"`
-	Taxable       bool    `json:"taxable"`
-	SortOrder     int64   `json:"sortOrder"`
+	ItemID       *string `json:"itemId"`       // tenant price-list item uuid
+	CustomItemID *string `json:"customItemId"` // tenant custom_items.uuid
+	Code         string  `json:"code"`
+	Description  string  `json:"description"`
+	Unit         string  `json:"unit"`
+	Quantity     float64 `json:"quantity"`
+	UnitPrice    float64 `json:"unitPrice"`
+	Taxable      bool    `json:"taxable"`
+	SortOrder    int64   `json:"sortOrder"`
 }
 
 // RecurringInput is the writable subset of a recurring template. Client and
@@ -615,15 +615,15 @@ func parseLines(lines []*RecurringLine) []billing.LineItemInput {
 	for i := range lines { // bounded by len(lines)
 		l := lines[i]
 		out = append(out, billing.LineItemInput{
-			SupportItemID: l.SupportItemID,
-			CustomItemID:  l.CustomItemID,
-			Code:          l.Code,
-			Description:   l.Description,
-			Unit:          l.Unit,
-			Quantity:      l.Quantity,
-			UnitPrice:     l.UnitPrice,
-			Taxable:       l.Taxable,
-			SortOrder:     l.SortOrder,
+			ItemID:       l.ItemID,
+			CustomItemID: l.CustomItemID,
+			Code:         l.Code,
+			Description:  l.Description,
+			Unit:         l.Unit,
+			Quantity:     l.Quantity,
+			UnitPrice:    l.UnitPrice,
+			Taxable:      l.Taxable,
+			SortOrder:    l.SortOrder,
 		})
 	}
 	return out

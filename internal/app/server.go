@@ -8,13 +8,13 @@ import (
 	"github.com/dknathalage/tallyo/internal/agent"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
-	"github.com/dknathalage/tallyo/internal/catalog"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
+	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
@@ -41,7 +41,7 @@ type Deps struct {
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
 	Clients         *client.Handler          // client CRUD + bulk-delete
 	CustomItems     *customitem.Handler      // per-tenant custom-item CRUD + bulk-delete
-	SupportCatalog  *catalog.Handler         // per-tenant NDIS catalogue (reads + owner/admin ingest)
+	PriceList       *pricelist.Handler       // per-tenant price list (reads + owner/admin ingest)
 	Invoices        *invoice.Handler         // invoice CRUD, status, bulk, per-client stats
 	Sessions        *session.Handler         // session lifecycle, billing suggestions, CRUD
 	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert
@@ -140,11 +140,11 @@ func NewServer(deps Deps) *Server {
 			if deps.CustomItems != nil {
 				deps.CustomItems.Routes(pr)
 			}
-			// SupportCatalog is the per-tenant NDIS catalogue. Reads are open
-			// to any authenticated tenant user; the XLSX ingest (write) is
-			// gated to owner/admin within the handler's Routes.
-			if deps.SupportCatalog != nil {
-				deps.SupportCatalog.Routes(pr)
+			// PriceList is the per-tenant price list. Reads are open to any
+			// authenticated tenant user; the XLSX ingest (write) is gated to
+			// owner/admin within the handler's Routes.
+			if deps.PriceList != nil {
+				deps.PriceList.Routes(pr)
 			}
 			if deps.Invoices != nil {
 				deps.Invoices.Routes(pr)

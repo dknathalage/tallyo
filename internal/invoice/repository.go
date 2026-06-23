@@ -4,7 +4,7 @@ package invoice
 // header no longer carries payment_terms / currency / tax_rate / tax_rate_id;
 // it carries client_id, optional payer_id, and subtotal/tax/total.
 // Line items carry NDIS fields: code, service_date, unit, unit_price, taxable,
-// line_total, and optional support_item_id / custom_item_id / catalog_version_id.
+// line_total, and optional item_id / custom_item_id / price_list_version_id.
 //
 // Design decisions (deferred concerns belong to J8/J10):
 //   - `tax` is supplied on the header input (computed upstream by the J10
@@ -389,24 +389,24 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 			return fmt.Errorf("insert line item %d: %w", i, err)
 		}
 		_, err = q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:             uuid.NewString(),
-			TenantID:         tenantID,
-			SessionID:        sql.NullInt64{}, // invoice lines from this path are not session items
-			InvoiceID:        sql.NullInt64{Int64: invoiceID, Valid: true},
-			SupportItemID:    db.NullStr(it.SupportItemID),
-			CustomItemID:     customItemID,
-			CatalogVersionID: db.NullStr(it.CatalogVersionID),
-			Code:             db.NzMaybe(it.Code),
-			Description:      it.Description,
-			ServiceDate:      db.NzMaybe(it.ServiceDate),
-			Unit:             db.NzMaybe(it.Unit),
-			StartTime:        db.NzMaybe(it.StartTime),
-			EndTime:          db.NzMaybe(it.EndTime),
-			Quantity:         it.Quantity,
-			UnitPrice:        it.UnitPrice,
-			Taxable:          db.B2i(it.Taxable),
-			LineTotal:        billing.Round2(it.Quantity * it.UnitPrice),
-			SortOrder:        sql.NullInt64{Int64: it.SortOrder, Valid: true},
+			Uuid:               uuid.NewString(),
+			TenantID:           tenantID,
+			SessionID:          sql.NullInt64{}, // invoice lines from this path are not session items
+			InvoiceID:          sql.NullInt64{Int64: invoiceID, Valid: true},
+			ItemID:             db.NullStr(it.ItemID),
+			CustomItemID:       customItemID,
+			PriceListVersionID: db.NullStr(it.PriceListVersionID),
+			Code:               db.NzMaybe(it.Code),
+			Description:        it.Description,
+			ServiceDate:        db.NzMaybe(it.ServiceDate),
+			Unit:               db.NzMaybe(it.Unit),
+			StartTime:          db.NzMaybe(it.StartTime),
+			EndTime:            db.NzMaybe(it.EndTime),
+			Quantity:           it.Quantity,
+			UnitPrice:          it.UnitPrice,
+			Taxable:            db.B2i(it.Taxable),
+			LineTotal:          billing.Round2(it.Quantity * it.UnitPrice),
+			SortOrder:          sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("insert line item %d: %w", i, err)

@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"context"
@@ -10,39 +10,38 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-// Service exposes read access to the GLOBAL NDIS Support Catalogue
-// (catalog_versions / support_items / support_item_prices). It is NOT
-// tenant-scoped: the catalogue is shared reference data (spec §3.1/§4.3).
+// Service exposes read access to the tenant-owned price list
+// (price_list_versions / items / item_prices).
 //
-// Platform-admin write access (XLSX ingest) lives in IngestService below.
+// Owner/admin write access (XLSX ingest) lives in IngestService below.
 type Service struct {
-	repo *CatalogRepo
+	repo *ItemsRepo
 }
 
 // NewService constructs the read service.
 func NewService(db db.Executor) *Service {
-	return &Service{repo: NewCatalog(db)}
+	return &Service{repo: NewItems(db)}
 }
 
-// ListVersions returns all catalogue versions.
-func (s *Service) ListVersions(ctx context.Context) ([]*CatalogVersion, error) {
+// ListVersions returns all price-list versions.
+func (s *Service) ListVersions(ctx context.Context) ([]*PriceListVersion, error) {
 	return s.repo.ListVersions(ctx)
 }
 
-// GetVersion returns a catalogue version by id, or (nil, nil) when absent.
-func (s *Service) GetVersion(ctx context.Context, id int64) (*CatalogVersion, error) {
+// GetVersion returns a price-list version by id, or (nil, nil) when absent.
+func (s *Service) GetVersion(ctx context.Context, id int64) (*PriceListVersion, error) {
 	return s.repo.GetVersion(ctx, id)
 }
 
 // ErrNotFound is returned when a version/item uuid resolves to no row. The
 // handler maps it to a 404.
-var ErrNotFound = fmt.Errorf("catalogue resource not found")
+var ErrNotFound = fmt.Errorf("price-list resource not found")
 
-// ListSupportItemsByVersionUUID returns the support items in the catalogue
-// version identified by versionUUID. Returns ErrNotFound when no version carries
-// that uuid. Each returned item's CatalogVersionUID is set to versionUUID so the
-// SPA can link item→version by uuid.
-func (s *Service) ListSupportItemsByVersionUUID(ctx context.Context, versionUUID string) ([]*SupportItem, error) {
+// ListItemsByVersionUUID returns the items in the price-list version identified
+// by versionUUID. Returns ErrNotFound when no version carries that uuid. Each
+// returned item's PriceListVersionUID is set to versionUUID so the SPA can link
+// item→version by uuid.
+func (s *Service) ListItemsByVersionUUID(ctx context.Context, versionUUID string) ([]*Item, error) {
 	versionID, err := s.repo.ResolveVersionIDByUUID(ctx, versionUUID)
 	if err != nil {
 		return nil, err
@@ -50,20 +49,20 @@ func (s *Service) ListSupportItemsByVersionUUID(ctx context.Context, versionUUID
 	if versionID == 0 {
 		return nil, ErrNotFound
 	}
-	items, err := s.repo.ListSupportItems(ctx, versionID)
+	items, err := s.repo.ListItems(ctx, versionID)
 	if err != nil {
 		return nil, err
 	}
 	for i := range items { // bounded by len(items)
-		items[i].CatalogVersionUID = versionUUID
+		items[i].PriceListVersionUID = versionUUID
 	}
 	return items, nil
 }
 
-// ListPricesByItemUUID returns the zone prices for the support item identified
-// by itemUUID. Returns ErrNotFound when no item carries that uuid.
-func (s *Service) ListPricesByItemUUID(ctx context.Context, itemUUID string) ([]*SupportItemPrice, error) {
-	itemID, err := s.repo.ResolveSupportItemIDByUUID(ctx, itemUUID)
+// ListPricesByItemUUID returns the zone prices for the item identified by
+// itemUUID. Returns ErrNotFound when no item carries that uuid.
+func (s *Service) ListPricesByItemUUID(ctx context.Context, itemUUID string) ([]*ItemPrice, error) {
+	itemID, err := s.repo.ResolveItemIDByUUID(ctx, itemUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,10 +72,10 @@ func (s *Service) ListPricesByItemUUID(ctx context.Context, itemUUID string) ([]
 	return s.repo.ListPrices(ctx, itemID)
 }
 
-// CatalogMatch is one support item resolved for a service date, enriched with
-// its price cap in the requested zone. PriceCap is nil for a quotable item (no
-// fixed cap) or when no price row exists for the zone.
-type CatalogMatch struct {
+// Match is one item resolved for a service date, enriched with its price cap in
+// the requested zone. PriceCap is nil for a quotable item (no fixed cap) or when
+// no price row exists for the zone.
+type Match struct {
 	Code      string   `json:"code"`
 	Name      string   `json:"name"`
 	Unit      string   `json:"unit"`
@@ -84,17 +83,17 @@ type CatalogMatch struct {
 	Zone      string   `json:"zone"`
 	PriceCap  *float64 `json:"priceCap"`
 	Quotable  bool     `json:"quotable"`
-	VersionID int64    `json:"catalogVersionId"`
+	VersionID int64    `json:"priceListVersionId"`
 }
 
-// SearchForDate resolves the catalogue version effective on serviceDate, finds
-// support items whose code or name matches query, and attaches each item's
-// price cap for the given zone (default "national" when zone is empty). Returns
-// an empty (non-nil) slice when no version is in effect or nothing matches —
-// capped at limit results (limit ≤ 0 → a default of 25) to bound the payload.
-func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*CatalogMatch, error) {
+// SearchForDate resolves the price-list version effective on serviceDate, finds
+// items whose code or name matches query, and attaches each item's price cap for
+// the given zone (default "national" when zone is empty). Returns an empty
+// (non-nil) slice when no version is in effect or nothing matches — capped at
+// limit results (limit ≤ 0 → a default of 25) to bound the payload.
+func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*Match, error) {
 	if serviceDate == "" {
-		return nil, fmt.Errorf("catalogue search: service date is required")
+		return nil, fmt.Errorf("price-list search: service date is required")
 	}
 	if zone == "" {
 		zone = "national"
@@ -106,11 +105,11 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone st
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*CatalogMatch, 0)
+	out := make([]*Match, 0)
 	if ver == nil {
 		return out, nil
 	}
-	items, err := s.repo.SearchSupportItems(ctx, ver.ID, query)
+	items, err := s.repo.SearchItems(ctx, ver.ID, query)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +118,7 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone st
 			break
 		}
 		it := items[i]
-		m := &CatalogMatch{
+		m := &Match{
 			Code: it.Code, Name: it.Name, Unit: it.Unit, Taxable: it.Taxable,
 			Zone: zone, VersionID: ver.ID,
 		}
@@ -136,25 +135,24 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone st
 	return out, nil
 }
 
-// IngestService is the platform-admin WRITE path for the GLOBAL NDIS
-// Support Catalogue: it parses an official Support Catalogue XLSX (fixed-format,
-// keyed to known NDIA headers — no column-mapping wizard) and bulk-loads a new
-// catalog_version + support_items + per-zone prices in one transaction (spec §5).
-// It is NOT tenant-scoped.
+// IngestService is the owner/admin WRITE path for the tenant-owned price list: it
+// parses a fixed-format XLSX (keyed to known headers — no column-mapping wizard)
+// and bulk-loads a new price_list_version + items + per-zone prices in one
+// transaction.
 type IngestService struct {
-	repo *CatalogRepo
+	repo *ItemsRepo
 	hub  *realtime.Hub
 }
 
 // NewIngestService constructs the ingest service. A nil hub is a programmer error.
 func NewIngestService(db db.Executor, hub *realtime.Hub) *IngestService {
 	if hub == nil {
-		panic("catalog.NewIngestService: nil hub")
+		panic("pricelist.NewIngestService: nil hub")
 	}
-	return &IngestService{repo: NewCatalog(db), hub: hub}
+	return &IngestService{repo: NewItems(db), hub: hub}
 }
 
-// IngestSummary is the JSON-friendly result of a catalogue ingest.
+// IngestSummary is the JSON-friendly result of a price-list ingest.
 type IngestSummary struct {
 	VersionID     int64  `json:"versionId"`
 	VersionUUID   string `json:"versionUuid"`
@@ -164,10 +162,10 @@ type IngestSummary struct {
 	PriceCount    int    `json:"priceCount"`
 }
 
-// Canonical NDIS Support Catalogue column headers (normalised: lower-cased,
-// internal whitespace collapsed). The official export uses these exact labels;
-// adjust here if NDIA renames a column. The geographic price-limit columns map
-// to our three zones.
+// Canonical Support Catalogue column headers (normalised: lower-cased, internal
+// whitespace collapsed). DEFERRED: this XLSX parser is the legacy NDIS shape,
+// retained for the per-tenant ingest path wired in a later phase. The geographic
+// price-limit columns map to our three zones.
 const (
 	colCode       = "support item number"
 	colName       = "support item name"
@@ -180,19 +178,18 @@ const (
 )
 
 // nationalPriceColumns are the headers the standard ("national") zone price is
-// read from, in precedence order. The official catalogue has no single
-// "National" column — the standard price lives in per-state columns that are all
-// identical, so any present one is the national rate. "national" is tried first
-// to stay forward-compatible if NDIA reintroduces that column.
+// read from, in precedence order. The legacy catalogue has no single "National"
+// column — the standard price lives in per-state columns that are all identical,
+// so any present one is the national rate. "national" is tried first to stay
+// forward-compatible if the source reintroduces that column.
 var nationalPriceColumns = []string{
 	colNational, "act", "nsw", "nt", "qld", "sa", "tas", "vic", "wa",
 }
 
-// IngestXLSX parses fixed-format NDIS Support Catalogue XLSX bytes and loads a
-// new catalogue version. The WHOLE upload is rejected (no partial state) when a
-// required column is missing or zero data rows parse. Broadcasts an SSE event
-// AFTER the commit succeeds (spec §5). Catalogue is GLOBAL so the event is
-// broadcast to all subscribers.
+// IngestXLSX parses fixed-format XLSX bytes and loads a new price-list version.
+// The WHOLE upload is rejected (no partial state) when a required column is
+// missing or zero data rows parse. Broadcasts an SSE event AFTER the commit
+// succeeds.
 func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effectiveFrom, sourceFilename string) (*IngestSummary, error) {
 	if label == "" {
 		return nil, fmt.Errorf("ingest: label required")
@@ -211,10 +208,9 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 		return nil, err
 	}
 
-	// The NDIS Support Catalogue is GLOBAL shared reference data (spec §4.3) with
-	// no owning tenant: broadcast with the GlobalTenantID sentinel so the event
-	// reaches every tenant's open SSE stream, not just one tenant's.
-	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "catalog_version", UUID: res.Version.UUID, Action: "ingest"})
+	// Broadcast with the GlobalTenantID sentinel so the event reaches every open
+	// SSE stream (the ingest path has no request tenant in scope here).
+	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "price_list_version", UUID: res.Version.UUID, Action: "ingest"})
 	return &IngestSummary{
 		VersionID:     res.Version.ID,
 		VersionUUID:   res.Version.UUID,
@@ -225,11 +221,11 @@ func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effe
 	}, nil
 }
 
-// ParseXLSX parses fixed-format NDIS Support Catalogue XLSX bytes into the
-// IngestItem domain values that repo.Ingest persists. The whole upload is
-// rejected (no partial state) when a required column is missing or zero data
-// rows parse. Retained for the deferred per-tenant ingest path (IngestXLSX).
-func ParseXLSX(data []byte) ([]IngestItem, error) {
+// ParseXLSX parses fixed-format XLSX bytes into the ImportItem domain values that
+// repo.Ingest persists. The whole upload is rejected (no partial state) when a
+// required column is missing or zero data rows parse. Retained for the deferred
+// per-tenant ingest path (IngestXLSX).
+func ParseXLSX(data []byte) ([]ImportItem, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty file")
 	}
@@ -252,7 +248,7 @@ func ParseXLSX(data []byte) ([]IngestItem, error) {
 		}
 	}
 
-	items, err := buildIngestItems(rows, norm)
+	items, err := buildImportItems(rows, norm)
 	if err != nil {
 		return nil, err
 	}
@@ -262,9 +258,9 @@ func ParseXLSX(data []byte) ([]IngestItem, error) {
 	return items, nil
 }
 
-// buildIngestItems maps parsed rows to IngestItem values, skipping rows with a
-// blank support-item code. Bounded by len(rows).
-func buildIngestItems(rows []map[string]string, norm map[string]string) ([]IngestItem, error) {
+// buildImportItems maps parsed rows to ImportItem values, skipping rows with a
+// blank item code. Bounded by len(rows).
+func buildImportItems(rows []map[string]string, norm map[string]string) ([]ImportItem, error) {
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("file has no data rows")
 	}
@@ -275,19 +271,18 @@ func buildIngestItems(rows []map[string]string, norm map[string]string) ([]Inges
 		}
 		return strings.TrimSpace(row[key])
 	}
-	out := make([]IngestItem, 0, len(rows))
+	out := make([]ImportItem, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		row := rows[i]
 		code := cell(row, colCode)
 		if code == "" {
 			continue // skip blank/spacer rows
 		}
-		it := IngestItem{
-			Code:              code,
-			Name:              cell(row, colName),
-			Unit:              cell(row, colUnit),
-			SupportCategory:   cell(row, colCategory),
-			RegistrationGroup: cell(row, colRegGroup),
+		it := ImportItem{
+			Code:     code,
+			Name:     cell(row, colName),
+			Unit:     cell(row, colUnit),
+			Category: cell(row, colCategory),
 			// NDIS supports are GST-free by default, so taxable is false; the
 			// standard catalogue export carries no taxable column.
 			Taxable: false,

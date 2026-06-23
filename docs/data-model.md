@@ -7,12 +7,12 @@ human-readable map. Update it whenever a migration changes a table or relationsh
 > **DB-per-tenant.** Tables are split across two SQLite databases. The **control
 > DB** (`control.db`) holds `tenants, users, invites, sessions` and a global
 > `audit_log`. Each **tenant DB** (`tenants/tenant-<id>.db`) holds the business
-> tables below — including the **tenant-owned NDIS catalogue** (`catalog_versions,
-> support_items, support_item_prices`, each tenant populates its own) — plus its
+> tables below — including the **tenant-owned price list** (`price_list_versions,
+> items, item_prices`, each tenant populates its own) — plus its
 > own `audit_log`. Relationships that cross the two DBs are **logical only — NOT
 > foreign keys**: `tenant_id` (→ control `tenants`) and `author_user_id` /
-> `user_id` (→ control `users`). Within a tenant DB, `support_item_id` /
-> `catalog_version_id` reference the tenant catalogue stored as **UUID TEXT** (not
+> `user_id` (→ control `users`). Within a tenant DB, `item_id` /
+> `price_list_version_id` reference the tenant price list stored as **UUID TEXT** (not
 > FKs — pinned per line so old invoices never re-price). The authoritative split
 > ERD is in `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`;
 > keep both in sync.
@@ -38,15 +38,15 @@ erDiagram
     clients ||--o{ shifts : "supported in"
     clients ||--o{ invoices : "billed for"
 
-    catalog_versions ||--o{ support_items : contains
-    support_items ||--o{ support_item_prices : "priced by zone"
+    price_list_versions ||--o{ items : contains
+    items ||--o{ item_prices : "priced by zone"
 
     invoices ||--o{ line_items : "lines (invoice_id)"
     shifts   ||--o{ line_items : "items (shift_id)"
     shifts   }o--o| invoices : "drafted into"
-    support_items |o--o{ line_items : "catalogue source"
+    items |o--o{ line_items : "price-list source"
     custom_items  |o--o{ line_items : "custom source"
-    catalog_versions |o--o{ line_items : "pinned version"
+    price_list_versions |o--o{ line_items : "pinned version"
 
     invoices ||--o{ payments : "paid by"
     invoices ||--o{ estimates : "converted from"
@@ -58,17 +58,17 @@ erDiagram
         int     tenant_id FK
         int     shift_id   FK "ON DELETE CASCADE; NULL for manual/recurring lines"
         int     invoice_id FK "NULL = unbilled shift item"
-        text    support_item_id "tenant support_items.uuid (TEXT, no FK)"
+        text    item_id "tenant items.uuid (TEXT, no FK)"
         int     custom_item_id  FK "custom item (tenant-local, nullable)"
-        text    catalog_version_id "tenant catalog_versions.uuid (TEXT, no FK), pinned"
-        text    code "NDIS code snapshot"
+        text    price_list_version_id "tenant price_list_versions.uuid (TEXT, no FK), pinned"
+        text    code "item code snapshot"
         text    description "what was done (from shift note)"
         text    service_date
         text    unit "H / KM / EA / D / WK … drives input class"
         text    start_time "time-class units only"
         text    end_time   "time-class units only"
         real    quantity "derived (time/distance) or typed"
-        real    unit_price "resolved from catalogue cap"
+        real    unit_price "resolved from price-list cap"
         int     gst_free
         real    line_total "quantity * unit_price"
         int     sort_order
@@ -110,13 +110,14 @@ erDiagram
   `tenants` lives in the control DB).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
   estimate); they are deliberately separate tables, not unified.
-- The NDIS catalogue (`catalog_versions`, `support_items`, `support_item_prices`)
-  is **tenant-owned** — each tenant DB holds its own copy. `line_items` and
-  `estimate_line_items` reference it by **UUID TEXT** (`catalog_version_id` +
-  `support_item_id`), not by FK.
-- Prices are pinned per line via `catalog_version_id` + `support_item_id` (tenant
-  catalogue UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
-  is never re-priced when a newer catalogue version loads.
+- The price list (`price_list_versions`, `items`, `item_prices`)
+  is **tenant-owned** — each tenant DB holds its own copy. `items` collapses the
+  former NDIS metadata columns into one nullable `category` and adds a generic
+  `unit_price REAL`. `line_items` and `estimate_line_items` reference it by
+  **UUID TEXT** (`price_list_version_id` + `item_id`), not by FK.
+- Prices are pinned per line via `price_list_version_id` + `item_id` (tenant
+  price-list UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
+  is never re-priced when a newer price-list version loads.
 - Agent has **no persistent tables** (Smarts are one-shot). The `notes` table and
   all `agent_*` chat tables were dropped (migrations `00005`, `00007`).
 
@@ -124,4 +125,4 @@ erDiagram
 
 Auth/infra and supporting tables omitted from the diagram for clarity:
 `invites`, `sessions`, `business_profile`, `custom_items`, `tax_rates`,
-`support_item_prices` (shown), `recurring_templates` (shown), `audit_log`.
+`item_prices` (shown), `recurring_templates` (shown), `audit_log`.

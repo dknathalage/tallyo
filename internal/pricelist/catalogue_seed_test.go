@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"context"
@@ -7,15 +7,15 @@ import (
 
 func capPtr(f float64) *float64 { return &f }
 
-// TestIngestClosesPriorVersionWindow verifies that ingesting a new catalogue
+// TestIngestClosesPriorVersionWindow verifies that ingesting a new price-list
 // version closes the prior open version the day before the new effective_from, so
 // date-windows never overlap and a historical service date resolves to the
 // version that was effective then (not the newest).
 func TestIngestClosesPriorVersionWindow(t *testing.T) {
-	conn := newTestDB(t) // per-tenant catalogue, empty by default
-	repo := NewCatalog(conn)
+	conn := newTestDB(t) // per-tenant price list, empty by default
+	repo := NewItems(conn)
 	ctx := context.Background()
-	item := []IngestItem{{Code: "X", Name: "X", Taxable: false, Prices: map[string]*float64{"national": capPtr(10)}}}
+	item := []ImportItem{{Code: "X", Name: "X", Taxable: false, Prices: map[string]*float64{"national": capPtr(10)}}}
 
 	if _, err := repo.Ingest(ctx, "v1", "2025-07-01", "f1", item); err != nil {
 		t.Fatalf("ingest v1: %v", err)

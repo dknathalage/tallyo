@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
+	import { priceList } from '$lib/stores/priceList.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
-	import type { SupportItem, SupportItemPrice, ValidationDetail, Zone } from '$lib/api/types';
+	import type { Item, ItemPrice, ValidationDetail, Zone } from '$lib/api/types';
 
-	// An editor row. `kind` distinguishes an NDIS support-item line (code-driven,
+	// An editor row. `kind` distinguishes a price-list item line (code-driven,
 	// gst server-authoritative) from a custom line (free text, user gst).
 	export interface EditorLine {
 		kind: 'support' | 'custom';
 		customItemId: string | null;
-		// Pinned NDIS catalogue version uuid for an EXISTING support line; null for a
+		// Pinned price-list version uuid for an EXISTING support line; null for a
 		// new line (the server then prices it from the current version). Carried on
 		// edit so re-validation never re-prices an existing line against a newer one.
-		catalogVersionId: string | null;
+		priceListVersionId: string | null;
 		code: string;
 		description: string;
 		serviceDate: string;
@@ -38,30 +38,30 @@
 
 	const zone = $derived<Zone>((businessProfile.profile.zone as Zone) || 'national');
 
-	// Latest catalogue version's support items (for the code picker).
-	let catalogItems = $state<SupportItem[]>([]);
+	// Latest price-list version's items (for the code picker).
+	let catalogItems = $state<Item[]>([]);
 	let catalogLoaded = $state(false);
 
 	async function ensureCatalog(): Promise<void> {
 		if (catalogLoaded) return;
 		catalogLoaded = true;
-		await supportCatalog.loadVersions();
-		if (supportCatalog.versions.length > 0) {
+		await priceList.loadVersions();
+		if (priceList.versions.length > 0) {
 			try {
-				catalogItems = await supportCatalog.loadItems(supportCatalog.versions[0].id);
+				catalogItems = await priceList.loadItems(priceList.versions[0].id);
 			} catch {
 				catalogItems = [];
 			}
 		}
 	}
 
-	// Price-cap cache keyed by supportItem id → the cap for the tenant zone.
+	// Price-cap cache keyed by item id → the cap for the tenant zone.
 	let capCache = $state<Record<string, number | null>>({});
 
-	async function capFor(item: SupportItem): Promise<number | null> {
+	async function capFor(item: Item): Promise<number | null> {
 		if (item.id in capCache) return capCache[item.id];
 		try {
-			const prices: SupportItemPrice[] = await supportCatalog.loadPrices(item.id);
+			const prices: ItemPrice[] = await priceList.loadPrices(item.id);
 			const match = prices.find((p) => p.zone === zone);
 			const cap = match ? match.priceCap : null;
 			capCache = { ...capCache, [item.id]: cap };
@@ -77,7 +77,7 @@
 	// The applicable price cap shown next to a row after selecting an item.
 	let rowCap = $state<Record<number, number | null>>({});
 
-	const pickerResults = $derived.by<SupportItem[]>(() => {
+	const pickerResults = $derived.by<Item[]>(() => {
 		const q = pickerSearch.trim().toLowerCase();
 		if (q === '') return catalogItems.slice(0, 20);
 		return catalogItems
@@ -102,7 +102,7 @@
 		lines.push({
 			kind: 'support',
 			customItemId: null,
-			catalogVersionId: null,
+			priceListVersionId: null,
 			code: '',
 			description: '',
 			serviceDate: new Date().toISOString().slice(0, 10),
@@ -119,7 +119,7 @@
 		lines.push({
 			kind: 'custom',
 			customItemId: null,
-			catalogVersionId: null,
+			priceListVersionId: null,
 			code: '',
 			description: '',
 			serviceDate: '',
@@ -141,7 +141,7 @@
 		if (pickerOpen !== null) await ensureCatalog();
 	}
 
-	async function pickItem(index: number, item: SupportItem): Promise<void> {
+	async function pickItem(index: number, item: Item): Promise<void> {
 		const row = lines[index];
 		row.code = item.code;
 		row.description = item.name;

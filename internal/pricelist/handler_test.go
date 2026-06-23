@@ -1,4 +1,4 @@
-package catalog
+package pricelist
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 )
 
 // newCatalogHandler builds a handler over a fresh DB and seeds one version with
-// one priced support item. Returns the handler, tenant id, and the seeded
-// version + item UUIDs.
+// one priced item. Returns the handler, tenant id, and the seeded version + item
+// UUIDs.
 func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, itemUUID string) {
 	t.Helper()
 	conn := newTestDB(t)
@@ -26,23 +26,23 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 	ctx := context.Background()
 	now := time.Now().UTC().Format(time.RFC3339)
 	vUUID := uuid.NewString()
-	v, err := q.CreateCatalogVersion(ctx, gen.CreateCatalogVersionParams{
+	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
 		Uuid: vUUID, Label: "2025-26", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("CreateCatalogVersion: %v", err)
+		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	iUUID := uuid.NewString()
-	si, err := q.CreateSupportItem(ctx, gen.CreateSupportItemParams{
-		Uuid: iUUID, CatalogVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
+	si, err := q.CreateItem(ctx, gen.CreateItemParams{
+		Uuid: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
 	})
 	if err != nil {
-		t.Fatalf("CreateSupportItem: %v", err)
+		t.Fatalf("CreateItem: %v", err)
 	}
-	if _, err := q.CreateSupportItemPrice(ctx, gen.CreateSupportItemPriceParams{
-		SupportItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: 100, Valid: true},
+	if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
+		ItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: 100, Valid: true},
 	}); err != nil {
-		t.Fatalf("CreateSupportItemPrice: %v", err)
+		t.Fatalf("CreateItemPrice: %v", err)
 	}
 	svc := NewService(conn)
 	return NewHandler(svc, nil), tenantID, vUUID, iUUID
@@ -66,7 +66,7 @@ func TestCatalogListItemsByVersionUUID(t *testing.T) {
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/support-catalog/versions/" + versionUUID + "/items")
+	res, err := http.Get(srv.URL + "/price-list/versions/" + versionUUID + "/items")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -84,8 +84,8 @@ func TestCatalogListItemsByVersionUUID(t *testing.T) {
 	if items[0]["id"] != itemUUID {
 		t.Fatalf("item id=%v want uuid %q", items[0]["id"], itemUUID)
 	}
-	if items[0]["catalogVersionId"] != versionUUID {
-		t.Fatalf("catalogVersionId=%v want version uuid %q", items[0]["catalogVersionId"], versionUUID)
+	if items[0]["priceListVersionId"] != versionUUID {
+		t.Fatalf("priceListVersionId=%v want version uuid %q", items[0]["priceListVersionId"], versionUUID)
 	}
 }
 
@@ -94,7 +94,7 @@ func TestCatalogListPricesByItemUUID(t *testing.T) {
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/support-catalog/items/" + itemUUID + "/prices")
+	res, err := http.Get(srv.URL + "/price-list/items/" + itemUUID + "/prices")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestCatalogListItemsUnknownVersionUUID404(t *testing.T) {
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/support-catalog/versions/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c/items")
+	res, err := http.Get(srv.URL + "/price-list/versions/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c/items")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestCatalogListPricesUnknownItemUUID404(t *testing.T) {
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/support-catalog/items/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c/prices")
+	res, err := http.Get(srv.URL + "/price-list/items/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c/prices")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestCatalogListItemsNonUUID400(t *testing.T) {
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/support-catalog/versions/123/items")
+	res, err := http.Get(srv.URL + "/price-list/versions/123/items")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestCatalogListPricesNonUUID400(t *testing.T) {
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/support-catalog/items/123/prices")
+	res, err := http.Get(srv.URL + "/price-list/items/123/prices")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}

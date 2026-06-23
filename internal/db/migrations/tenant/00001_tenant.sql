@@ -5,8 +5,8 @@
 -- sequence (agent_* and notes were dropped; sessions + line_items unified).
 --
 -- Cross-DB references are NOT foreign keys (the target tables live in
--- control.db): `tenant_id` is a plain guard column; catalogue links
--- (support_item_id, catalog_version_id) are stored as the control-DB UUID
+-- control.db): `tenant_id` is a plain guard column; price-list links
+-- (item_id, price_list_version_id) are stored as the tenant price-list UUID
 -- (TEXT) and validated in app; user links (author_user_id) are non-authoritative
 -- control ids. Same-file FKs are kept.
 
@@ -145,9 +145,9 @@ CREATE TABLE line_items (
     tenant_id          INTEGER NOT NULL,
     session_id           INTEGER REFERENCES work_sessions(id) ON DELETE CASCADE,
     invoice_id         INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
-    support_item_id    TEXT DEFAULT '',     -- control-DB support_items.uuid (no FK)
+    item_id               TEXT DEFAULT '',  -- tenant items.uuid (no FK)
     custom_item_id     INTEGER REFERENCES custom_items(id) ON DELETE SET NULL,
-    catalog_version_id TEXT DEFAULT '',     -- control-DB catalog_versions.uuid (no FK), pinned
+    price_list_version_id TEXT DEFAULT '',  -- tenant price_list_versions.uuid (no FK), pinned
     code               TEXT DEFAULT '',     -- snapshot
     description        TEXT NOT NULL,       -- snapshot
     service_date       TEXT,                -- DATE
@@ -163,7 +163,7 @@ CREATE TABLE line_items (
 );
 CREATE INDEX idx_line_items_tenant       ON line_items(tenant_id);
 CREATE INDEX idx_line_items_invoice      ON line_items(invoice_id);
-CREATE INDEX idx_line_items_support_item ON line_items(support_item_id);
+CREATE INDEX idx_line_items_item ON line_items(item_id);
 CREATE INDEX idx_line_items_session        ON line_items(session_id);
 
 CREATE TABLE estimates (
@@ -197,9 +197,9 @@ CREATE TABLE estimate_line_items (
     uuid               TEXT NOT NULL UNIQUE,
     tenant_id          INTEGER NOT NULL,
     estimate_id        INTEGER NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
-    support_item_id    TEXT DEFAULT '',     -- control-DB support_items.uuid (no FK)
+    item_id               TEXT DEFAULT '',  -- tenant items.uuid (no FK)
     custom_item_id     INTEGER REFERENCES custom_items(id) ON DELETE SET NULL,
-    catalog_version_id TEXT DEFAULT '',     -- control-DB catalog_versions.uuid (no FK), pinned
+    price_list_version_id TEXT DEFAULT '',  -- tenant price_list_versions.uuid (no FK), pinned
     code               TEXT DEFAULT '',     -- snapshot
     description        TEXT NOT NULL,       -- snapshot
     service_date       TEXT,                -- DATE

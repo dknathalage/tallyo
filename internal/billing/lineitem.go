@@ -38,25 +38,25 @@ var ErrUnknownCustomItem = errors.New("unknown custom item")
 // shape; each gen row type is converted to this before mapping so the API can
 // surface customItemId as the custom-item uuid rather than the int FK.
 type LineItemRow struct {
-	ID               int64
-	Uuid             string
-	SessionID        sql.NullInt64
-	InvoiceID        sql.NullInt64
-	SupportItemID    sql.NullString
-	CustomItemID     sql.NullInt64
-	CustomItemUuid   sql.NullString
-	CatalogVersionID sql.NullString
-	Code             sql.NullString
-	Description      string
-	ServiceDate      sql.NullString
-	Unit             sql.NullString
-	StartTime        sql.NullString
-	EndTime          sql.NullString
-	Quantity         float64
-	UnitPrice        float64
-	Taxable          int64
-	LineTotal        float64
-	SortOrder        sql.NullInt64
+	ID                 int64
+	Uuid               string
+	SessionID          sql.NullInt64
+	InvoiceID          sql.NullInt64
+	ItemID             sql.NullString
+	CustomItemID       sql.NullInt64
+	CustomItemUuid     sql.NullString
+	PriceListVersionID sql.NullString
+	Code               sql.NullString
+	Description        string
+	ServiceDate        sql.NullString
+	Unit               sql.NullString
+	StartTime          sql.NullString
+	EndTime            sql.NullString
+	Quantity           float64
+	UnitPrice          float64
+	Taxable            int64
+	LineTotal          float64
+	SortOrder          sql.NullInt64
 }
 
 // LineItemFromRow maps one joined central line_items row to the domain shape.
@@ -65,25 +65,25 @@ type LineItemRow struct {
 // item); the int FK stays internal.
 func LineItemFromRow(row LineItemRow) *LineItem {
 	return &LineItem{
-		ID:               row.ID,
-		UUID:             row.Uuid,
-		SessionID:        ptrInt(row.SessionID),
-		InvoiceID:        ptrInt(row.InvoiceID),
-		SupportItemID:    ptrStr(row.SupportItemID),
-		CustomItemID:     ptrInt(row.CustomItemID),
-		CustomItemUUID:   ptrStr(row.CustomItemUuid),
-		CatalogVersionID: ptrStr(row.CatalogVersionID),
-		Code:             row.Code.String,
-		Description:      row.Description,
-		ServiceDate:      row.ServiceDate.String,
-		Unit:             row.Unit.String,
-		StartTime:        row.StartTime.String,
-		EndTime:          row.EndTime.String,
-		Quantity:         row.Quantity,
-		UnitPrice:        row.UnitPrice,
-		Taxable:          row.Taxable == 1,
-		LineTotal:        row.LineTotal,
-		SortOrder:        row.SortOrder.Int64,
+		ID:                 row.ID,
+		UUID:               row.Uuid,
+		SessionID:          ptrInt(row.SessionID),
+		InvoiceID:          ptrInt(row.InvoiceID),
+		ItemID:             ptrStr(row.ItemID),
+		CustomItemID:       ptrInt(row.CustomItemID),
+		CustomItemUUID:     ptrStr(row.CustomItemUuid),
+		PriceListVersionID: ptrStr(row.PriceListVersionID),
+		Code:               row.Code.String,
+		Description:        row.Description,
+		ServiceDate:        row.ServiceDate.String,
+		Unit:               row.Unit.String,
+		StartTime:          row.StartTime.String,
+		EndTime:            row.EndTime.String,
+		Quantity:           row.Quantity,
+		UnitPrice:          row.UnitPrice,
+		Taxable:            row.Taxable == 1,
+		LineTotal:          row.LineTotal,
+		SortOrder:          row.SortOrder.Int64,
 	}
 }
 
@@ -92,8 +92,8 @@ func LineItemFromRow(row LineItemRow) *LineItem {
 func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 	return LineItemRow{
 		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
-		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
-		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
@@ -102,8 +102,8 @@ func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 func LineItemRowFromSessionList(r gen.ListLineItemsForSessionRow) LineItemRow {
 	return LineItemRow{
 		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
-		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
-		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
@@ -112,8 +112,8 @@ func LineItemRowFromSessionList(r gen.ListLineItemsForSessionRow) LineItemRow {
 func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 	return LineItemRow{
 		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
-		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
-		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
@@ -122,8 +122,8 @@ func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 func LineItemRowFromSessionUUID(r gen.GetSessionLineItemByUUIDRow) LineItemRow {
 	return LineItemRow{
 		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
-		SupportItemID: r.SupportItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
-		CatalogVersionID: r.CatalogVersionID, Code: r.Code, Description: r.Description,
+		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
+		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
@@ -149,41 +149,41 @@ func ptrStr(n sql.NullString) *string {
 // the same row whether it lives on a session (SessionID set, InvoiceID nil) or on an
 // invoice (InvoiceID set); drafting links it by setting InvoiceID.
 type LineItem struct {
-	ID               int64   `json:"-"`                // internal PK; the public identifier is the uuid
-	UUID             string  `json:"id"`               // public identifier (item uuid)
-	SessionID        *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent session, so the parent ref is redundant on the API
-	InvoiceID        *int64  `json:"-"`                // internal parent FK; a line item is always fetched embedded in its parent invoice, so the parent ref is redundant on the API
-	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
-	CustomItemID     *int64  `json:"-"`                // internal tenant-local FK; the public ref is the uuid
-	CustomItemUUID   *string `json:"customItemId"`     // tenant custom_items.uuid (nil when no custom item)
-	CatalogVersionID *string `json:"catalogVersionId"` // control-DB catalog_versions.uuid
-	Code             string  `json:"code"`
-	Description      string  `json:"description"`
-	ServiceDate      string  `json:"serviceDate"`
-	Unit             string  `json:"unit"`
-	StartTime        string  `json:"startTime"` // time-class units only
-	EndTime          string  `json:"endTime"`   // time-class units only
-	Quantity         float64 `json:"quantity"`
-	UnitPrice        float64 `json:"unitPrice"`
-	Taxable          bool    `json:"taxable"`
-	LineTotal        float64 `json:"lineTotal"`
-	SortOrder        int64   `json:"sortOrder"`
+	ID                 int64   `json:"-"`                  // internal PK; the public identifier is the uuid
+	UUID               string  `json:"id"`                 // public identifier (item uuid)
+	SessionID          *int64  `json:"-"`                  // internal parent FK; a line item is always fetched embedded in its parent session, so the parent ref is redundant on the API
+	InvoiceID          *int64  `json:"-"`                  // internal parent FK; a line item is always fetched embedded in its parent invoice, so the parent ref is redundant on the API
+	ItemID             *string `json:"itemId"`             // tenant items.uuid
+	CustomItemID       *int64  `json:"-"`                  // internal tenant-local FK; the public ref is the uuid
+	CustomItemUUID     *string `json:"customItemId"`       // tenant custom_items.uuid (nil when no custom item)
+	PriceListVersionID *string `json:"priceListVersionId"` // tenant price_list_versions.uuid
+	Code               string  `json:"code"`
+	Description        string  `json:"description"`
+	ServiceDate        string  `json:"serviceDate"`
+	Unit               string  `json:"unit"`
+	StartTime          string  `json:"startTime"` // time-class units only
+	EndTime            string  `json:"endTime"`   // time-class units only
+	Quantity           float64 `json:"quantity"`
+	UnitPrice          float64 `json:"unitPrice"`
+	Taxable            bool    `json:"taxable"`
+	LineTotal          float64 `json:"lineTotal"`
+	SortOrder          int64   `json:"sortOrder"`
 }
 
 // LineItemInput is the writable subset of a line item. LineTotal is computed
 // (round2(quantity*unitPrice)) when not explicitly supplied.
 type LineItemInput struct {
-	SupportItemID    *string `json:"supportItemId"`    // control-DB support_items.uuid
-	CustomItemID     *string `json:"customItemId"`     // tenant custom_items.uuid (resolved to the int FK at the write boundary)
-	CatalogVersionID *string `json:"catalogVersionId"` // control-DB catalog_versions.uuid
-	Code             string  `json:"code"`
-	Description      string  `json:"description"`
-	ServiceDate      string  `json:"serviceDate"`
-	Unit             string  `json:"unit"`
-	StartTime        string  `json:"startTime"` // time-class units only
-	EndTime          string  `json:"endTime"`   // time-class units only
-	Quantity         float64 `json:"quantity"`
-	UnitPrice        float64 `json:"unitPrice"`
-	Taxable          bool    `json:"taxable"`
-	SortOrder        int64   `json:"sortOrder"`
+	ItemID             *string `json:"itemId"`             // tenant items.uuid
+	CustomItemID       *string `json:"customItemId"`       // tenant custom_items.uuid (resolved to the int FK at the write boundary)
+	PriceListVersionID *string `json:"priceListVersionId"` // tenant price_list_versions.uuid
+	Code               string  `json:"code"`
+	Description        string  `json:"description"`
+	ServiceDate        string  `json:"serviceDate"`
+	Unit               string  `json:"unit"`
+	StartTime          string  `json:"startTime"` // time-class units only
+	EndTime            string  `json:"endTime"`   // time-class units only
+	Quantity           float64 `json:"quantity"`
+	UnitPrice          float64 `json:"unitPrice"`
+	Taxable            bool    `json:"taxable"`
+	SortOrder          int64   `json:"sortOrder"`
 }

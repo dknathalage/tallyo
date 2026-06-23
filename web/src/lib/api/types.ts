@@ -128,13 +128,13 @@ export interface CustomItemInput {
 	metadata: string;
 }
 
-// ---- NDIS Support Catalogue (tenant-owned, read-only for non-admins) ----
+// ---- Price list (tenant-owned, read-only for non-admins) ----
 
-// The support-catalogue read endpoints address catalogue rows by their uuid:
-// `id` is the version/item uuid (string), and `catalogVersionId` on an item is
-// the owning version's uuid. A price is always fetched under its item, so it
-// carries no id of its own.
-export interface CatalogVersion {
+// The price-list read endpoints address rows by their uuid: `id` is the
+// version/item uuid (string), and `priceListVersionId` on an item is the owning
+// version's uuid. A price is always fetched under its item, so it carries no id
+// of its own.
+export interface PriceListVersion {
 	id: string;
 	label: string;
 	effectiveFrom: string;
@@ -143,20 +143,19 @@ export interface CatalogVersion {
 	createdAt: string;
 }
 
-export interface SupportItem {
+export interface Item {
 	id: string;
-	catalogVersionId: string;
+	priceListVersionId: string;
 	code: string;
 	name: string;
 	unit: string;
-	supportCategory: string;
-	registrationGroup: string;
-	claimType: string;
+	category: string;
+	unitPrice: number | null;
 	taxable: boolean;
 	metadata: string;
 }
 
-export interface SupportItemPrice {
+export interface ItemPrice {
 	zone: Zone;
 	priceCap: number | null;
 }
@@ -167,9 +166,9 @@ export interface LineItem {
 	id: string;
 	sessionId: string | null;
 	invoiceId: string | null;
-	supportItemId: string | null;
+	itemId: string | null;
 	customItemId: string | null;
-	catalogVersionId: string | null;
+	priceListVersionId: string | null;
 	code: string;
 	description: string;
 	serviceDate: string;
@@ -186,9 +185,9 @@ export interface LineItem {
 // LineItemInput is the writable subset of a line item (no id/uuid/lineTotal —
 // the server's DecodeJSON rejects unknown fields, so only these are sent).
 export interface LineItemInput {
-	supportItemId: string | null;
+	itemId: string | null;
 	customItemId: string | null;
-	catalogVersionId: string | null;
+	priceListVersionId: string | null;
 	code: string;
 	description: string;
 	serviceDate: string;
@@ -302,7 +301,7 @@ export interface EstimateInput {
 export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
 
 export interface RecurringLine {
-	supportItemId: string | null;
+	itemId: string | null;
 	customItemId: string | null;
 	code: string;
 	description: string;
