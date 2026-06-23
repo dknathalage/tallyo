@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { priceList } from '$lib/stores/priceList.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
-	import { businessProfile } from '$lib/stores/businessProfile.svelte';
-	import type { Item, ItemPrice, ValidationDetail, Zone } from '$lib/api/types';
+	import type { Item, ValidationDetail } from '$lib/api/types';
 
 	// An editor row. `kind` distinguishes a price-list item line (code-driven,
 	// gst server-authoritative) from a custom line (free text, user gst).
@@ -36,8 +35,6 @@
 		return v.toFixed(2);
 	}
 
-	const zone = $derived<Zone>((businessProfile.profile.zone as Zone) || 'national');
-
 	// Latest price-list version's items (for the code picker).
 	let catalogItems = $state<Item[]>([]);
 	let catalogLoaded = $state(false);
@@ -55,27 +52,9 @@
 		}
 	}
 
-	// Price-cap cache keyed by item id → the cap for the tenant zone.
-	let capCache = $state<Record<string, number | null>>({});
-
-	async function capFor(item: Item): Promise<number | null> {
-		if (item.id in capCache) return capCache[item.id];
-		try {
-			const prices: ItemPrice[] = await priceList.loadPrices(item.id);
-			const match = prices.find((p) => p.zone === zone);
-			const cap = match ? match.priceCap : null;
-			capCache = { ...capCache, [item.id]: cap };
-			return cap;
-		} catch {
-			return null;
-		}
-	}
-
 	// Per-row picker UI state.
 	let pickerOpen = $state<number | null>(null);
 	let pickerSearch = $state('');
-	// The applicable price cap shown next to a row after selecting an item.
-	let rowCap = $state<Record<number, number | null>>({});
 
 	const pickerResults = $derived.by<Item[]>(() => {
 		const q = pickerSearch.trim().toLowerCase();
@@ -141,15 +120,18 @@
 		if (pickerOpen !== null) await ensureCatalog();
 	}
 
-	async function pickItem(index: number, item: Item): Promise<void> {
+	function pickItem(index: number, item: Item): void {
 		const row = lines[index];
 		row.code = item.code;
 		row.description = item.name;
 		row.unit = item.unit;
 		row.taxable = item.taxable; // server-authoritative; shown read-only.
+		// Pre-fill the unit price from the catalogue item's generic price when the
+		// row has none yet (the server fills the same way on submit).
+		if ((Number(row.unitPrice) || 0) <= 0 && item.unitPrice != null) {
+			row.unitPrice = item.unitPrice;
+		}
 		pickerOpen = null;
-		const cap = await capFor(item);
-		rowCap = { ...rowCap, [index]: cap };
 	}
 
 	function selectCustomItem(index: number, e: Event): void {
@@ -339,11 +321,6 @@
 					/>
 					{#if fieldError(i, 'unitPrice')}
 						<p class="mt-1 text-xs text-red-600">{fieldError(i, 'unitPrice')}</p>
-					{/if}
-					{#if line.kind === 'support' && i in rowCap}
-						<p class="mt-1 text-xs text-gray-500">
-							Cap ({zone}): {rowCap[i] === null ? 'Quote' : money(rowCap[i] as number)}
-						</p>
 					{/if}
 				</div>
 				<div class="col-span-6 sm:col-span-2">

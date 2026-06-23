@@ -56,22 +56,6 @@ func TestCatalogSearchItems(t *testing.T) {
 	}
 }
 
-func TestCatalogListPrices(t *testing.T) {
-	conn := newTestDB(t)
-	repo := NewItems(conn)
-	ctx := context.Background()
-	cap := 75.0
-	_, itemID := seedCatalog(t, conn, "v", "2025-07-01", "", "X", &cap)
-
-	prices, err := repo.ListPrices(ctx, itemID)
-	if err != nil {
-		t.Fatalf("ListPrices: %v", err)
-	}
-	if len(prices) != 1 || prices[0].Zone != "national" || prices[0].PriceCap == nil || *prices[0].PriceCap != 75.0 {
-		t.Fatalf("ListPrices = %+v, want one national cap 75", prices)
-	}
-}
-
 func TestCatalogIngest(t *testing.T) {
 	conn := newTestDB(t)
 	repo := NewItems(conn)
@@ -88,18 +72,16 @@ func TestCatalogIngest(t *testing.T) {
 		t.Fatal("Ingest no rows: want error")
 	}
 
-	cap := 100.0
+	price := 100.0
 	res, err := repo.Ingest(ctx, "2025-26", "2025-07-01", "prices.csv", []ImportItem{
-		{Code: "01_011_0107_1_1", Name: "Support A", Unit: "H", Taxable: false,
-			Prices: map[string]*float64{"national": &cap}},
-		{Code: "01_011_0107_8_1", Name: "Support B (quotable)",
-			Prices: map[string]*float64{"national": nil}},
+		{Code: "01_011_0107_1_1", Name: "Support A", Unit: "H", Taxable: false, UnitPrice: &price},
+		{Code: "01_011_0107_8_1", Name: "Support B (free-form)"},
 	})
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
-	if res.Version == nil || res.ItemCount != 2 || res.PriceCount != 2 {
-		t.Fatalf("Ingest result = %+v, want 2 items / 2 prices", res)
+	if res.Version == nil || res.ItemCount != 2 {
+		t.Fatalf("Ingest result = %+v, want 2 items", res)
 	}
 
 	// The created version is resolvable and carries the ingested items.
@@ -107,12 +89,13 @@ func TestCatalogIngest(t *testing.T) {
 	if err != nil || len(items) != 2 {
 		t.Fatalf("ListItems after ingest = %d err=%v, want 2", len(items), err)
 	}
-	// Quotable item resolves with a nil price cap.
-	price, err := repo.ResolveZonePrice(ctx, res.Version.ID, "01_011_0107_8_1", "national")
-	if err != nil || price == nil {
-		t.Fatalf("ResolveZonePrice quotable = %+v err=%v", price, err)
+	// The priced item carries its unit_price; the free-form item has none.
+	priced, err := repo.GetItemByCode(ctx, res.Version.ID, "01_011_0107_1_1")
+	if err != nil || priced == nil || priced.UnitPrice == nil || *priced.UnitPrice != 100.0 {
+		t.Fatalf("priced item = %+v err=%v, want unit_price 100", priced, err)
 	}
-	if price.PriceCap != nil {
-		t.Fatalf("quotable PriceCap = %v, want nil", *price.PriceCap)
+	freeform, err := repo.GetItemByCode(ctx, res.Version.ID, "01_011_0107_8_1")
+	if err != nil || freeform == nil || freeform.UnitPrice != nil {
+		t.Fatalf("free-form item = %+v err=%v, want nil unit_price", freeform, err)
 	}
 }

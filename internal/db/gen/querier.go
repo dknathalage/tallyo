@@ -30,7 +30,6 @@ type Querier interface {
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
 	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
-	CreateItemPrice(ctx context.Context, arg CreateItemPriceParams) (ItemPrice, error)
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
@@ -82,7 +81,6 @@ type Querier interface {
 	GetItem(ctx context.Context, id int64) (Item, error)
 	GetItemByCode(ctx context.Context, arg GetItemByCodeParams) (Item, error)
 	GetItemIDByUUID(ctx context.Context, uuid string) (int64, error)
-	GetItemPrice(ctx context.Context, arg GetItemPriceParams) (ItemPrice, error)
 	GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLineItemRow, error)
 	GetPayer(ctx context.Context, arg GetPayerParams) (Payer, error)
 	GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Payer, error)
@@ -120,8 +118,6 @@ type Querier interface {
 	ListInvoicePayments(ctx context.Context, arg ListInvoicePaymentsParams) ([]Payment, error)
 	ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoicesRow, error)
 	ListInvoicesByStatus(ctx context.Context, arg ListInvoicesByStatusParams) ([]ListInvoicesByStatusRow, error)
-	// Per-tenant price-list item prices (tenant-owned).
-	ListItemPrices(ctx context.Context, itemID int64) ([]ItemPrice, error)
 	// Per-tenant price-list items (tenant-owned).
 	ListItems(ctx context.Context, priceListVersionID int64) ([]Item, error)
 	ListLineItemsForInvoice(ctx context.Context, arg ListLineItemsForInvoiceParams) ([]ListLineItemsForInvoiceRow, error)
@@ -155,7 +151,6 @@ type Querier interface {
 	// (e.g. 4 for 'INV-'); the numeric part begins at prefix_len + 1.
 	MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumberLikeParams) (int64, error)
 	ResolvePriceListVersionForDate(ctx context.Context, serviceDate string) (PriceListVersion, error)
-	ResolveZonePrice(ctx context.Context, arg ResolveZonePriceParams) (ItemPrice, error)
 	RestampUnbilledSessionItems(ctx context.Context, arg RestampUnbilledSessionItemsParams) error
 	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchCustomItems(ctx context.Context, arg SearchCustomItemsParams) ([]CustomItem, error)
@@ -189,7 +184,6 @@ type Querier interface {
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
 	UpsertItem(ctx context.Context, arg UpsertItemParams) (Item, error)
-	UpsertItemPrice(ctx context.Context, arg UpsertItemPriceParams) error
 }
 
 var _ Querier = (*Queries)(nil)

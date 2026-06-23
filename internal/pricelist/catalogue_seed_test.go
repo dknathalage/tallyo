@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-func capPtr(f float64) *float64 { return &f }
-
 // TestIngestClosesPriorVersionWindow verifies that ingesting a new price-list
 // version closes the prior open version the day before the new effective_from, so
 // date-windows never overlap and a historical service date resolves to the
@@ -15,7 +13,7 @@ func TestIngestClosesPriorVersionWindow(t *testing.T) {
 	conn := newTestDB(t) // per-tenant price list, empty by default
 	repo := NewItems(conn)
 	ctx := context.Background()
-	item := []ImportItem{{Code: "X", Name: "X", Taxable: false, Prices: map[string]*float64{"national": capPtr(10)}}}
+	item := []ImportItem{{Code: "X", Name: "X", Taxable: false}}
 
 	if _, err := repo.Ingest(ctx, "v1", "2025-07-01", "f1", item); err != nil {
 		t.Fatalf("ingest v1: %v", err)

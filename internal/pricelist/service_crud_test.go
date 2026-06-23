@@ -5,18 +5,14 @@ import (
 	"testing"
 )
 
-// TestSupportCatalogGetVersionAndListPrices seeds a small priced version via the
-// repo then exercises the read-only GetVersion + ListItems + ListPrices methods.
-func TestSupportCatalogGetVersionAndListPrices(t *testing.T) {
+// TestSupportCatalogGetVersionAndListItems seeds a small priced version via the
+// repo then exercises the read-only GetVersion + ListItems methods.
+func TestSupportCatalogGetVersionAndListItems(t *testing.T) {
 	conn := newTestDB(t)
 	read := NewService(conn)
 	ctx := context.Background()
 
-	versionID := seedZonedCatalog(t, conn, "v1", "2025-07-01", "", "01_011_0107_1_1", true, map[string]*float64{
-		"national":    fptr(67.56),
-		"remote":      fptr(94.58),
-		"very_remote": fptr(101.34),
-	})
+	versionID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "", "01_011_0107_1_1", true, 67.56)
 
 	ver, err := read.GetVersion(ctx, versionID)
 	if err != nil {
@@ -36,13 +32,8 @@ func TestSupportCatalogGetVersionAndListPrices(t *testing.T) {
 	if items[0].PriceListVersionUID != ver.UUID {
 		t.Fatalf("item PriceListVersionUID = %q, want %q", items[0].PriceListVersionUID, ver.UUID)
 	}
-
-	prices, err := read.ListPricesByItemUUID(ctx, items[0].UUID)
-	if err != nil {
-		t.Fatalf("ListPricesByItemUUID: %v", err)
-	}
-	if len(prices) != 3 {
-		t.Fatalf("ListPrices = %d, want 3 zone rows", len(prices))
+	if items[0].UnitPrice == nil || *items[0].UnitPrice != 67.56 {
+		t.Fatalf("item UnitPrice = %v, want 67.56", items[0].UnitPrice)
 	}
 }
 

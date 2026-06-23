@@ -1,6 +1,6 @@
 import { apiGet, tenantPath } from '$lib/api/client';
 import { onEntity } from '$lib/realtime/events';
-import type { PriceListVersion, Item, ItemPrice } from '$lib/api/types';
+import type { PriceListVersion, Item } from '$lib/api/types';
 
 /**
  * Read-only store for the tenant-owned price list. Tenants browse versions +
@@ -33,13 +33,6 @@ function createPriceListStore() {
 			[];
 	}
 
-	async function loadPrices(itemId: string): Promise<ItemPrice[]> {
-		if (itemId === '') {
-			throw new Error('loadPrices: itemId (uuid) is required');
-		}
-		return (await apiGet<ItemPrice[]>(tenantPath(`price-list/items/${itemId}/prices`))) ?? [];
-	}
-
 	function ensureSubscribed(): void {
 		if (subscribed) return;
 		subscribed = true;
@@ -60,7 +53,6 @@ function createPriceListStore() {
 		},
 		loadVersions,
 		loadItems,
-		loadPrices,
 		ensureSubscribed
 	};
 }

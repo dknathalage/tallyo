@@ -3,23 +3,11 @@
 	import { priceList } from '$lib/stores/priceList.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { apiUpload, tenantPath } from '$lib/api/client';
-	import type { PriceListVersion, Item, ItemPrice } from '$lib/api/types';
+	import type { PriceListVersion, Item } from '$lib/api/types';
 
-	function money(n: number | null): string {
-		if (n === null) return 'Quote';
+	function money(n: number): string {
 		const v = Number.isFinite(n) ? n : 0;
 		return v.toFixed(2);
-	}
-
-	function zoneLabel(z: string): string {
-		switch (z) {
-			case 'very_remote':
-				return 'Very remote';
-			case 'remote':
-				return 'Remote';
-			default:
-				return 'National';
-		}
 	}
 
 	// Selected version + its items.
@@ -36,11 +24,6 @@
 			(it) => it.code.toLowerCase().includes(q) || it.name.toLowerCase().includes(q)
 		);
 	});
-
-	// Expanded item prices (one at a time).
-	let pricesItemId = $state<string | null>(null);
-	let prices = $state<ItemPrice[]>([]);
-	let pricesError = $state<string | null>(null);
 
 	// Owner/admin two-step import wizard.
 	const TARGETS = ['name', 'code', 'unit', 'category', 'unitPrice', 'taxable'] as const;
@@ -85,8 +68,6 @@
 
 	async function selectVersion(v: PriceListVersion): Promise<void> {
 		selectedVersionId = v.id;
-		pricesItemId = null;
-		prices = [];
 		itemsLoading = true;
 		itemsError = null;
 		try {
@@ -96,22 +77,6 @@
 			items = [];
 		} finally {
 			itemsLoading = false;
-		}
-	}
-
-	async function togglePrices(item: Item): Promise<void> {
-		if (pricesItemId === item.id) {
-			pricesItemId = null;
-			prices = [];
-			return;
-		}
-		pricesItemId = item.id;
-		prices = [];
-		pricesError = null;
-		try {
-			prices = await priceList.loadPrices(item.id);
-		} catch (err) {
-			pricesError = err instanceof Error ? err.message : 'Failed to load prices.';
 		}
 	}
 
@@ -204,8 +169,7 @@
 	<section>
 		<h1 class="mb-1 text-xl font-semibold">Price list</h1>
 		<p class="text-sm text-gray-500">
-			Your tenant's price list. Browse versions and their price caps by zone. This data is
-			read-only.
+			Your tenant's price list. Browse versions and their items. This data is read-only.
 		</p>
 	</section>
 
@@ -379,7 +343,6 @@
 							<th class="px-3 py-2 font-medium">Category</th>
 							<th class="px-3 py-2 font-medium text-right">Unit price</th>
 							<th class="px-3 py-2 font-medium">GST</th>
-							<th class="px-3 py-2 font-medium text-right">Prices</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -393,39 +356,10 @@
 									>{item.unitPrice === null ? '—' : money(item.unitPrice)}</td
 								>
 								<td class="px-3 py-2 text-gray-600">{item.taxable ? 'Taxable' : 'GST-free'}</td>
-								<td class="px-3 py-2 text-right">
-									<button
-										type="button"
-										onclick={() => togglePrices(item)}
-										class="text-gray-900 hover:underline"
-									>
-										{pricesItemId === item.id ? 'Hide' : 'Show caps'}
-									</button>
-								</td>
 							</tr>
-							{#if pricesItemId === item.id}
-								<tr class="border-b border-gray-100 bg-gray-50">
-									<td colspan="7" class="px-3 py-3">
-										{#if pricesError}
-											<p class="text-sm text-red-600">{pricesError}</p>
-										{:else if prices.length === 0}
-											<p class="text-sm text-gray-500">No published prices.</p>
-										{:else}
-											<div class="flex flex-wrap gap-4 text-sm">
-												{#each prices as price (price.zone)}
-													<span class="rounded border border-gray-200 bg-white px-3 py-1">
-														{zoneLabel(price.zone)}:
-														<span class="font-medium">{money(price.priceCap)}</span>
-													</span>
-												{/each}
-											</div>
-										{/if}
-									</td>
-								</tr>
-							{/if}
 						{:else}
 							<tr>
-								<td colspan="7" class="px-3 py-6 text-center text-gray-500">
+								<td colspan="6" class="px-3 py-6 text-center text-gray-500">
 									No items found.
 								</td>
 							</tr>

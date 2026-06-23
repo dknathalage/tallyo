@@ -61,7 +61,7 @@ func (s *stubShiftWorker) Create(_ context.Context, in session.SessionInput) (*s
 // never calls it.
 type stubCatalogueSearcher struct{}
 
-func (stubCatalogueSearcher) SearchForDate(_ context.Context, _, _, _ string, _ int) ([]*pricelist.Match, error) {
+func (stubCatalogueSearcher) SearchForDate(_ context.Context, _, _ string, _ int) ([]*pricelist.Match, error) {
 	return nil, fmt.Errorf("not used")
 }
 

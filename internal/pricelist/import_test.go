@@ -122,14 +122,6 @@ func TestImportMappedCreatesVersionAndItems(t *testing.T) {
 	if !widget.Taxable {
 		t.Fatalf("W1 taxable = false, want true")
 	}
-	// No item_prices written by generic import.
-	prices, err := read.ListPricesByItemUUID(ctx, widget.UUID)
-	if err != nil {
-		t.Fatalf("ListPrices: %v", err)
-	}
-	if len(prices) != 0 {
-		t.Fatalf("prices = %d, want 0 (generic import writes no zone prices)", len(prices))
-	}
 }
 
 func TestImportMappedMissingNameRejected(t *testing.T) {

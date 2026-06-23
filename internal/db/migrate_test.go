@@ -56,7 +56,7 @@ func TestMigrateCreatesPriceListTables(t *testing.T) {
 	if err := Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	for _, tbl := range []string{"price_list_versions", "items", "item_prices"} {
+	for _, tbl := range []string{"price_list_versions", "items"} {
 		var n string
 		if err := conn.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", tbl,

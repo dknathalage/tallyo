@@ -155,13 +155,6 @@ type Item struct {
 	Metadata           sql.NullString  `json:"metadata"`
 }
 
-type ItemPrice struct {
-	ID       int64           `json:"id"`
-	ItemID   int64           `json:"item_id"`
-	Zone     string          `json:"zone"`
-	PriceCap sql.NullFloat64 `json:"price_cap"`
-}
-
 type LineItem struct {
 	ID                 int64          `json:"id"`
 	Uuid               string         `json:"uuid"`

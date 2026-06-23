@@ -11,7 +11,7 @@ import (
 )
 
 // Service exposes read access to the tenant-owned price list
-// (price_list_versions / items / item_prices).
+// (price_list_versions / items).
 //
 // Owner/admin write access (upload-and-map import) lives in ImportService below.
 type Service struct {
@@ -59,44 +59,24 @@ func (s *Service) ListItemsByVersionUUID(ctx context.Context, versionUUID string
 	return items, nil
 }
 
-// ListPricesByItemUUID returns the zone prices for the item identified by
-// itemUUID. Returns ErrNotFound when no item carries that uuid.
-func (s *Service) ListPricesByItemUUID(ctx context.Context, itemUUID string) ([]*ItemPrice, error) {
-	itemID, err := s.repo.ResolveItemIDByUUID(ctx, itemUUID)
-	if err != nil {
-		return nil, err
-	}
-	if itemID == 0 {
-		return nil, ErrNotFound
-	}
-	return s.repo.ListPrices(ctx, itemID)
-}
-
-// Match is one item resolved for a service date, enriched with its price cap in
-// the requested zone. PriceCap is nil for a quotable item (no fixed cap) or when
-// no price row exists for the zone.
+// Match is one item resolved for a service date. UnitPrice is nil for a
+// free-form item (no generic per-unit price set).
 type Match struct {
 	Code      string   `json:"code"`
 	Name      string   `json:"name"`
 	Unit      string   `json:"unit"`
 	Taxable   bool     `json:"taxable"`
-	Zone      string   `json:"zone"`
-	PriceCap  *float64 `json:"priceCap"`
-	Quotable  bool     `json:"quotable"`
+	UnitPrice *float64 `json:"unitPrice"`
 	VersionID int64    `json:"priceListVersionId"`
 }
 
-// SearchForDate resolves the price-list version effective on serviceDate, finds
-// items whose code or name matches query, and attaches each item's price cap for
-// the given zone (default "national" when zone is empty). Returns an empty
-// (non-nil) slice when no version is in effect or nothing matches — capped at
-// limit results (limit ≤ 0 → a default of 25) to bound the payload.
-func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*Match, error) {
+// SearchForDate resolves the price-list version effective on serviceDate and
+// finds items whose code or name matches query. Returns an empty (non-nil) slice
+// when no version is in effect or nothing matches — capped at limit results
+// (limit ≤ 0 → a default of 25) to bound the payload.
+func (s *Service) SearchForDate(ctx context.Context, query, serviceDate string, limit int) ([]*Match, error) {
 	if serviceDate == "" {
 		return nil, fmt.Errorf("price-list search: service date is required")
-	}
-	if zone == "" {
-		zone = "national"
 	}
 	if limit <= 0 {
 		limit = 25
@@ -118,19 +98,10 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone st
 			break
 		}
 		it := items[i]
-		m := &Match{
+		out = append(out, &Match{
 			Code: it.Code, Name: it.Name, Unit: it.Unit, Taxable: it.Taxable,
-			Zone: zone, VersionID: ver.ID,
-		}
-		price, perr := s.repo.ResolveZonePrice(ctx, ver.ID, it.Code, zone)
-		if perr != nil {
-			return nil, perr
-		}
-		if price != nil {
-			m.PriceCap = price.PriceCap
-			m.Quotable = price.PriceCap == nil
-		}
-		out = append(out, m)
+			UnitPrice: it.UnitPrice, VersionID: ver.ID,
+		})
 	}
 	return out, nil
 }
@@ -196,9 +167,6 @@ type ImportSummary struct {
 // WHOLE upload is rejected (no partial state) when the required "name" target is
 // unmapped or zero data rows parse. The new version is effective from today.
 // Broadcasts an SSE event AFTER the commit succeeds.
-//
-// ponytail: single price column; multi-zone NDIS cap import later — generic
-// import sets unit_price + category and writes no item_prices.
 func (s *ImportService) ImportMapped(ctx context.Context, data []byte, fileType, sheetName string, headerRow int, mapping map[string]string, label string) (*ImportSummary, error) {
 	if label == "" {
 		return nil, fmt.Errorf("import: label required")
@@ -236,7 +204,6 @@ func (s *ImportService) ImportMapped(ctx context.Context, data []byte, fileType,
 			Category:  p.Category,
 			UnitPrice: unitPrice,
 			Taxable:   p.Taxable,
-			// Prices intentionally empty: generic import writes no zone caps.
 		})
 	}
 

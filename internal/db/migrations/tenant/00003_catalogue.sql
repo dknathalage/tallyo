@@ -23,7 +23,7 @@ CREATE TABLE items (
     name                  TEXT NOT NULL,
     unit                  TEXT DEFAULT '',
     category              TEXT,                       -- generic grouping (was NDIS support_category/registration_group/claim_type)
-    unit_price            REAL,                       -- generic per-unit price (NULL = none/use zone caps)
+    unit_price            REAL,                       -- generic per-unit price (NULL = none/free-form)
     taxable               INTEGER NOT NULL DEFAULT 0, -- ingest always sets this explicitly
     metadata              TEXT DEFAULT '{}',
     UNIQUE (price_list_version_id, code)
@@ -31,16 +31,6 @@ CREATE TABLE items (
 CREATE INDEX idx_items_version ON items (price_list_version_id);
 CREATE INDEX idx_items_code    ON items (code);
 
-CREATE TABLE item_prices (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id         INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-    zone            TEXT NOT NULL CHECK (zone IN ('national','remote','very_remote')),
-    price_cap       REAL,                     -- NULL = quotable item (no fixed cap)
-    UNIQUE (item_id, zone)
-);
-CREATE INDEX idx_item_prices_item ON item_prices (item_id);
-
 -- +goose Down
-DROP TABLE item_prices;
 DROP TABLE items;
 DROP TABLE price_list_versions;

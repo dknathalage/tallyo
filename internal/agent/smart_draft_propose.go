@@ -28,10 +28,10 @@ const searchCatalogueSchema = `{
 
 // catalogueMatchView is the trimmed search result handed back to the model.
 type catalogueMatchView struct {
-	Code     string   `json:"code"`
-	Name     string   `json:"name"`
-	Unit     string   `json:"unit"`
-	PriceCap *float64 `json:"priceCap"`
+	Code      string   `json:"code"`
+	Name      string   `json:"name"`
+	Unit      string   `json:"unit"`
+	UnitPrice *float64 `json:"unitPrice"`
 }
 
 // proposeDivide runs the divide Smart's grounding loop: the model may call the
@@ -58,7 +58,7 @@ func (s *Smarts) proposeDivide(ctx context.Context, system, userContent string) 
 // hands the model the capability to ground itself, not a precomputed answer.
 func (s *Smarts) proposeWithCommit(ctx context.Context, system, userContent string, commit llm.ToolDef) (json.RawMessage, error) {
 	tools := []llm.ToolDef{
-		{Name: "search_catalogue", Description: "Search the price catalogue for a service date. Returns matching items (code, name, unit, priceCap). Use it to find the correct code for an activity before billing it — never guess a code.", InputSchema: json.RawMessage(searchCatalogueSchema)},
+		{Name: "search_catalogue", Description: "Search the price catalogue for a service date. Returns matching items (code, name, unit, unitPrice). Use it to find the correct code for an activity before billing it — never guess a code.", InputSchema: json.RawMessage(searchCatalogueSchema)},
 		commit,
 	}
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: []llm.Block{{Type: llm.BlockText, Text: userContent}}}}
@@ -118,8 +118,8 @@ func (s *Smarts) proposeWithCommit(ctx context.Context, system, userContent stri
 // runSearchCatalogue executes one search_catalogue tool call against the live
 // catalogue and returns the result as a tool_result for the model. Read-only and
 // best-effort: a bad input or lookup error comes back as an is_error result the
-// model can react to, never a failure of the whole Smart. The zone is left to the
-// catalogue default (national); apply-time pricing uses the tenant's real zone.
+// model can react to, never a failure of the whole Smart. Apply-time pricing fills
+// a coded line from the catalogue item's unit_price.
 func (s *Smarts) runSearchCatalogue(ctx context.Context, u llm.Block) llm.ToolResult {
 	var in struct {
 		Query       string `json:"query"`
@@ -131,7 +131,7 @@ func (s *Smarts) runSearchCatalogue(ctx context.Context, u llm.Block) llm.ToolRe
 	if in.Query == "" || in.ServiceDate == "" {
 		return llm.ToolResult{ToolUseID: u.ToolUseID, Content: "query and serviceDate are required", IsError: true}
 	}
-	matches, err := s.catalog.SearchForDate(ctx, in.Query, in.ServiceDate, "", 8)
+	matches, err := s.catalog.SearchForDate(ctx, in.Query, in.ServiceDate, 8)
 	if err != nil {
 		return llm.ToolResult{ToolUseID: u.ToolUseID, Content: "catalogue search failed", IsError: true}
 	}
@@ -141,7 +141,7 @@ func (s *Smarts) runSearchCatalogue(ctx context.Context, u llm.Block) llm.ToolRe
 		if m == nil {
 			continue
 		}
-		views = append(views, catalogueMatchView{Code: m.Code, Name: m.Name, Unit: m.Unit, PriceCap: m.PriceCap})
+		views = append(views, catalogueMatchView{Code: m.Code, Name: m.Name, Unit: m.Unit, UnitPrice: m.UnitPrice})
 	}
 	if len(views) == 0 {
 		return llm.ToolResult{ToolUseID: u.ToolUseID, Content: "[]  (no matches — try different keywords)"}

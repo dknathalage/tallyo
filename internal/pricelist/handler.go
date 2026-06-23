@@ -11,10 +11,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handler serves access to the tenant-owned price list (versions, items, zone
-// prices). It is tenant-scoped: each tenant owns and populates its own price
-// list. Reads are open to any authenticated tenant user; the upload-and-map
-// import (write) is gated to owner/admin.
+// Handler serves access to the tenant-owned price list (versions, items). It is
+// tenant-scoped: each tenant owns and populates its own price list. Reads are
+// open to any authenticated tenant user; the upload-and-map import (write) is
+// gated to owner/admin.
 type Handler struct {
 	svc     *Service
 	import_ *ImportService
@@ -34,7 +34,6 @@ func NewHandler(svc *Service, imp *ImportService) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/price-list/versions", h.ListVersions)
 	r.Get("/price-list/versions/{versionUUID}/items", h.ListItems)
-	r.Get("/price-list/items/{itemUUID}/prices", h.ListPrices)
 	// Generic two-step upload-and-map import, owner/admin only.
 	r.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/inspect", h.Inspect)
 	r.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/commit", h.Commit)
@@ -166,24 +165,4 @@ func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, items)
-}
-
-// ListPrices returns the zone prices for an item. The {itemUUID} path param is
-// the item uuid. A non-uuid path 400s; an unknown uuid 404s.
-func (h *Handler) ListPrices(w http.ResponseWriter, r *http.Request) {
-	itemUUID, ok := httpx.ParseUUID(r, "itemUUID")
-	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
-		return
-	}
-	prices, err := h.svc.ListPricesByItemUUID(r.Context(), itemUUID)
-	if errors.Is(err, ErrNotFound) {
-		httpx.WriteError(w, http.StatusNotFound, "item not found")
-		return
-	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, prices)
 }

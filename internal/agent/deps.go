@@ -48,5 +48,5 @@ type SessionWorker interface {
 // CatalogueSearcher is satisfied by *pricelist.Service; it covers the
 // search tool and the inline price-list enrichment of session rows.
 type CatalogueSearcher interface {
-	SearchForDate(ctx context.Context, query, serviceDate, zone string, limit int) ([]*pricelist.Match, error)
+	SearchForDate(ctx context.Context, query, serviceDate string, limit int) ([]*pricelist.Match, error)
 }

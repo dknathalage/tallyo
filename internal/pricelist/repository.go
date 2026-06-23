@@ -1,7 +1,7 @@
 package pricelist
 
-// ItemsRepo — the tenant-owned price list (price_list_versions, items,
-// item_prices). It exposes the resolution helpers the validation engine needs.
+// ItemsRepo — the tenant-owned price list (price_list_versions, items). It
+// exposes the resolution helpers the validation engine needs.
 
 import (
 	"context"
@@ -49,17 +49,6 @@ type Item struct {
 	UnitPrice           *float64 `json:"unitPrice"`
 	Taxable             bool     `json:"taxable"`
 	Metadata            string   `json:"metadata"`
-}
-
-// ItemPrice is the domain view of a row in item_prices. PriceCap is nil for
-// quotable items (no fixed cap) — the validation engine skips the over-cap
-// assertion when nil. A price is always fetched under its item, so neither the
-// int PK nor the item FK crosses the API.
-type ItemPrice struct {
-	ID       int64    `json:"-"`
-	ItemID   int64    `json:"-"`
-	Zone     string   `json:"zone"`
-	PriceCap *float64 `json:"priceCap"`
 }
 
 // ItemsRepo reads (and, for the owner/admin ingest, writes) the tenant-owned
@@ -160,23 +149,6 @@ func (r *ItemsRepo) ResolveVersionIDByUUID(ctx context.Context, versionUUID stri
 	return id, nil
 }
 
-// ResolveItemIDByUUID maps an item uuid to its int PK, returning (0, nil) when no
-// item carries that uuid. Used to translate a public item uuid path param to the
-// internal FK before filtering item_prices.
-func (r *ItemsRepo) ResolveItemIDByUUID(ctx context.Context, itemUUID string) (int64, error) {
-	if itemUUID == "" {
-		return 0, errors.New("resolve item id: uuid required")
-	}
-	id, err := gen.New(r.db).GetItemIDByUUID(ctx, itemUUID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, fmt.Errorf("resolve item id by uuid: %w", err)
-	}
-	return id, nil
-}
-
 // SearchItems returns the items in a version whose code or name matches the query
 // (LIKE, case-insensitive on the SQLite default collation), by code. An empty
 // query matches everything in the version.
@@ -229,45 +201,8 @@ func (r *ItemsRepo) GetItemByCode(ctx context.Context, versionID int64, code str
 	return toItem(row), nil
 }
 
-// ResolveZonePrice returns the price row for a code+zone within a version, or
-// (nil, nil) when no price row exists. A returned row with a nil PriceCap denotes
-// a quotable item.
-func (r *ItemsRepo) ResolveZonePrice(ctx context.Context, versionID int64, code, zone string) (*ItemPrice, error) {
-	if code == "" || zone == "" {
-		return nil, errors.New("resolve zone price: code and zone required")
-	}
-	row, err := gen.New(r.db).ResolveZonePrice(ctx, gen.ResolveZonePriceParams{
-		PriceListVersionID: versionID,
-		Code:               code,
-		Zone:               zone,
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("resolve zone price: %w", err)
-	}
-	return toItemPrice(row), nil
-}
-
-// ListPrices returns all zone price rows for an item, by zone.
-func (r *ItemsRepo) ListPrices(ctx context.Context, itemID int64) ([]*ItemPrice, error) {
-	rows, err := gen.New(r.db).ListItemPrices(ctx, itemID)
-	if err != nil {
-		return nil, fmt.Errorf("list item prices: %w", err)
-	}
-	out := make([]*ItemPrice, 0, len(rows))
-	for i := range rows { // bounded by len(rows)
-		out = append(out, toItemPrice(rows[i]))
-	}
-	return out, nil
-}
-
-// ImportItem is one parsed item row destined for the ingest. Prices maps
-// zone → cap; a nil cap denotes a quotable item (no fixed cap). Zones absent
-// from the map get no price row. UnitPrice is the generic per-unit price (nil
-// when unset); the generic upload-and-map import sets UnitPrice and leaves
-// Prices empty, while the legacy zoned helpers set Prices and leave UnitPrice nil.
+// ImportItem is one parsed item row destined for the ingest. UnitPrice is the
+// generic per-unit price (nil when unset / free-form).
 type ImportItem struct {
 	Code      string
 	Name      string
@@ -275,20 +210,18 @@ type ImportItem struct {
 	Category  string
 	UnitPrice *float64
 	Taxable   bool
-	Prices    map[string]*float64 // zone → cap (nil = quotable)
 }
 
 // IngestResult summarises a completed price-list ingest.
 type IngestResult struct {
-	Version    *PriceListVersion
-	ItemCount  int
-	PriceCount int
+	Version   *PriceListVersion
+	ItemCount int
 }
 
-// Ingest creates a new price_list_version and bulk-upserts every item + its
-// per-zone price rows in ONE audited transaction. Any error rolls the whole thing
-// back (no partial-version state). The version-create audit row is written inside
-// the same tx. Returns the created version and counts.
+// Ingest creates a new price_list_version and bulk-upserts every item in ONE
+// audited transaction. Any error rolls the whole thing back (no partial-version
+// state). The version-create audit row is written inside the same tx. Returns
+// the created version and counts.
 func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFilename string, items []ImportItem) (*IngestResult, error) {
 	if label == "" {
 		return nil, errors.New("ingest price list: label required")
@@ -325,14 +258,13 @@ func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFile
 			return fmt.Errorf("create version: %w", e)
 		}
 
-		priceCount := 0
 		for i := range items { // bounded by len(items)
 			it := items[i]
 			unitPrice := sql.NullFloat64{}
 			if it.UnitPrice != nil {
 				unitPrice = sql.NullFloat64{Float64: *it.UnitPrice, Valid: true}
 			}
-			item, e := q.UpsertItem(ctx, gen.UpsertItemParams{
+			if _, e := q.UpsertItem(ctx, gen.UpsertItemParams{
 				Uuid:               uuid.NewString(),
 				PriceListVersionID: ver.ID,
 				Code:               it.Code,
@@ -342,32 +274,17 @@ func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFile
 				UnitPrice:          unitPrice,
 				Taxable:            db.B2i(it.Taxable),
 				Metadata:           sql.NullString{String: "{}", Valid: true},
-			})
-			if e != nil {
+			}); e != nil {
 				return fmt.Errorf("upsert item %q: %w", it.Code, e)
-			}
-			for zone, capPtr := range it.Prices { // bounded by len(it.Prices)
-				cap := sql.NullFloat64{}
-				if capPtr != nil {
-					cap = sql.NullFloat64{Float64: *capPtr, Valid: true}
-				}
-				if e := q.UpsertItemPrice(ctx, gen.UpsertItemPriceParams{
-					ItemID:   item.ID,
-					Zone:     zone,
-					PriceCap: cap,
-				}); e != nil {
-					return fmt.Errorf("upsert price %q/%s: %w", it.Code, zone, e)
-				}
-				priceCount++
 			}
 		}
 
-		result = IngestResult{Version: toPriceListVersion(ver), ItemCount: len(items), PriceCount: priceCount}
+		result = IngestResult{Version: toPriceListVersion(ver), ItemCount: len(items)}
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "price_list_version",
 			EntityID:   ver.ID,
 			Action:     "ingest",
-			Changes:    audit.Changes(map[string]any{"label": label, "items": len(items), "prices": priceCount}),
+			Changes:    audit.Changes(map[string]any{"label": label, "items": len(items)}),
 		})
 	})
 	if err != nil {
@@ -416,19 +333,5 @@ func toItem(row gen.Item) *Item {
 		UnitPrice:          unitPrice,
 		Taxable:            row.Taxable == 1,
 		Metadata:           row.Metadata.String,
-	}
-}
-
-func toItemPrice(row gen.ItemPrice) *ItemPrice {
-	var cap *float64
-	if row.PriceCap.Valid {
-		v := row.PriceCap.Float64
-		cap = &v
-	}
-	return &ItemPrice{
-		ID:       row.ID,
-		ItemID:   row.ItemID,
-		Zone:     row.Zone,
-		PriceCap: cap,
 	}
 }

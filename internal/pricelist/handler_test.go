@@ -33,16 +33,11 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	iUUID := uuid.NewString()
-	si, err := q.CreateItem(ctx, gen.CreateItemParams{
+	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
 		Uuid: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
-	})
-	if err != nil {
-		t.Fatalf("CreateItem: %v", err)
-	}
-	if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
-		ItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: 100, Valid: true},
+		UnitPrice: sql.NullFloat64{Float64: 100, Valid: true},
 	}); err != nil {
-		t.Fatalf("CreateItemPrice: %v", err)
+		t.Fatalf("CreateItem: %v", err)
 	}
 	svc := NewService(conn)
 	return NewHandler(svc, nil), tenantID, vUUID, iUUID
@@ -89,34 +84,6 @@ func TestCatalogListItemsByVersionUUID(t *testing.T) {
 	}
 }
 
-func TestCatalogListPricesByItemUUID(t *testing.T) {
-	h, tenantID, _, itemUUID := newCatalogHandler(t)
-	srv := httptest.NewServer(mountCatalog(h, tenantID))
-	defer srv.Close()
-
-	res, err := http.Get(srv.URL + "/price-list/items/" + itemUUID + "/prices")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status=%d want 200", res.StatusCode)
-	}
-	var prices []map[string]any
-	if err := json.NewDecoder(res.Body).Decode(&prices); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if len(prices) != 1 {
-		t.Fatalf("got %d prices want 1", len(prices))
-	}
-	if _, ok := prices[0]["id"]; ok {
-		t.Fatalf("price should not expose an id, got %v", prices[0]["id"])
-	}
-	if prices[0]["zone"] != "national" {
-		t.Fatalf("zone=%v want national", prices[0]["zone"])
-	}
-}
-
 func TestCatalogListItemsUnknownVersionUUID404(t *testing.T) {
 	h, tenantID, _, _ := newCatalogHandler(t)
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
@@ -132,42 +99,12 @@ func TestCatalogListItemsUnknownVersionUUID404(t *testing.T) {
 	}
 }
 
-func TestCatalogListPricesUnknownItemUUID404(t *testing.T) {
-	h, tenantID, _, _ := newCatalogHandler(t)
-	srv := httptest.NewServer(mountCatalog(h, tenantID))
-	defer srv.Close()
-
-	res, err := http.Get(srv.URL + "/price-list/items/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c/prices")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("status=%d want 404", res.StatusCode)
-	}
-}
-
 func TestCatalogListItemsNonUUID400(t *testing.T) {
 	h, tenantID, _, _ := newCatalogHandler(t)
 	srv := httptest.NewServer(mountCatalog(h, tenantID))
 	defer srv.Close()
 
 	res, err := http.Get(srv.URL + "/price-list/versions/123/items")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status=%d want 400", res.StatusCode)
-	}
-}
-
-func TestCatalogListPricesNonUUID400(t *testing.T) {
-	h, tenantID, _, _ := newCatalogHandler(t)
-	srv := httptest.NewServer(mountCatalog(h, tenantID))
-	defer srv.Close()
-
-	res, err := http.Get(srv.URL + "/price-list/items/123/prices")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}

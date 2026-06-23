@@ -38,7 +38,6 @@ func newCustomItemServer(t *testing.T) (*httptest.Server, string) {
 			ciH.Routes(pr)
 			pr.Get("/price-list/versions", scH.ListVersions)
 			pr.Get("/price-list/versions/{id}/items", scH.ListItems)
-			pr.Get("/price-list/items/{itemId}/prices", scH.ListPrices)
 		})
 	})
 

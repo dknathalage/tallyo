@@ -145,11 +145,6 @@ export interface Item {
 	metadata: string;
 }
 
-export interface ItemPrice {
-	zone: Zone;
-	priceCap: number | null;
-}
-
 // ---- Invoice + estimate domain ----
 
 export interface LineItem {
