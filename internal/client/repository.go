@@ -31,12 +31,8 @@ WHERE p.tenant_id = ?`
 // drawer-edit with one identifier.
 var ClientCols = listquery.Spec{
 	"name":      {Col: "p.name", Filter: listquery.Text},
-	"type":      {Col: "p.type", Filter: listquery.Enum},
 	"reference": {Col: "p.reference", Filter: listquery.Text},
 	"email":     {Col: "p.email", Filter: listquery.Text},
-	"mgmtType":  {Col: "p.mgmt_type", Filter: listquery.Enum},
-	"planStart": {Col: "p.plan_start", Filter: listquery.Date},
-	"planEnd":   {Col: "p.plan_end", Filter: listquery.Date},
 	"payerName": {Col: "pm.name", Filter: listquery.Text},
 }
 
@@ -53,11 +49,7 @@ type Client struct {
 	ID        int64   `json:"-"`
 	UUID      string  `json:"id"`
 	Name      string  `json:"name"`
-	Type      string  `json:"type"`
 	Reference string  `json:"reference"`
-	PlanStart string  `json:"planStart"`
-	PlanEnd   string  `json:"planEnd"`
-	MgmtType  string  `json:"mgmtType"`
 	PayerUUID *string `json:"payerId"`
 	PayerName string  `json:"payerName"`
 	Email     string  `json:"email"`
@@ -73,11 +65,7 @@ type Client struct {
 // before insert/update.
 type ClientInput struct {
 	Name      string  `json:"name"`
-	Type      string  `json:"type"`
 	Reference string  `json:"reference"`
-	PlanStart string  `json:"planStart"`
-	PlanEnd   string  `json:"planEnd"`
-	MgmtType  string  `json:"mgmtType"`
 	PayerUUID *string `json:"payerId"`
 	Email     string  `json:"email"`
 	Phone     string  `json:"phone"`
@@ -156,8 +144,8 @@ func (r *ClientsRepo) Query(ctx context.Context, tenantID int64, c listquery.Cla
 		var f clientFields
 		var tenant int64
 		var payerID sql.NullInt64 // internal FK column; never surfaced
-		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.name, &f.typ, &f.reference, &f.planStart,
-			&f.planEnd, &f.mgmtType, &payerID, &f.email, &f.phone, &f.address,
+		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.name, &f.reference,
+			&payerID, &f.email, &f.phone, &f.address,
 			&f.metadata, &f.createdAt, &f.updatedAt, &f.payerName, &f.payerUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan client: %w", err)
 		}
@@ -213,15 +201,6 @@ func (r *ClientsRepo) resolvePayer(ctx context.Context, q *gen.Queries, tenantID
 	return sql.NullInt64{Int64: id, Valid: true}, nil
 }
 
-// normType maps an inbound client type to a stored enum value, defaulting to
-// 'standard' when empty.
-func normType(t string) string {
-	if t == "" {
-		return "standard"
-	}
-	return t
-}
-
 // Create inserts a client and writes one audit row, atomically, then re-reads
 // the row so the returned Client carries the payer name.
 func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput) (*Client, error) {
@@ -248,11 +227,7 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput
 			Uuid:      uuid.NewString(),
 			TenantID:  tenantID,
 			Name:      in.Name,
-			Type:      normType(in.Type),
 			Reference: db.NzMaybe(in.Reference),
-			PlanStart: db.NzMaybe(in.PlanStart),
-			PlanEnd:   db.NzMaybe(in.PlanEnd),
-			MgmtType:  db.NzMaybe(in.MgmtType),
 			PayerID:   pmID,
 			Email:     db.NzMaybe(in.Email),
 			Phone:     db.NzMaybe(in.Phone),
@@ -303,11 +278,7 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID int64, uuid string, i
 		now := time.Now().UTC().Format(time.RFC3339)
 		row, e := q.UpdateClient(ctx, gen.UpdateClientParams{
 			Name:      in.Name,
-			Type:      normType(in.Type),
 			Reference: db.NzMaybe(in.Reference),
-			PlanStart: db.NzMaybe(in.PlanStart),
-			PlanEnd:   db.NzMaybe(in.PlanEnd),
-			MgmtType:  db.NzMaybe(in.MgmtType),
 			PayerID:   pmID,
 			Email:     db.NzMaybe(in.Email),
 			Phone:     db.NzMaybe(in.Phone),
@@ -410,12 +381,12 @@ func (r *ClientsRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int6
 // clientFields is the shared, flat shape of every clients join row (List,
 // Search and Get produce identical structs under distinct gen names).
 type clientFields struct {
-	id                                      int64
-	uuid, name, typ                         string
-	reference, planStart, planEnd, mgmtType sql.NullString
-	email, phone, address, metadata         sql.NullString
-	createdAt, updatedAt                    string
-	payerName, payerUUID                    sql.NullString
+	id                              int64
+	uuid, name                      string
+	reference                       sql.NullString
+	email, phone, address, metadata sql.NullString
+	createdAt, updatedAt            string
+	payerName, payerUUID            sql.NullString
 }
 
 // mapClientFields builds a domain Client from the unwrapped columns. The int
@@ -425,11 +396,7 @@ func mapClientFields(f clientFields) *Client {
 		ID:        f.id,
 		UUID:      f.uuid,
 		Name:      f.name,
-		Type:      f.typ,
 		Reference: f.reference.String,
-		PlanStart: f.planStart.String,
-		PlanEnd:   f.planEnd.String,
-		MgmtType:  f.mgmtType.String,
 		PayerUUID: db.PtrStr(f.payerUUID),
 		PayerName: f.payerName.String,
 		Email:     f.email.String,
@@ -443,9 +410,9 @@ func mapClientFields(f clientFields) *Client {
 
 func toClientList(r gen.ListClientsRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name, typ: r.Type,
-		reference: r.Reference, planStart: r.PlanStart, planEnd: r.PlanEnd, mgmtType: r.MgmtType,
-		email: r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
+		id: r.ID, uuid: r.Uuid, name: r.Name,
+		reference: r.Reference,
+		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 		payerName: r.PayerName, payerUUID: r.PayerUuid,
 	})
@@ -453,9 +420,9 @@ func toClientList(r gen.ListClientsRow) *Client {
 
 func toClientSearch(r gen.SearchClientsRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name, typ: r.Type,
-		reference: r.Reference, planStart: r.PlanStart, planEnd: r.PlanEnd, mgmtType: r.MgmtType,
-		email: r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
+		id: r.ID, uuid: r.Uuid, name: r.Name,
+		reference: r.Reference,
+		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 		payerName: r.PayerName, payerUUID: r.PayerUuid,
 	})
@@ -463,9 +430,9 @@ func toClientSearch(r gen.SearchClientsRow) *Client {
 
 func toClientGet(r gen.GetClientRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name, typ: r.Type,
-		reference: r.Reference, planStart: r.PlanStart, planEnd: r.PlanEnd, mgmtType: r.MgmtType,
-		email: r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
+		id: r.ID, uuid: r.Uuid, name: r.Name,
+		reference: r.Reference,
+		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 		payerName: r.PayerName, payerUUID: r.PayerUuid,
 	})
@@ -473,9 +440,9 @@ func toClientGet(r gen.GetClientRow) *Client {
 
 func toClientGetByID(r gen.GetClientByIDRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name, typ: r.Type,
-		reference: r.Reference, planStart: r.PlanStart, planEnd: r.PlanEnd, mgmtType: r.MgmtType,
-		email: r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
+		id: r.ID, uuid: r.Uuid, name: r.Name,
+		reference: r.Reference,
+		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 		payerName: r.PayerName, payerUUID: r.PayerUuid,
 	})

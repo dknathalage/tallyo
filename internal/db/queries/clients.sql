@@ -29,14 +29,14 @@ WHERE p.tenant_id = ? AND p.id = ?;
 
 -- name: CreateClient :one
 INSERT INTO clients (
-    uuid, tenant_id, name, type, reference, plan_start, plan_end, mgmt_type, payer_id,
+    uuid, tenant_id, name, reference, payer_id,
     email, phone, address, metadata, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateClient :one
 UPDATE clients SET
-    name = ?, type = ?, reference = ?, plan_start = ?, plan_end = ?, mgmt_type = ?, payer_id = ?,
+    name = ?, reference = ?, payer_id = ?,
     email = ?, phone = ?, address = ?, metadata = ?, updated_at = ?
 WHERE tenant_id = ? AND uuid = ?
 RETURNING *;

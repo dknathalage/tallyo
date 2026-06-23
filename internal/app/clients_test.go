@@ -86,7 +86,7 @@ func TestClientListPayerName(t *testing.T) {
 	c := loggedInClient(t, srv.URL)
 	pmID := createPayer(t, c, srv.URL, uuid, "Globex")
 
-	body, err := json.Marshal(map[string]any{"name": "Wayne", "payerId": pmID, "mgmtType": "plan"})
+	body, err := json.Marshal(map[string]any{"name": "Wayne", "payerId": pmID})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestClientCreateWithFieldsAndGet(t *testing.T) {
 	c := loggedInClient(t, srv.URL)
 	pmID := createPayer(t, c, srv.URL, uuid, "Acme")
 	body, err := json.Marshal(map[string]any{
-		"name": "Stark", "reference": "430000001", "mgmtType": "plan",
+		"name": "Stark", "reference": "430000001",
 		"payerId": pmID, "email": "s@x.com", "phone": "123", "address": "1 St",
 	})
 	if err != nil {

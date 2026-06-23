@@ -29,11 +29,7 @@ CREATE TABLE clients (
     uuid            TEXT NOT NULL UNIQUE,
     tenant_id       INTEGER NOT NULL,
     name            TEXT NOT NULL,
-    type            TEXT NOT NULL DEFAULT 'standard' CHECK (type IN ('ndis','standard')),
     reference       TEXT DEFAULT '',
-    plan_start      TEXT,                                    -- DATE
-    plan_end        TEXT,                                    -- DATE
-    mgmt_type       TEXT CHECK (mgmt_type IN ('plan','self')),
     payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL,
     email           TEXT DEFAULT '',
     phone           TEXT DEFAULT '',

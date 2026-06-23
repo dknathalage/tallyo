@@ -53,36 +53,18 @@ func TestClientCreateGet(t *testing.T) {
 	ctx := context.Background()
 
 	p, err := repo.Create(ctx, tid, ClientInput{
-		Name: "Jane", Reference: "430000001", PlanStart: "2026-01-01", PlanEnd: "2026-12-31", MgmtType: "self",
+		Name: "Jane", Reference: "430000001",
 		Email: "j@x.com",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p == nil || p.ID == 0 || p.Name != "Jane" || p.Reference != "430000001" || p.MgmtType != "self" {
+	if p == nil || p.ID == 0 || p.Name != "Jane" || p.Reference != "430000001" || p.Email != "j@x.com" {
 		t.Fatalf("Create = %+v", p)
 	}
 	got, err := repo.Get(ctx, tid, p.UUID)
-	if err != nil || got == nil || got.PlanEnd != "2026-12-31" {
+	if err != nil || got == nil || got.Reference != "430000001" {
 		t.Fatalf("Get = %+v err=%v", got, err)
-	}
-}
-
-// TestClientDefaults proves a client created with only a name gets the
-// 'standard' type and an empty (nullable) mgmt_type — the NDIS-specific 'plan'
-// default was removed when mgmt_type became nullable.
-func TestClientDefaults(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "T")
-	p, err := NewClients(conn).Create(context.Background(), tid, ClientInput{Name: "Jane"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if p.Type != "standard" {
-		t.Fatalf("default type = %q, want standard", p.Type)
-	}
-	if p.MgmtType != "" {
-		t.Fatalf("default mgmtType = %q, want empty", p.MgmtType)
 	}
 }
 
@@ -95,7 +77,7 @@ func TestClientWithPayerName(t *testing.T) {
 		t.Fatalf("Create PM: %v", err)
 	}
 	repo := NewClients(conn)
-	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", MgmtType: "plan", PayerUUID: &pm.UUID})
+	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", PayerUUID: &pm.UUID})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -133,8 +115,8 @@ func TestClientUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, p.UUID, ClientInput{Name: "Janet", MgmtType: "self"})
-	if err != nil || up == nil || up.Name != "Janet" || up.MgmtType != "self" {
+	up, err := repo.Update(ctx, tid, p.UUID, ClientInput{Name: "Janet", Reference: "ref-1"})
+	if err != nil || up == nil || up.Name != "Janet" || up.Reference != "ref-1" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
 	if err := repo.Delete(ctx, tid, p.UUID); err != nil {
@@ -196,7 +178,7 @@ func TestClientBulkDelete(t *testing.T) {
 	}
 }
 
-// TestClientQuery exercises the listquery-backed Query: enum filter, sort
+// TestClientQuery exercises the listquery-backed Query: text filter, sort
 // direction, paging, and the total count (which ignores pagination).
 func TestClientQuery(t *testing.T) {
 	conn := newTestDB(t)
@@ -205,21 +187,21 @@ func TestClientQuery(t *testing.T) {
 	ctx := context.Background()
 
 	for _, n := range []struct {
-		name, mgmt string
-	}{{"Amy", "plan"}, {"Bob", "self"}, {"Cara", "plan"}, {"Dan", "plan"}} {
-		if _, err := repo.Create(ctx, tid, ClientInput{Name: n.name, MgmtType: n.mgmt}); err != nil {
+		name, ref string
+	}{{"Amy", "P"}, {"Bob", "S"}, {"Cara", "P"}, {"Dan", "P"}} {
+		if _, err := repo.Create(ctx, tid, ClientInput{Name: n.name, Reference: n.ref}); err != nil {
 			t.Fatalf("Create %s: %v", n.name, err)
 		}
 	}
 
-	// Filter mgmtType=plan (3 rows), sort name desc, limit 2 page 1.
-	c := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=1"), ClientCols)
+	// Filter reference=P (3 rows), sort name desc, limit 2 page 1.
+	c := listquery.Build(mustVals(t, "f.reference=P&sort=name&dir=desc&limit=2&page=1"), ClientCols)
 	rows, total, err := repo.Query(ctx, tid, c)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
 	if total != 3 {
-		t.Fatalf("total = %d, want 3 (plan-managed)", total)
+		t.Fatalf("total = %d, want 3 (reference P)", total)
 	}
 	if len(rows) != 2 {
 		t.Fatalf("page len = %d, want 2", len(rows))
@@ -228,8 +210,8 @@ func TestClientQuery(t *testing.T) {
 		t.Fatalf("desc page = [%q,%q], want [Dan,Cara]", rows[0].Name, rows[1].Name)
 	}
 
-	// Page 2 returns the remaining plan-managed row (Amy).
-	c2 := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=2"), ClientCols)
+	// Page 2 returns the remaining reference-P row (Amy).
+	c2 := listquery.Build(mustVals(t, "f.reference=P&sort=name&dir=desc&limit=2&page=2"), ClientCols)
 	rows2, _, err := repo.Query(ctx, tid, c2)
 	if err != nil || len(rows2) != 1 || rows2[0].Name != "Amy" {
 		t.Fatalf("page 2 = %+v err=%v, want [Amy]", rows2, err)

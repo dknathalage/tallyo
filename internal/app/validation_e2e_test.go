@@ -103,12 +103,13 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 	}
 }
 
-// createClientWithPlan posts a client carrying an explicit plan window
-// and returns its uuid.
-func createClientWithPlan(t *testing.T, c *http.Client, base, uuid, planStart, planEnd string) string {
+// createClientWithPlan posts a client and returns its uuid. The plan-window
+// arguments are retained for call-site compatibility but ignored — clients no
+// longer carry plan dates (NDIS removal).
+func createClientWithPlan(t *testing.T, c *http.Client, base, uuid, _, _ string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"name": "Plan Client", "planStart": planStart, "planEnd": planEnd,
+		"name": "Plan Client",
 	})
 	if err != nil {
 		t.Fatalf("marshal client: %v", err)

@@ -122,11 +122,13 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 	return v.ID
 }
 
-// seedClientPlan inserts a client with an explicit plan window.
-func seedClientPlan(t *testing.T, conn *sql.DB, tenantID int64, planStart, planEnd string) int64 {
+// seedClientPlan inserts a client and returns its int PK. The plan-window
+// arguments are retained for call-site compatibility but ignored — the
+// validator no longer reads a client plan window (NDIS removal).
+func seedClientPlan(t *testing.T, conn *sql.DB, tenantID int64, _, _ string) int64 {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(tctx(tenantID), tenantID, client.ClientInput{
-		Name: "Plan Client", PlanStart: planStart, PlanEnd: planEnd,
+		Name: "Test Client",
 	})
 	if err != nil {
 		t.Fatalf("seedClientPlan: %v", err)

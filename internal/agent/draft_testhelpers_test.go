@@ -114,7 +114,7 @@ func sessionToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) 
 	}
 
 	p, err := client.NewClients(c).Create(ctx, tenantID, client.ClientInput{
-		Name: "Tania Hangevelled", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
+		Name: "Tania Hangevelled",
 	})
 	if err != nil {
 		t.Fatalf("seed client: %v", err)

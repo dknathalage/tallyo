@@ -44,11 +44,7 @@ type Client struct {
 	Uuid      string         `json:"uuid"`
 	TenantID  int64          `json:"tenant_id"`
 	Name      string         `json:"name"`
-	Type      string         `json:"type"`
 	Reference sql.NullString `json:"reference"`
-	PlanStart sql.NullString `json:"plan_start"`
-	PlanEnd   sql.NullString `json:"plan_end"`
-	MgmtType  sql.NullString `json:"mgmt_type"`
 	PayerID   sql.NullInt64  `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`

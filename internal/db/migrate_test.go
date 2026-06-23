@@ -179,13 +179,6 @@ func TestMigrateEnforcesEnumChecks(t *testing.T) {
 	); err == nil {
 		t.Fatalf("expected CHECK violation for business_profile.zone='metro', got nil")
 	}
-	// Invalid clients.mgmt_type must be rejected.
-	if _, err := conn.Exec(
-		"INSERT INTO clients (uuid, tenant_id, name, mgmt_type, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-		"p1", 1, "Pat", "agency", now, now,
-	); err == nil {
-		t.Fatalf("expected CHECK violation for clients.mgmt_type='agency', got nil")
-	}
 }
 
 func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
@@ -208,8 +201,8 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 		"t1", "Tenant", "active", now, now)
 	exec("INSERT INTO payers (uuid, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"pm1", 1, "PM", now, now)
-	exec("INSERT INTO clients (uuid, tenant_id, name, mgmt_type, payer_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-		"p1", 1, "Pat", "plan", 1, now, now)
+	exec("INSERT INTO clients (uuid, tenant_id, name, payer_id, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+		"p1", 1, "Pat", 1, now, now)
 	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 		"inv1", 1, "INV-1", 1, 1, now, now, now, now)
 	exec("INSERT INTO line_items (uuid, tenant_id, invoice_id, description) VALUES (?,?,?,?)",
