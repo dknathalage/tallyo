@@ -22,12 +22,6 @@ type AuditLog struct {
 	CreatedAt  string         `json:"created_at"`
 }
 
-type AuthSession struct {
-	Token  string  `json:"token"`
-	Data   []byte  `json:"data"`
-	Expiry float64 `json:"expiry"`
-}
-
 type BusinessProfile struct {
 	ID              int64          `json:"id"`
 	Uuid            string         `json:"uuid"`
@@ -226,6 +220,12 @@ type RecurringTemplate struct {
 	IsActive  int64         `json:"is_active"`
 	CreatedAt string        `json:"created_at"`
 	UpdatedAt string        `json:"updated_at"`
+}
+
+type Session struct {
+	Token  string  `json:"token"`
+	Data   []byte  `json:"data"`
+	Expiry float64 `json:"expiry"`
 }
 
 type SupportItem struct {
