@@ -712,3 +712,30 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 		}
 	}
 }
+
+// TestLineValidatorReadsCatalogueFromTenant is the regression guard for the
+// control/tenant split bug: the price list is tenant-owned, so the validator's
+// catalogue repo MUST read from the TENANT db, not control. It constructs the
+// validator with two DISTINCT handles (catalogue seeded only in tenant) — a
+// single-DB test (conn, conn) cannot catch a cat-on-control misuse.
+func TestLineValidatorReadsCatalogueFromTenant(t *testing.T) {
+	tenant := newTestDB(t)
+	control := newTestDB(t) // separate db; price list is NOT seeded here
+	tid := seedTenant(t, tenant)
+	pid := seedClientPlan(t, tenant, tid, "2025-07-01", "2026-06-30")
+	seedUnitPricedItem(t, tenant, "v1", "2025-07-01", "2026-06-30", "PROD1", true, 49.95)
+
+	v := NewLineValidator(tenant, control)
+	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
+		supportLine("PROD1", "2026-01-15", 2, 0),
+	})
+	if err != nil {
+		t.Fatalf("coded line must resolve from the TENANT price list (cat must not read control): %v", err)
+	}
+	if res == nil || len(res.Items) != 1 {
+		t.Fatalf("res = %+v", res)
+	}
+	if got := res.Items[0].UnitPrice; got != 49.95 {
+		t.Fatalf("unit price filled from items.unit_price: got %v want 49.95", got)
+	}
+}
