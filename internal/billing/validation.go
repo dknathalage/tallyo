@@ -104,16 +104,17 @@ type LineValidator struct {
 	taxRates *taxrate.TaxRatesRepo
 }
 
-// NewLineValidator constructs the engine. The catalogue is read from the
-// CONTROL DB (shared reference data); the business profile, clients and tax
-// rates are read from the TENANT DB. In single-DB mode (tests) pass the same
-// handle for both. Nil handles are a programmer error.
+// NewLineValidator constructs the engine. ALL reads — catalogue/price list,
+// business profile, clients and tax rates — come from the TENANT DB (the price
+// list is tenant-owned). The control handle is retained for signature
+// compatibility but no longer used for catalogue reads. In single-DB mode
+// (tests) pass the same handle for both. Nil handles are a programmer error.
 func NewLineValidator(tenant, control db.Executor) *LineValidator {
 	if tenant == nil || control == nil {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
-		cat:      pricelist.NewItems(control),
+		cat:      pricelist.NewItems(tenant),
 		profiles: businessprofile.NewBusinessProfile(tenant),
 		clients:  client.NewClients(tenant),
 		taxRates: taxrate.NewTaxRates(tenant),
