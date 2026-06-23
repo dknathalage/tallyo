@@ -39,7 +39,7 @@
 
 <div class="mx-auto max-w-sm">
 	<h1 class="mb-1 text-xl font-semibold">Create your Tallyo account</h1>
-	<p class="mb-6 text-sm text-gray-500">Set up your NDIS provider business in one step.</p>
+	<p class="mb-6 text-sm text-gray-500">Set up your business in one step.</p>
 
 	<form class="space-y-4" onsubmit={submit}>
 		<label class="block">
@@ -84,14 +84,14 @@
 			<span class="mt-1 block text-xs text-gray-500">At least 8 characters.</span>
 		</label>
 		<label class="block">
-			<span class="mb-1 block text-sm font-medium">NDIS pricing zone</span>
+			<span class="mb-1 block text-sm font-medium">NDIS pricing zone (optional, NDIS only)</span>
 			<select bind:value={zone} class="w-full rounded border border-gray-300 px-3 py-2 text-sm">
 				<option value="national">National</option>
 				<option value="remote">Remote</option>
 				<option value="very_remote">Very remote</option>
 			</select>
 			<span class="mt-1 block text-xs text-gray-500">
-				Determines the applicable NDIS price caps. You can change this later in Settings.
+				Only needed if you bill against NDIS price caps — you can change this later in Settings.
 			</span>
 		</label>
 

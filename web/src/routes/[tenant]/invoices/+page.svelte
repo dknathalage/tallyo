@@ -67,7 +67,7 @@
 	<section>
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Invoices</h1>
-			<p class="text-sm text-gray-500">NDIS-compliant invoices with price-cap validation.</p>
+			<p class="text-sm text-gray-500">Invoices for your clients.</p>
 		</div>
 	</section>
 

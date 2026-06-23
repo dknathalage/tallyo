@@ -39,7 +39,7 @@
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Payers</h1>
 			<p class="text-sm text-gray-500">
-				NDIS plan-management organisations you invoice on behalf of clients.
+				Third parties you invoice on behalf of clients (e.g. NDIS plan managers).
 			</p>
 		</div>
 	</section>

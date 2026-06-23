@@ -68,7 +68,7 @@
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Clients</h1>
 			<p class="text-sm text-gray-500">
-				NDIS clients you invoice — plan-managed or self-managed.
+				Clients you invoice — standard or NDIS.
 			</p>
 		</div>
 	</section>

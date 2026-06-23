@@ -179,7 +179,7 @@
 				onclick={addSupportLine}
 				class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
 			>
-				Add NDIS line
+				Add catalogue line
 			</button>
 			<button
 				type="button"
@@ -195,7 +195,7 @@
 		<div class="rounded border border-gray-200 p-3">
 			<div class="mb-2 flex items-center justify-between">
 				<span class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
-					{line.kind === 'support' ? 'NDIS support item' : 'Custom item'}
+					{line.kind === 'support' ? 'Catalogue item' : 'Custom item'}
 				</span>
 				<button
 					type="button"

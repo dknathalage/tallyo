@@ -52,8 +52,7 @@
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Custom items</h1>
 			<p class="text-sm text-gray-500">
-				Your own non-NDIS line items (e.g. travel, gap fees). NDIS support items come from the
-				Support catalogue.
+				Your own line items (e.g. travel, gap fees). Catalogue items come from the price list.
 			</p>
 		</div>
 	</section>

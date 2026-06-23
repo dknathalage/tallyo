@@ -113,7 +113,7 @@
 	<section>
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Estimates</h1>
-			<p class="text-sm text-gray-500">Quote NDIS work before invoicing.</p>
+			<p class="text-sm text-gray-500">Quote work before invoicing.</p>
 		</div>
 	</section>
 

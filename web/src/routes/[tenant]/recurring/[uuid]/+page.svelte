@@ -293,7 +293,7 @@
 										<input
 											type="text"
 											bind:value={line.code}
-											placeholder="NDIS code"
+											placeholder="Item code"
 											class="w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
 										/>
 									</td>

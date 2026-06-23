@@ -385,7 +385,7 @@
 						<input
 							type="text"
 							bind:value={niCode}
-							placeholder="NDIS code (optional)"
+							placeholder="Item code (optional)"
 							class="w-44 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
 						/>
 						<button
@@ -497,7 +497,7 @@
 						</button>
 					</div>
 					{#if niCode.trim() !== ''}
-						<p class="text-xs text-gray-400">Coded lines are priced from the NDIS catalogue on save.</p>
+						<p class="text-xs text-gray-400">Coded lines are priced from the price list on save.</p>
 					{/if}
 				</div>
 			</div>
