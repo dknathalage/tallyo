@@ -371,3 +371,16 @@ func TestAuthLogoutInvalidatesSession(t *testing.T) {
 		t.Fatalf("post-logout me: want 401 got %d", resp2.StatusCode)
 	}
 }
+
+// TestLoginEmailCaseInsensitive guards the signup/login casing mismatch: signup
+// stores the email lower-cased, so login must normalize too. Pre-fix, logging in
+// with the same email in a different case 401'd ("invalid credentials").
+func TestLoginEmailCaseInsensitive(t *testing.T) {
+	srv, _, _, _, _ := newAuthServer(t)
+	c := jarClient(t)
+	resp := login(t, c, srv.URL, "O@X.COM", "password1") // seeded owner is o@x.com
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("mixed-case email login should succeed (stored lower-cased): code=%d", resp.StatusCode)
+	}
+}

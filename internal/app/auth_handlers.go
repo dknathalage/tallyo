@@ -74,6 +74,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
+	// Normalize the email to match how signup stores it (lower-cased, trimmed)
+	// so the credentials lookup, tenant-choice and session identity all agree —
+	// otherwise "Sam@G.test" registered as "sam@g.test" fails to log in.
+	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 	if in.Email == "" || in.Password == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "email and password required")
 		return
