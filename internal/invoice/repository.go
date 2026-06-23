@@ -2,7 +2,7 @@ package invoice
 
 // NOTE (J4): rewritten to the NDIS invoice/line-item domain (spec §4.2). The
 // header no longer carries payment_terms / currency / tax_rate / tax_rate_id;
-// it carries participant_id, optional plan_manager_id, and subtotal/tax/total.
+// it carries client_id, optional plan_manager_id, and subtotal/tax/total.
 // Line items carry NDIS fields: code, service_date, unit, unit_price, taxable,
 // line_total, and optional support_item_id / custom_item_id / catalog_version_id.
 //
@@ -36,9 +36,9 @@ import (
 // invoiceListSelect mirrors the ListInvoices sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/invoices.sql. The tenant filter is the
 // FIRST and ONLY ? in the base; listquery's c.Where is appended as " AND ...".
-const invoiceListSelect = `SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+const invoiceListSelect = `SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ?`
 
@@ -46,22 +46,22 @@ WHERE i.tenant_id = ?`
 // names so the frontend column key drives filter, sort and display with one
 // identifier. Invoices are a read-only document list (no drawer edit).
 var InvoiceCols = listquery.Spec{
-	"number":          {Col: "i.number", Filter: listquery.Text},
-	"participantName": {Col: "p.name", Filter: listquery.Text},
-	"status":          {Col: "i.status", Filter: listquery.Enum},
-	"issueDate":       {Col: "i.issue_date", Filter: listquery.Date},
-	"total":           {Col: "i.total", Filter: listquery.Number},
+	"number":     {Col: "i.number", Filter: listquery.Text},
+	"clientName": {Col: "p.name", Filter: listquery.Text},
+	"status":     {Col: "i.status", Filter: listquery.Enum},
+	"issueDate":  {Col: "i.issue_date", Filter: listquery.Date},
+	"total":      {Col: "i.total", Filter: listquery.Number},
 }
 
-// Invoice is the domain view of an invoice with its resolved participant name
+// Invoice is the domain view of an invoice with its resolved client name
 // and embedded line items.
 type Invoice struct {
 	ID               int64               `json:"-"`  // internal PK; the public identifier is the uuid
 	UUID             string              `json:"id"` // public identifier (invoice uuid)
 	Number           string              `json:"number"`
-	ParticipantID    int64               `json:"-"`             // internal FK; the public ref is participantId (uuid)
-	ParticipantUUID  string              `json:"participantId"` // participant uuid
-	ParticipantName  string              `json:"participantName"`
+	ClientID         int64               `json:"-"`        // internal FK; the public ref is clientId (uuid)
+	ClientUUID       string              `json:"clientId"` // client uuid
+	ClientName       string              `json:"clientName"`
 	PlanManagerUUID  *string             `json:"planManagerId"` // plan-manager uuid (nil when none)
 	Status           string              `json:"status"`
 	IssueDate        string              `json:"issueDate"`
@@ -71,7 +71,7 @@ type Invoice struct {
 	Total            float64             `json:"total"`
 	Notes            string              `json:"notes"`
 	BusinessSnapshot string              `json:"businessSnapshot"`
-	ClientSnapshot   string              `json:"participantSnapshot"`
+	ClientSnapshot   string              `json:"clientSnapshot"`
 	PayerSnapshot    string              `json:"planManagerSnapshot"`
 	CreatedAt        string              `json:"createdAt"`
 	UpdatedAt        string              `json:"updatedAt"`
@@ -82,9 +82,9 @@ type Invoice struct {
 
 // InvoiceInput is the writable subset of an invoice header. Snapshot fields,
 // when non-empty, are stored verbatim; when empty, defaults are built from the
-// business profile, participant and plan manager.
+// business profile, client and plan manager.
 type InvoiceInput struct {
-	ParticipantID    int64   `json:"participantId"`
+	ClientID         int64   `json:"clientId"`
 	PlanManagerID    *int64  `json:"planManagerId"`
 	Status           string  `json:"status"`
 	IssueDate        string  `json:"issueDate"`
@@ -92,7 +92,7 @@ type InvoiceInput struct {
 	Tax              float64 `json:"tax"`
 	Notes            string  `json:"notes"`
 	BusinessSnapshot string  `json:"businessSnapshot"`
-	ClientSnapshot   string  `json:"participantSnapshot"`
+	ClientSnapshot   string  `json:"clientSnapshot"`
 	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
@@ -103,8 +103,8 @@ type OverdueInvoice struct {
 	Number   string `json:"number"`
 }
 
-// ParticipantStats aggregates a participant's invoice activity.
-type ParticipantStats struct {
+// ClientStats aggregates a client's invoice activity.
+type ClientStats struct {
 	InvoiceCount  int64   `json:"invoiceCount"`
 	TotalInvoiced float64 `json:"totalInvoiced"`
 	TotalPaid     float64 `json:"totalPaid"`
@@ -125,13 +125,13 @@ func NewInvoices(db db.Executor) *InvoicesRepo {
 }
 
 // fillSnapshots fills any empty snapshot field on in with a default built from
-// the business profile, participant and plan manager.
+// the business profile, client and plan manager.
 func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *InvoiceInput) {
 	if in.BusinessSnapshot == "" {
 		in.BusinessSnapshot = r.snap.Business(ctx, tenantID)
 	}
 	if in.ClientSnapshot == "" {
-		in.ClientSnapshot = r.snap.Participant(ctx, tenantID, in.ParticipantID)
+		in.ClientSnapshot = r.snap.Client(ctx, tenantID, in.ClientID)
 	}
 	if in.PayerSnapshot == "" {
 		in.PayerSnapshot = r.snap.PlanManager(ctx, tenantID, in.PlanManagerID)
@@ -139,14 +139,14 @@ func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *In
 }
 
 // Create inserts an invoice plus its line items inside one numbering-retried
-// transaction, audits the create, and re-reads the row. ParticipantID and at
+// transaction, audits the create, and re-reads the row. ClientID and at
 // least one line item are required.
 func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	if tenantID == 0 {
 		return nil, errors.New("create invoice: tenant id required")
 	}
-	if in.ParticipantID == 0 {
-		return nil, errors.New("create invoice: participant is required")
+	if in.ClientID == 0 {
+		return nil, errors.New("create invoice: client is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("create invoice: at least one line item is required")
@@ -198,23 +198,23 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 }
 
 // draftShiftItem holds the validated facts about one shift that DraftFromShifts
-// needs: its participant and the number of unbilled items it carries.
+// needs: its client and the number of unbilled items it carries.
 type draftShiftItem struct {
-	shiftID       int64
-	participantID int64
-	itemCount     int64
+	shiftID   int64
+	clientID  int64
+	itemCount int64
 }
 
 // validateDraftShifts reads each shift (no writes) and enforces the draft
 // preconditions: the shift exists for the tenant, is status 'recorded' with no
 // invoice yet, carries at least one unbilled item (G5), and every shift shares
-// one participant. Returns the shared participant id and the per-shift facts.
+// one client. Returns the shared client id and the per-shift facts.
 func (r *InvoicesRepo) validateDraftShifts(ctx context.Context, tenantID int64, shiftIDs []int64) (int64, []draftShiftItem, error) {
 	if len(shiftIDs) == 0 {
 		return 0, nil, errors.New("draft from shifts: at least one shift is required")
 	}
 	q := gen.New(r.db)
-	var participantID int64
+	var clientID int64
 	facts := make([]draftShiftItem, 0, len(shiftIDs))
 	for i := range shiftIDs { // bounded by len(shiftIDs)
 		sh, err := q.GetShiftByID(ctx, gen.GetShiftByIDParams{TenantID: tenantID, ID: shiftIDs[i]})
@@ -228,9 +228,9 @@ func (r *InvoicesRepo) validateDraftShifts(ctx context.Context, tenantID int64, 
 			return 0, nil, fmt.Errorf("draft from shifts: shift %d is not recorded+unbilled", shiftIDs[i])
 		}
 		if i == 0 {
-			participantID = sh.ParticipantID
-		} else if sh.ParticipantID != participantID {
-			return 0, nil, errors.New("draft from shifts: all shifts must share one participant")
+			clientID = sh.ClientID
+		} else if sh.ClientID != clientID {
+			return 0, nil, errors.New("draft from shifts: all shifts must share one client")
 		}
 		n, err := q.CountShiftItems(ctx, gen.CountShiftItemsParams{TenantID: tenantID, ShiftID: sql.NullInt64{Int64: shiftIDs[i], Valid: true}})
 		if err != nil {
@@ -239,21 +239,21 @@ func (r *InvoicesRepo) validateDraftShifts(ctx context.Context, tenantID int64, 
 		if n == 0 {
 			return 0, nil, fmt.Errorf("draft from shifts: shift %d has no items", shiftIDs[i])
 		}
-		facts = append(facts, draftShiftItem{shiftID: shiftIDs[i], participantID: sh.ParticipantID, itemCount: n})
+		facts = append(facts, draftShiftItem{shiftID: shiftIDs[i], clientID: sh.ClientID, itemCount: n})
 	}
-	return participantID, facts, nil
+	return clientID, facts, nil
 }
 
-// DraftFromShifts creates a draft invoice header for participantID, links every
+// DraftFromShifts creates a draft invoice header for clientID, links every
 // validated shift's unbilled items onto it, and persists totals computed from
 // the now-linked lines — all in ONE numbering-retried transaction. The shifts
 // table is NOT written here; the caller advances the shifts to 'drafted'
 // afterwards (a separate, post-commit step), mirroring Delete↔ClearForInvoice.
-func (r *InvoicesRepo) DraftFromShifts(ctx context.Context, tenantID, participantID int64, facts []draftShiftItem) (*Invoice, error) {
-	if tenantID == 0 || participantID == 0 {
-		return nil, errors.New("draft from shifts: tenant and participant id required")
+func (r *InvoicesRepo) DraftFromShifts(ctx context.Context, tenantID, clientID int64, facts []draftShiftItem) (*Invoice, error) {
+	if tenantID == 0 || clientID == 0 {
+		return nil, errors.New("draft from shifts: tenant and client id required")
 	}
-	in := InvoiceInput{ParticipantID: participantID, Status: "draft"}
+	in := InvoiceInput{ClientID: clientID, Status: "draft"}
 	now := time.Now().UTC().Format("2006-01-02")
 	in.IssueDate = now
 	in.DueDate = now
@@ -362,7 +362,7 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 		Uuid:             uuid.NewString(),
 		TenantID:         tenantID,
 		Number:           num,
-		ParticipantID:    in.ParticipantID,
+		ClientID:         in.ClientID,
 		PlanManagerID:    db.NullID(in.PlanManagerID),
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
@@ -415,7 +415,7 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 	return nil
 }
 
-// Get returns the invoice (with participant name and line items), or (nil, nil)
+// Get returns the invoice (with client name and line items), or (nil, nil)
 // when absent.
 func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, error) {
 	q := gen.New(r.db)
@@ -517,10 +517,10 @@ func (r *InvoicesRepo) Query(ctx context.Context, tenantID int64, c listquery.Cl
 	for rows.Next() { // bounded by LIMIT in the query
 		var f invoiceFields
 		var tenant int64
-		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.participantID,
+		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.clientID,
 			&f.planManagerID, &f.status, &f.issueDate, &f.dueDate, &f.subtotal,
 			&f.tax, &f.total, &f.notes, &f.businessSnap, &f.clientSnap, &f.payerSnap,
-			&f.createdAt, &f.updatedAt, &f.participantName, &f.participantUUID, &f.planManagerUUID); err != nil {
+			&f.createdAt, &f.updatedAt, &f.clientName, &f.clientUUID, &f.planManagerUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan invoice: %w", err)
 		}
 		out = append(out, toInvoiceFromRow(f))
@@ -547,18 +547,18 @@ func (r *InvoicesRepo) ListByStatus(ctx context.Context, tenantID int64, status 
 	return out, nil
 }
 
-// ListParticipantInvoices returns one participant's invoices (header only).
-func (r *InvoicesRepo) ListParticipantInvoices(ctx context.Context, tenantID, participantID int64) ([]*Invoice, error) {
-	rows, err := gen.New(r.db).ListParticipantInvoices(ctx, gen.ListParticipantInvoicesParams{
-		TenantID:      tenantID,
-		ParticipantID: participantID,
+// ListClientInvoices returns one client's invoices (header only).
+func (r *InvoicesRepo) ListClientInvoices(ctx context.Context, tenantID, clientID int64) ([]*Invoice, error) {
+	rows, err := gen.New(r.db).ListClientInvoices(ctx, gen.ListClientInvoicesParams{
+		TenantID: tenantID,
+		ClientID: clientID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list participant invoices: %w", err)
+		return nil, fmt.Errorf("list client invoices: %w", err)
 	}
 	out := make([]*Invoice, 0, len(rows))
 	for i := range rows {
-		out = append(out, toInvoiceFromRow(invoiceFieldsFromParticipant(rows[i])))
+		out = append(out, toInvoiceFromRow(invoiceFieldsFromClient(rows[i])))
 	}
 	return out, nil
 }
@@ -567,8 +567,8 @@ func (r *InvoicesRepo) ListParticipantInvoices(ctx context.Context, tenantID, pa
 // atomically with one audit row. Empty snapshot inputs keep the existing stored
 // snapshots. Returns (nil, nil) when the invoice does not exist.
 func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
-	if in.ParticipantID == 0 {
-		return nil, errors.New("update invoice: participant is required")
+	if in.ClientID == 0 {
+		return nil, errors.New("update invoice: client is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("update invoice: at least one line item is required")
@@ -620,7 +620,7 @@ func updateInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateInvoiceParams{
 		Number:           number,
-		ParticipantID:    in.ParticipantID,
+		ClientID:         in.ClientID,
 		PlanManagerID:    db.NullID(in.PlanManagerID),
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
@@ -788,15 +788,15 @@ func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID int64) (b
 	return inv != nil, nil
 }
 
-// ResolveParticipantID translates a participant uuid into its int PK, scoped to
-// the tenant. Returns (0, nil) when no participant matches (caller 404s).
-func (r *InvoicesRepo) ResolveParticipantID(ctx context.Context, tenantID int64, participantUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: participantUUID})
+// ResolveClientID translates a client uuid into its int PK, scoped to
+// the tenant. Returns (0, nil) when no client matches (caller 404s).
+func (r *InvoicesRepo) ResolveClientID(ctx context.Context, tenantID int64, clientUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve participant uuid: %w", err)
+		return 0, fmt.Errorf("resolve client uuid: %w", err)
 	}
 	return id, nil
 }
@@ -850,34 +850,34 @@ func (r *InvoicesRepo) ResolveInvoiceIDs(ctx context.Context, tenantID int64, in
 	return out, nil
 }
 
-// ParticipantStats returns the count and summed totals of a participant's
+// ClientStats returns the count and summed totals of a client's
 // invoices.
-func (r *InvoicesRepo) ParticipantStats(ctx context.Context, tenantID, participantID int64) (*ParticipantStats, error) {
-	row, err := gen.New(r.db).ParticipantInvoiceStats(ctx, gen.ParticipantInvoiceStatsParams{
-		TenantID:      tenantID,
-		ParticipantID: participantID,
+func (r *InvoicesRepo) ClientStats(ctx context.Context, tenantID, clientID int64) (*ClientStats, error) {
+	row, err := gen.New(r.db).ClientInvoiceStats(ctx, gen.ClientInvoiceStatsParams{
+		TenantID: tenantID,
+		ClientID: clientID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("participant stats: %w", err)
+		return nil, fmt.Errorf("client stats: %w", err)
 	}
-	return &ParticipantStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced, TotalPaid: row.TotalPaid}, nil
+	return &ClientStats{InvoiceCount: row.InvoiceCount, TotalInvoiced: row.TotalInvoiced, TotalPaid: row.TotalPaid}, nil
 }
 
 // invoiceFields is the shared, flat shape of every invoices join row (List,
-// ListByStatus, ListParticipantInvoices and Get all produce identical structs
-// under distinct gen type names, each adding ParticipantName).
+// ListByStatus, ListClientInvoices and Get all produce identical structs
+// under distinct gen type names, each adding ClientName).
 type invoiceFields struct {
 	id                                  int64
 	uuid, number                        string
-	participantID                       int64
+	clientID                            int64
 	planManagerID                       sql.NullInt64
 	status, issueDate, dueDate          string
 	subtotal, tax, total                float64
 	notes                               sql.NullString
 	businessSnap, clientSnap, payerSnap sql.NullString
 	createdAt, updatedAt                string
-	participantName                     sql.NullString
-	participantUUID                     sql.NullString
+	clientName                          sql.NullString
+	clientUUID                          sql.NullString
 	planManagerUUID                     sql.NullString
 }
 
@@ -888,9 +888,9 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 		ID:               f.id,
 		UUID:             f.uuid,
 		Number:           f.number,
-		ParticipantID:    f.participantID,
-		ParticipantUUID:  f.participantUUID.String,
-		ParticipantName:  f.participantName.String,
+		ClientID:         f.clientID,
+		ClientUUID:       f.clientUUID.String,
+		ClientName:       f.clientName.String,
 		PlanManagerUUID:  nullStrPtr(f.planManagerUUID),
 		Status:           f.status,
 		IssueDate:        f.issueDate,
@@ -910,61 +910,61 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 
 func invoiceFieldsFromGet(r gen.GetInvoiceRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
 		planManagerID: r.PlanManagerID,
 		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
-		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		clientUUID: r.ClientUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
 func invoiceFieldsFromGetByID(r gen.GetInvoiceByIDRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
 		planManagerID: r.PlanManagerID,
 		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
-		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		clientUUID: r.ClientUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
 func invoiceFieldsFromList(r gen.ListInvoicesRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
 		planManagerID: r.PlanManagerID,
 		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
-		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		clientUUID: r.ClientUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
 func invoiceFieldsFromStatus(r gen.ListInvoicesByStatusRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
 		planManagerID: r.PlanManagerID,
 		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
-		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		clientUUID: r.ClientUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 
-func invoiceFieldsFromParticipant(r gen.ListParticipantInvoicesRow) invoiceFields {
+func invoiceFieldsFromClient(r gen.ListClientInvoicesRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
 		planManagerID: r.PlanManagerID,
 		status:        r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
-		participantUUID: r.ParticipantUuid, planManagerUUID: r.PlanManagerUuid,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
+		clientUUID: r.ClientUuid, planManagerUUID: r.PlanManagerUuid,
 	}
 }
 

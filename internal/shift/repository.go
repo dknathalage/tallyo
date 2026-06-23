@@ -20,43 +20,43 @@ import (
 )
 
 // Shift is the domain view of a row in the shifts table — the delivered-support
-// unit a provider records for a participant. A shift's billable quantities live
+// unit a provider records for a client. A shift's billable quantities live
 // on its line_items rows (see ListItems), not on the shift itself. Tags is
 // stored as JSON TEXT and is never nil. Status moves through the lifecycle
 // scheduled→recorded→drafted→sent→paid; InvoiceID is set once the shift is
 // drafted onto an invoice.
 type Shift struct {
-	ID              int64    `json:"-"`
-	UUID            string   `json:"id"`
-	ParticipantID   int64    `json:"-"`
-	ParticipantUUID string   `json:"participantId"`
-	ServiceDate     string   `json:"serviceDate"`
-	Note            string   `json:"note"`
-	Tags            []string `json:"tags"`
-	Status          string   `json:"status"`
-	InvoiceID       *int64   `json:"-"`         // internal FK; the public ref is invoiceId (the linked invoice's uuid)
-	InvoiceUUID     *string  `json:"invoiceId"` // linked invoice uuid (nil until the shift is drafted onto an invoice)
-	AuthorUserID    *int64   `json:"-"`         // internal author user FK; not linked from the SPA
-	CreatedAt       string   `json:"createdAt"`
-	UpdatedAt       string   `json:"updatedAt"`
+	ID           int64    `json:"-"`
+	UUID         string   `json:"id"`
+	ClientID     int64    `json:"-"`
+	ClientUUID   string   `json:"clientId"`
+	ServiceDate  string   `json:"serviceDate"`
+	Note         string   `json:"note"`
+	Tags         []string `json:"tags"`
+	Status       string   `json:"status"`
+	InvoiceID    *int64   `json:"-"`         // internal FK; the public ref is invoiceId (the linked invoice's uuid)
+	InvoiceUUID  *string  `json:"invoiceId"` // linked invoice uuid (nil until the shift is drafted onto an invoice)
+	AuthorUserID *int64   `json:"-"`         // internal author user FK; not linked from the SPA
+	CreatedAt    string   `json:"createdAt"`
+	UpdatedAt    string   `json:"updatedAt"`
 }
 
 // ShiftInput is the writable subset of a shift.
 type ShiftInput struct {
-	ParticipantID int64    `json:"participantId"`
-	ServiceDate   string   `json:"serviceDate"`
-	Note          string   `json:"note"`
-	Tags          []string `json:"tags"`
-	Status        string   `json:"status"`
+	ClientID    int64    `json:"clientId"`
+	ServiceDate string   `json:"serviceDate"`
+	Note        string   `json:"note"`
+	Tags        []string `json:"tags"`
+	Status      string   `json:"status"`
 }
 
-// UnbilledAgg summarises a participant's recorded-but-unbilled shifts: how many there
+// UnbilledAgg summarises a client's recorded-but-unbilled shifts: how many there
 // are and the service-date span they cover.
 type UnbilledAgg struct {
-	ParticipantID int64  `json:"participantId"`
-	Count         int64  `json:"count"`
-	From          string `json:"from"`
-	To            string `json:"to"`
+	ClientID int64  `json:"clientId"`
+	Count    int64  `json:"count"`
+	From     string `json:"from"`
+	To       string `json:"to"`
 }
 
 // ShiftsRepo reads and writes the shifts table (tenant-scoped) with audited
@@ -80,8 +80,8 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 	if tenantID == 0 {
 		return nil, errors.New("create shift: tenant id required")
 	}
-	if in.ParticipantID == 0 {
-		return nil, errors.New("create shift: participant id required")
+	if in.ClientID == 0 {
+		return nil, errors.New("create shift: client id required")
 	}
 	if !validISODate(in.ServiceDate) {
 		return nil, errors.New("create shift: service date must be a valid YYYY-MM-DD date")
@@ -99,16 +99,16 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		s, e := gen.New(tx).CreateShift(ctx, gen.CreateShiftParams{
-			Uuid:          uuid.NewString(),
-			TenantID:      tenantID,
-			ParticipantID: in.ParticipantID,
-			ServiceDate:   in.ServiceDate,
-			Note:          in.Note,
-			Tags:          tags,
-			Status:        status,
-			AuthorUserID:  db.NullID(authorUserID),
-			CreatedAt:     now,
-			UpdatedAt:     now,
+			Uuid:         uuid.NewString(),
+			TenantID:     tenantID,
+			ClientID:     in.ClientID,
+			ServiceDate:  in.ServiceDate,
+			Note:         in.Note,
+			Tags:         tags,
+			Status:       status,
+			AuthorUserID: db.NullID(authorUserID),
+			CreatedAt:    now,
+			UpdatedAt:    now,
 		})
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
@@ -116,7 +116,7 @@ func (r *ShiftsRepo) Create(ctx context.Context, tenantID int64, authorUserID *i
 		newID = s.ID
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "shift", EntityID: s.ID, Action: "create",
-			Changes: audit.Changes(map[string]any{"participantId": in.ParticipantID, "serviceDate": in.ServiceDate}),
+			Changes: audit.Changes(map[string]any{"clientId": in.ClientID, "serviceDate": in.ServiceDate}),
 		})
 	})
 	if err != nil {
@@ -166,41 +166,41 @@ func (r *ShiftsRepo) ResolveID(ctx context.Context, tenantID int64, shiftUUID st
 	return id, nil
 }
 
-// ResolveParticipantID translates a participant uuid into its int PK for the
-// tenant (used by the ?participant= shift filter and inbound participantId
+// ResolveClientID translates a client uuid into its int PK for the
+// tenant (used by the ?client= shift filter and inbound clientId
 // resolution). Returns (0, nil) when absent.
-func (r *ShiftsRepo) ResolveParticipantID(ctx context.Context, tenantID int64, participantUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: participantUUID})
+func (r *ShiftsRepo) ResolveClientID(ctx context.Context, tenantID int64, clientUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve participant uuid: %w", err)
+		return 0, fmt.Errorf("resolve client uuid: %w", err)
 	}
 	return id, nil
 }
 
-// ListParticipant returns a participant's shifts. When both from and to are
+// ListClient returns a client's shifts. When both from and to are
 // non-empty it restricts to service_date ∈ [from, to]; otherwise it returns all.
-func (r *ShiftsRepo) ListParticipant(ctx context.Context, tenantID, participantID int64, from, to string) ([]*Shift, error) {
-	if tenantID == 0 || participantID == 0 {
-		return nil, errors.New("list shifts: tenant and participant id required")
+func (r *ShiftsRepo) ListClient(ctx context.Context, tenantID, clientID int64, from, to string) ([]*Shift, error) {
+	if tenantID == 0 || clientID == 0 {
+		return nil, errors.New("list shifts: tenant and client id required")
 	}
 	q := gen.New(r.db)
 	if from != "" && to != "" {
-		rows, err := q.ListShiftsByParticipantRange(ctx, gen.ListShiftsByParticipantRangeParams{
-			TenantID: tenantID, ParticipantID: participantID, ServiceDate: from, ServiceDate_2: to,
+		rows, err := q.ListShiftsByClientRange(ctx, gen.ListShiftsByClientRangeParams{
+			TenantID: tenantID, ClientID: clientID, ServiceDate: from, ServiceDate_2: to,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("list participant shifts range: %w", err)
+			return nil, fmt.Errorf("list client shifts range: %w", err)
 		}
 		return mapShifts(rows, shiftFieldsFromByPartRange)
 	}
-	rows, err := q.ListShiftsByParticipant(ctx, gen.ListShiftsByParticipantParams{
-		TenantID: tenantID, ParticipantID: participantID,
+	rows, err := q.ListShiftsByClient(ctx, gen.ListShiftsByClientParams{
+		TenantID: tenantID, ClientID: clientID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list participant shifts: %w", err)
+		return nil, fmt.Errorf("list client shifts: %w", err)
 	}
 	return mapShifts(rows, shiftFieldsFromByPart)
 }
@@ -241,14 +241,14 @@ func (r *ShiftsRepo) ListScheduled(ctx context.Context, tenantID int64) ([]*Shif
 	return mapShifts(rows, shiftFieldsFromScheduled)
 }
 
-// ListRecordedUnbilled returns a participant's recorded shifts that are not yet
+// ListRecordedUnbilled returns a client's recorded shifts that are not yet
 // linked to an invoice (status 'recorded', invoice_id NULL).
-func (r *ShiftsRepo) ListRecordedUnbilled(ctx context.Context, tenantID, participantID int64) ([]*Shift, error) {
-	if tenantID == 0 || participantID == 0 {
-		return nil, errors.New("list recorded unbilled: tenant and participant id required")
+func (r *ShiftsRepo) ListRecordedUnbilled(ctx context.Context, tenantID, clientID int64) ([]*Shift, error) {
+	if tenantID == 0 || clientID == 0 {
+		return nil, errors.New("list recorded unbilled: tenant and client id required")
 	}
-	rows, err := gen.New(r.db).ListRecordedUnbilledByParticipant(ctx, gen.ListRecordedUnbilledByParticipantParams{
-		TenantID: tenantID, ParticipantID: participantID,
+	rows, err := gen.New(r.db).ListRecordedUnbilledByClient(ctx, gen.ListRecordedUnbilledByClientParams{
+		TenantID: tenantID, ClientID: clientID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list recorded unbilled: %w", err)
@@ -726,23 +726,23 @@ func lineItemParams(tenantID int64, shiftID *int64, customItemID sql.NullInt64, 
 	}
 }
 
-// UnbilledByParticipant aggregates the tenant's recorded-but-unbilled shifts per
-// participant (count and service-date span), ready for billing suggestions.
-func (r *ShiftsRepo) UnbilledByParticipant(ctx context.Context, tenantID int64) ([]UnbilledAgg, error) {
+// UnbilledByClient aggregates the tenant's recorded-but-unbilled shifts per
+// client (count and service-date span), ready for billing suggestions.
+func (r *ShiftsRepo) UnbilledByClient(ctx context.Context, tenantID int64) ([]UnbilledAgg, error) {
 	if tenantID == 0 {
-		return nil, errors.New("unbilled by participant: tenant id required")
+		return nil, errors.New("unbilled by client: tenant id required")
 	}
-	rows, err := gen.New(r.db).ParticipantUnbilledAgg(ctx, tenantID)
+	rows, err := gen.New(r.db).ClientUnbilledAgg(ctx, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("unbilled by participant: %w", err)
+		return nil, fmt.Errorf("unbilled by client: %w", err)
 	}
 	out := make([]UnbilledAgg, 0, len(rows))
 	for i := range rows { // bounded by len(rows)
 		out = append(out, UnbilledAgg{
-			ParticipantID: rows[i].ParticipantID,
-			Count:         rows[i].Cnt,
-			From:          anyToString(rows[i].FromDate),
-			To:            anyToString(rows[i].ToDate),
+			ClientID: rows[i].ClientID,
+			Count:    rows[i].Cnt,
+			From:     anyToString(rows[i].FromDate),
+			To:       anyToString(rows[i].ToDate),
 		})
 	}
 	return out, nil
@@ -779,22 +779,22 @@ func anyToString(v any) string {
 // shiftFields is the common projection shared by every enriched shift read row
 // (Get/GetByID/List*). The gen row types are nominally distinct but identical in
 // shape; each is adapted into this struct so a single mapper (mapShift) builds
-// the DTO. ParticipantUUID is the joined participants.uuid (NULL if the FK is
+// the DTO. ClientUUID is the joined clients.uuid (NULL if the FK is
 // dangling, which the clean schema forbids).
 type shiftFields struct {
-	id              int64
-	uuid            string
-	participantID   int64
-	participantUUID sql.NullString
-	serviceDate     string
-	note            string
-	tags            string
-	status          string
-	invoiceID       sql.NullInt64
-	invoiceUUID     sql.NullString
-	authorUserID    sql.NullInt64
-	createdAt       string
-	updatedAt       string
+	id           int64
+	uuid         string
+	clientID     int64
+	clientUUID   sql.NullString
+	serviceDate  string
+	note         string
+	tags         string
+	status       string
+	invoiceID    sql.NullInt64
+	invoiceUUID  sql.NullString
+	authorUserID sql.NullInt64
+	createdAt    string
+	updatedAt    string
 }
 
 func mapShift(f shiftFields) (*Shift, error) {
@@ -808,19 +808,19 @@ func mapShift(f shiftFields) (*Shift, error) {
 		}
 	}
 	return &Shift{
-		ID:              f.id,
-		UUID:            f.uuid,
-		ParticipantID:   f.participantID,
-		ParticipantUUID: f.participantUUID.String,
-		ServiceDate:     f.serviceDate,
-		Note:            f.note,
-		Tags:            tags,
-		Status:          f.status,
-		InvoiceID:       db.PtrID(f.invoiceID),
-		InvoiceUUID:     db.PtrStr(f.invoiceUUID),
-		AuthorUserID:    db.PtrID(f.authorUserID),
-		CreatedAt:       f.createdAt,
-		UpdatedAt:       f.updatedAt,
+		ID:           f.id,
+		UUID:         f.uuid,
+		ClientID:     f.clientID,
+		ClientUUID:   f.clientUUID.String,
+		ServiceDate:  f.serviceDate,
+		Note:         f.note,
+		Tags:         tags,
+		Status:       f.status,
+		InvoiceID:    db.PtrID(f.invoiceID),
+		InvoiceUUID:  db.PtrStr(f.invoiceUUID),
+		AuthorUserID: db.PtrID(f.authorUserID),
+		CreatedAt:    f.createdAt,
+		UpdatedAt:    f.updatedAt,
 	}, nil
 }
 
@@ -829,7 +829,7 @@ func mapShift(f shiftFields) (*Shift, error) {
 // keep the per-query row scanners while a single mapper builds the DTO.
 func shiftFieldsFromGet(r gen.GetShiftRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
@@ -837,7 +837,7 @@ func shiftFieldsFromGet(r gen.GetShiftRow) shiftFields {
 
 func shiftFieldsFromByID(r gen.GetShiftByIDRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
@@ -845,23 +845,23 @@ func shiftFieldsFromByID(r gen.GetShiftByIDRow) shiftFields {
 
 func shiftFieldsFromList(r gen.ListShiftsRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromByPart(r gen.ListShiftsByParticipantRow) shiftFields {
+func shiftFieldsFromByPart(r gen.ListShiftsByClientRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromByPartRange(r gen.ListShiftsByParticipantRangeRow) shiftFields {
+func shiftFieldsFromByPartRange(r gen.ListShiftsByClientRangeRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
@@ -869,7 +869,7 @@ func shiftFieldsFromByPartRange(r gen.ListShiftsByParticipantRangeRow) shiftFiel
 
 func shiftFieldsFromByStatus(r gen.ListShiftsByStatusRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
@@ -877,15 +877,15 @@ func shiftFieldsFromByStatus(r gen.ListShiftsByStatusRow) shiftFields {
 
 func shiftFieldsFromScheduled(r gen.ListScheduledShiftsRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}
 }
 
-func shiftFieldsFromRecorded(r gen.ListRecordedUnbilledByParticipantRow) shiftFields {
+func shiftFieldsFromRecorded(r gen.ListRecordedUnbilledByClientRow) shiftFields {
 	return shiftFields{
-		id: r.ID, uuid: r.Uuid, participantID: r.ParticipantID, participantUUID: r.ParticipantUuid,
+		id: r.ID, uuid: r.Uuid, clientID: r.ClientID, clientUUID: r.ClientUuid,
 		serviceDate: r.ServiceDate, note: r.Note, tags: r.Tags, status: r.Status,
 		invoiceID: r.InvoiceID, invoiceUUID: r.InvoiceUuid, authorUserID: r.AuthorUserID, createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
 	}

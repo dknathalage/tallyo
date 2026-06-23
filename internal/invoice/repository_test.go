@@ -10,12 +10,12 @@ import (
 func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
 	inv, err := repo.Create(ctx, tid, InvoiceInput{
-		ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31", Tax: 10,
+		ClientID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31", Tax: 10,
 	}, []billing.LineItemInput{
 		{Code: "01_011_0107_1_1", Description: "Support", Quantity: 2, UnitPrice: 50, Taxable: true},
 		{Description: "Travel", Quantity: 1, UnitPrice: 5},
@@ -34,7 +34,7 @@ func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 	}
 
 	// Second invoice increments the per-tenant number.
-	inv2, err := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-02-01", DueDate: "2026-02-28"},
+	inv2, err := repo.Create(ctx, tid, InvoiceInput{ClientID: pid, IssueDate: "2026-02-01", DueDate: "2026-02-28"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Create 2: %v", err)
@@ -47,11 +47,11 @@ func TestInvoiceCreateNumbersAndTotals(t *testing.T) {
 func TestInvoiceGetWithBalance(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
+	inv, err := repo.Create(ctx, tid, InvoiceInput{ClientID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -66,24 +66,24 @@ func TestInvoiceGetWithBalance(t *testing.T) {
 	if got.TotalPaid != 30 || got.Balance != 70 {
 		t.Fatalf("paid/balance = %v/%v, want 30/70", got.TotalPaid, got.Balance)
 	}
-	if got.ParticipantName != "Jane" {
-		t.Fatalf("ParticipantName = %q, want Jane", got.ParticipantName)
+	if got.ClientName != "Jane" {
+		t.Fatalf("ClientName = %q, want Jane", got.ClientName)
 	}
 }
 
 func TestInvoiceUpdateAndStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
+	inv, err := repo.Create(ctx, tid, InvoiceInput{ClientID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, inv.ID, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-02-15", Tax: 5},
+	up, err := repo.Update(ctx, tid, inv.ID, InvoiceInput{ClientID: pid, IssueDate: "2026-01-01", DueDate: "2026-02-15", Tax: 5},
 		[]billing.LineItemInput{{Description: "Y", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
@@ -103,11 +103,11 @@ func TestInvoiceUpdateAndStatus(t *testing.T) {
 func TestInvoiceListAndDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	a, _ := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
+	a, _ := repo.Create(ctx, tid, InvoiceInput{ClientID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
 	if list, err := repo.List(ctx, tid); err != nil || len(list) != 1 {
 		t.Fatalf("List len=%d err=%v", len(list), err)
@@ -120,21 +120,21 @@ func TestInvoiceListAndDelete(t *testing.T) {
 	}
 }
 
-func TestInvoiceParticipantStats(t *testing.T) {
+func TestInvoiceClientStats(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	inv, _ := repo.Create(ctx, tid, InvoiceInput{ParticipantID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
+	inv, _ := repo.Create(ctx, tid, InvoiceInput{ClientID: pid, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 200}})
 	if _, err := NewPayments(conn).Create(ctx, tid, PaymentInput{InvoiceID: inv.ID, Amount: 50, PaidAt: "2026-01-05"}); err != nil {
 		t.Fatalf("pay: %v", err)
 	}
-	stats, err := repo.ParticipantStats(ctx, tid, pid)
+	stats, err := repo.ClientStats(ctx, tid, pid)
 	if err != nil {
-		t.Fatalf("ParticipantStats: %v", err)
+		t.Fatalf("ClientStats: %v", err)
 	}
 	if stats.InvoiceCount != 1 || stats.TotalInvoiced != 200 || stats.TotalPaid != 50 {
 		t.Fatalf("stats = %+v", stats)
@@ -145,11 +145,11 @@ func TestInvoiceTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	pidA := seedParticipant(t, conn, a, "A Jane")
+	pidA := seedClient(t, conn, a, "A Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
-	inv, err := repo.Create(ctx, a, InvoiceInput{ParticipantID: pidA, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
+	inv, err := repo.Create(ctx, a, InvoiceInput{ClientID: pidA, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 100}})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
@@ -162,8 +162,8 @@ func TestInvoiceTenantIsolation(t *testing.T) {
 		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 	// Per-tenant numbering: tenant B's first invoice is also INV-0001.
-	pidB := seedParticipant(t, conn, b, "B Bob")
-	invB, err := repo.Create(ctx, b, InvoiceInput{ParticipantID: pidB, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
+	pidB := seedClient(t, conn, b, "B Bob")
+	invB, err := repo.Create(ctx, b, InvoiceInput{ClientID: pidB, IssueDate: "2026-01-01", DueDate: "2026-01-31"},
 		[]billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Create B: %v", err)

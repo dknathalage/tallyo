@@ -1,4 +1,4 @@
-package participant
+package client
 
 import (
 	"context"

@@ -9,7 +9,7 @@
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { estimates as estimateStore } from '$lib/stores/estimates.svelte';
-	import { participants } from '$lib/stores/participants.svelte';
+	import { clients } from '$lib/stores/clients.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
 	import type {
@@ -27,7 +27,7 @@
 	}
 
 	// ── Flat editable fields (issue / valid-until date, notes). Everything else on
-	// an estimate (participant, status, line items, totals) is derived/relational
+	// an estimate (client, status, line items, totals) is derived/relational
 	// and lives in the bespoke `extras` sections below. ────────────────────────────
 	const columns: Column<Estimate>[] = [
 		{ key: 'issueDate', label: 'Issue date', input: 'date' },
@@ -36,7 +36,7 @@
 	];
 
 	// Build a full EstimateInput from the loaded draft: the editor only mutates the
-	// flat fields, but the API update is whole-document, so participant, status and
+	// flat fields, but the API update is whole-document, so client, status and
 	// the existing line items pass through unchanged (server re-derives totals).
 	function toInput(est: Estimate): EstimateInput {
 		const items: EstimateLineItemInput[] = est.lineItems.map((li, i) => ({
@@ -55,7 +55,7 @@
 			sortOrder: li.sortOrder ?? i
 		}));
 		return {
-			participantId: est.participantId ?? '',
+			clientId: est.clientId ?? '',
 			planManagerId: est.planManagerId,
 			status: est.status,
 			issueDate: est.issueDate,
@@ -73,8 +73,8 @@
 	}
 
 	onMount(() => {
-		participants.ensureSubscribed();
-		void participants.load();
+		clients.ensureSubscribed();
+		void clients.load();
 		customItems.ensureSubscribed();
 		void customItems.load();
 		businessProfile.subscribe();
@@ -83,8 +83,8 @@
 
 	// ────────────────────────── Create flow (id === 'new') ──────────────────────
 	// Estimates carry line items at creation, which a flat editor cannot capture, so
-	// the create route hosts the full inline form (participant + dates + lines).
-	let formParticipantId = $state('');
+	// the create route hosts the full inline form (client + dates + lines).
+	let formClientId = $state('');
 	let formIssueDate = $state('');
 	let formValidUntil = $state('');
 	let formNotes = $state('');
@@ -150,7 +150,7 @@
 			sortOrder: i
 		}));
 		return {
-			participantId: formParticipantId,
+			clientId: formClientId,
 			planManagerId: null,
 			status: 'draft' as EstimateStatus,
 			issueDate: formIssueDate,
@@ -164,8 +164,8 @@
 		e.preventDefault();
 		formError = null;
 		validationDetails = [];
-		if (formParticipantId === '') {
-			formError = 'Please select a participant.';
+		if (formClientId === '') {
+			formError = 'Please select a client.';
 			return;
 		}
 		if (lines.length === 0) {
@@ -275,14 +275,14 @@
 			<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitCreate}>
 				<div class="grid grid-cols-2 gap-3">
 					<label class="col-span-1">
-						<span class="mb-1 block text-sm font-medium">Participant</span>
+						<span class="mb-1 block text-sm font-medium">Client</span>
 						<select
-							bind:value={formParticipantId}
+							bind:value={formClientId}
 							required
 							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 						>
 							<option value="">— select —</option>
-							{#each participants.items as p (p.id)}
+							{#each clients.items as p (p.id)}
 								<option value={String(p.id)}>{p.name}</option>
 							{/each}
 						</select>
@@ -380,7 +380,7 @@
 					</span>
 				</div>
 				<p class="text-sm text-gray-500">
-					{row.participantName || '—'} · issued {row.issueDate ? row.issueDate.slice(0, 10) : '—'}
+					{row.clientName || '—'} · issued {row.issueDate ? row.issueDate.slice(0, 10) : '—'}
 				</p>
 			</div>
 			<div class="text-right">

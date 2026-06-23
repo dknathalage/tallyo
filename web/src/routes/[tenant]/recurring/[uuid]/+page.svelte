@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import { recurring } from '$lib/stores/recurring.svelte';
-	import { participants } from '$lib/stores/participants.svelte';
+	import { clients } from '$lib/stores/clients.svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
 	import type { RecurringFrequency, RecurringLine } from '$lib/api/types';
 
@@ -31,7 +31,7 @@
 
 	// Form state (shared by create + edit).
 	let formName = $state('');
-	let formParticipantId = $state('');
+	let formClientId = $state('');
 	let formFrequency = $state<RecurringFrequency>('monthly');
 	let formNextDue = $state('');
 	let formTaxRateId = $state('');
@@ -67,8 +67,8 @@
 
 	onMount(() => {
 		recurring.ensureSubscribed();
-		participants.ensureSubscribed();
-		void participants.load();
+		clients.ensureSubscribed();
+		void clients.load();
 		taxRates.ensureSubscribed();
 		void taxRates.load();
 	});
@@ -79,7 +79,7 @@
 	// region remounts the bound inputs alongside this reset.
 	function resetForm(): void {
 		formName = '';
-		formParticipantId = '';
+		formClientId = '';
 		formFrequency = 'monthly';
 		formTaxRateId = '';
 		formNotes = '';
@@ -106,7 +106,7 @@
 		try {
 			const full = await recurring.crud.get(id);
 			formName = full.name;
-			formParticipantId = full.participantId === null ? '' : String(full.participantId);
+			formClientId = full.clientId === null ? '' : String(full.clientId);
 			formFrequency = full.frequency;
 			formNextDue = full.nextDue ? full.nextDue.slice(0, 10) : '';
 			const matched = taxRates.items.find((t) => t.rate === full.taxRate);
@@ -145,7 +145,7 @@
 			sortOrder: i
 		}));
 		return {
-			participantId: formParticipantId === '' ? null : formParticipantId,
+			clientId: formClientId === '' ? null : formClientId,
 			planManagerId: null,
 			name: formName,
 			frequency: formFrequency,
@@ -160,8 +160,8 @@
 	async function submitForm(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		formError = null;
-		if (formParticipantId === '') {
-			formError = 'Please select a participant.';
+		if (formClientId === '') {
+			formError = 'Please select a client.';
 			return;
 		}
 		saving = true;
@@ -203,14 +203,14 @@
 					/>
 				</label>
 				<label class="col-span-1">
-					<span class="mb-1 block text-sm font-medium">Participant</span>
+					<span class="mb-1 block text-sm font-medium">Client</span>
 					<select
-						bind:value={formParticipantId}
+						bind:value={formClientId}
 						required
 						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 					>
 						<option value="">— select —</option>
-						{#each participants.items as p (p.id)}
+						{#each clients.items as p (p.id)}
 							<option value={String(p.id)}>{p.name}</option>
 						{/each}
 					</select>

@@ -93,10 +93,10 @@
 			children: [{ href: '/', label: 'Shifts' }]
 		},
 		{
-			label: 'Participants',
+			label: 'Clients',
 			icon: Users,
 			children: [
-				{ href: '/participants', label: 'Participants' },
+				{ href: '/clients', label: 'Clients' },
 				{ href: '/plan-managers', label: 'Plan managers' }
 			]
 		},

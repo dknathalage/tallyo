@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/client"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/google/uuid"
 )
@@ -52,12 +52,12 @@ func tctx(tenantID int64) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
-// seedParticipant inserts a minimal participant for a tenant and returns its id.
-func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
+// seedClient inserts a minimal client for a tenant and returns its id.
+func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
 	t.Helper()
-	p, err := participant.NewParticipants(conn).Create(context.Background(), tenantID, participant.ParticipantInput{Name: name})
+	p, err := client.NewClients(conn).Create(context.Background(), tenantID, client.ClientInput{Name: name})
 	if err != nil {
-		t.Fatalf("seedParticipant %q: %v", name, err)
+		t.Fatalf("seedClient %q: %v", name, err)
 	}
 	return p.ID
 }
@@ -77,10 +77,10 @@ func seedUser(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 }
 
 // seedInvoice creates a minimal one-line invoice and returns its id.
-func seedInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64, unitPrice float64) int64 {
+func seedInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64, unitPrice float64) int64 {
 	t.Helper()
 	inv, err := invoice.NewInvoices(conn).Create(context.Background(), tenantID, invoice.InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
+		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
 	}, []billing.LineItemInput{{Description: "Service", Quantity: 1, UnitPrice: unitPrice}})
 	if err != nil {
 		t.Fatalf("seedInvoice: %v", err)
@@ -89,11 +89,11 @@ func seedInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64, unit
 }
 
 // seedDraftInvoice inserts a minimal draft invoice and returns its id.
-func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, participantID int64) int64 {
+func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	inv, err := gen.New(conn).CreateInvoice(context.Background(), gen.CreateInvoiceParams{
-		Uuid: uuid.NewString(), TenantID: tenantID, Number: uuid.NewString(), ParticipantID: participantID,
+		Uuid: uuid.NewString(), TenantID: tenantID, Number: uuid.NewString(), ClientID: clientID,
 		Status: "draft", IssueDate: "2026-01-01", DueDate: "2026-02-01", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {

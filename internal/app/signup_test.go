@@ -295,7 +295,7 @@ func newRoleServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.With(httpx.RequireRole("owner", "admin")).Post("/settings", probe200)
-			pr.Get("/participants", probe200) // any role
+			pr.Get("/clients", probe200) // any role
 		})
 	})
 	srv := httptest.NewServer(sm.LoadAndSave(router))
@@ -311,16 +311,16 @@ func TestRoleMemberBlockedFromSettings(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("member login: want 200 got %d", resp.StatusCode)
 	}
-	// Member: blocked from settings (403), allowed on participants (200).
+	// Member: blocked from settings (403), allowed on clients (200).
 	settings := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/settings", `{}`)
 	_ = settings.Body.Close()
 	if settings.StatusCode != http.StatusForbidden {
 		t.Fatalf("member settings: want 403 got %d", settings.StatusCode)
 	}
-	parts := get(t, c, srv.URL+"/api/t/"+uuid+"/participants")
+	parts := get(t, c, srv.URL+"/api/t/"+uuid+"/clients")
 	_ = parts.Body.Close()
 	if parts.StatusCode != http.StatusOK {
-		t.Fatalf("member participants: want 200 got %d", parts.StatusCode)
+		t.Fatalf("member clients: want 200 got %d", parts.StatusCode)
 	}
 }
 

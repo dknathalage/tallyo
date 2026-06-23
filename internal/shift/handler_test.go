@@ -15,39 +15,39 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// seedParticipantUUID inserts a participant and returns its (int id, uuid).
-func seedParticipantUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (int64, string) {
+// seedClientUUID inserts a client and returns its (int id, uuid).
+func seedClientUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (int64, string) {
 	t.Helper()
-	id := seedParticipant(t, conn, tenantID, name)
-	row, err := gen.New(conn).GetParticipantByID(context.Background(), gen.GetParticipantByIDParams{TenantID: tenantID, ID: id})
+	id := seedClient(t, conn, tenantID, name)
+	row, err := gen.New(conn).GetClientByID(context.Background(), gen.GetClientByIDParams{TenantID: tenantID, ID: id})
 	if err != nil {
-		t.Fatalf("read participant uuid: %v", err)
+		t.Fatalf("read client uuid: %v", err)
 	}
 	return id, row.Uuid
 }
 
-// newShiftHandler builds a handler over a fresh DB, seeds a participant + one
-// recorded shift, and returns the handler, tenant id, participant uuid, and the
+// newShiftHandler builds a handler over a fresh DB, seeds a client + one
+// recorded shift, and returns the handler, tenant id, client uuid, and the
 // seeded shift.
 func newShiftHandler(t *testing.T) (*Handler, int64, string, *Shift) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	_, pUUID := seedParticipantUUID(t, conn, tenantID, "Jane")
+	_, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	svc := NewService(conn, conn, realtime.NewHub(), nil)
-	pid := participantIDFor(t, conn, tenantID, pUUID)
-	sh, err := svc.Create(tctx(tenantID), ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Note: "n"})
+	pid := clientIDFor(t, conn, tenantID, pUUID)
+	sh, err := svc.Create(tctx(tenantID), ShiftInput{ClientID: pid, ServiceDate: "2026-01-15", Note: "n"})
 	if err != nil {
 		t.Fatalf("seed shift: %v", err)
 	}
 	return NewHandler(svc, nil), tenantID, pUUID, sh
 }
 
-func participantIDFor(t *testing.T, conn *sql.DB, tenantID int64, pUUID string) int64 {
+func clientIDFor(t *testing.T, conn *sql.DB, tenantID int64, pUUID string) int64 {
 	t.Helper()
-	id, err := gen.New(conn).GetParticipantIDByUUID(context.Background(), gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: pUUID})
+	id, err := gen.New(conn).GetClientIDByUUID(context.Background(), gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: pUUID})
 	if err != nil {
-		t.Fatalf("resolve participant uuid: %v", err)
+		t.Fatalf("resolve client uuid: %v", err)
 	}
 	return id
 }
@@ -83,8 +83,8 @@ func TestShiftGetByUUID(t *testing.T) {
 	if got["id"] != sh.UUID {
 		t.Fatalf("json id=%v want shift uuid %q", got["id"], sh.UUID)
 	}
-	if got["participantId"] != pUUID {
-		t.Fatalf("json participantId=%v want participant uuid %q", got["participantId"], pUUID)
+	if got["clientId"] != pUUID {
+		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
 	}
 }
 
@@ -207,24 +207,24 @@ func TestShiftItemLifecycleByUUID(t *testing.T) {
 	}
 }
 
-// TestShiftListByParticipantFilter proves GET /shifts?participant={uuid} filters
-// to that participant's shifts (resolving the participant uuid→int internally).
-func TestShiftListByParticipantFilter(t *testing.T) {
+// TestShiftListByClientFilter proves GET /shifts?client={uuid} filters
+// to that client's shifts (resolving the client uuid→int internally).
+func TestShiftListByClientFilter(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	_, p1UUID := seedParticipantUUID(t, conn, tenantID, "Jane")
-	_, p2UUID := seedParticipantUUID(t, conn, tenantID, "Bob")
+	_, p1UUID := seedClientUUID(t, conn, tenantID, "Jane")
+	_, p2UUID := seedClientUUID(t, conn, tenantID, "Bob")
 	svc := NewService(conn, conn, realtime.NewHub(), nil)
-	p1 := participantIDFor(t, conn, tenantID, p1UUID)
-	p2 := participantIDFor(t, conn, tenantID, p2UUID)
+	p1 := clientIDFor(t, conn, tenantID, p1UUID)
+	p2 := clientIDFor(t, conn, tenantID, p2UUID)
 	ctx := tctx(tenantID)
-	if _, err := svc.Create(ctx, ShiftInput{ParticipantID: p1, ServiceDate: "2026-01-10"}); err != nil {
+	if _, err := svc.Create(ctx, ShiftInput{ClientID: p1, ServiceDate: "2026-01-10"}); err != nil {
 		t.Fatalf("seed p1: %v", err)
 	}
-	if _, err := svc.Create(ctx, ShiftInput{ParticipantID: p1, ServiceDate: "2026-01-11"}); err != nil {
+	if _, err := svc.Create(ctx, ShiftInput{ClientID: p1, ServiceDate: "2026-01-11"}); err != nil {
 		t.Fatalf("seed p1b: %v", err)
 	}
-	if _, err := svc.Create(ctx, ShiftInput{ParticipantID: p2, ServiceDate: "2026-01-12"}); err != nil {
+	if _, err := svc.Create(ctx, ShiftInput{ClientID: p2, ServiceDate: "2026-01-12"}); err != nil {
 		t.Fatalf("seed p2: %v", err)
 	}
 
@@ -232,7 +232,7 @@ func TestShiftListByParticipantFilter(t *testing.T) {
 	srv := httptest.NewServer(mountShift(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/shifts?participant=" + p1UUID)
+	res, err := http.Get(srv.URL + "/shifts?client=" + p1UUID)
 	if err != nil {
 		t.Fatalf("GET filtered: %v", err)
 	}
@@ -248,8 +248,8 @@ func TestShiftListByParticipantFilter(t *testing.T) {
 		t.Fatalf("filtered shifts = %d, want 2", len(got))
 	}
 	for i := range got {
-		if got[i]["participantId"] != p1UUID {
-			t.Fatalf("shift participantId=%v want %q", got[i]["participantId"], p1UUID)
+		if got[i]["clientId"] != p1UUID {
+			t.Fatalf("shift clientId=%v want %q", got[i]["clientId"], p1UUID)
 		}
 	}
 }

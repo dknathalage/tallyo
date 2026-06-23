@@ -50,9 +50,9 @@ func (b *SnapshotBuilder) Business(ctx context.Context, tenantID int64) string {
 	return SnapshotJSON(bp.Name, bp.Email.String, bp.Phone.String, bp.Address.String, bp.Metadata.String)
 }
 
-// Participant reads the participant and renders a default snapshot.
-func (b *SnapshotBuilder) Participant(ctx context.Context, tenantID, participantID int64) string {
-	p, err := gen.New(b.db).GetParticipantByID(ctx, gen.GetParticipantByIDParams{TenantID: tenantID, ID: participantID})
+// Client reads the client and renders a default snapshot.
+func (b *SnapshotBuilder) Client(ctx context.Context, tenantID, clientID int64) string {
+	p, err := gen.New(b.db).GetClientByID(ctx, gen.GetClientByIDParams{TenantID: tenantID, ID: clientID})
 	if err != nil {
 		return "{}"
 	}

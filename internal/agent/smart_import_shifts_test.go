@@ -19,7 +19,7 @@ import (
 )
 
 // stubShiftWorker is an in-memory ShiftWorker for ImportShifts tests. existing is
-// returned (the whole slice) by ListParticipant; created records every Create;
+// returned (the whole slice) by ListClient; created records every Create;
 // createErr makes Create fail. The item-writer/reader methods are unused by
 // ImportShifts and satisfy the interface only.
 type stubShiftWorker struct {
@@ -29,7 +29,7 @@ type stubShiftWorker struct {
 	nextID    int64
 }
 
-func (s *stubShiftWorker) ListParticipant(_ context.Context, _ int64, _, _ string) ([]*shift.Shift, error) {
+func (s *stubShiftWorker) ListClient(_ context.Context, _ int64, _, _ string) ([]*shift.Shift, error) {
 	return s.existing, nil
 }
 
@@ -47,11 +47,11 @@ func (s *stubShiftWorker) Create(_ context.Context, in shift.ShiftInput) (*shift
 	}
 	s.nextID++
 	sh := &shift.Shift{
-		ID:            s.nextID,
-		ParticipantID: in.ParticipantID,
-		ServiceDate:   in.ServiceDate,
-		Note:          in.Note,
-		Status:        in.Status,
+		ID:          s.nextID,
+		ClientID:    in.ClientID,
+		ServiceDate: in.ServiceDate,
+		Note:        in.Note,
+		Status:      in.Status,
 	}
 	s.created = append(s.created, sh)
 	return sh, nil
@@ -78,7 +78,7 @@ func newImportSmarts(t *testing.T, drafts []ShiftDraft, worker *stubShiftWorker)
 // is skipped, so a re-import creates nothing.
 func TestImportShiftsReimportIdempotent(t *testing.T) {
 	drafts := []ShiftDraft{
-		{ParticipantName: "Tania", ServiceDate: "2026-06-09", StartTime: "9am", EndTime: "4pm", Hours: 7.0, Km: 36},
+		{ClientName: "Tania", ServiceDate: "2026-06-09", StartTime: "9am", EndTime: "4pm", Hours: 7.0, Km: 36},
 	}
 	worker := &stubShiftWorker{existing: []*shift.Shift{
 		{ID: 1, ServiceDate: "2026-06-09"},
@@ -100,7 +100,7 @@ func TestImportShiftsReimportIdempotent(t *testing.T) {
 // TestImportShiftsInBatchDuplicate: two identical drafts in one call create only
 // one shift (in-batch dedup).
 func TestImportShiftsInBatchDuplicate(t *testing.T) {
-	d := ShiftDraft{ParticipantName: "Tania", ServiceDate: "2026-06-10", StartTime: "9am", EndTime: "2.30pm", Hours: 5.5, Km: 12}
+	d := ShiftDraft{ClientName: "Tania", ServiceDate: "2026-06-10", StartTime: "9am", EndTime: "2.30pm", Hours: 5.5, Km: 12}
 	drafts := []ShiftDraft{d, d}
 	worker := &stubShiftWorker{}
 	s := newImportSmarts(t, drafts, worker)
@@ -120,7 +120,7 @@ func TestImportShiftsInBatchDuplicate(t *testing.T) {
 // TestImportShiftsCreateErrorPropagates: a Create failure surfaces as an error.
 func TestImportShiftsCreateErrorPropagates(t *testing.T) {
 	drafts := []ShiftDraft{
-		{ParticipantName: "Tania", ServiceDate: "2026-06-11", Hours: 7.0, Km: 64},
+		{ClientName: "Tania", ServiceDate: "2026-06-11", Hours: 7.0, Km: 64},
 	}
 	worker := &stubShiftWorker{createErr: fmt.Errorf("db down")}
 	s := newImportSmarts(t, drafts, worker)

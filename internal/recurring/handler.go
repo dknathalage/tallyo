@@ -82,8 +82,8 @@ func validateRecurring(in RecurringInput) (string, bool) {
 	if in.Name == "" {
 		return "name required", false
 	}
-	if in.ParticipantUUID == nil || *in.ParticipantUUID == "" {
-		return "participant required", false
+	if in.ClientUUID == nil || *in.ClientUUID == "" {
+		return "client required", false
 	}
 	if in.Frequency == "" {
 		return "frequency required", false
@@ -91,7 +91,7 @@ func validateRecurring(in RecurringInput) (string, bool) {
 	return "", true
 }
 
-// Create inserts a template after validating name, participant and frequency.
+// Create inserts a template after validating name, client and frequency.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in RecurringInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
@@ -103,8 +103,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Create(r.Context(), in)
-	if errors.Is(err, errParticipantNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+	if errors.Is(err, errClientNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
 		return
 	}
 	if errors.Is(err, errPlanManagerNotFound) {
@@ -119,7 +119,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update rewrites a template by uuid. Validation fails → 400; unknown id → 404;
-// unknown participant/plan-manager uuid → 400.
+// unknown client/plan-manager uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "recurringUUID")
 	if !ok {
@@ -136,8 +136,8 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Update(r.Context(), id, in)
-	if errors.Is(err, errParticipantNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+	if errors.Is(err, errClientNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
 		return
 	}
 	if errors.Is(err, errPlanManagerNotFound) {

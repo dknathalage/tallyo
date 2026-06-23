@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/client"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/google/uuid"
@@ -51,41 +51,41 @@ func tctx(tenantID int64) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
-// seedParticipant inserts a minimal participant for a tenant and returns its uuid
-// (the public identifier; recurring templates reference participants by uuid).
-func seedParticipant(t *testing.T, conn *sql.DB, tenantID int64, name string) string {
+// seedClient inserts a minimal client for a tenant and returns its uuid
+// (the public identifier; recurring templates reference clients by uuid).
+func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) string {
 	t.Helper()
-	p, err := participant.NewParticipants(conn).Create(context.Background(), tenantID, participant.ParticipantInput{Name: name})
+	p, err := client.NewClients(conn).Create(context.Background(), tenantID, client.ClientInput{Name: name})
 	if err != nil {
-		t.Fatalf("seedParticipant %q: %v", name, err)
+		t.Fatalf("seedClient %q: %v", name, err)
 	}
 	return p.UUID
 }
 
-// newRecurringSvc creates a migrated DB, seeds a tenant+participant, and returns
-// the recurring Service, Hub, tenantID, participant uuid.
+// newRecurringSvc creates a migrated DB, seeds a tenant+client, and returns
+// the recurring Service, Hub, tenantID, client uuid.
 func newRecurringSvc(t *testing.T) (*Service, *realtime.Hub, int64, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantUUID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientUUID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	return NewService(conn, hub), hub, tenantID, participantUUID
+	return NewService(conn, hub), hub, tenantID, clientUUID
 }
 
 // mkTemplate creates a recurring template via the repo, referencing the
-// participant by uuid.
+// client by uuid.
 func mkTemplate(t *testing.T, repo *Repo, tid int64, pUUID, nextDue string) *RecurringTemplate {
 	t.Helper()
 	pid := pUUID
 	tpl, err := repo.Create(context.Background(), tid, RecurringInput{
-		ParticipantUUID: &pid,
-		Name:            "Weekly support",
-		Frequency:       "weekly",
-		NextDue:         nextDue,
-		TaxRate:         10,
-		LineItems:       []RecurringLine{{Description: "Support", Quantity: 1, UnitPrice: 100}},
-		IsActive:        true,
+		ClientUUID: &pid,
+		Name:       "Weekly support",
+		Frequency:  "weekly",
+		NextDue:    nextDue,
+		TaxRate:    10,
+		LineItems:  []RecurringLine{{Description: "Support", Quantity: 1, UnitPrice: 100}},
+		IsActive:   true,
 	})
 	if err != nil {
 		t.Fatalf("Create template: %v", err)
@@ -94,14 +94,14 @@ func mkTemplate(t *testing.T, repo *Repo, tid int64, pUUID, nextDue string) *Rec
 }
 
 // seedRecurringInput builds a valid monthly template input for the given
-// participant uuid, due in the past so GenerateOne will produce an invoice.
-func seedRecurringInput(participantUUID string) RecurringInput {
-	pid := participantUUID
+// client uuid, due in the past so GenerateOne will produce an invoice.
+func seedRecurringInput(clientUUID string) RecurringInput {
+	pid := clientUUID
 	return RecurringInput{
-		ParticipantUUID: &pid,
-		Name:            "Monthly",
-		Frequency:       "monthly",
-		NextDue:         "2026-01-01",
+		ClientUUID: &pid,
+		Name:       "Monthly",
+		Frequency:  "monthly",
+		NextDue:    "2026-01-01",
 		LineItems: []RecurringLine{
 			{Description: "A", Quantity: 2, UnitPrice: 10, SortOrder: 0},
 			{Description: "B", Quantity: 1, UnitPrice: 5, SortOrder: 1},

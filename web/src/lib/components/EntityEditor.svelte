@@ -85,7 +85,7 @@
 		onCreated: (newId) => {
 			recordId = newId;
 			replaceState(`${backHref}/${newId}`, {});
-			// Patch the draft so id-dependent dependents (e.g. participant shifts gated on id > 0) see the new id immediately.
+			// Patch the draft so id-dependent dependents (e.g. client shifts gated on id > 0) see the new id immediately.
 			if (draft) draft = { ...draft, id: newId };
 		}
 	});

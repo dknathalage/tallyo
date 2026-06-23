@@ -34,7 +34,7 @@ func TestMigrateCreatesTenantBusinessTables(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	for _, tbl := range []string{
-		"plan_managers", "participants", "custom_items", "tax_rates",
+		"plan_managers", "clients", "custom_items", "tax_rates",
 		"invoices", "line_items", "estimates", "estimate_line_items",
 		"payments", "recurring_templates", "audit_log",
 	} {
@@ -76,7 +76,7 @@ func TestMigrateRemovesLegacyTablesAndColumns(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	// Removed tables must be absent.
-	for _, tbl := range []string{"rate_tiers", "catalog_item_rates", "catalog_items", "clients", "payers", "column_mappings"} {
+	for _, tbl := range []string{"rate_tiers", "catalog_item_rates", "catalog_items", "payers", "column_mappings"} {
 		var count int
 		if err := conn.QueryRow(
 			"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tbl,
@@ -87,8 +87,8 @@ func TestMigrateRemovesLegacyTablesAndColumns(t *testing.T) {
 			t.Fatalf("table %s should be absent, got count=%d", tbl, count)
 		}
 	}
-	// participants must not carry the old pricing_tier_id column.
-	rows, err := conn.Query("PRAGMA table_info(participants)")
+	// clients must not carry the old pricing_tier_id column.
+	rows, err := conn.Query("PRAGMA table_info(clients)")
 	if err != nil {
 		t.Fatalf("PRAGMA table_info: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestMigrateRemovesLegacyTablesAndColumns(t *testing.T) {
 			t.Fatalf("scan table_info: %v", err)
 		}
 		if colName == "pricing_tier_id" {
-			t.Fatalf("participants must not have pricing_tier_id column")
+			t.Fatalf("clients must not have pricing_tier_id column")
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -179,12 +179,12 @@ func TestMigrateEnforcesEnumChecks(t *testing.T) {
 	); err == nil {
 		t.Fatalf("expected CHECK violation for business_profile.zone='metro', got nil")
 	}
-	// Invalid participants.mgmt_type must be rejected.
+	// Invalid clients.mgmt_type must be rejected.
 	if _, err := conn.Exec(
-		"INSERT INTO participants (uuid, tenant_id, name, mgmt_type, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+		"INSERT INTO clients (uuid, tenant_id, name, mgmt_type, created_at, updated_at) VALUES (?,?,?,?,?,?)",
 		"p1", 1, "Pat", "agency", now, now,
 	); err == nil {
-		t.Fatalf("expected CHECK violation for participants.mgmt_type='agency', got nil")
+		t.Fatalf("expected CHECK violation for clients.mgmt_type='agency', got nil")
 	}
 }
 
@@ -208,9 +208,9 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 		"t1", "Tenant", "active", now, now)
 	exec("INSERT INTO plan_managers (uuid, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"pm1", 1, "PM", now, now)
-	exec("INSERT INTO participants (uuid, tenant_id, name, mgmt_type, plan_manager_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+	exec("INSERT INTO clients (uuid, tenant_id, name, mgmt_type, plan_manager_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
 		"p1", 1, "Pat", "plan", 1, now, now)
-	exec("INSERT INTO invoices (uuid, tenant_id, number, participant_id, plan_manager_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, plan_manager_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 		"inv1", 1, "INV-1", 1, 1, now, now, now, now)
 	exec("INSERT INTO line_items (uuid, tenant_id, invoice_id, description) VALUES (?,?,?,?)",
 		"li1", 1, 1, "a service")
@@ -226,7 +226,7 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 	}
 
 	// SET NULL: a new invoice referencing the plan_manager loses the ref on delete.
-	exec("INSERT INTO invoices (uuid, tenant_id, number, participant_id, plan_manager_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, plan_manager_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 		"inv2", 1, "INV-2", 1, 1, now, now, now, now)
 	exec("DELETE FROM plan_managers WHERE id = 1")
 	var pmID *int64

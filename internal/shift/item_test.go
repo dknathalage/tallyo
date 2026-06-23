@@ -20,7 +20,7 @@ func customItem(desc string, qty, price float64) billing.LineItemInput {
 func TestShiftItemCRUDAndUnbilledGuards(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -83,7 +83,7 @@ func TestShiftItemCRUDAndUnbilledGuards(t *testing.T) {
 func TestShiftDeleteBilledGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	svc := NewService(conn, conn, realtime.NewHub(), nil)
 	repo := NewShifts(conn)
 	ctx := tctx(tid)

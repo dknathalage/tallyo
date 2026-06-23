@@ -9,7 +9,7 @@ import (
 func TestInvoiceListByStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
@@ -35,11 +35,11 @@ func TestInvoiceListByStatus(t *testing.T) {
 	}
 }
 
-func TestInvoiceListParticipantInvoices(t *testing.T) {
+func TestInvoiceListClientInvoices(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	jane := seedParticipant(t, conn, tid, "Jane")
-	bob := seedParticipant(t, conn, tid, "Bob")
+	jane := seedClient(t, conn, tid, "Jane")
+	bob := seedClient(t, conn, tid, "Bob")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
@@ -47,16 +47,16 @@ func TestInvoiceListParticipantInvoices(t *testing.T) {
 	mkInvoiceRepo(t, repo, tid, jane, "2026-02-28")
 	mkInvoiceRepo(t, repo, tid, bob, "2026-03-31")
 
-	janeInvs, err := repo.ListParticipantInvoices(ctx, tid, jane)
+	janeInvs, err := repo.ListClientInvoices(ctx, tid, jane)
 	if err != nil {
-		t.Fatalf("ListParticipantInvoices: %v", err)
+		t.Fatalf("ListClientInvoices: %v", err)
 	}
 	if len(janeInvs) != 2 {
 		t.Fatalf("jane invoices = %d, want 2", len(janeInvs))
 	}
 	for i := range janeInvs {
-		if janeInvs[i].ParticipantID != jane {
-			t.Fatalf("invoice %d participant = %d, want %d", i, janeInvs[i].ParticipantID, jane)
+		if janeInvs[i].ClientID != jane {
+			t.Fatalf("invoice %d client = %d, want %d", i, janeInvs[i].ClientID, jane)
 		}
 	}
 }
@@ -64,7 +64,7 @@ func TestInvoiceListParticipantInvoices(t *testing.T) {
 func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 
@@ -102,7 +102,7 @@ func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 func TestInvoiceMarkOverdueForTenant(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewInvoices(conn)
 	ctx := context.Background()
 

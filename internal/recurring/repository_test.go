@@ -9,16 +9,16 @@ import (
 func TestRecurringCRUD(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewRepo(conn)
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, tid, pid, "2026-01-01")
-	if tpl.ID == 0 || len(tpl.LineItems) != 1 || tpl.ParticipantName != "Jane" {
+	if tpl.ID == 0 || len(tpl.LineItems) != 1 || tpl.ClientName != "Jane" {
 		t.Fatalf("Create = %+v", tpl)
 	}
 	up, err := repo.Update(ctx, tid, tpl.UUID, RecurringInput{
-		ParticipantUUID: &pid, Name: "Monthly", Frequency: "monthly", NextDue: "2026-02-01",
+		ClientUUID: &pid, Name: "Monthly", Frequency: "monthly", NextDue: "2026-02-01",
 		TaxRate: 0, LineItems: []RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: true,
 	})
 	if err != nil || up.Frequency != "monthly" || up.Name != "Monthly" {
@@ -38,13 +38,13 @@ func TestRecurringCRUD(t *testing.T) {
 func TestRecurringValidation(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewRepo(conn)
 	ctx := context.Background()
-	if _, err := repo.Create(ctx, tid, RecurringInput{Name: "", ParticipantUUID: &pid, Frequency: "weekly", NextDue: "2026-01-01"}); err == nil {
+	if _, err := repo.Create(ctx, tid, RecurringInput{Name: "", ClientUUID: &pid, Frequency: "weekly", NextDue: "2026-01-01"}); err == nil {
 		t.Fatal("empty name: want error")
 	}
-	if _, err := repo.Create(ctx, tid, RecurringInput{Name: "X", ParticipantUUID: &pid, Frequency: "daily", NextDue: "2026-01-01"}); err == nil {
+	if _, err := repo.Create(ctx, tid, RecurringInput{Name: "X", ClientUUID: &pid, Frequency: "daily", NextDue: "2026-01-01"}); err == nil {
 		t.Fatal("bad frequency: want error")
 	}
 }
@@ -52,7 +52,7 @@ func TestRecurringValidation(t *testing.T) {
 func TestRecurringGenerateOneAdvancesNextDue(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewRepo(conn)
 	ctx := context.Background()
 
@@ -77,7 +77,7 @@ func TestRecurringGenerateOneAdvancesNextDue(t *testing.T) {
 func TestRecurringGenerateDue(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewRepo(conn)
 	ctx := context.Background()
 
@@ -106,7 +106,7 @@ func TestRecurringTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	pidA := seedParticipant(t, conn, a, "A Jane")
+	pidA := seedClient(t, conn, a, "A Jane")
 	repo := NewRepo(conn)
 	ctx := context.Background()
 

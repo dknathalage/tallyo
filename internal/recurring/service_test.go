@@ -6,12 +6,12 @@ import (
 )
 
 func TestRecurringCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantUUID := newRecurringSvc(t)
+	svc, hub, tenantID, clientUUID := newRecurringSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	tpl, err := svc.Create(ctx, seedRecurringInput(participantUUID))
+	tpl, err := svc.Create(ctx, seedRecurringInput(clientUUID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -29,10 +29,10 @@ func TestRecurringCreateBroadcasts(t *testing.T) {
 }
 
 func TestRecurringGenerateOneBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantUUID := newRecurringSvc(t)
+	svc, hub, tenantID, clientUUID := newRecurringSvc(t)
 	ctx := tctx(tenantID)
 
-	tpl, err := svc.Create(ctx, seedRecurringInput(participantUUID))
+	tpl, err := svc.Create(ctx, seedRecurringInput(clientUUID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

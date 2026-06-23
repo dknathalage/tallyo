@@ -51,9 +51,9 @@ func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Estimate,
 	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *Service) ListParticipantEstimates(ctx context.Context, participantID int64) ([]*Estimate, error) {
+func (s *Service) ListClientEstimates(ctx context.Context, clientID int64) ([]*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ListParticipantEstimates(ctx, tenantID, participantID)
+	return s.repo.ListClientEstimates(ctx, tenantID, clientID)
 }
 
 func (s *Service) Get(ctx context.Context, id int64) (*Estimate, error) {
@@ -67,11 +67,11 @@ func (s *Service) GetByUUID(ctx context.Context, estimateUUID string) (*Estimate
 	return s.repo.GetByUUID(ctx, tenantID, estimateUUID)
 }
 
-// ResolveParticipant translates a participant uuid into its int FK for the
-// tenant. Returns (0, nil) when no participant matches (caller 400s).
-func (s *Service) ResolveParticipant(ctx context.Context, participantUUID string) (int64, error) {
+// ResolveClient translates a client uuid into its int FK for the
+// tenant. Returns (0, nil) when no client matches (caller 400s).
+func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
 // ResolvePlanManager translates a plan-manager uuid into its int FK for the
@@ -163,7 +163,7 @@ func (s *Service) ConvertByUUID(ctx context.Context, estimateUUID string) (*Conv
 // Create inserts an estimate + line items, then broadcasts on success.
 func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.
 // case no event is published.
 func (s *Service) Update(ctx context.Context, id int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
 	if err != nil {
 		return nil, err
 	}

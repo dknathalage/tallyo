@@ -39,7 +39,7 @@
 		<div class="mb-2">
 			<h1 class="mb-1 text-xl font-semibold">Plan managers</h1>
 			<p class="text-sm text-gray-500">
-				NDIS plan-management organisations you invoice on behalf of participants.
+				NDIS plan-management organisations you invoice on behalf of clients.
 			</p>
 		</div>
 	</section>

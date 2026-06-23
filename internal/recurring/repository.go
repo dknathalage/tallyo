@@ -1,7 +1,7 @@
 package recurring
 
 // NOTE (J4): rewritten for the tenant-scoped NDIS recurring_templates schema.
-// Templates carry participant_id / plan_manager_id and a JSON line_items column.
+// Templates carry client_id / plan_manager_id and a JSON line_items column.
 // The stored line shape is NDIS-aware (code, serviceDate, unit, unitPrice,
 // taxable). tax_rate is a stored percentage on the template; generation computes
 // the tax amount from it. NDIS price-cap / plan-window validation is J10.
@@ -27,9 +27,9 @@ import (
 // recurringListSelect mirrors the ListRecurringTemplates sqlc query body up to
 // the WHERE. Keep in sync with internal/db/queries/recurring_templates.sql.
 // tenant_id is the only bound parameter before the listquery clause args.
-const recurringListSelect = `SELECT r.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+const recurringListSelect = `SELECT r.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM recurring_templates r
-LEFT JOIN participants p ON r.participant_id = p.id AND p.tenant_id = r.tenant_id
+LEFT JOIN clients p ON r.client_id = p.id AND p.tenant_id = r.tenant_id
 LEFT JOIN plan_managers pm ON r.plan_manager_id = pm.id AND pm.tenant_id = r.tenant_id
 WHERE r.tenant_id = ?`
 
@@ -37,27 +37,27 @@ WHERE r.tenant_id = ?`
 // the JSON field names so the frontend column key drives filter, sort, and
 // display with one identifier.
 var RecurringCols = listquery.Spec{
-	"name":            {Col: "r.name", Filter: listquery.Text},
-	"participantName": {Col: "p.name", Filter: listquery.Text},
-	"frequency":       {Col: "r.frequency", Filter: listquery.Enum},
-	"nextDue":         {Col: "r.next_due", Filter: listquery.Date},
-	"isActive":        {Col: "r.is_active", Filter: listquery.Enum},
-	"taxRate":         {Col: "r.tax_rate", Filter: listquery.Number},
+	"name":       {Col: "r.name", Filter: listquery.Text},
+	"clientName": {Col: "p.name", Filter: listquery.Text},
+	"frequency":  {Col: "r.frequency", Filter: listquery.Enum},
+	"nextDue":    {Col: "r.next_due", Filter: listquery.Date},
+	"isActive":   {Col: "r.is_active", Filter: listquery.Enum},
+	"taxRate":    {Col: "r.tax_rate", Filter: listquery.Number},
 }
 
 // RecurringTemplate is the domain view of a recurring invoice template. Line
 // items are stored as a JSON string column and unmarshalled into the slice. The
 // public identifier is the uuid (json "id"); the int PK is internal-only. The
-// participant/plan-manager FKs are exposed as the related entities' uuids (json
-// "participantId"/"planManagerId"), resolved via LEFT JOIN, never the int FKs.
-// participantID is the internal participant int PK, retained for generation
+// client/plan-manager FKs are exposed as the related entities' uuids (json
+// "clientId"/"planManagerId"), resolved via LEFT JOIN, never the int FKs.
+// clientID is the internal client int PK, retained for generation
 // snapshots (not serialized).
 type RecurringTemplate struct {
 	ID              int64            `json:"-"`
 	UUID            string           `json:"id"`
-	participantID   *int64           // internal participant FK, used for generation snapshots
-	ParticipantUUID *string          `json:"participantId"`
-	ParticipantName string           `json:"participantName"`
+	clientID        *int64           // internal client FK, used for generation snapshots
+	ClientUUID      *string          `json:"clientId"`
+	ClientName      string           `json:"clientName"`
 	PlanManagerID   *int64           `json:"-"`
 	PlanManagerUUID *string          `json:"planManagerId"`
 	Name            string           `json:"name"`
@@ -84,12 +84,12 @@ type RecurringLine struct {
 	SortOrder     int64   `json:"sortOrder"`
 }
 
-// RecurringInput is the writable subset of a recurring template. Participant and
+// RecurringInput is the writable subset of a recurring template. Client and
 // plan-manager arrive as uuid strings (the public identifiers) and are resolved
-// to the int FKs before insert/update. ParticipantUUID is required; an empty/nil
+// to the int FKs before insert/update. ClientUUID is required; an empty/nil
 // PlanManagerUUID maps to a NULL FK.
 type RecurringInput struct {
-	ParticipantUUID *string         `json:"participantId"`
+	ClientUUID      *string         `json:"clientId"`
 	PlanManagerUUID *string         `json:"planManagerId"`
 	Name            string          `json:"name"`
 	Frequency       string          `json:"frequency"`
@@ -127,11 +127,11 @@ func NewRepo(db db.Executor) *Repo {
 // validFrequencies is the closed set of supported cadences.
 var validFrequencies = map[string]bool{"weekly": true, "monthly": true, "quarterly": true}
 
-// errParticipantNotFound / errPlanManagerNotFound are the sentinels returned when
+// errClientNotFound / errPlanManagerNotFound are the sentinels returned when
 // an inbound uuid does not resolve to a row in the tenant. Handlers map them to a
 // 400 validation error.
 var (
-	errParticipantNotFound = errors.New("recurring: participant not found")
+	errClientNotFound      = errors.New("recurring: client not found")
 	errPlanManagerNotFound = errors.New("recurring: plan manager not found")
 )
 
@@ -140,8 +140,8 @@ func (r *Repo) validate(in RecurringInput) error {
 	if in.Name == "" {
 		return errors.New("recurring: name is required")
 	}
-	if in.ParticipantUUID == nil || *in.ParticipantUUID == "" {
-		return errors.New("recurring: participant required")
+	if in.ClientUUID == nil || *in.ClientUUID == "" {
+		return errors.New("recurring: client required")
 	}
 	if !validFrequencies[in.Frequency] {
 		return errors.New("recurring: invalid frequency")
@@ -152,18 +152,18 @@ func (r *Repo) validate(in RecurringInput) error {
 	return nil
 }
 
-// resolveParticipant translates the required inbound participant uuid into the int
-// FK for insert/update. An unknown uuid (foreign or absent) → errParticipantNotFound.
-func (r *Repo) resolveParticipant(ctx context.Context, q *gen.Queries, tenantID int64, pUUID *string) (sql.NullInt64, error) {
+// resolveClient translates the required inbound client uuid into the int
+// FK for insert/update. An unknown uuid (foreign or absent) → errClientNotFound.
+func (r *Repo) resolveClient(ctx context.Context, q *gen.Queries, tenantID int64, pUUID *string) (sql.NullInt64, error) {
 	if pUUID == nil || *pUUID == "" {
-		return sql.NullInt64{}, errParticipantNotFound
+		return sql.NullInt64{}, errClientNotFound
 	}
-	id, err := q.GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: *pUUID})
+	id, err := q.GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: *pUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return sql.NullInt64{}, errParticipantNotFound
+		return sql.NullInt64{}, errClientNotFound
 	}
 	if err != nil {
-		return sql.NullInt64{}, fmt.Errorf("resolve participant: %w", err)
+		return sql.NullInt64{}, fmt.Errorf("resolve client: %w", err)
 	}
 	return sql.NullInt64{Int64: id, Valid: true}, nil
 }
@@ -184,7 +184,7 @@ func (r *Repo) resolvePlanManager(ctx context.Context, q *gen.Queries, tenantID 
 	return sql.NullInt64{Int64: id, Valid: true}, nil
 }
 
-// List returns templates (all, or active only), each with participant name and
+// List returns templates (all, or active only), each with client name and
 // parsed line items. The slice is always non-nil.
 func (r *Repo) List(ctx context.Context, tenantID int64, activeOnly bool) ([]*RecurringTemplate, error) {
 	q := gen.New(r.db)
@@ -238,9 +238,9 @@ func (r *Repo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([
 	out := make([]*RecurringTemplate, 0, 50)
 	for rows.Next() { // bounded by LIMIT in the query
 		var i gen.ListRecurringTemplatesRow
-		if err := rows.Scan(&i.ID, &i.Uuid, &i.TenantID, &i.ParticipantID, &i.PlanManagerID,
+		if err := rows.Scan(&i.ID, &i.Uuid, &i.TenantID, &i.ClientID, &i.PlanManagerID,
 			&i.Name, &i.Frequency, &i.NextDue, &i.LineItems, &i.TaxRate, &i.Notes,
-			&i.IsActive, &i.CreatedAt, &i.UpdatedAt, &i.ParticipantName, &i.ParticipantUuid, &i.PlanManagerUuid); err != nil {
+			&i.IsActive, &i.CreatedAt, &i.UpdatedAt, &i.ClientName, &i.ClientUuid, &i.PlanManagerUuid); err != nil {
 			return nil, 0, fmt.Errorf("scan recurring: %w", err)
 		}
 		out = append(out, listRowToTemplate(i))
@@ -251,7 +251,7 @@ func (r *Repo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([
 	return out, total, nil
 }
 
-// Get returns the template by uuid (with participant/plan-manager uuids, name,
+// Get returns the template by uuid (with client/plan-manager uuids, name,
 // and line items), or (nil, nil) when absent.
 func (r *Repo) Get(ctx context.Context, tenantID int64, uuid string) (*RecurringTemplate, error) {
 	row, err := gen.New(r.db).GetRecurringTemplate(ctx, gen.GetRecurringTemplateParams{TenantID: tenantID, Uuid: uuid})
@@ -281,7 +281,7 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*
 	var newUUID string
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		pid, e := r.resolveParticipant(ctx, q, tenantID, in.ParticipantUUID)
+		pid, e := r.resolveClient(ctx, q, tenantID, in.ClientUUID)
 		if e != nil {
 			return e
 		}
@@ -292,7 +292,7 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*
 		tpl, e := q.CreateRecurringTemplate(ctx, gen.CreateRecurringTemplateParams{
 			Uuid:          uuid.NewString(),
 			TenantID:      tenantID,
-			ParticipantID: pid,
+			ClientID:      pid,
 			PlanManagerID: pmID,
 			Name:          in.Name,
 			Frequency:     in.Frequency,
@@ -312,8 +312,8 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*
 			EntityType: "recurring_template", EntityID: tpl.ID, Action: "create",
 		})
 	})
-	if errors.Is(err, errParticipantNotFound) {
-		return nil, errParticipantNotFound
+	if errors.Is(err, errClientNotFound) {
+		return nil, errClientNotFound
 	}
 	if errors.Is(err, errPlanManagerNotFound) {
 		return nil, errPlanManagerNotFound
@@ -346,7 +346,7 @@ func (r *Repo) Update(ctx context.Context, tenantID int64, uuid string, in Recur
 		if e != nil {
 			return fmt.Errorf("load existing: %w", e)
 		}
-		pid, e := r.resolveParticipant(ctx, q, tenantID, in.ParticipantUUID)
+		pid, e := r.resolveClient(ctx, q, tenantID, in.ClientUUID)
 		if e != nil {
 			return e
 		}
@@ -355,7 +355,7 @@ func (r *Repo) Update(ctx context.Context, tenantID int64, uuid string, in Recur
 			return e
 		}
 		if _, e := q.UpdateRecurringTemplate(ctx, gen.UpdateRecurringTemplateParams{
-			ParticipantID: pid,
+			ClientID:      pid,
 			PlanManagerID: pmID,
 			Name:          in.Name,
 			Frequency:     in.Frequency,
@@ -377,8 +377,8 @@ func (r *Repo) Update(ctx context.Context, tenantID int64, uuid string, in Recur
 	if missing {
 		return nil, nil
 	}
-	if errors.Is(err, errParticipantNotFound) {
-		return nil, errParticipantNotFound
+	if errors.Is(err, errClientNotFound) {
+		return nil, errClientNotFound
 	}
 	if errors.Is(err, errPlanManagerNotFound) {
 		return nil, errPlanManagerNotFound
@@ -446,7 +446,7 @@ func (r *Repo) GenerateOne(ctx context.Context, tenantID int64, templateUUID str
 	// tax_rate is a percentage; compute the tax amount from the subtotal.
 	subtotal := billing.ComputeTotals(items, 0).Subtotal
 	tax := billing.Round2(subtotal * (tpl.TaxRate / 100))
-	snaps := r.buildGenSnapshots(ctx, tenantID, tpl.participantID, tpl.PlanManagerID)
+	snaps := r.buildGenSnapshots(ctx, tenantID, tpl.clientID, tpl.PlanManagerID)
 
 	var invID int64
 	err = numbering.WithRetry(ctx, 10, func() error {
@@ -466,14 +466,14 @@ type genSnapshots struct {
 }
 
 // buildGenSnapshots builds default snapshots for a generated invoice.
-func (r *Repo) buildGenSnapshots(ctx context.Context, tenantID int64, participantID, planManagerID *int64) genSnapshots {
+func (r *Repo) buildGenSnapshots(ctx context.Context, tenantID int64, clientID, planManagerID *int64) genSnapshots {
 	var pid int64
-	if participantID != nil {
-		pid = *participantID
+	if clientID != nil {
+		pid = *clientID
 	}
 	return genSnapshots{
 		business: r.snap.Business(ctx, tenantID),
-		client:   r.snap.Participant(ctx, tenantID, pid),
+		client:   r.snap.Client(ctx, tenantID, pid),
 		payer:    r.snap.PlanManager(ctx, tenantID, planManagerID),
 	}
 }
@@ -526,8 +526,8 @@ func (r *Repo) generateTx(ctx context.Context, tenantID int64, tpl *RecurringTem
 // params: a draft invoice dated today with default snapshots.
 func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []billing.LineItemInput, today string, tax float64, snaps genSnapshots, num string) gen.CreateInvoiceParams {
 	var pid int64
-	if tpl.participantID != nil {
-		pid = *tpl.participantID
+	if tpl.clientID != nil {
+		pid = *tpl.clientID
 	}
 	t := billing.ComputeTotals(items, tax)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -535,7 +535,7 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []bill
 		Uuid:             uuid.NewString(),
 		TenantID:         tenantID,
 		Number:           num,
-		ParticipantID:    pid,
+		ClientID:         pid,
 		PlanManagerID:    db.NullID(tpl.PlanManagerID),
 		Status:           "draft",
 		IssueDate:        today,
@@ -631,8 +631,8 @@ func parseLines(lines []*RecurringLine) []billing.LineItemInput {
 
 func listRowToTemplate(r gen.ListRecurringTemplatesRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, participantID: db.PtrID(r.ParticipantID),
-		ParticipantUUID: db.PtrStr(r.ParticipantUuid), ParticipantName: r.ParticipantName.String,
+		ID: r.ID, UUID: r.Uuid, clientID: db.PtrID(r.ClientID),
+		ClientUUID: db.PtrStr(r.ClientUuid), ClientName: r.ClientName.String,
 		PlanManagerID: db.PtrID(r.PlanManagerID), PlanManagerUUID: db.PtrStr(r.PlanManagerUuid),
 		Name: r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
@@ -642,8 +642,8 @@ func listRowToTemplate(r gen.ListRecurringTemplatesRow) *RecurringTemplate {
 
 func activeRowToTemplate(r gen.ListActiveRecurringTemplatesRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, participantID: db.PtrID(r.ParticipantID),
-		ParticipantUUID: db.PtrStr(r.ParticipantUuid), ParticipantName: r.ParticipantName.String,
+		ID: r.ID, UUID: r.Uuid, clientID: db.PtrID(r.ClientID),
+		ClientUUID: db.PtrStr(r.ClientUuid), ClientName: r.ClientName.String,
 		PlanManagerID: db.PtrID(r.PlanManagerID), PlanManagerUUID: db.PtrStr(r.PlanManagerUuid),
 		Name: r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,
@@ -653,8 +653,8 @@ func activeRowToTemplate(r gen.ListActiveRecurringTemplatesRow) *RecurringTempla
 
 func getRowToTemplate(r gen.GetRecurringTemplateRow) *RecurringTemplate {
 	return &RecurringTemplate{
-		ID: r.ID, UUID: r.Uuid, participantID: db.PtrID(r.ParticipantID),
-		ParticipantUUID: db.PtrStr(r.ParticipantUuid), ParticipantName: r.ParticipantName.String,
+		ID: r.ID, UUID: r.Uuid, clientID: db.PtrID(r.ClientID),
+		ClientUUID: db.PtrStr(r.ClientUuid), ClientName: r.ClientName.String,
 		PlanManagerID: db.PtrID(r.PlanManagerID), PlanManagerUUID: db.PtrStr(r.PlanManagerUuid),
 		Name: r.Name, Frequency: r.Frequency, NextDue: r.NextDue,
 		LineItems: unmarshalLines(r.LineItems), TaxRate: r.TaxRate, Notes: r.Notes,

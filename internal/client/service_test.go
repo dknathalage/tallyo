@@ -1,4 +1,4 @@
-package participant
+package client
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newParticipantSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newClientSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
@@ -15,35 +15,35 @@ func newParticipantSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	return NewService(conn, hub), hub, tenantID
 }
 
-func TestParticipantCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newParticipantSvc(t)
+func TestClientCreateBroadcasts(t *testing.T) {
+	svc, hub, tenantID := newClientSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	c, err := svc.Create(tctx(tenantID), ParticipantInput{Name: "Acme"})
+	c, err := svc.Create(tctx(tenantID), ClientInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if c == nil {
-		t.Fatal("Create returned nil participant")
+		t.Fatal("Create returned nil client")
 	}
 
 	select {
 	case e := <-ch:
-		if e.Entity != "participant" || e.UUID != c.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want participant/%d/create", e, c.ID)
+		if e.Entity != "client" || e.UUID != c.UUID || e.Action != "create" {
+			t.Fatalf("event=%+v want client/%d/create", e, c.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
 	}
 }
 
-func TestParticipantCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub, tenantID := newParticipantSvc(t)
+func TestClientCreateEmptyNameNoEvent(t *testing.T) {
+	svc, hub, tenantID := newClientSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), ParticipantInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), ClientInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {
@@ -54,11 +54,11 @@ func TestParticipantCreateEmptyNameNoEvent(t *testing.T) {
 	}
 }
 
-func TestParticipantBulkDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newParticipantSvc(t)
+func TestClientBulkDeleteBroadcasts(t *testing.T) {
+	svc, hub, tenantID := newClientSvc(t)
 	ctx := tctx(tenantID)
 
-	c, err := svc.Create(ctx, ParticipantInput{Name: "Acme"})
+	c, err := svc.Create(ctx, ClientInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -71,8 +71,8 @@ func TestParticipantBulkDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "participant" || e.UUID != "" || e.Action != "bulk_delete" {
-			t.Fatalf("event=%+v want participant/0/bulk_delete", e)
+		if e.Entity != "client" || e.UUID != "" || e.Action != "bulk_delete" {
+			t.Fatalf("event=%+v want client/0/bulk_delete", e)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after BulkDelete")

@@ -10,7 +10,7 @@ import (
 func TestPaymentCreateAndTotals(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	invID := seedInvoiceRepo(t, conn, tid, pid, 100)
 	repo := NewPayments(conn)
 	ctx := context.Background()
@@ -51,7 +51,7 @@ func TestPaymentRejectsBadInput(t *testing.T) {
 func TestPaymentDeleteReturnsInvoiceID(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	invID := seedInvoiceRepo(t, conn, tid, pid, 100)
 	repo := NewPayments(conn)
 	ctx := context.Background()
@@ -73,7 +73,7 @@ func TestPaymentTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	pid := seedParticipant(t, conn, a, "Jane")
+	pid := seedClient(t, conn, a, "Jane")
 	invID := seedInvoiceRepo(t, conn, a, pid, 100)
 	repo := NewPayments(conn)
 	ctx := context.Background()

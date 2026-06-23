@@ -12,7 +12,7 @@ import (
 func TestEstimateCreateNumbersAndTotals(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewEstimates(conn)
 
 	est := mkEstimate(t, repo, tid, pid)
@@ -22,15 +22,15 @@ func TestEstimateCreateNumbersAndTotals(t *testing.T) {
 	if est.Subtotal != 100 || est.Tax != 10 || est.Total != 110 {
 		t.Fatalf("totals = %.2f/%.2f/%.2f, want 100/10/110", est.Subtotal, est.Tax, est.Total)
 	}
-	if est.ParticipantName != "Jane" {
-		t.Fatalf("ParticipantName = %q, want Jane", est.ParticipantName)
+	if est.ClientName != "Jane" {
+		t.Fatalf("ClientName = %q, want Jane", est.ClientName)
 	}
 }
 
 func TestEstimateUpdateStatusAndConvert(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewEstimates(conn)
 	ctx := context.Background()
 
@@ -64,7 +64,7 @@ func TestEstimateUpdateStatusAndConvert(t *testing.T) {
 func TestEstimateDuplicate(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewEstimates(conn)
 	ctx := context.Background()
 
@@ -81,7 +81,7 @@ func TestEstimateDuplicate(t *testing.T) {
 func TestEstimateListAndDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewEstimates(conn)
 	ctx := context.Background()
 
@@ -101,7 +101,7 @@ func TestEstimateTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	pidA := seedParticipant(t, conn, a, "A Jane")
+	pidA := seedClient(t, conn, a, "A Jane")
 	repo := NewEstimates(conn)
 	ctx := context.Background()
 

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dknathalage/tallyo/internal/participant"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
@@ -27,15 +27,15 @@ func mountEstimate(h *Handler, tenantID int64) chi.Router {
 	return r
 }
 
-// newEstimateHandler builds a fresh DB, seeds a tenant + participant + a single
-// estimate, and returns the handler, tenant id, participant uuid, and estimate.
+// newEstimateHandler builds a fresh DB, seeds a tenant + client + a single
+// estimate, and returns the handler, tenant id, client uuid, and estimate.
 func newEstimateHandler(t *testing.T) (*Handler, int64, string, *Estimate) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	p, err := participant.NewParticipants(conn).Create(tctx(tenantID), tenantID, participant.ParticipantInput{Name: "Jane"})
+	p, err := client.NewClients(conn).Create(tctx(tenantID), tenantID, client.ClientInput{Name: "Jane"})
 	if err != nil {
-		t.Fatalf("seed participant: %v", err)
+		t.Fatalf("seed client: %v", err)
 	}
 	hub := realtime.NewHub()
 	svc := NewService(conn, conn, hub)
@@ -63,8 +63,8 @@ func TestEstimateGetByUUID(t *testing.T) {
 	if got["id"] != est.UUID {
 		t.Fatalf("json id=%v want estimate uuid %q", got["id"], est.UUID)
 	}
-	if got["participantId"] != pUUID {
-		t.Fatalf("json participantId=%v want participant uuid %q", got["participantId"], pUUID)
+	if got["clientId"] != pUUID {
+		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
 	}
 	lines, ok := got["lineItems"].([]any)
 	if !ok || len(lines) == 0 {

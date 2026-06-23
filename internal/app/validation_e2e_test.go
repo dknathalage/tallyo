@@ -18,17 +18,17 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
-// newValidationServer wires the invoice + estimate + participant routes behind
+// newValidationServer wires the invoice + estimate + client routes behind
 // httpx.RequireAuth and returns both the server and the underlying conn so the test
 // can seed a catalogue version directly.
 func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
@@ -42,7 +42,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
 	authH := NewAuthHandler(sm, users, tenants)
 	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, shift.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
 	estH := estimate.NewHandler(estimate.NewService(conn, conn, hub))
-	pH := participant.NewHandler(participant.NewService(conn, hub))
+	pH := client.NewHandler(client.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
@@ -50,7 +50,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
-			pr.Post("/participants", pH.Create)
+			pr.Post("/clients", pH.Create)
 			invH.Routes(pr)
 			pr.Post("/estimates", estH.Create)
 		})
@@ -88,29 +88,29 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 	}
 }
 
-// createParticipantWithPlan posts a participant carrying an explicit plan window
+// createClientWithPlan posts a client carrying an explicit plan window
 // and returns its uuid.
-func createParticipantWithPlan(t *testing.T, c *http.Client, base, uuid, planStart, planEnd string) string {
+func createClientWithPlan(t *testing.T, c *http.Client, base, uuid, planStart, planEnd string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"name": "Plan Participant", "planStart": planStart, "planEnd": planEnd,
+		"name": "Plan Client", "planStart": planStart, "planEnd": planEnd,
 	})
 	if err != nil {
-		t.Fatalf("marshal participant: %v", err)
+		t.Fatalf("marshal client: %v", err)
 	}
-	resp := postJSON(t, c, base+"/api/t/"+uuid+"/participants", string(body))
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/clients", string(body))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create participant: want 201 got %d", resp.StatusCode)
+		t.Fatalf("create client: want 201 got %d", resp.StatusCode)
 	}
 	var out struct {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode participant: %v", err)
+		t.Fatalf("decode client: %v", err)
 	}
 	if out.ID == "" {
-		t.Fatalf("create participant: want non-empty uuid got %q", out.ID)
+		t.Fatalf("create client: want non-empty uuid got %q", out.ID)
 	}
 	return out.ID
 }
@@ -152,10 +152,10 @@ func TestInvoiceCreateOverCapReturns422(t *testing.T) {
 	srv, conn, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
 	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
-	pid := createParticipantWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
+	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
+		"clientId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"code": "01_011", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
 		},
@@ -171,12 +171,12 @@ func TestInvoiceCreateOverCapReturns422(t *testing.T) {
 func TestInvoiceCreateOutOfPlanReturns422(t *testing.T) {
 	srv, conn, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	// Catalogue window is wide; the participant plan ends 2025-12-31.
+	// Catalogue window is wide; the client plan ends 2025-12-31.
 	seedNationalCap(t, conn, "2025-01-01", "2026-12-31", "01_011", 100)
-	pid := createParticipantWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2025-12-31")
+	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2025-12-31")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
+		"clientId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
 		"lineItems": []map[string]any{
 			// Service date is after the plan end (but in a valid catalogue window).
 			{"code": "01_011", "serviceDate": "2026-02-01", "quantity": 1, "unitPrice": 50, "sortOrder": 0},
@@ -194,10 +194,10 @@ func TestEstimateCreateOverCapReturns422(t *testing.T) {
 	srv, conn, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
 	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
-	pid := createParticipantWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
+	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": pid, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"clientId": pid, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"code": "01_011", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
 		},

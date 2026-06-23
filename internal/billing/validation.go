@@ -16,7 +16,7 @@ package billing
 //	3. look up the price_cap for the TENANT's configured zone (business_profile);
 //	4. assert unit_price ≤ price_cap (skipped when the cap is NULL — a quotable
 //	   item, spec §6 step 4);
-//	5. assert service_date ∈ [participant.plan_start, participant.plan_end];
+//	5. assert service_date ∈ [client.plan_start, client.plan_end];
 //	6. set taxable from the support item (the catalogue is authoritative).
 //
 // For a CUSTOM-ITEM line it skips steps 1-5 and only checks quantity ≥ 0 and
@@ -46,7 +46,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
-	"github.com/dknathalage/tallyo/internal/participant"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
@@ -95,17 +95,17 @@ func AsValidationError(err error) (*ValidationError, bool) {
 
 // LineValidator runs the NDIS line validation engine. It depends only on the
 // global catalogue, the tenant business profile (for the zone), the tenant's
-// participants (for the plan window) and the tenant's tax rates (for the
+// clients (for the plan window) and the tenant's tax rates (for the
 // computed tax). It holds no mutable state beyond those repositories.
 type LineValidator struct {
-	cat          *catalog.CatalogRepo
-	profiles     *businessprofile.BusinessProfileRepo
-	participants *participant.ParticipantsRepo
-	taxRates     *taxrate.TaxRatesRepo
+	cat      *catalog.CatalogRepo
+	profiles *businessprofile.BusinessProfileRepo
+	clients  *client.ClientsRepo
+	taxRates *taxrate.TaxRatesRepo
 }
 
 // NewLineValidator constructs the engine. The catalogue is read from the
-// CONTROL DB (shared reference data); the business profile, participants and tax
+// CONTROL DB (shared reference data); the business profile, clients and tax
 // rates are read from the TENANT DB. In single-DB mode (tests) pass the same
 // handle for both. Nil handles are a programmer error.
 func NewLineValidator(tenant, control db.Executor) *LineValidator {
@@ -113,10 +113,10 @@ func NewLineValidator(tenant, control db.Executor) *LineValidator {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
-		cat:          catalog.NewCatalog(control),
-		profiles:     businessprofile.NewBusinessProfile(tenant),
-		participants: participant.NewParticipants(tenant),
-		taxRates:     taxrate.NewTaxRates(tenant),
+		cat:      catalog.NewCatalog(control),
+		profiles: businessprofile.NewBusinessProfile(tenant),
+		clients:  client.NewClients(tenant),
+		taxRates: taxrate.NewTaxRates(tenant),
 	}
 }
 
@@ -128,15 +128,15 @@ type ValidationResult struct {
 	Tax   float64
 }
 
-// Validate runs the full engine for one document's lines against a participant.
+// Validate runs the full engine for one document's lines against a client.
 // It returns the normalised lines + computed tax, or a *ValidationError listing
 // every field-level failure (it validates all lines, not just the first).
 //
-// Invariants (NASA rule 5): tenantID and participantID must be non-zero and at
+// Invariants (NASA rule 5): tenantID and clientID must be non-zero and at
 // least one line must be present; violations are programmer errors surfaced as
 // plain errors (the caller's repository would reject them anyway).
-func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID int64, items []LineItemInput) (*ValidationResult, error) {
-	return v.validate(ctx, tenantID, participantID, items, false)
+func (v *LineValidator) Validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
+	return v.validate(ctx, tenantID, clientID, items, false)
 }
 
 // ValidateFilling runs the engine in catalogue-authoritative pricing mode: for a
@@ -145,16 +145,16 @@ func (v *LineValidator) Validate(ctx context.Context, tenantID, participantID in
 // ≤ 0). Used by the agent's create path so the model only chooses code, service
 // date and quantity — the platform owns the price. The human UI path uses
 // Validate (caller-supplied price, capped) so providers may bill sub-cap.
-func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, participantID int64, items []LineItemInput) (*ValidationResult, error) {
-	return v.validate(ctx, tenantID, participantID, items, true)
+func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
+	return v.validate(ctx, tenantID, clientID, items, true)
 }
 
-func (v *LineValidator) validate(ctx context.Context, tenantID, participantID int64, items []LineItemInput, fillPrice bool) (*ValidationResult, error) {
+func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput, fillPrice bool) (*ValidationResult, error) {
 	if tenantID == 0 {
 		return nil, fmt.Errorf("validate lines: tenant id required")
 	}
-	if participantID == 0 {
-		return nil, fmt.Errorf("validate lines: participant id required")
+	if clientID == 0 {
+		return nil, fmt.Errorf("validate lines: client id required")
 	}
 	if len(items) == 0 {
 		return nil, fmt.Errorf("validate lines: at least one line item is required")
@@ -164,7 +164,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, participantID in
 	if err != nil {
 		return nil, err
 	}
-	planStart, planEnd, err := v.planWindow(ctx, tenantID, participantID)
+	planStart, planEnd, err := v.planWindow(ctx, tenantID, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	// (default) or, in fill mode, OVERWRITE unit_price with the cap.
 	v.applyZonePrice(ctx, idx, versionID, zone, line, ve, fillPrice)
 
-	// Step 5: service date within the participant plan window.
+	// Step 5: service date within the client plan window.
 	assertPlanWindow(idx, planStart, planEnd, line.ServiceDate, ve)
 }
 
@@ -325,21 +325,21 @@ func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID i
 }
 
 // assertPlanWindow asserts serviceDate ∈ [planStart, planEnd] (spec §6 step 5).
-// Empty bounds are treated as open (the participant has no recorded plan dates),
-// which is permissive by design — plan-date capture is a participant concern.
+// Empty bounds are treated as open (the client has no recorded plan dates),
+// which is permissive by design — plan-date capture is a client concern.
 func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *ValidationError) {
 	if planStart != "" && serviceDate < planStart {
 		ve.Errors = append(ve.Errors, FieldError{
 			Line:    idx,
 			Field:   "serviceDate",
-			Message: fmt.Sprintf("service date %s is before the participant's plan start %s", serviceDate, planStart),
+			Message: fmt.Sprintf("service date %s is before the client's plan start %s", serviceDate, planStart),
 		})
 	}
 	if planEnd != "" && serviceDate > planEnd {
 		ve.Errors = append(ve.Errors, FieldError{
 			Line:    idx,
 			Field:   "serviceDate",
-			Message: fmt.Sprintf("service date %s is after the participant's plan end %s", serviceDate, planEnd),
+			Message: fmt.Sprintf("service date %s is after the client's plan end %s", serviceDate, planEnd),
 		})
 	}
 }
@@ -407,15 +407,15 @@ func (v *LineValidator) tenantZone(ctx context.Context, tenantID int64) (string,
 	return bp.Zone, nil
 }
 
-// planWindow reads the participant's plan window. A missing participant is a
+// planWindow reads the client's plan window. A missing client is a
 // caller error (the repository would reject the write anyway).
-func (v *LineValidator) planWindow(ctx context.Context, tenantID, participantID int64) (start, end string, err error) {
-	p, err := v.participants.GetByID(ctx, tenantID, participantID)
+func (v *LineValidator) planWindow(ctx context.Context, tenantID, clientID int64) (start, end string, err error) {
+	p, err := v.clients.GetByID(ctx, tenantID, clientID)
 	if err != nil {
-		return "", "", fmt.Errorf("validate lines: read participant: %w", err)
+		return "", "", fmt.Errorf("validate lines: read client: %w", err)
 	}
 	if p == nil {
-		return "", "", fmt.Errorf("validate lines: participant %d not found", participantID)
+		return "", "", fmt.Errorf("validate lines: client %d not found", clientID)
 	}
 	return p.PlanStart, p.PlanEnd, nil
 }

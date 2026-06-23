@@ -13,26 +13,26 @@ func newShiftSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	return NewService(conn, conn, hub, invoice.NewInvoices(conn)), hub, tenantID, participantID
+	return NewService(conn, conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
 }
 
 func shiftInput(pid int64, date string) ShiftInput {
 	return ShiftInput{
-		ParticipantID: pid, ServiceDate: date,
+		ClientID: pid, ServiceDate: date,
 		Note: "supported community access",
 		Tags: []string{"t1"},
 	}
 }
 
 func TestShiftCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newShiftSvc(t)
+	svc, hub, tenantID, clientID := newShiftSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
-	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
+	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -52,12 +52,12 @@ func TestShiftCreateBroadcasts(t *testing.T) {
 func TestShiftCreateAttributesAuthor(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	uid := seedUser(t, conn, tenantID)
 	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
-	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
+	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -66,18 +66,18 @@ func TestShiftCreateAttributesAuthor(t *testing.T) {
 	}
 }
 
-func TestShiftListParticipantRangeSvc(t *testing.T) {
-	svc, _, tenantID, participantID := newShiftSvc(t)
+func TestShiftListClientRangeSvc(t *testing.T) {
+	svc, _, tenantID, clientID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
 	for _, d := range []string{"2026-01-10", "2026-01-15", "2026-01-20"} {
-		if _, err := svc.Create(ctx, shiftInput(participantID, d)); err != nil {
+		if _, err := svc.Create(ctx, shiftInput(clientID, d)); err != nil {
 			t.Fatalf("Create %s: %v", d, err)
 		}
 	}
-	rng, err := svc.ListParticipant(ctx, participantID, "2026-01-15", "2026-01-20")
+	rng, err := svc.ListClient(ctx, clientID, "2026-01-15", "2026-01-20")
 	if err != nil {
-		t.Fatalf("ListParticipant range: %v", err)
+		t.Fatalf("ListClient range: %v", err)
 	}
 	if len(rng) != 2 {
 		t.Fatalf("range [15,20] = %d, want 2", len(rng))
@@ -85,10 +85,10 @@ func TestShiftListParticipantRangeSvc(t *testing.T) {
 }
 
 func TestShiftUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newShiftSvc(t)
+	svc, hub, tenantID, clientID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
-	in := shiftInput(participantID, "2026-01-15")
+	in := shiftInput(clientID, "2026-01-15")
 	in.Status = "scheduled"
 	sh, err := svc.Create(ctx, in)
 	if err != nil {
@@ -115,10 +115,10 @@ func TestShiftUpdateStatusBroadcasts(t *testing.T) {
 }
 
 func TestShiftDeleteSvc(t *testing.T) {
-	svc, hub, tenantID, participantID := newShiftSvc(t)
+	svc, hub, tenantID, clientID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
-	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
+	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -141,15 +141,15 @@ func TestShiftDeleteSvc(t *testing.T) {
 }
 
 func TestShiftToRecord(t *testing.T) {
-	svc, _, tenantID, participantID := newShiftSvc(t)
+	svc, _, tenantID, clientID := newShiftSvc(t)
 	ctx := tctx(tenantID)
 
-	sched := shiftInput(participantID, "2026-01-15")
+	sched := shiftInput(clientID, "2026-01-15")
 	sched.Status = "scheduled"
 	if _, err := svc.Create(ctx, sched); err != nil {
 		t.Fatalf("Create scheduled: %v", err)
 	}
-	if _, err := svc.Create(ctx, shiftInput(participantID, "2026-01-16")); err != nil {
+	if _, err := svc.Create(ctx, shiftInput(clientID, "2026-01-16")); err != nil {
 		t.Fatalf("Create recorded: %v", err)
 	}
 
@@ -165,8 +165,8 @@ func TestShiftToRecord(t *testing.T) {
 func TestShiftSuggestions(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	p1 := seedParticipant(t, conn, tenantID, "Jane")
-	p2 := seedParticipant(t, conn, tenantID, "Bob")
+	p1 := seedClient(t, conn, tenantID, "Jane")
+	p2 := seedClient(t, conn, tenantID, "Bob")
 	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
@@ -191,7 +191,7 @@ func TestShiftSuggestions(t *testing.T) {
 	}
 	byPID := map[int64]Suggestion{}
 	for _, s := range sugs {
-		byPID[s.ParticipantID] = s
+		byPID[s.ClientID] = s
 	}
 	s1 := byPID[p1]
 	if s1.Count != 2 || s1.From != "2026-01-10" || s1.To != "2026-01-20" || len(s1.IDs) != 2 {
@@ -205,13 +205,13 @@ func TestShiftSuggestions(t *testing.T) {
 func TestShiftMarkDrafted(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
-	invID := seedDraftInvoice(t, conn, tenantID, participantID)
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
+	invID := seedDraftInvoice(t, conn, tenantID, clientID)
 	hub := realtime.NewHub()
 	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
-	sh, err := svc.Create(ctx, shiftInput(participantID, "2026-01-15"))
+	sh, err := svc.Create(ctx, shiftInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -239,16 +239,16 @@ func TestShiftMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	conn := newTestDB(t)
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
-	participantA := seedParticipant(t, conn, tenantA, "Jane")
-	invA := seedDraftInvoice(t, conn, tenantA, participantA)
+	clientA := seedClient(t, conn, tenantA, "Jane")
+	invA := seedDraftInvoice(t, conn, tenantA, clientA)
 
 	tenantB := seedTenant(t, conn, "Beta NDIS")
-	participantB := seedParticipant(t, conn, tenantB, "Bob")
+	clientB := seedClient(t, conn, tenantB, "Bob")
 	hub := realtime.NewHub()
 	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
-	sh, err := svc.Create(ctxB, shiftInput(participantB, "2026-01-15"))
+	sh, err := svc.Create(ctxB, shiftInput(clientB, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

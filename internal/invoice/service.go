@@ -71,9 +71,9 @@ func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Invoice, 
 	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *Service) ListParticipantInvoices(ctx context.Context, participantID int64) ([]*Invoice, error) {
+func (s *Service) ListClientInvoices(ctx context.Context, clientID int64) ([]*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ListParticipantInvoices(ctx, tenantID, participantID)
+	return s.repo.ListClientInvoices(ctx, tenantID, clientID)
 }
 
 func (s *Service) Get(ctx context.Context, id int64) (*Invoice, error) {
@@ -87,11 +87,11 @@ func (s *Service) GetByUUID(ctx context.Context, invoiceUUID string) (*Invoice, 
 	return s.repo.GetByUUID(ctx, tenantID, invoiceUUID)
 }
 
-// ResolveParticipant translates a participant uuid into its int FK for the
-// tenant. Returns (0, nil) when no participant matches (caller 400s).
-func (s *Service) ResolveParticipant(ctx context.Context, participantUUID string) (int64, error) {
+// ResolveClient translates a client uuid into its int FK for the
+// tenant. Returns (0, nil) when no client matches (caller 400s).
+func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
 // ResolvePlanManager translates a plan-manager uuid into its int FK for the
@@ -117,19 +117,19 @@ func (s *Service) ResolveInvoiceIDs(ctx context.Context, invoiceUUIDs []string) 
 	return s.repo.ResolveInvoiceIDs(ctx, tenantID, invoiceUUIDs)
 }
 
-// ParticipantStats resolves the participant uuid to its int PK (tenant-scoped)
-// then aggregates that participant's invoices. Returns (nil, nil) when no
-// participant matches the uuid so the handler can 404.
-func (s *Service) ParticipantStats(ctx context.Context, participantUUID string) (*ParticipantStats, error) {
+// ClientStats resolves the client uuid to its int PK (tenant-scoped)
+// then aggregates that client's invoices. Returns (nil, nil) when no
+// client matches the uuid so the handler can 404.
+func (s *Service) ClientStats(ctx context.Context, clientUUID string) (*ClientStats, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	participantID, err := s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	clientID, err := s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 	if err != nil {
 		return nil, err
 	}
-	if participantID == 0 {
+	if clientID == 0 {
 		return nil, nil
 	}
-	return s.repo.ParticipantStats(ctx, tenantID, participantID)
+	return s.repo.ClientStats(ctx, tenantID, clientID)
 }
 
 // Create inserts an invoice + line items, then broadcasts on success.
@@ -140,7 +140,7 @@ func (s *Service) ParticipantStats(ctx context.Context, participantUUID string) 
 // A validation failure returns a *ValidationError with field-level detail.
 func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.L
 // requires a caller-supplied price (a *ValidationError otherwise).
 func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	res, err := s.validator.ValidateFilling(ctx, tenantID, in.ParticipantID, items)
+	res, err := s.validator.ValidateFilling(ctx, tenantID, in.ClientID, items)
 	if err != nil {
 		return nil, err
 	}
@@ -176,17 +176,17 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 
 // DraftFromShifts drafts a new invoice from N recorded, unbilled shifts — pure
 // deterministic linking, no model, no re-pricing (the items are already priced
-// on each shift). Shifts must share one participant and each carry at least one
+// on each shift). Shifts must share one client and each carry at least one
 // item (G5). The invoice and its linked lines commit atomically; only AFTER that
 // commit are the shifts advanced to 'drafted' (via the ShiftLinker, a separate
 // tx), so the shift→invoice reference and MarkDrafted's existence check hold.
 func (s *Service) DraftFromShifts(ctx context.Context, shiftIDs []int64) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	participantID, facts, err := s.repo.validateDraftShifts(ctx, tenantID, shiftIDs)
+	clientID, facts, err := s.repo.validateDraftShifts(ctx, tenantID, shiftIDs)
 	if err != nil {
 		return nil, err
 	}
-	inv, err := s.repo.DraftFromShifts(ctx, tenantID, participantID, facts)
+	inv, err := s.repo.DraftFromShifts(ctx, tenantID, clientID, facts)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (s *Service) DraftFromShifts(ctx context.Context, shiftIDs []int64) (*Invoi
 // case no event is published.
 func (s *Service) Update(ctx context.Context, id int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	res, err := s.validator.Validate(ctx, tenantID, in.ParticipantID, items)
+	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
 	if err != nil {
 		return nil, err
 	}

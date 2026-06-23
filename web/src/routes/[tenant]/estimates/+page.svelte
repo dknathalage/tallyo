@@ -22,7 +22,7 @@
 	// the "+ New" button navigate to the detail / create routes (no inline drawer).
 	const columns: Column<Estimate>[] = [
 		{ key: 'number', label: 'Number', sortable: true, filter: 'text' },
-		{ key: 'participantName', label: 'Participant', sortable: true, filter: 'text' },
+		{ key: 'clientName', label: 'Client', sortable: true, filter: 'text' },
 		{
 			key: 'issueDate',
 			label: 'Issued',

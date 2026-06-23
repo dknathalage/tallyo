@@ -8,15 +8,15 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
 
-// newPaymentServer wires the payment routes behind RequireSession + ResolveTenant, plus participant
+// newPaymentServer wires the payment routes behind RequireSession + ResolveTenant, plus client
 // and invoice creation so payments can reference a real invoice.
 func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
@@ -27,7 +27,7 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	pH := participant.NewHandler(participant.NewService(conn, hub))
+	pH := client.NewHandler(client.NewService(conn, hub))
 	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, shift.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
 	payH := invoice.NewPaymentHandler(invoice.NewPaymentService(conn, hub))
 
@@ -37,7 +37,7 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
-			pr.Post("/participants", pH.Create)
+			pr.Post("/clients", pH.Create)
 			invH.Routes(pr)
 			payH.Routes(pr)
 		})
@@ -50,10 +50,10 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 
 // createPaymentInvoice posts a single-line invoice (unitPrice 25, qty 1, no tax →
 // 25) and returns its id.
-func createPaymentInvoice(t *testing.T, c *http.Client, base, uuid string, participantID string) string {
+func createPaymentInvoice(t *testing.T, c *http.Client, base, uuid string, clientID string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-06-01", "dueDate": "2026-07-01",
+		"clientId": clientID, "issueDate": "2026-06-01", "dueDate": "2026-07-01",
 		"lineItems": []map[string]any{
 			{"description": "Work", "quantity": 1, "unitPrice": 25, "sortOrder": 0},
 		},
@@ -81,8 +81,8 @@ func createPaymentInvoice(t *testing.T, c *http.Client, base, uuid string, parti
 func TestPaymentRecordAndList(t *testing.T) {
 	srv, uuid := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, uuid, clientID)
 
 	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+invID+"/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -120,8 +120,8 @@ func TestPaymentRecordAndList(t *testing.T) {
 func TestPaymentDeleteFlow(t *testing.T) {
 	srv, uuid := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, uuid, clientID)
 
 	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+invID+"/payments", `{"amount":10,"paymentDate":"2026-06-05"}`)
 	var p struct {
@@ -142,8 +142,8 @@ func TestPaymentDeleteFlow(t *testing.T) {
 func TestPaymentDeleteMissing404(t *testing.T) {
 	srv, uuid := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, uuid, clientID)
 	dr := delete_(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+invID+"/payments/"+uuidpkg.NewString())
 	defer func() { _ = dr.Body.Close() }()
 	if dr.StatusCode != http.StatusNotFound {
@@ -154,8 +154,8 @@ func TestPaymentDeleteMissing404(t *testing.T) {
 func TestPaymentZeroAmount400(t *testing.T) {
 	srv, uuid := newPaymentServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	invID := createPaymentInvoice(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	invID := createPaymentInvoice(t, c, srv.URL, uuid, clientID)
 
 	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices/"+invID+"/payments", `{"amount":0,"paymentDate":"2026-06-05"}`)
 	defer func() { _ = resp.Body.Close() }()

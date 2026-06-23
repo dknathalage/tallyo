@@ -10,10 +10,10 @@ import (
 
 // seedDraftedShift creates a recorded shift and drafts it onto inv via the
 // shift.Service, returning the shift id.
-func seedDraftedShift(t *testing.T, shiftSvc *shift.Service, tenantID, participantID, invoiceID int64) int64 {
+func seedDraftedShift(t *testing.T, shiftSvc *shift.Service, tenantID, clientID, invoiceID int64) int64 {
 	t.Helper()
 	ctx := tctx(tenantID)
-	sh, err := shiftSvc.Create(ctx, shift.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-15"})
+	sh, err := shiftSvc.Create(ctx, shift.ShiftInput{ClientID: clientID, ServiceDate: "2026-01-15"})
 	if err != nil {
 		t.Fatalf("seedDraftedShift create: %v", err)
 	}
@@ -28,19 +28,19 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			conn := newTestDB(t)
 			tenantID := seedTenant(t, conn, "Acme NDIS")
-			participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+			clientID := seedClient(t, conn, tenantID, "Jane Client")
 			hub := realtime.NewHub()
 			invSvc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 			shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 			ctx := tctx(tenantID)
 
 			inv, err := invSvc.Create(ctx, InvoiceInput{
-				ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+				ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 			}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 			if err != nil {
 				t.Fatalf("Create invoice: %v", err)
 			}
-			shiftID := seedDraftedShift(t, shiftSvc, tenantID, participantID, inv.ID)
+			shiftID := seedDraftedShift(t, shiftSvc, tenantID, clientID, inv.ID)
 
 			if err := invSvc.UpdateStatus(ctx, inv.ID, status); err != nil {
 				t.Fatalf("UpdateStatus %s: %v", status, err)
@@ -56,19 +56,19 @@ func TestInvoiceStatusCascadesToShifts(t *testing.T) {
 func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	invSvc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create invoice: %v", err)
 	}
-	shiftID := seedDraftedShift(t, shiftSvc, tenantID, participantID, inv.ID)
+	shiftID := seedDraftedShift(t, shiftSvc, tenantID, clientID, inv.ID)
 
 	// A non-terminal status (e.g. back to draft) must NOT advance the shift.
 	if err := invSvc.UpdateStatus(ctx, inv.ID, "draft"); err != nil {
@@ -83,19 +83,19 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 func TestInvoiceDeleteRevertsShiftsToRecorded(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	invSvc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create invoice: %v", err)
 	}
-	shiftID := seedDraftedShift(t, shiftSvc, tenantID, participantID, inv.ID)
+	shiftID := seedDraftedShift(t, shiftSvc, tenantID, clientID, inv.ID)
 
 	if err := invSvc.Delete(ctx, inv.ID); err != nil {
 		t.Fatalf("Delete invoice: %v", err)

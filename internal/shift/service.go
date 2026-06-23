@@ -44,21 +44,21 @@ func NewService(db, control db.Executor, hub *realtime.Hub, invoices InvoiceChec
 	return &Service{repo: NewShifts(db), invoices: invoices, validator: billing.NewLineValidator(db, control), hub: hub}
 }
 
-// Suggestion is a billing prompt: a participant's recorded-but-unbilled shifts
+// Suggestion is a billing prompt: a client's recorded-but-unbilled shifts
 // grouped together, ready to draft onto a single invoice.
 type Suggestion struct {
-	ParticipantID int64   `json:"participantId"`
-	IDs           []int64 `json:"ids"`
-	From          string  `json:"from"`
-	To            string  `json:"to"`
-	Count         int     `json:"count"`
+	ClientID int64   `json:"clientId"`
+	IDs      []int64 `json:"ids"`
+	From     string  `json:"from"`
+	To       string  `json:"to"`
+	Count    int     `json:"count"`
 }
 
-// ListParticipant returns a participant's shifts, optionally restricted to the
+// ListClient returns a client's shifts, optionally restricted to the
 // [from, to] service-date window (both empty → all shifts).
-func (s *Service) ListParticipant(ctx context.Context, participantID int64, from, to string) ([]*Shift, error) {
+func (s *Service) ListClient(ctx context.Context, clientID int64, from, to string) ([]*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ListParticipant(ctx, tenantID, participantID, from, to)
+	return s.repo.ListClient(ctx, tenantID, clientID, from, to)
 }
 
 // List returns all the tenant's shifts. When status is non-empty the result is
@@ -85,27 +85,27 @@ func (s *Service) GetByUUID(ctx context.Context, shiftUUID string) (*Shift, erro
 	return s.repo.GetByUUID(ctx, tenantID, shiftUUID)
 }
 
-// ResolveParticipant translates a participant uuid into its int FK for the
-// tenant (inbound participantId resolution on shift create/update). Returns
+// ResolveClient translates a client uuid into its int FK for the
+// tenant (inbound clientId resolution on shift create/update). Returns
 // (0, nil) when the uuid is unknown so the handler can 400.
-func (s *Service) ResolveParticipant(ctx context.Context, participantUUID string) (int64, error) {
+func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
-// ListByParticipantUUID returns the tenant's shifts for one participant,
-// resolving the participant uuid to its int FK. An unknown participant uuid
+// ListByClientUUID returns the tenant's shifts for one client,
+// resolving the client uuid to its int FK. An unknown client uuid
 // yields an empty (non-nil) slice — the filter simply matches nothing.
-func (s *Service) ListByParticipantUUID(ctx context.Context, participantUUID, status string) ([]*Shift, error) {
+func (s *Service) ListByClientUUID(ctx context.Context, clientUUID, status string) ([]*Shift, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	pid, err := s.repo.ResolveParticipantID(ctx, tenantID, participantUUID)
+	pid, err := s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 	if err != nil {
 		return nil, err
 	}
 	if pid == 0 {
 		return []*Shift{}, nil
 	}
-	shifts, err := s.repo.ListParticipant(ctx, tenantID, pid, "", "")
+	shifts, err := s.repo.ListClient(ctx, tenantID, pid, "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (s *Service) repriceItemsForDate(ctx context.Context, tenantID int64, sh *S
 		}
 		in := itemToInput(it)
 		in.ServiceDate = sh.ServiceDate
-		priced, err := s.priceItem(ctx, tenantID, sh.ParticipantID, in)
+		priced, err := s.priceItem(ctx, tenantID, sh.ClientID, in)
 		if err != nil {
 			return err
 		}
@@ -236,17 +236,17 @@ func (s *Service) ToRecord(ctx context.Context) ([]*Shift, error) {
 	return s.repo.ListScheduled(ctx, tenantID)
 }
 
-// Suggestions groups each participant's recorded-but-unbilled shifts into a
-// billing prompt, resolving the concrete shift ids per participant.
+// Suggestions groups each client's recorded-but-unbilled shifts into a
+// billing prompt, resolving the concrete shift ids per client.
 func (s *Service) Suggestions(ctx context.Context) ([]Suggestion, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	aggs, err := s.repo.UnbilledByParticipant(ctx, tenantID)
+	aggs, err := s.repo.UnbilledByClient(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Suggestion, 0, len(aggs))
 	for i := range aggs { // bounded by len(aggs)
-		shifts, e := s.repo.ListRecordedUnbilled(ctx, tenantID, aggs[i].ParticipantID)
+		shifts, e := s.repo.ListRecordedUnbilled(ctx, tenantID, aggs[i].ClientID)
 		if e != nil {
 			return nil, e
 		}
@@ -255,11 +255,11 @@ func (s *Service) Suggestions(ctx context.Context) ([]Suggestion, error) {
 			ids = append(ids, shifts[j].ID)
 		}
 		out = append(out, Suggestion{
-			ParticipantID: aggs[i].ParticipantID,
-			IDs:           ids,
-			From:          aggs[i].From,
-			To:            aggs[i].To,
-			Count:         int(aggs[i].Count),
+			ClientID: aggs[i].ClientID,
+			IDs:      ids,
+			From:     aggs[i].From,
+			To:       aggs[i].To,
+			Count:    int(aggs[i].Count),
 		})
 	}
 	return out, nil
@@ -327,7 +327,7 @@ func (s *Service) AddItem(ctx context.Context, shiftID int64, in billing.LineIte
 	if in.ServiceDate == "" {
 		in.ServiceDate = sh.ServiceDate
 	}
-	priced, err := s.priceItem(ctx, tenantID, sh.ParticipantID, in)
+	priced, err := s.priceItem(ctx, tenantID, sh.ClientID, in)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (s *Service) AddItemByShiftUUID(ctx context.Context, shiftUUID string, in b
 	if in.ServiceDate == "" {
 		in.ServiceDate = sh.ServiceDate
 	}
-	priced, err := s.priceItem(ctx, tenantID, sh.ParticipantID, in)
+	priced, err := s.priceItem(ctx, tenantID, sh.ClientID, in)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +408,7 @@ func (s *Service) UpdateItemByShiftUUID(ctx context.Context, shiftUUID, itemUUID
 	if in.ServiceDate == "" {
 		in.ServiceDate = sh.ServiceDate
 	}
-	priced, err := s.priceItem(ctx, tenantID, sh.ParticipantID, in)
+	priced, err := s.priceItem(ctx, tenantID, sh.ClientID, in)
 	if err != nil {
 		return nil, err
 	}
@@ -464,8 +464,8 @@ func (s *Service) ClearUnbilledItems(ctx context.Context, shiftID int64) error {
 // priceItem resolves catalogue-authoritative pricing for one input line via the
 // shared LineValidator (G3: pinned by ServiceDate). Returns the normalised,
 // priced line.
-func (s *Service) priceItem(ctx context.Context, tenantID, participantID int64, in billing.LineItemInput) (billing.LineItemInput, error) {
-	res, err := s.validator.ValidateFilling(ctx, tenantID, participantID, []billing.LineItemInput{in})
+func (s *Service) priceItem(ctx context.Context, tenantID, clientID int64, in billing.LineItemInput) (billing.LineItemInput, error) {
+	res, err := s.validator.ValidateFilling(ctx, tenantID, clientID, []billing.LineItemInput{in})
 	if err != nil {
 		return billing.LineItemInput{}, fmt.Errorf("price item: %w", err)
 	}

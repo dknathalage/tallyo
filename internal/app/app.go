@@ -24,11 +24,11 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
@@ -165,7 +165,7 @@ func Run(cfg Config, version string) error {
 	bpSvc := businessprofile.NewService(tdb, hub)
 	planManagerSvc := planmanager.NewService(tdb, hub)
 	taxRateSvc := taxrate.NewService(tdb, hub)
-	participantSvc := participant.NewService(tdb, hub)
+	clientSvc := client.NewService(tdb, hub)
 	customItemSvc := customitem.NewService(tdb, hub)
 	supportCatalogSvc := catalog.NewService(tdb)
 	catalogIngestSvc := catalog.NewIngestService(tdb, hub)
@@ -212,7 +212,7 @@ func Run(cfg Config, version string) error {
 		BusinessProfile: businessprofile.NewHandler(bpSvc),
 		PlanManagers:    planmanager.NewHandler(planManagerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
-		Participants:    participant.NewHandler(participantSvc),
+		Clients:         client.NewHandler(clientSvc),
 		CustomItems:     customitem.NewHandler(customItemSvc),
 		SupportCatalog:  catalog.NewHandler(supportCatalogSvc, catalogIngestSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),

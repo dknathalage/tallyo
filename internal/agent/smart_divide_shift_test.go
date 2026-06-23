@@ -34,10 +34,10 @@ func toolUse(name string, raw string) llm.Response {
 // seeded shift id.
 func divideFixture(t *testing.T) (*Smarts, *llm.Fake, *shift.Service, context.Context, int64) {
 	t.Helper()
-	conn, tenantID, participantID := shiftToolsFixture(t)
+	conn, tenantID, clientID := shiftToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 	shifts := shift.NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
-	sh := seedReferenceShift(t, shifts, ctx, participantID, referenceWeek[0].date)
+	sh := seedReferenceShift(t, shifts, ctx, clientID, referenceWeek[0].date)
 	cat := catalog.NewService(conn)
 	fake := llm.NewFake()
 	s := &Smarts{client: fake, shifts: shifts, catalog: cat}

@@ -1,4 +1,4 @@
-package participant
+package client
 
 import (
 	"bytes"
@@ -13,10 +13,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newParticipantHandler builds a handler over a fresh DB and returns it with the
-// tenant id, a seeded plan manager (its uuid), and a participant seeded WITH that
+// newClientHandler builds a handler over a fresh DB and returns it with the
+// tenant id, a seeded plan manager (its uuid), and a client seeded WITH that
 // plan manager.
-func newParticipantHandler(t *testing.T) (*Handler, int64, string, *Participant) {
+func newClientHandler(t *testing.T) (*Handler, int64, string, *Client) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
@@ -25,16 +25,16 @@ func newParticipantHandler(t *testing.T) (*Handler, int64, string, *Participant)
 		t.Fatalf("seed plan manager: %v", err)
 	}
 	svc := NewService(conn, realtime.NewHub())
-	seeded, err := svc.Create(tctx(tenantID), ParticipantInput{Name: "Jane", PlanManagerUUID: &pm.UUID})
+	seeded, err := svc.Create(tctx(tenantID), ClientInput{Name: "Jane", PlanManagerUUID: &pm.UUID})
 	if err != nil {
-		t.Fatalf("seed participant: %v", err)
+		t.Fatalf("seed client: %v", err)
 	}
 	return NewHandler(svc), tenantID, pm.UUID, seeded
 }
 
-// mountParticipant returns a router with the slice routes mounted and a
+// mountClient returns a router with the slice routes mounted and a
 // middleware that attaches the tenant id to every request (standing in for auth).
-func mountParticipant(h *Handler, tenantID int64) chi.Router {
+func mountClient(h *Handler, tenantID int64) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -45,12 +45,12 @@ func mountParticipant(h *Handler, tenantID int64) chi.Router {
 	return r
 }
 
-func TestParticipantGetByUUID(t *testing.T) {
-	h, tenantID, pmUUID, seeded := newParticipantHandler(t)
-	srv := httptest.NewServer(mountParticipant(h, tenantID))
+func TestClientGetByUUID(t *testing.T) {
+	h, tenantID, pmUUID, seeded := newClientHandler(t)
+	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/participants/" + seeded.UUID)
+	res, err := http.Get(srv.URL + "/clients/" + seeded.UUID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -70,12 +70,12 @@ func TestParticipantGetByUUID(t *testing.T) {
 	}
 }
 
-func TestParticipantGetUnknownUUID404(t *testing.T) {
-	h, tenantID, _, _ := newParticipantHandler(t)
-	srv := httptest.NewServer(mountParticipant(h, tenantID))
+func TestClientGetUnknownUUID404(t *testing.T) {
+	h, tenantID, _, _ := newClientHandler(t)
+	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/participants/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
+	res, err := http.Get(srv.URL + "/clients/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -85,12 +85,12 @@ func TestParticipantGetUnknownUUID404(t *testing.T) {
 	}
 }
 
-func TestParticipantGetNonUUID400(t *testing.T) {
-	h, tenantID, _, _ := newParticipantHandler(t)
-	srv := httptest.NewServer(mountParticipant(h, tenantID))
+func TestClientGetNonUUID400(t *testing.T) {
+	h, tenantID, _, _ := newClientHandler(t)
+	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/participants/123")
+	res, err := http.Get(srv.URL + "/clients/123")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -100,10 +100,10 @@ func TestParticipantGetNonUUID400(t *testing.T) {
 	}
 }
 
-// TestParticipantCreateResolvesPlanManagerUUID proves an inbound planManagerId
+// TestClientCreateResolvesPlanManagerUUID proves an inbound planManagerId
 // uuid resolves to the FK and round-trips back as the same uuid; an unknown
 // plan-manager uuid is rejected with 400.
-func TestParticipantCreateResolvesPlanManagerUUID(t *testing.T) {
+func TestClientCreateResolvesPlanManagerUUID(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	pm, err := planmanager.NewPlanManagers(conn).Create(tctx(tenantID), tenantID, planmanager.PlanManagerInput{Name: "PM Co"})
@@ -111,11 +111,11 @@ func TestParticipantCreateResolvesPlanManagerUUID(t *testing.T) {
 		t.Fatalf("seed plan manager: %v", err)
 	}
 	h := NewHandler(NewService(conn, realtime.NewHub()))
-	srv := httptest.NewServer(mountParticipant(h, tenantID))
+	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
 	body, _ := json.Marshal(map[string]any{"name": "Jane", "planManagerId": pm.UUID})
-	res, err := http.Post(srv.URL+"/participants", "application/json", bytes.NewReader(body))
+	res, err := http.Post(srv.URL+"/clients", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestParticipantCreateResolvesPlanManagerUUID(t *testing.T) {
 	// Update to clear the plan manager (empty string → NULL FK).
 	createdUUID, _ := created["id"].(string)
 	upBody, _ := json.Marshal(map[string]any{"name": "Jane", "planManagerId": nil})
-	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/participants/"+createdUUID, bytes.NewReader(upBody))
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/clients/"+createdUUID, bytes.NewReader(upBody))
 	req.Header.Set("Content-Type", "application/json")
 	upRes, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestParticipantCreateResolvesPlanManagerUUID(t *testing.T) {
 
 	// An unknown plan-manager uuid is rejected with 400.
 	badBody, _ := json.Marshal(map[string]any{"name": "Bob", "planManagerId": "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c"})
-	badRes, err := http.Post(srv.URL+"/participants", "application/json", bytes.NewReader(badBody))
+	badRes, err := http.Post(srv.URL+"/clients", "application/json", bytes.NewReader(badBody))
 	if err != nil {
 		t.Fatalf("POST bad: %v", err)
 	}

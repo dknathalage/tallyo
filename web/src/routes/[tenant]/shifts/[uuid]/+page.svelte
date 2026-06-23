@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
-	import { participants } from '$lib/stores/participants.svelte';
+	import { clients } from '$lib/stores/clients.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
 	import type { Shift } from '$lib/api/types';
@@ -18,8 +18,8 @@
 	const recording = $derived(loadedShift?.status === 'scheduled');
 
 	onMount(() => {
-		participants.ensureSubscribed();
-		void participants.load();
+		clients.ensureSubscribed();
+		void clients.load();
 	});
 
 	// Load the target shift on id change. {#key idParam} remounts ShiftForm so its

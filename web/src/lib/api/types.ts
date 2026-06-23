@@ -3,6 +3,7 @@ export type Role = 'owner' | 'admin' | 'member' | string;
 export type Zone = 'national' | 'remote' | 'very_remote';
 
 export type MgmtType = 'plan' | 'self' | string;
+export type ClientType = 'ndis' | 'standard' | string;
 
 export interface User {
 	id: string;
@@ -76,10 +77,11 @@ export interface TaxRateInput {
 	isDefault: boolean;
 }
 
-export interface Participant {
+export interface Client {
 	id: string;
 	name: string;
-	ndisNumber: string;
+	type: ClientType;
+	reference: string;
 	planStart: string;
 	planEnd: string;
 	mgmtType: MgmtType;
@@ -93,9 +95,10 @@ export interface Participant {
 	updatedAt: string;
 }
 
-export interface ParticipantInput {
+export interface ClientInput {
 	name: string;
-	ndisNumber: string;
+	type: ClientType;
+	reference: string;
 	planStart: string;
 	planEnd: string;
 	mgmtType: MgmtType;
@@ -203,8 +206,8 @@ export type InvoiceStatus = 'draft' | 'sent' | 'overdue' | 'paid' | string;
 export interface Invoice {
 	id: string;
 	number: string;
-	participantId: string;
-	participantName: string;
+	clientId: string;
+	clientName: string;
 	planManagerId: string | null;
 	status: InvoiceStatus;
 	issueDate: string;
@@ -214,7 +217,7 @@ export interface Invoice {
 	total: number;
 	notes: string;
 	businessSnapshot: string;
-	participantSnapshot: string;
+	clientSnapshot: string;
 	planManagerSnapshot: string;
 	createdAt: string;
 	updatedAt: string;
@@ -226,7 +229,7 @@ export interface Invoice {
 // The create/update payload: the flat InvoiceInput fields plus line items.
 // tax is server-derived; it is intentionally omitted from the payload.
 export interface InvoiceInput {
-	participantId: string;
+	clientId: string;
 	planManagerId: string | null;
 	status: InvoiceStatus;
 	issueDate: string;
@@ -253,7 +256,7 @@ export interface PaymentInput {
 	notes: string;
 }
 
-export interface ParticipantStats {
+export interface ClientStats {
 	invoiceCount: number;
 	totalInvoiced: number;
 	totalPaid: number;
@@ -267,8 +270,8 @@ export type EstimateLineItemInput = LineItemInput;
 export interface Estimate {
 	id: string;
 	number: string;
-	participantId: string | null;
-	participantName: string;
+	clientId: string | null;
+	clientName: string;
 	planManagerId: string | null;
 	status: EstimateStatus;
 	issueDate: string;
@@ -279,7 +282,7 @@ export interface Estimate {
 	notes: string;
 	convertedInvoiceId: string | null;
 	businessSnapshot: string;
-	participantSnapshot: string;
+	clientSnapshot: string;
 	planManagerSnapshot: string;
 	createdAt: string;
 	updatedAt: string;
@@ -287,7 +290,7 @@ export interface Estimate {
 }
 
 export interface EstimateInput {
-	participantId: string;
+	clientId: string;
 	planManagerId: string | null;
 	status: EstimateStatus;
 	issueDate: string;
@@ -312,8 +315,8 @@ export interface RecurringLine {
 
 export interface RecurringTemplate {
 	id: string;
-	participantId: string | null;
-	participantName: string;
+	clientId: string | null;
+	clientName: string;
 	planManagerId: string | null;
 	name: string;
 	frequency: RecurringFrequency;
@@ -327,7 +330,7 @@ export interface RecurringTemplate {
 }
 
 export interface RecurringInput {
-	participantId: string | null;
+	clientId: string | null;
 	planManagerId: string | null;
 	name: string;
 	frequency: RecurringFrequency;
@@ -345,13 +348,13 @@ export interface ValidationDetail {
 	message: string;
 }
 
-// ---- Shifts (per-participant service shifts with a billing lifecycle) ----
+// ---- Shifts (per-client service shifts with a billing lifecycle) ----
 
 export type ShiftStatus = 'scheduled' | 'recorded' | 'drafted' | 'sent' | 'paid';
 
 export interface Shift {
 	id: string;
-	participantId: string;
+	clientId: string;
 	serviceDate: string;
 	note: string;
 	tags: string[];
@@ -362,7 +365,7 @@ export interface Shift {
 }
 
 export interface ShiftInput {
-	participantId: string;
+	clientId: string;
 	serviceDate: string;
 	note: string;
 	tags: string[];
@@ -370,13 +373,13 @@ export interface ShiftInput {
 }
 
 /**
- * A clustered invoice suggestion: a participant's recorded-but-unbilled shifts,
- * grouped to draft a single invoice. The backend supplies participantId/ids/
- * from/to/count; the participant name and an estimated total are derived in the
- * UI from the loaded participants + shifts.
+ * A clustered invoice suggestion: a client's recorded-but-unbilled shifts,
+ * grouped to draft a single invoice. The backend supplies clientId/ids/
+ * from/to/count; the client name and an estimated total are derived in the
+ * UI from the loaded clients + shifts.
  */
 export interface ShiftSuggestion {
-	participantId: string;
+	clientId: string;
 	ids: string[];
 	from: string;
 	to: string;

@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import { shifts } from '$lib/stores/shifts.svelte';
-	import { participants } from '$lib/stores/participants.svelte';
+	import { clients } from '$lib/stores/clients.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import { shortDate, todayISO } from '$lib/shifts/format';
@@ -12,12 +12,12 @@
 	onMount(() => {
 		shifts.ensureSubscribed();
 		void shifts.load();
-		participants.ensureSubscribed();
-		void participants.load();
+		clients.ensureSubscribed();
+		void clients.load();
 	});
 
-	function participantName(id: string): string {
-		const p = participants.items.find((x) => x.id === id);
+	function clientName(id: string): string {
+		const p = clients.items.find((x) => x.id === id);
 		return p ? p.name : `#${id}`;
 	}
 
@@ -73,7 +73,7 @@
 					<div class="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
 						<span class="min-w-[8rem] font-semibold">{whenLabel(s.serviceDate)} · {shortDate(s.serviceDate)}</span>
 						<span class="flex-1 text-sm">
-							{participantName(s.participantId)}
+							{clientName(s.clientId)}
 							<span class="text-gray-500">· scheduled</span>
 						</span>
 						<button
@@ -98,7 +98,7 @@
 		<p class="text-sm text-gray-500">Loading…</p>
 	{:else}
 		<section>
-			<ShiftTable shifts={shifts.items} {participantName} onopen={openShift} ondelete={deleteShifts} />
+			<ShiftTable shifts={shifts.items} {clientName} onopen={openShift} ondelete={deleteShifts} />
 			<p class="mt-2 text-xs text-gray-500">
 				Status pipeline: scheduled → recorded → drafted → sent → paid.
 			</p>

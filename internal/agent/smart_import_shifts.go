@@ -9,13 +9,13 @@ import (
 )
 
 // ImportShifts turns a free-text timesheet into recorded shifts for one
-// participant. It forces a single structured-extraction model call
+// client. It forces a single structured-extraction model call
 // (ExtractShifts), then persists one recorded shift per extracted day via the
-// shift service. The participant is taken from the caller (resolution by name is
+// shift service. The client is taken from the caller (resolution by name is
 // intentionally out of scope here). Returns the created shifts.
-func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text string) ([]*shift.Shift, error) {
-	if participantID <= 0 {
-		return nil, fmt.Errorf("import shifts: participantId is required")
+func (s *Smarts) ImportShifts(ctx context.Context, clientID int64, text string) ([]*shift.Shift, error) {
+	if clientID <= 0 {
+		return nil, fmt.Errorf("import shifts: clientId is required")
 	}
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("import shifts: text is required")
@@ -27,9 +27,9 @@ func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text str
 	}
 
 	// Idempotency: skip drafts that match a shift already recorded for this
-	// participant. Re-importing the same timesheet (or one that overlaps a prior
+	// client. Re-importing the same timesheet (or one that overlaps a prior
 	// import) must not create duplicates. The set also dedups within this batch.
-	seen, err := s.existingShiftKeys(ctx, participantID, drafts)
+	seen, err := s.existingShiftKeys(ctx, clientID, drafts)
 	if err != nil {
 		return nil, fmt.Errorf("import shifts: load existing: %w", err)
 	}
@@ -43,10 +43,10 @@ func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text str
 		}
 		seen[key] = struct{}{}
 		sh, e := s.shifts.Create(ctx, shift.ShiftInput{
-			ParticipantID: participantID,
-			ServiceDate:   d.ServiceDate,
-			Note:          composeNote(d.Note, d.Hours, d.Km),
-			Status:        "recorded",
+			ClientID:    clientID,
+			ServiceDate: d.ServiceDate,
+			Note:        composeNote(d.Note, d.Hours, d.Km),
+			Status:      "recorded",
 		})
 		if e != nil {
 			return nil, fmt.Errorf("import shifts: create: %w", e)
@@ -56,11 +56,11 @@ func (s *Smarts) ImportShifts(ctx context.Context, participantID int64, text str
 	return created, nil
 }
 
-// existingShiftKeys returns the dedup-key set of the participant's already
+// existingShiftKeys returns the dedup-key set of the client's already
 // recorded shifts that fall within the drafts' service-date span. It queries only
 // that window (the min..max draft date) rather than every shift, then keys each
 // existing row the same way a draft is keyed so re-imports are detected.
-func (s *Smarts) existingShiftKeys(ctx context.Context, participantID int64, drafts []ShiftDraft) (map[string]struct{}, error) {
+func (s *Smarts) existingShiftKeys(ctx context.Context, clientID int64, drafts []ShiftDraft) (map[string]struct{}, error) {
 	keys := make(map[string]struct{}, len(drafts))
 	if len(drafts) == 0 {
 		return keys, nil
@@ -73,7 +73,7 @@ func (s *Smarts) existingShiftKeys(ctx context.Context, participantID int64, dra
 			to = d
 		}
 	}
-	existing, err := s.shifts.ListParticipant(ctx, participantID, from, to)
+	existing, err := s.shifts.ListClient(ctx, clientID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("list existing shifts: %w", err)
 	}

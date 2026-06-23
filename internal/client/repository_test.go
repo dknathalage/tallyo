@@ -1,4 +1,4 @@
-package participant
+package client
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 // newTestDB opens a fresh migrated in-temp SQLite DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "participant.db"))
+	conn, err := appdb.Open(filepath.Join(t.TempDir(), "client.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -46,20 +46,20 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 	return tn.ID
 }
 
-func TestParticipantCreateGet(t *testing.T) {
+func TestClientCreateGet(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
-	p, err := repo.Create(ctx, tid, ParticipantInput{
-		Name: "Jane", NDISNumber: "430000001", PlanStart: "2026-01-01", PlanEnd: "2026-12-31", MgmtType: "self",
+	p, err := repo.Create(ctx, tid, ClientInput{
+		Name: "Jane", Reference: "430000001", PlanStart: "2026-01-01", PlanEnd: "2026-12-31", MgmtType: "self",
 		Email: "j@x.com",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p == nil || p.ID == 0 || p.Name != "Jane" || p.NDISNumber != "430000001" || p.MgmtType != "self" {
+	if p == nil || p.ID == 0 || p.Name != "Jane" || p.Reference != "430000001" || p.MgmtType != "self" {
 		t.Fatalf("Create = %+v", p)
 	}
 	got, err := repo.Get(ctx, tid, p.UUID)
@@ -68,19 +68,25 @@ func TestParticipantCreateGet(t *testing.T) {
 	}
 }
 
-func TestParticipantDefaultMgmtType(t *testing.T) {
+// TestClientDefaults proves a client created with only a name gets the
+// 'standard' type and an empty (nullable) mgmt_type — the NDIS-specific 'plan'
+// default was removed when mgmt_type became nullable.
+func TestClientDefaults(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	p, err := NewParticipants(conn).Create(context.Background(), tid, ParticipantInput{Name: "Jane"})
+	p, err := NewClients(conn).Create(context.Background(), tid, ClientInput{Name: "Jane"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p.MgmtType != "plan" {
-		t.Fatalf("default mgmtType = %q, want plan", p.MgmtType)
+	if p.Type != "standard" {
+		t.Fatalf("default type = %q, want standard", p.Type)
+	}
+	if p.MgmtType != "" {
+		t.Fatalf("default mgmtType = %q, want empty", p.MgmtType)
 	}
 }
 
-func TestParticipantWithPlanManagerName(t *testing.T) {
+func TestClientWithPlanManagerName(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	ctx := context.Background()
@@ -88,8 +94,8 @@ func TestParticipantWithPlanManagerName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create PM: %v", err)
 	}
-	repo := NewParticipants(conn)
-	p, err := repo.Create(ctx, tid, ParticipantInput{Name: "Jane", MgmtType: "plan", PlanManagerUUID: &pm.UUID})
+	repo := NewClients(conn)
+	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", MgmtType: "plan", PlanManagerUUID: &pm.UUID})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -98,36 +104,36 @@ func TestParticipantWithPlanManagerName(t *testing.T) {
 	}
 }
 
-func TestParticipantSearch(t *testing.T) {
+func TestClientSearch(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
-	if _, err := repo.Create(ctx, tid, ParticipantInput{Name: "Alice", NDISNumber: "111"}); err != nil {
+	if _, err := repo.Create(ctx, tid, ClientInput{Name: "Alice", Reference: "111"}); err != nil {
 		t.Fatalf("Create Alice: %v", err)
 	}
-	if _, err := repo.Create(ctx, tid, ParticipantInput{Name: "Bob", NDISNumber: "222"}); err != nil {
+	if _, err := repo.Create(ctx, tid, ClientInput{Name: "Bob", Reference: "222"}); err != nil {
 		t.Fatalf("Create Bob: %v", err)
 	}
-	// match on ndis number
+	// match on reference
 	res, err := repo.List(ctx, tid, "222")
 	if err != nil || len(res) != 1 || res[0].Name != "Bob" {
-		t.Fatalf("search ndis = %+v err=%v", res, err)
+		t.Fatalf("search reference = %+v err=%v", res, err)
 	}
 }
 
-func TestParticipantUpdateDelete(t *testing.T) {
+func TestClientUpdateDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
-	p, err := repo.Create(ctx, tid, ParticipantInput{Name: "Jane"})
+	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, p.UUID, ParticipantInput{Name: "Janet", MgmtType: "self"})
+	up, err := repo.Update(ctx, tid, p.UUID, ClientInput{Name: "Janet", MgmtType: "self"})
 	if err != nil || up == nil || up.Name != "Janet" || up.MgmtType != "self" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
@@ -139,43 +145,43 @@ func TestParticipantUpdateDelete(t *testing.T) {
 	}
 }
 
-func TestParticipantTenantIsolation(t *testing.T) {
+func TestClientTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
-	p, err := repo.Create(ctx, a, ParticipantInput{Name: "Tenant A Person"})
+	p, err := repo.Create(ctx, a, ClientInput{Name: "Tenant A Person"})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	// Tenant B cannot read tenant A's participant.
+	// Tenant B cannot read tenant A's client.
 	if got, _ := repo.Get(ctx, b, p.UUID); got != nil {
-		t.Fatalf("tenant B read tenant A's participant: %+v", got)
+		t.Fatalf("tenant B read tenant A's client: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, ""); len(list) != 0 {
 		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 	// Tenant B's update of A's row must not affect it (no rows match → nil).
-	if got, _ := repo.Update(ctx, b, p.UUID, ParticipantInput{Name: "Hijack"}); got != nil {
-		t.Fatalf("tenant B updated tenant A's participant: %+v", got)
+	if got, _ := repo.Update(ctx, b, p.UUID, ClientInput{Name: "Hijack"}); got != nil {
+		t.Fatalf("tenant B updated tenant A's client: %+v", got)
 	}
 	stillA, _ := repo.Get(ctx, a, p.UUID)
 	if stillA == nil || stillA.Name != "Tenant A Person" {
-		t.Fatalf("tenant A's participant was mutated cross-tenant: %+v", stillA)
+		t.Fatalf("tenant A's client was mutated cross-tenant: %+v", stillA)
 	}
 }
 
-func TestParticipantBulkDelete(t *testing.T) {
+func TestClientBulkDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
-	a, _ := repo.Create(ctx, tid, ParticipantInput{Name: "Alice"})
-	b, _ := repo.Create(ctx, tid, ParticipantInput{Name: "Bob"})
-	c, _ := repo.Create(ctx, tid, ParticipantInput{Name: "Carol"})
+	a, _ := repo.Create(ctx, tid, ClientInput{Name: "Alice"})
+	b, _ := repo.Create(ctx, tid, ClientInput{Name: "Bob"})
+	c, _ := repo.Create(ctx, tid, ClientInput{Name: "Carol"})
 
 	// Empty slice is a no-op.
 	if err := repo.BulkDelete(ctx, tid, nil); err != nil {
@@ -190,24 +196,24 @@ func TestParticipantBulkDelete(t *testing.T) {
 	}
 }
 
-// TestParticipantQuery exercises the listquery-backed Query: enum filter, sort
+// TestClientQuery exercises the listquery-backed Query: enum filter, sort
 // direction, paging, and the total count (which ignores pagination).
-func TestParticipantQuery(t *testing.T) {
+func TestClientQuery(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
 	for _, n := range []struct {
 		name, mgmt string
 	}{{"Amy", "plan"}, {"Bob", "self"}, {"Cara", "plan"}, {"Dan", "plan"}} {
-		if _, err := repo.Create(ctx, tid, ParticipantInput{Name: n.name, MgmtType: n.mgmt}); err != nil {
+		if _, err := repo.Create(ctx, tid, ClientInput{Name: n.name, MgmtType: n.mgmt}); err != nil {
 			t.Fatalf("Create %s: %v", n.name, err)
 		}
 	}
 
 	// Filter mgmtType=plan (3 rows), sort name desc, limit 2 page 1.
-	c := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=1"), ParticipantCols)
+	c := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=1"), ClientCols)
 	rows, total, err := repo.Query(ctx, tid, c)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -223,14 +229,14 @@ func TestParticipantQuery(t *testing.T) {
 	}
 
 	// Page 2 returns the remaining plan-managed row (Amy).
-	c2 := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=2"), ParticipantCols)
+	c2 := listquery.Build(mustVals(t, "f.mgmtType=plan&sort=name&dir=desc&limit=2&page=2"), ClientCols)
 	rows2, _, err := repo.Query(ctx, tid, c2)
 	if err != nil || len(rows2) != 1 || rows2[0].Name != "Amy" {
 		t.Fatalf("page 2 = %+v err=%v, want [Amy]", rows2, err)
 	}
 
 	// Text filter on name.
-	c3 := listquery.Build(mustVals(t, "f.name=ar"), ParticipantCols)
+	c3 := listquery.Build(mustVals(t, "f.name=ar"), ClientCols)
 	rows3, total3, err := repo.Query(ctx, tid, c3)
 	if err != nil || total3 != 1 || len(rows3) != 1 || rows3[0].Name != "Cara" {
 		t.Fatalf("name contains 'ar' = %+v total=%d err=%v, want [Cara]", rows3, total3, err)
@@ -246,18 +252,18 @@ func mustVals(t *testing.T, raw string) url.Values {
 	return v
 }
 
-// TestParticipantListPlain exercises the no-search List path (toParticipantList),
+// TestClientListPlain exercises the no-search List path (toClientList),
 // asserting ordering by name and that fields round-trip.
-func TestParticipantListPlain(t *testing.T) {
+func TestClientListPlain(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewParticipants(conn)
+	repo := NewClients(conn)
 	ctx := context.Background()
 
-	if _, err := repo.Create(ctx, tid, ParticipantInput{Name: "Zoe", NDISNumber: "999"}); err != nil {
+	if _, err := repo.Create(ctx, tid, ClientInput{Name: "Zoe", Reference: "999"}); err != nil {
 		t.Fatalf("Create Zoe: %v", err)
 	}
-	if _, err := repo.Create(ctx, tid, ParticipantInput{Name: "Amy", Email: "amy@x.com"}); err != nil {
+	if _, err := repo.Create(ctx, tid, ClientInput{Name: "Amy", Email: "amy@x.com"}); err != nil {
 		t.Fatalf("Create Amy: %v", err)
 	}
 

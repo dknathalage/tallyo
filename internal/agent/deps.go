@@ -9,10 +9,10 @@ import (
 )
 
 // ShiftLister is satisfied by *shift.Service; it covers the tool that lists a
-// participant's shifts in an optional date range (used by the import-shifts
+// client's shifts in an optional date range (used by the import-shifts
 // dedup path).
 type ShiftLister interface {
-	ListParticipant(ctx context.Context, participantID int64, from, to string) ([]*shift.Shift, error)
+	ListClient(ctx context.Context, clientID int64, from, to string) ([]*shift.Shift, error)
 }
 
 // ShiftCreator is satisfied by *shift.Service; the import-shifts Smart creates

@@ -57,14 +57,14 @@ func countInvoiceLines(t *testing.T, conn *sql.DB, tenantID, invoiceID int64) in
 func TestDeleteUnlinksShiftItemsBeforeCascade(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "T")
-	participantID := seedParticipant(t, conn, tenantID, "Jane")
+	clientID := seedClient(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
 	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	invSvc := NewService(conn, conn, hub, shiftSvc)
 	repo := shift.NewShifts(conn)
 	ctx := tctx(tenantID)
 
-	sid := recordedShiftWithItems(t, shiftSvc, repo, tenantID, participantID, "2026-01-10", 10, 20)
+	sid := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-10", 10, 20)
 	inv, err := invSvc.DraftFromShifts(ctx, []int64{sid})
 	if err != nil {
 		t.Fatalf("DraftFromShifts: %v", err)
@@ -94,15 +94,15 @@ func TestDeleteUnlinksShiftItemsBeforeCascade(t *testing.T) {
 func TestBulkDeleteUnlinksShiftItemsBeforeCascade(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "T")
-	participantID := seedParticipant(t, conn, tenantID, "Jane")
+	clientID := seedClient(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
 	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	invSvc := NewService(conn, conn, hub, shiftSvc)
 	repo := shift.NewShifts(conn)
 	ctx := tctx(tenantID)
 
-	s1 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, participantID, "2026-01-10", 10)
-	s2 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, participantID, "2026-01-11", 20)
+	s1 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-10", 10)
+	s2 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-11", 20)
 	inv1, err := invSvc.DraftFromShifts(ctx, []int64{s1})
 	if err != nil {
 		t.Fatalf("draft inv1: %v", err)

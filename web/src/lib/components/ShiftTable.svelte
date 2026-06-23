@@ -7,22 +7,22 @@
 
 	type Props = {
 		shifts: Shift[];
-		/** Maps a participant uuid → display name. */
-		participantName: (id: string) => string;
+		/** Maps a client uuid → display name. */
+		clientName: (id: string) => string;
 		/** Row click — open the shift (edit / record). */
 		onopen?: (shift: Shift) => void;
 		/** Bulk delete — called with the selected shift uuids. */
 		ondelete?: (ids: string[]) => void | Promise<void>;
 	};
 
-	let { shifts, participantName, onopen, ondelete }: Props = $props();
+	let { shifts, clientName, onopen, ondelete }: Props = $props();
 
-	// A flattened row carrying the derived participant name + a single tag string,
+	// A flattened row carrying the derived client name + a single tag string,
 	// so the table can sort/search/filter on plain scalar columns.
 	interface Row {
 		id: string;
 		date: string;
-		participant: string;
+		client: string;
 		note: string;
 		tags: string;
 		status: ShiftStatus;
@@ -33,7 +33,7 @@
 		return {
 			id: s.id,
 			date: s.serviceDate,
-			participant: participantName(s.participantId),
+			client: clientName(s.clientId),
 			note: s.note,
 			tags: s.tags.join(', '),
 			status: s.status,
@@ -53,9 +53,9 @@
 	const columns: ColumnDef<Row>[] = [
 		{ id: 'date', key: 'date', name: 'Date', sortable: true, filter: textFilter },
 		{
-			id: 'participant',
-			key: 'participant',
-			name: 'Participant',
+			id: 'client',
+			key: 'client',
+			name: 'Client',
 			sortable: true,
 			filter: (value: string, filterValue: string) => value === filterValue
 		},
@@ -91,10 +91,10 @@
 	});
 
 	// Per-column filters. Text columns (date, note) substring-match; the
-	// participant/tag/status columns are exact-match dropdowns.
+	// client/tag/status columns are exact-match dropdowns.
 	let dateQuery = $state('');
 	let noteQuery = $state('');
-	let participantFilter = $state('');
+	let clientFilter = $state('');
 	let tagFilter = $state('');
 	let statusFilter = $state<'all' | ShiftStatus>('all');
 
@@ -107,9 +107,9 @@
 		untrack(() => (q.trim() === '' ? table.clearFilter('note') : table.setFilter('note', [q])));
 	});
 	$effect(() => {
-		const q = participantFilter;
+		const q = clientFilter;
 		untrack(() =>
-			q === '' ? table.clearFilter('participant') : table.setFilter('participant', [q])
+			q === '' ? table.clearFilter('client') : table.setFilter('client', [q])
 		);
 	});
 	$effect(() => {
@@ -121,9 +121,9 @@
 		untrack(() => (q === 'all' ? table.clearFilter('status') : table.setFilter('status', [q])));
 	});
 
-	// Distinct participant names + tag codes for the dropdowns (from current data).
-	const participantNames = $derived(
-		Array.from(new Set(shifts.map((s) => participantName(s.participantId)))).sort()
+	// Distinct client names + tag codes for the dropdowns (from current data).
+	const clientNames = $derived(
+		Array.from(new Set(shifts.map((s) => clientName(s.clientId)))).sort()
 	);
 	const tagOptions = $derived(Array.from(new Set(shifts.flatMap((s) => s.tags))).sort());
 
@@ -238,12 +238,12 @@
 					</th>
 					<th class="px-3 py-1.5">
 						<select
-							bind:value={participantFilter}
-							aria-label="Filter by participant"
+							bind:value={clientFilter}
+							aria-label="Filter by client"
 							class="w-full rounded border border-gray-300 px-1 py-1 text-xs font-normal"
 						>
 							<option value="">All</option>
-							{#each participantNames as n (n)}
+							{#each clientNames as n (n)}
 								<option value={n}>{n}</option>
 							{/each}
 						</select>
@@ -300,7 +300,7 @@
 							/>
 						</td>
 						<td class="px-3 py-1.5 whitespace-nowrap">{dowDate(row.date)}</td>
-						<td class="px-3 py-1.5">{row.participant}</td>
+						<td class="px-3 py-1.5">{row.client}</td>
 						<td class="max-w-[18rem] px-3 py-1.5 text-gray-600">
 							{#if row.note}
 								{row.note}

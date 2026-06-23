@@ -1,42 +1,42 @@
 -- name: ListEstimates :many
-SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ?
 ORDER BY e.created_at DESC;
 
 -- name: ListEstimatesByStatus :many
-SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.status = ?
 ORDER BY e.created_at DESC;
 
--- name: ListParticipantEstimates :many
-SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+-- name: ListClientEstimates :many
+SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.participant_id = ?
+WHERE e.tenant_id = ? AND e.client_id = ?
 ORDER BY e.created_at DESC;
 
 -- name: GetEstimate :one
-SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.uuid = ?;
 
 -- name: GetEstimateByID :one
-SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.id = ?;
@@ -46,7 +46,7 @@ SELECT id FROM estimates WHERE tenant_id = ? AND uuid = ?;
 
 -- name: CreateEstimate :one
 INSERT INTO estimates (
-    uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until,
+    uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, valid_until,
     subtotal, tax, total, notes, converted_invoice_id,
     business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -54,7 +54,7 @@ RETURNING *;
 
 -- name: UpdateEstimate :one
 UPDATE estimates SET
-    number = ?, participant_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, valid_until = ?,
+    number = ?, client_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, valid_until = ?,
     subtotal = ?, tax = ?, total = ?, notes = ?,
     business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?

@@ -24,15 +24,16 @@ CREATE TABLE plan_managers (
 );
 CREATE INDEX idx_plan_managers_tenant ON plan_managers (tenant_id);
 
-CREATE TABLE participants (
+CREATE TABLE clients (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid            TEXT NOT NULL UNIQUE,
     tenant_id       INTEGER NOT NULL,
     name            TEXT NOT NULL,
-    ndis_number     TEXT DEFAULT '',
+    type            TEXT NOT NULL DEFAULT 'standard' CHECK (type IN ('ndis','standard')),
+    reference       TEXT DEFAULT '',
     plan_start      TEXT,                                    -- DATE
     plan_end        TEXT,                                    -- DATE
-    mgmt_type       TEXT NOT NULL DEFAULT 'plan' CHECK (mgmt_type IN ('plan','self')),
+    mgmt_type       TEXT CHECK (mgmt_type IN ('plan','self')),
     plan_manager_id INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
     email           TEXT DEFAULT '',
     phone           TEXT DEFAULT '',
@@ -41,8 +42,8 @@ CREATE TABLE participants (
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
-CREATE INDEX idx_participants_tenant       ON participants (tenant_id);
-CREATE INDEX idx_participants_plan_manager ON participants (plan_manager_id);
+CREATE INDEX idx_clients_tenant       ON clients (tenant_id);
+CREATE INDEX idx_clients_plan_manager ON clients (plan_manager_id);
 
 CREATE TABLE business_profile (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +93,7 @@ CREATE TABLE invoices (
     uuid              TEXT NOT NULL UNIQUE,
     tenant_id         INTEGER NOT NULL,
     number            TEXT NOT NULL,
-    participant_id    INTEGER NOT NULL REFERENCES participants(id),
+    client_id         INTEGER NOT NULL REFERENCES clients(id),
     plan_manager_id   INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
     status            TEXT NOT NULL DEFAULT 'draft',
     issue_date        TEXT NOT NULL,
@@ -110,7 +111,7 @@ CREATE TABLE invoices (
 );
 CREATE INDEX idx_invoices_tenant      ON invoices (tenant_id);
 CREATE INDEX idx_invoices_status      ON invoices (status);
-CREATE INDEX idx_invoices_participant ON invoices (participant_id);
+CREATE INDEX idx_invoices_client ON invoices (client_id);
 CREATE INDEX idx_invoices_created_at  ON invoices (created_at);
 
 -- shifts: final shape (00008) — no hours/km/measures/start_time/end_time.
@@ -119,7 +120,7 @@ CREATE TABLE shifts (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid           TEXT NOT NULL UNIQUE,
     tenant_id      INTEGER NOT NULL,
-    participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+    client_id      INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
     service_date   TEXT NOT NULL,
     note           TEXT NOT NULL DEFAULT '',
     tags           TEXT NOT NULL DEFAULT '[]',
@@ -130,7 +131,7 @@ CREATE TABLE shifts (
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
-CREATE INDEX idx_shifts_participant_date ON shifts(tenant_id, participant_id, service_date);
+CREATE INDEX idx_shifts_client_date ON shifts(tenant_id, client_id, service_date);
 CREATE INDEX idx_shifts_status          ON shifts(tenant_id, status);
 CREATE INDEX idx_shifts_invoice         ON shifts(invoice_id);
 
@@ -168,7 +169,7 @@ CREATE TABLE estimates (
     uuid                 TEXT NOT NULL UNIQUE,
     tenant_id            INTEGER NOT NULL,
     number               TEXT NOT NULL,
-    participant_id       INTEGER REFERENCES participants(id),
+    client_id            INTEGER REFERENCES clients(id),
     plan_manager_id      INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
     status               TEXT NOT NULL DEFAULT 'draft',
     issue_date           TEXT NOT NULL,
@@ -187,7 +188,7 @@ CREATE TABLE estimates (
 );
 CREATE INDEX idx_estimates_tenant      ON estimates (tenant_id);
 CREATE INDEX idx_estimates_status      ON estimates (status);
-CREATE INDEX idx_estimates_participant ON estimates (participant_id);
+CREATE INDEX idx_estimates_client ON estimates (client_id);
 
 CREATE TABLE estimate_line_items (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,7 +231,7 @@ CREATE TABLE recurring_templates (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid            TEXT NOT NULL UNIQUE,
     tenant_id       INTEGER NOT NULL,
-    participant_id  INTEGER REFERENCES participants(id) ON DELETE SET NULL,
+    client_id       INTEGER REFERENCES clients(id) ON DELETE SET NULL,
     plan_manager_id INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
     name            TEXT NOT NULL,
     frequency       TEXT NOT NULL,
@@ -243,7 +244,7 @@ CREATE TABLE recurring_templates (
     updated_at      TEXT NOT NULL
 );
 CREATE INDEX idx_recurring_tenant      ON recurring_templates (tenant_id);
-CREATE INDEX idx_recurring_participant ON recurring_templates (participant_id);
+CREATE INDEX idx_recurring_client ON recurring_templates (client_id);
 CREATE INDEX idx_recurring_next_due    ON recurring_templates (next_due);
 
 -- +goose Down
@@ -257,5 +258,5 @@ DROP TABLE invoices;
 DROP TABLE tax_rates;
 DROP TABLE custom_items;
 DROP TABLE business_profile;
-DROP TABLE participants;
+DROP TABLE clients;
 DROP TABLE plan_managers;

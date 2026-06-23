@@ -21,7 +21,7 @@ import (
 func TestValidateFillingOverwritesUnitPriceWithCap(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 
@@ -43,7 +43,7 @@ func TestValidateFillingOverwritesUnitPriceWithCap(t *testing.T) {
 func TestValidateFillingOverCapPriceStillPinnedToCap(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 
@@ -64,7 +64,7 @@ func TestValidateFillingOverCapPriceStillPinnedToCap(t *testing.T) {
 func TestValidateFillingQuotableKeepsPositiveCallerPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn, conn)
 
@@ -84,7 +84,7 @@ func TestValidateFillingQuotableKeepsPositiveCallerPrice(t *testing.T) {
 func TestValidateFillingQuotableZeroPriceRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn, conn)
 
@@ -102,7 +102,7 @@ func TestValidateFillingQuotableZeroPriceRejected(t *testing.T) {
 func TestValidateFillingComputesTaxOnPinnedPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedParticipantPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
 	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {

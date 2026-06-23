@@ -1,38 +1,38 @@
 -- name: ListInvoices :many
-SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ?
 ORDER BY i.created_at DESC;
 
 -- name: ListInvoicesByStatus :many
-SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.status = ?
 ORDER BY i.created_at DESC;
 
--- name: ListParticipantInvoices :many
-SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+-- name: ListClientInvoices :many
+SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.participant_id = ?
+WHERE i.tenant_id = ? AND i.client_id = ?
 ORDER BY i.created_at DESC;
 
 -- name: GetInvoice :one
-SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.uuid = ?;
 
 -- name: GetInvoiceByID :one
-SELECT i.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.id = ?;
 
@@ -41,7 +41,7 @@ SELECT id FROM invoices WHERE tenant_id = ? AND uuid = ?;
 
 -- name: CreateInvoice :one
 INSERT INTO invoices (
-    uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date,
+    uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, due_date,
     subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot,
     created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -49,7 +49,7 @@ RETURNING *;
 
 -- name: UpdateInvoice :one
 UPDATE invoices SET
-    number = ?, participant_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, due_date = ?,
+    number = ?, client_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, due_date = ?,
     subtotal = ?, tax = ?, total = ?, notes = ?,
     business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?
@@ -78,14 +78,14 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND number LIKE sqlc.arg(pattern);
 SELECT id, tenant_id, number FROM invoices
 WHERE tenant_id = ? AND status = 'sent' AND due_date < date('now');
 
--- name: ParticipantInvoiceStats :one
+-- name: ClientInvoiceStats :one
 SELECT
   COUNT(*) AS invoice_count,
   CAST(COALESCE(SUM(i.total), 0) AS REAL) AS total_invoiced,
   CAST(COALESCE((
     SELECT SUM(p.amount) FROM payments p
     JOIN invoices iv ON p.invoice_id = iv.id
-    WHERE iv.tenant_id = sqlc.arg(tenant_id) AND iv.participant_id = sqlc.arg(participant_id)
+    WHERE iv.tenant_id = sqlc.arg(tenant_id) AND iv.client_id = sqlc.arg(client_id)
   ), 0) AS REAL) AS total_paid
 FROM invoices i
-WHERE i.tenant_id = sqlc.arg(tenant_id) AND i.participant_id = sqlc.arg(participant_id);
+WHERE i.tenant_id = sqlc.arg(tenant_id) AND i.client_id = sqlc.arg(client_id);

@@ -12,6 +12,8 @@ import (
 type Querier interface {
 	ClearDefaultTaxRates(ctx context.Context, tenantID int64) error
 	ClearShiftsForInvoice(ctx context.Context, arg ClearShiftsForInvoiceParams) error
+	ClientInvoiceStats(ctx context.Context, arg ClientInvoiceStatsParams) (ClientInvoiceStatsRow, error)
+	ClientUnbilledAgg(ctx context.Context, tenantID int64) ([]ClientUnbilledAggRow, error)
 	CloseCatalogVersion(ctx context.Context, arg CloseCatalogVersionParams) error
 	// Close every still-open (effective_to IS NULL) version. Called when a new
 	// version is ingested so date-windows never overlap and historical service dates
@@ -22,13 +24,13 @@ type Querier interface {
 	CountUsers(ctx context.Context, tenantID int64) (int64, error)
 	CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error)
 	CreateCatalogVersion(ctx context.Context, arg CreateCatalogVersionParams) (CatalogVersion, error)
+	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)
 	CreateCustomItem(ctx context.Context, arg CreateCustomItemParams) (CustomItem, error)
 	CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error)
 	CreateEstimateLineItem(ctx context.Context, arg CreateEstimateLineItemParams) (EstimateLineItem, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
-	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (Participant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreatePlanManager(ctx context.Context, arg CreatePlanManagerParams) (PlanManager, error)
 	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
@@ -39,6 +41,8 @@ type Querier interface {
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteCatalogVersion(ctx context.Context, id int64) error
+	DeleteClient(ctx context.Context, arg DeleteClientParams) error
+	DeleteClientByID(ctx context.Context, arg DeleteClientByIDParams) error
 	DeleteCustomItem(ctx context.Context, arg DeleteCustomItemParams) error
 	DeleteCustomItemByID(ctx context.Context, arg DeleteCustomItemByIDParams) error
 	DeleteEstimate(ctx context.Context, arg DeleteEstimateParams) error
@@ -47,8 +51,6 @@ type Querier interface {
 	DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUIDParams) error
 	DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) error
 	DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error
-	DeleteParticipant(ctx context.Context, arg DeleteParticipantParams) error
-	DeleteParticipantByID(ctx context.Context, arg DeleteParticipantByIDParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error
 	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
@@ -66,6 +68,9 @@ type Querier interface {
 	GetCatalogVersion(ctx context.Context, id int64) (CatalogVersion, error)
 	GetCatalogVersionByUUID(ctx context.Context, uuid string) (CatalogVersion, error)
 	GetCatalogVersionIDByUUID(ctx context.Context, uuid string) (int64, error)
+	GetClient(ctx context.Context, arg GetClientParams) (GetClientRow, error)
+	GetClientByID(ctx context.Context, arg GetClientByIDParams) (GetClientByIDRow, error)
+	GetClientIDByUUID(ctx context.Context, arg GetClientIDByUUIDParams) (int64, error)
 	GetCurrentCatalogVersion(ctx context.Context) (CatalogVersion, error)
 	GetCustomItem(ctx context.Context, arg GetCustomItemParams) (CustomItem, error)
 	GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemIDByUUIDParams) (int64, error)
@@ -78,9 +83,6 @@ type Querier interface {
 	GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) (GetInvoiceByIDRow, error)
 	GetInvoiceIDByUUID(ctx context.Context, arg GetInvoiceIDByUUIDParams) (int64, error)
 	GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLineItemRow, error)
-	GetParticipant(ctx context.Context, arg GetParticipantParams) (GetParticipantRow, error)
-	GetParticipantByID(ctx context.Context, arg GetParticipantByIDParams) (GetParticipantByIDRow, error)
-	GetParticipantIDByUUID(ctx context.Context, arg GetParticipantIDByUUIDParams) (int64, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error)
 	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
@@ -108,6 +110,9 @@ type Querier interface {
 	ListActiveTenantIDs(ctx context.Context) ([]int64, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListCatalogVersions(ctx context.Context) ([]CatalogVersion, error)
+	ListClientEstimates(ctx context.Context, arg ListClientEstimatesParams) ([]ListClientEstimatesRow, error)
+	ListClientInvoices(ctx context.Context, arg ListClientInvoicesParams) ([]ListClientInvoicesRow, error)
+	ListClients(ctx context.Context, tenantID int64) ([]ListClientsRow, error)
 	ListCustomItems(ctx context.Context, tenantID int64) ([]CustomItem, error)
 	ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemplatesForTenantParams) ([]RecurringTemplate, error)
 	ListEstimateLineItems(ctx context.Context, arg ListEstimateLineItemsParams) ([]ListEstimateLineItemsRow, error)
@@ -119,21 +124,18 @@ type Querier interface {
 	ListInvoicesByStatus(ctx context.Context, arg ListInvoicesByStatusParams) ([]ListInvoicesByStatusRow, error)
 	ListLineItemsForInvoice(ctx context.Context, arg ListLineItemsForInvoiceParams) ([]ListLineItemsForInvoiceRow, error)
 	ListLineItemsForShift(ctx context.Context, arg ListLineItemsForShiftParams) ([]ListLineItemsForShiftRow, error)
-	ListParticipantEstimates(ctx context.Context, arg ListParticipantEstimatesParams) ([]ListParticipantEstimatesRow, error)
-	ListParticipantInvoices(ctx context.Context, arg ListParticipantInvoicesParams) ([]ListParticipantInvoicesRow, error)
-	ListParticipants(ctx context.Context, tenantID int64) ([]ListParticipantsRow, error)
 	ListPlanManagers(ctx context.Context, tenantID int64) ([]PlanManager, error)
-	ListRecordedUnbilledByParticipant(ctx context.Context, arg ListRecordedUnbilledByParticipantParams) ([]ListRecordedUnbilledByParticipantRow, error)
+	ListRecordedUnbilledByClient(ctx context.Context, arg ListRecordedUnbilledByClientParams) ([]ListRecordedUnbilledByClientRow, error)
 	ListRecurringTemplates(ctx context.Context, tenantID int64) ([]ListRecurringTemplatesRow, error)
 	ListScheduledShifts(ctx context.Context, tenantID int64) ([]ListScheduledShiftsRow, error)
 	// Shifts: the delivered-support unit (tenant-scoped). See migration 00004_shifts.sql.
-	// Read queries LEFT JOIN participants for p.uuid so the slice DTO can expose the
-	// participant FK as its uuid (participantId) instead of the internal int, and
+	// Read queries LEFT JOIN clients for p.uuid so the slice DTO can expose the
+	// client FK as its uuid (clientId) instead of the internal int, and
 	// LEFT JOIN invoices for i.uuid so the linked-invoice FK surfaces as its uuid
 	// (invoiceId) instead of the internal int.
 	ListShifts(ctx context.Context, tenantID int64) ([]ListShiftsRow, error)
-	ListShiftsByParticipant(ctx context.Context, arg ListShiftsByParticipantParams) ([]ListShiftsByParticipantRow, error)
-	ListShiftsByParticipantRange(ctx context.Context, arg ListShiftsByParticipantRangeParams) ([]ListShiftsByParticipantRangeRow, error)
+	ListShiftsByClient(ctx context.Context, arg ListShiftsByClientParams) ([]ListShiftsByClientRow, error)
+	ListShiftsByClientRange(ctx context.Context, arg ListShiftsByClientRangeParams) ([]ListShiftsByClientRangeRow, error)
 	ListShiftsByStatus(ctx context.Context, arg ListShiftsByStatusParams) ([]ListShiftsByStatusRow, error)
 	// Global NDIS Support Catalogue - NOT tenant-scoped (shared reference data).
 	ListSupportItemPrices(ctx context.Context, supportItemID int64) ([]SupportItemPrice, error)
@@ -152,13 +154,11 @@ type Querier interface {
 	// pad-width independent. prefix_len is the length of the non-numeric prefix
 	// (e.g. 4 for 'INV-'); the numeric part begins at prefix_len + 1.
 	MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumberLikeParams) (int64, error)
-	ParticipantInvoiceStats(ctx context.Context, arg ParticipantInvoiceStatsParams) (ParticipantInvoiceStatsRow, error)
-	ParticipantUnbilledAgg(ctx context.Context, tenantID int64) ([]ParticipantUnbilledAggRow, error)
 	ResolveCatalogVersionForDate(ctx context.Context, serviceDate string) (CatalogVersion, error)
 	ResolveZonePrice(ctx context.Context, arg ResolveZonePriceParams) (SupportItemPrice, error)
 	RestampUnbilledShiftItems(ctx context.Context, arg RestampUnbilledShiftItemsParams) error
+	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchCustomItems(ctx context.Context, arg SearchCustomItemsParams) ([]CustomItem, error)
-	SearchParticipants(ctx context.Context, arg SearchParticipantsParams) ([]SearchParticipantsRow, error)
 	SearchPlanManagers(ctx context.Context, arg SearchPlanManagersParams) ([]PlanManager, error)
 	SearchSupportItems(ctx context.Context, arg SearchSupportItemsParams) ([]SupportItem, error)
 	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID int64) ([]SelectOverdueInvoicesForTenantRow, error)
@@ -169,13 +169,13 @@ type Querier interface {
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UnlinkShiftItemsFromInvoice(ctx context.Context, arg UnlinkShiftItemsFromInvoiceParams) error
 	UpdateBusinessZone(ctx context.Context, arg UpdateBusinessZoneParams) error
+	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
 	UpdateCustomItem(ctx context.Context, arg UpdateCustomItemParams) (CustomItem, error)
 	UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error)
 	UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error
 	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
 	UpdateInvoiceTotals(ctx context.Context, arg UpdateInvoiceTotalsParams) (Invoice, error)
-	UpdateParticipant(ctx context.Context, arg UpdateParticipantParams) (Participant, error)
 	UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerParams) (PlanManager, error)
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateShift(ctx context.Context, arg UpdateShiftParams) (Shift, error)

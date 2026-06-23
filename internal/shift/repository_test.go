@@ -9,17 +9,17 @@ import (
 
 func sampleShiftInput(pid int64) ShiftInput {
 	return ShiftInput{
-		ParticipantID: pid,
-		ServiceDate:   "2026-01-15",
-		Note:          "Supported community access",
-		Tags:          []string{"community", "transport"},
+		ClientID:    pid,
+		ServiceDate: "2026-01-15",
+		Note:        "Supported community access",
+		Tags:        []string{"community", "transport"},
 	}
 }
 
 func TestShiftCreateRoundTrip(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	uid := seedUser(t, conn, tid)
 	repo := NewShifts(conn)
 	ctx := context.Background()
@@ -28,7 +28,7 @@ func TestShiftCreateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if s == nil || s.ID == 0 || s.ParticipantID != pid || s.ServiceDate != "2026-01-15" {
+	if s == nil || s.ID == 0 || s.ClientID != pid || s.ServiceDate != "2026-01-15" {
 		t.Fatalf("Create = %+v", s)
 	}
 	if s.Note != "Supported community access" {
@@ -51,11 +51,11 @@ func TestShiftCreateRoundTrip(t *testing.T) {
 func TestShiftCreateEmptyTagsNeverNil(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
-	s, err := repo.Create(ctx, tid, nil, ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-16"})
+	s, err := repo.Create(ctx, tid, nil, ShiftInput{ClientID: pid, ServiceDate: "2026-01-16"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestShiftCreateEmptyTagsNeverNil(t *testing.T) {
 func TestShiftCreateStatusOverride(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -85,7 +85,7 @@ func TestShiftCreateStatusOverride(t *testing.T) {
 func TestShiftCreateRejectsInvalid(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -93,9 +93,9 @@ func TestShiftCreateRejectsInvalid(t *testing.T) {
 		name string
 		in   ShiftInput
 	}{
-		{"empty serviceDate", ShiftInput{ParticipantID: pid, ServiceDate: ""}},
-		{"malformed serviceDate", ShiftInput{ParticipantID: pid, ServiceDate: "2026-6-9"}},
-		{"zero participant", ShiftInput{ParticipantID: 0, ServiceDate: "2026-01-15"}},
+		{"empty serviceDate", ShiftInput{ClientID: pid, ServiceDate: ""}},
+		{"malformed serviceDate", ShiftInput{ClientID: pid, ServiceDate: "2026-6-9"}},
+		{"zero client", ShiftInput{ClientID: 0, ServiceDate: "2026-01-15"}},
 	}
 	for _, c := range cases {
 		if s, err := repo.Create(ctx, tid, nil, c.in); err == nil {
@@ -108,7 +108,7 @@ func TestShiftGetFoundAbsentAndIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	pa := seedParticipant(t, conn, a, "Jane")
+	pa := seedClient(t, conn, a, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -128,11 +128,11 @@ func TestShiftGetFoundAbsentAndIsolation(t *testing.T) {
 	}
 }
 
-func TestShiftListParticipantRangeRepo(t *testing.T) {
+func TestShiftListClientRangeRepo(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
-	other := seedParticipant(t, conn, tid, "Other")
+	pid := seedClient(t, conn, tid, "Jane")
+	other := seedClient(t, conn, tid, "Other")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -144,22 +144,22 @@ func TestShiftListParticipantRangeRepo(t *testing.T) {
 		}
 	}
 
-	all, err := repo.ListParticipant(ctx, tid, pid, "", "")
+	all, err := repo.ListClient(ctx, tid, pid, "", "")
 	if err != nil || len(all) != 3 {
-		t.Fatalf("ListParticipant all = %d err=%v", len(all), err)
+		t.Fatalf("ListClient all = %d err=%v", len(all), err)
 	}
 
-	rng, err := repo.ListParticipant(ctx, tid, pid, "2026-01-15", "2026-01-20")
+	rng, err := repo.ListClient(ctx, tid, pid, "2026-01-15", "2026-01-20")
 	if err != nil {
-		t.Fatalf("ListParticipant range: %v", err)
+		t.Fatalf("ListClient range: %v", err)
 	}
 	if len(rng) != 2 {
 		t.Fatalf("range [15,20] inclusive = %d, want 2: %+v", len(rng), rng)
 	}
 
-	none, err := repo.ListParticipant(ctx, tid, other, "", "")
+	none, err := repo.ListClient(ctx, tid, other, "", "")
 	if err != nil {
-		t.Fatalf("ListParticipant none: %v", err)
+		t.Fatalf("ListClient none: %v", err)
 	}
 	if none == nil || len(none) != 0 {
 		t.Fatalf("no-shifts list must be non-nil empty, got %+v", none)
@@ -169,7 +169,7 @@ func TestShiftListParticipantRangeRepo(t *testing.T) {
 func TestShiftUpdateStatus(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -199,7 +199,7 @@ func TestShiftUpdateStatus(t *testing.T) {
 func TestShiftSetInvoiceAndClear(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -229,7 +229,7 @@ func TestShiftSetInvoiceAndClear(t *testing.T) {
 func TestShiftSetStatusForInvoice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -250,7 +250,7 @@ func TestShiftSetStatusForInvoice(t *testing.T) {
 func TestShiftListRecordedUnbilled(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -287,11 +287,11 @@ func TestShiftListRecordedUnbilled(t *testing.T) {
 	}
 }
 
-func TestShiftUnbilledByParticipant(t *testing.T) {
+func TestShiftUnbilledByClient(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	p1 := seedParticipant(t, conn, tid, "Jane")
-	p2 := seedParticipant(t, conn, tid, "John")
+	p1 := seedClient(t, conn, tid, "Jane")
+	p2 := seedClient(t, conn, tid, "John")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -308,16 +308,16 @@ func TestShiftUnbilledByParticipant(t *testing.T) {
 		t.Fatalf("Create p2: %v", err)
 	}
 
-	aggs, err := repo.UnbilledByParticipant(ctx, tid)
+	aggs, err := repo.UnbilledByClient(ctx, tid)
 	if err != nil {
-		t.Fatalf("UnbilledByParticipant: %v", err)
+		t.Fatalf("UnbilledByClient: %v", err)
 	}
 	if len(aggs) != 2 {
 		t.Fatalf("aggs = %d, want 2: %+v", len(aggs), aggs)
 	}
 	byPID := map[int64]UnbilledAgg{}
 	for _, a := range aggs {
-		byPID[a.ParticipantID] = a
+		byPID[a.ClientID] = a
 	}
 	if a := byPID[p1]; a.Count != 2 || a.From != "2026-01-10" || a.To != "2026-01-20" {
 		t.Fatalf("p1 agg = %+v, want count 2 from 01-10 to 01-20", a)
@@ -330,7 +330,7 @@ func TestShiftUnbilledByParticipant(t *testing.T) {
 func TestShiftUpdateRepo(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 
@@ -358,7 +358,7 @@ func TestShiftUpdateRepo(t *testing.T) {
 func TestShiftDeleteRepo(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	pid := seedParticipant(t, conn, tid, "Jane")
+	pid := seedClient(t, conn, tid, "Jane")
 	repo := NewShifts(conn)
 	ctx := context.Background()
 

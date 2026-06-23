@@ -10,10 +10,10 @@ import (
 )
 
 func TestEstimateListAndGet(t *testing.T) {
-	svc, _, tenantID, participantID := newEstimateSvc(t)
+	svc, _, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est := makeEstimate(t, svc, tenantID, participantID)
+	est := makeEstimate(t, svc, tenantID, clientID)
 
 	list, err := svc.List(ctx)
 	if err != nil {
@@ -44,11 +44,11 @@ func TestEstimateGetNotFoundReturnsNil(t *testing.T) {
 	}
 }
 
-func TestEstimateListByStatusAndParticipantSvc(t *testing.T) {
-	svc, _, tenantID, participantID := newEstimateSvc(t)
+func TestEstimateListByStatusAndClientSvc(t *testing.T) {
+	svc, _, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est := makeEstimate(t, svc, tenantID, participantID)
+	est := makeEstimate(t, svc, tenantID, clientID)
 	if err := svc.UpdateStatus(ctx, est.ID, "accepted"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
@@ -61,23 +61,23 @@ func TestEstimateListByStatusAndParticipantSvc(t *testing.T) {
 		t.Fatalf("ListByStatus accepted = %+v, want one id %d", accepted, est.ID)
 	}
 
-	byPart, err := svc.ListParticipantEstimates(ctx, participantID)
+	byPart, err := svc.ListClientEstimates(ctx, clientID)
 	if err != nil {
-		t.Fatalf("ListParticipantEstimates: %v", err)
+		t.Fatalf("ListClientEstimates: %v", err)
 	}
 	if len(byPart) != 1 || byPart[0].ID != est.ID {
-		t.Fatalf("ListParticipantEstimates = %+v, want one id %d", byPart, est.ID)
+		t.Fatalf("ListClientEstimates = %+v, want one id %d", byPart, est.ID)
 	}
 }
 
 func TestEstimateUpdateSvc(t *testing.T) {
-	svc, _, tenantID, participantID := newEstimateSvc(t)
+	svc, _, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est := makeEstimate(t, svc, tenantID, participantID)
+	est := makeEstimate(t, svc, tenantID, clientID)
 
 	updated, err := svc.Update(ctx, est.ID, EstimateInput{
-		ParticipantID: participantID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
+		ClientID: clientID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 2, UnitPrice: 8}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
@@ -91,10 +91,10 @@ func TestEstimateUpdateSvc(t *testing.T) {
 }
 
 func TestEstimateUpdateSvcNotFoundReturnsNil(t *testing.T) {
-	svc, _, tenantID, participantID := newEstimateSvc(t)
+	svc, _, tenantID, clientID := newEstimateSvc(t)
 
 	got, err := svc.Update(tctx(tenantID), 999999, EstimateInput{
-		ParticipantID: participantID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
+		ClientID: clientID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Update missing: unexpected err %v", err)
@@ -105,10 +105,10 @@ func TestEstimateUpdateSvcNotFoundReturnsNil(t *testing.T) {
 }
 
 func TestEstimateDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	svc, hub, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est := makeEstimate(t, svc, tenantID, participantID)
+	est := makeEstimate(t, svc, tenantID, clientID)
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
@@ -135,11 +135,11 @@ func TestEstimateDeleteBroadcasts(t *testing.T) {
 }
 
 func TestEstimateBulkDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	svc, hub, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	a := makeEstimate(t, svc, tenantID, participantID)
-	b := makeEstimate(t, svc, tenantID, participantID)
+	a := makeEstimate(t, svc, tenantID, clientID)
+	b := makeEstimate(t, svc, tenantID, clientID)
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
@@ -166,11 +166,11 @@ func TestEstimateBulkDeleteBroadcasts(t *testing.T) {
 }
 
 func TestEstimateBulkUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	svc, hub, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	a := makeEstimate(t, svc, tenantID, participantID)
-	b := makeEstimate(t, svc, tenantID, participantID)
+	a := makeEstimate(t, svc, tenantID, clientID)
+	b := makeEstimate(t, svc, tenantID, clientID)
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
@@ -199,10 +199,10 @@ func TestEstimateBulkUpdateStatusBroadcasts(t *testing.T) {
 // TestEstimateConvertNotAccepted asserts converting a draft estimate propagates
 // ErrNotAccepted unchanged (no invoice created).
 func TestEstimateConvertNotAccepted(t *testing.T) {
-	svc, _, tenantID, participantID := newEstimateSvc(t)
+	svc, _, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est := makeEstimate(t, svc, tenantID, participantID) // status defaults to draft
+	est := makeEstimate(t, svc, tenantID, clientID) // status defaults to draft
 
 	res, err := svc.Convert(ctx, est.ID)
 	if !errors.Is(err, ErrNotAccepted) {
@@ -216,10 +216,10 @@ func TestEstimateConvertNotAccepted(t *testing.T) {
 // TestEstimateConvertAlreadyConverted asserts a second convert propagates
 // ErrAlreadyConverted.
 func TestEstimateConvertAlreadyConverted(t *testing.T) {
-	svc, _, tenantID, participantID := newEstimateSvc(t)
+	svc, _, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
-	est := makeEstimate(t, svc, tenantID, participantID)
+	est := makeEstimate(t, svc, tenantID, clientID)
 	if err := svc.UpdateStatus(ctx, est.ID, "accepted"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestEstimateTenantScoping(t *testing.T) {
 	svc := NewService(conn, conn, hub)
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
-	partA := seedParticipant(t, conn, tenantA, "Jane")
+	partA := seedClient(t, conn, tenantA, "Jane")
 	tenantB := seedTenant(t, conn, "Beta NDIS")
 
 	est := makeEstimate(t, svc, tenantA, partA)

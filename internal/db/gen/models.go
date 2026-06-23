@@ -49,6 +49,25 @@ type CatalogVersion struct {
 	CreatedAt      string         `json:"created_at"`
 }
 
+type Client struct {
+	ID            int64          `json:"id"`
+	Uuid          string         `json:"uuid"`
+	TenantID      int64          `json:"tenant_id"`
+	Name          string         `json:"name"`
+	Type          string         `json:"type"`
+	Reference     sql.NullString `json:"reference"`
+	PlanStart     sql.NullString `json:"plan_start"`
+	PlanEnd       sql.NullString `json:"plan_end"`
+	MgmtType      sql.NullString `json:"mgmt_type"`
+	PlanManagerID sql.NullInt64  `json:"plan_manager_id"`
+	Email         sql.NullString `json:"email"`
+	Phone         sql.NullString `json:"phone"`
+	Address       sql.NullString `json:"address"`
+	Metadata      sql.NullString `json:"metadata"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
+}
+
 type CustomItem struct {
 	ID        int64          `json:"id"`
 	Uuid      string         `json:"uuid"`
@@ -67,7 +86,7 @@ type Estimate struct {
 	Uuid               string         `json:"uuid"`
 	TenantID           int64          `json:"tenant_id"`
 	Number             string         `json:"number"`
-	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	ClientID           sql.NullInt64  `json:"client_id"`
 	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
 	Status             string         `json:"status"`
 	IssueDate          string         `json:"issue_date"`
@@ -121,7 +140,7 @@ type Invoice struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -159,24 +178,6 @@ type LineItem struct {
 	SortOrder        sql.NullInt64  `json:"sort_order"`
 }
 
-type Participant struct {
-	ID            int64          `json:"id"`
-	Uuid          string         `json:"uuid"`
-	TenantID      int64          `json:"tenant_id"`
-	Name          string         `json:"name"`
-	NdisNumber    sql.NullString `json:"ndis_number"`
-	PlanStart     sql.NullString `json:"plan_start"`
-	PlanEnd       sql.NullString `json:"plan_end"`
-	MgmtType      string         `json:"mgmt_type"`
-	PlanManagerID sql.NullInt64  `json:"plan_manager_id"`
-	Email         sql.NullString `json:"email"`
-	Phone         sql.NullString `json:"phone"`
-	Address       sql.NullString `json:"address"`
-	Metadata      sql.NullString `json:"metadata"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
-}
-
 type Payment struct {
 	ID        int64          `json:"id"`
 	Uuid      string         `json:"uuid"`
@@ -208,7 +209,7 @@ type RecurringTemplate struct {
 	ID            int64         `json:"id"`
 	Uuid          string        `json:"uuid"`
 	TenantID      int64         `json:"tenant_id"`
-	ParticipantID sql.NullInt64 `json:"participant_id"`
+	ClientID      sql.NullInt64 `json:"client_id"`
 	PlanManagerID sql.NullInt64 `json:"plan_manager_id"`
 	Name          string        `json:"name"`
 	Frequency     string        `json:"frequency"`
@@ -228,18 +229,18 @@ type Session struct {
 }
 
 type Shift struct {
-	ID            int64         `json:"id"`
-	Uuid          string        `json:"uuid"`
-	TenantID      int64         `json:"tenant_id"`
-	ParticipantID int64         `json:"participant_id"`
-	ServiceDate   string        `json:"service_date"`
-	Note          string        `json:"note"`
-	Tags          string        `json:"tags"`
-	Status        string        `json:"status"`
-	InvoiceID     sql.NullInt64 `json:"invoice_id"`
-	AuthorUserID  sql.NullInt64 `json:"author_user_id"`
-	CreatedAt     string        `json:"created_at"`
-	UpdatedAt     string        `json:"updated_at"`
+	ID           int64         `json:"id"`
+	Uuid         string        `json:"uuid"`
+	TenantID     int64         `json:"tenant_id"`
+	ClientID     int64         `json:"client_id"`
+	ServiceDate  string        `json:"service_date"`
+	Note         string        `json:"note"`
+	Tags         string        `json:"tags"`
+	Status       string        `json:"status"`
+	InvoiceID    sql.NullInt64 `json:"invoice_id"`
+	AuthorUserID sql.NullInt64 `json:"author_user_id"`
+	CreatedAt    string        `json:"created_at"`
+	UpdatedAt    string        `json:"updated_at"`
 }
 
 type SupportItem struct {

@@ -29,14 +29,14 @@ human-readable map. Update it whenever a migration changes a table or relationsh
 ```mermaid
 erDiagram
     tenants ||--o{ users : has
-    tenants ||--o{ participants : has
+    tenants ||--o{ clients : has
     tenants ||--o{ invoices : has
     tenants ||--o{ shifts : has
 
-    plan_managers |o--o{ participants : manages
+    plan_managers |o--o{ clients : manages
     plan_managers |o--o{ invoices : "bills via"
-    participants ||--o{ shifts : "supported in"
-    participants ||--o{ invoices : "billed for"
+    clients ||--o{ shifts : "supported in"
+    clients ||--o{ invoices : "billed for"
 
     catalog_versions ||--o{ support_items : contains
     support_items ||--o{ support_item_prices : "priced by zone"
@@ -51,7 +51,7 @@ erDiagram
     invoices ||--o{ payments : "paid by"
     invoices ||--o{ estimates : "converted from"
     estimates ||--o{ estimate_line_items : lines
-    participants |o--o{ recurring_templates : "auto-bills"
+    clients |o--o{ recurring_templates : "auto-bills"
 
     line_items {
         int     id PK
@@ -77,7 +77,7 @@ erDiagram
     shifts {
         int  id PK
         int  tenant_id FK
-        int  participant_id FK
+        int  client_id FK
         text service_date
         text note "free text; AI or user divides into line_items"
         text tags "JSON array"
@@ -89,14 +89,16 @@ erDiagram
     invoices {
         int  id PK
         int  tenant_id FK
-        int  participant_id FK
+        int  client_id FK
         int  plan_manager_id FK
         text status
     }
 
-    participants {
+    clients {
         int  id PK
         int  tenant_id FK
+        text type "ndis|standard (default standard)"
+        text reference "free-text (was ndis_number)"
         int  plan_manager_id FK "NULL = self-managed"
     }
 ```

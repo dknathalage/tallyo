@@ -43,7 +43,7 @@ func TestForTenantID_OpensMigratesCaches(t *testing.T) {
 		t.Fatalf("ForTenantID(1): %v", err)
 	}
 	// Migrated: a tenant table must exist and be queryable.
-	if _, err := db1.Exec(`INSERT INTO participants (uuid, tenant_id, name, created_at, updated_at)
+	if _, err := db1.Exec(`INSERT INTO clients (uuid, tenant_id, name, created_at, updated_at)
 		VALUES ('u1', 1, 'A', '2026-01-01', '2026-01-01')`); err != nil {
 		t.Fatalf("insert into migrated tenant db: %v", err)
 	}
@@ -67,8 +67,8 @@ func TestForTenantID_OpensMigratesCaches(t *testing.T) {
 		t.Fatalf("tenant 2 must get a distinct handle")
 	}
 	var n int
-	if err := db2.QueryRow(`SELECT COUNT(*) FROM participants`).Scan(&n); err != nil {
-		t.Fatalf("count tenant 2 participants: %v", err)
+	if err := db2.QueryRow(`SELECT COUNT(*) FROM clients`).Scan(&n); err != nil {
+		t.Fatalf("count tenant 2 clients: %v", err)
 	}
 	if n != 0 {
 		t.Fatalf("tenant 2 leaked %d rows from tenant 1", n)

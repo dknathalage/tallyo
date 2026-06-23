@@ -10,20 +10,51 @@ import (
 	"database/sql"
 )
 
+const clientInvoiceStats = `-- name: ClientInvoiceStats :one
+SELECT
+  COUNT(*) AS invoice_count,
+  CAST(COALESCE(SUM(i.total), 0) AS REAL) AS total_invoiced,
+  CAST(COALESCE((
+    SELECT SUM(p.amount) FROM payments p
+    JOIN invoices iv ON p.invoice_id = iv.id
+    WHERE iv.tenant_id = ?1 AND iv.client_id = ?2
+  ), 0) AS REAL) AS total_paid
+FROM invoices i
+WHERE i.tenant_id = ?1 AND i.client_id = ?2
+`
+
+type ClientInvoiceStatsParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ClientID int64 `json:"client_id"`
+}
+
+type ClientInvoiceStatsRow struct {
+	InvoiceCount  int64   `json:"invoice_count"`
+	TotalInvoiced float64 `json:"total_invoiced"`
+	TotalPaid     float64 `json:"total_paid"`
+}
+
+func (q *Queries) ClientInvoiceStats(ctx context.Context, arg ClientInvoiceStatsParams) (ClientInvoiceStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, clientInvoiceStats, arg.TenantID, arg.ClientID)
+	var i ClientInvoiceStatsRow
+	err := row.Scan(&i.InvoiceCount, &i.TotalInvoiced, &i.TotalPaid)
+	return i, err
+}
+
 const createInvoice = `-- name: CreateInvoice :one
 INSERT INTO invoices (
-    uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date,
+    uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, due_date,
     subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot,
     created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+RETURNING id, uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type CreateInvoiceParams struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -44,7 +75,7 @@ func (q *Queries) CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (I
 		arg.Uuid,
 		arg.TenantID,
 		arg.Number,
-		arg.ParticipantID,
+		arg.ClientID,
 		arg.PlanManagerID,
 		arg.Status,
 		arg.IssueDate,
@@ -65,7 +96,7 @@ func (q *Queries) CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (I
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -98,9 +129,9 @@ func (q *Queries) DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) er
 }
 
 const getInvoice = `-- name: GetInvoice :one
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.client_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.uuid = ?
 `
@@ -115,7 +146,7 @@ type GetInvoiceRow struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -129,8 +160,8 @@ type GetInvoiceRow struct {
 	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
-	ParticipantName  sql.NullString `json:"participant_name"`
-	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	ClientName       sql.NullString `json:"client_name"`
+	ClientUuid       sql.NullString `json:"client_uuid"`
 	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
@@ -142,7 +173,7 @@ func (q *Queries) GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvo
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -156,17 +187,17 @@ func (q *Queries) GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvo
 		&i.PayerSnapshot,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ParticipantName,
-		&i.ParticipantUuid,
+		&i.ClientName,
+		&i.ClientUuid,
 		&i.PlanManagerUuid,
 	)
 	return i, err
 }
 
 const getInvoiceByID = `-- name: GetInvoiceByID :one
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.client_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.id = ?
 `
@@ -181,7 +212,7 @@ type GetInvoiceByIDRow struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -195,8 +226,8 @@ type GetInvoiceByIDRow struct {
 	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
-	ParticipantName  sql.NullString `json:"participant_name"`
-	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	ClientName       sql.NullString `json:"client_name"`
+	ClientUuid       sql.NullString `json:"client_uuid"`
 	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
@@ -208,7 +239,7 @@ func (q *Queries) GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) 
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -222,8 +253,8 @@ func (q *Queries) GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) 
 		&i.PayerSnapshot,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ParticipantName,
-		&i.ParticipantUuid,
+		&i.ClientName,
+		&i.ClientUuid,
 		&i.PlanManagerUuid,
 	)
 	return i, err
@@ -245,21 +276,26 @@ func (q *Queries) GetInvoiceIDByUUID(ctx context.Context, arg GetInvoiceIDByUUID
 	return id, err
 }
 
-const listInvoices = `-- name: ListInvoices :many
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+const listClientInvoices = `-- name: ListClientInvoices :many
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.client_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ?
+WHERE i.tenant_id = ? AND i.client_id = ?
 ORDER BY i.created_at DESC
 `
 
-type ListInvoicesRow struct {
+type ListClientInvoicesParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ClientID int64 `json:"client_id"`
+}
+
+type ListClientInvoicesRow struct {
 	ID               int64          `json:"id"`
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -273,8 +309,86 @@ type ListInvoicesRow struct {
 	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
-	ParticipantName  sql.NullString `json:"participant_name"`
-	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	ClientName       sql.NullString `json:"client_name"`
+	ClientUuid       sql.NullString `json:"client_uuid"`
+	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
+}
+
+func (q *Queries) ListClientInvoices(ctx context.Context, arg ListClientInvoicesParams) ([]ListClientInvoicesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listClientInvoices, arg.TenantID, arg.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClientInvoicesRow
+	for rows.Next() {
+		var i ListClientInvoicesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.TenantID,
+			&i.Number,
+			&i.ClientID,
+			&i.PlanManagerID,
+			&i.Status,
+			&i.IssueDate,
+			&i.DueDate,
+			&i.Subtotal,
+			&i.Tax,
+			&i.Total,
+			&i.Notes,
+			&i.BusinessSnapshot,
+			&i.ClientSnapshot,
+			&i.PayerSnapshot,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClientName,
+			&i.ClientUuid,
+			&i.PlanManagerUuid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInvoices = `-- name: ListInvoices :many
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.client_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
+FROM invoices i
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
+WHERE i.tenant_id = ?
+ORDER BY i.created_at DESC
+`
+
+type ListInvoicesRow struct {
+	ID               int64          `json:"id"`
+	Uuid             string         `json:"uuid"`
+	TenantID         int64          `json:"tenant_id"`
+	Number           string         `json:"number"`
+	ClientID         int64          `json:"client_id"`
+	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
+	Status           string         `json:"status"`
+	IssueDate        string         `json:"issue_date"`
+	DueDate          string         `json:"due_date"`
+	Subtotal         float64        `json:"subtotal"`
+	Tax              float64        `json:"tax"`
+	Total            float64        `json:"total"`
+	Notes            sql.NullString `json:"notes"`
+	BusinessSnapshot sql.NullString `json:"business_snapshot"`
+	ClientSnapshot   sql.NullString `json:"client_snapshot"`
+	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	ClientName       sql.NullString `json:"client_name"`
+	ClientUuid       sql.NullString `json:"client_uuid"`
 	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
@@ -292,7 +406,7 @@ func (q *Queries) ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoi
 			&i.Uuid,
 			&i.TenantID,
 			&i.Number,
-			&i.ParticipantID,
+			&i.ClientID,
 			&i.PlanManagerID,
 			&i.Status,
 			&i.IssueDate,
@@ -306,8 +420,8 @@ func (q *Queries) ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoi
 			&i.PayerSnapshot,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ParticipantName,
-			&i.ParticipantUuid,
+			&i.ClientName,
+			&i.ClientUuid,
 			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
@@ -324,9 +438,9 @@ func (q *Queries) ListInvoices(ctx context.Context, tenantID int64) ([]ListInvoi
 }
 
 const listInvoicesByStatus = `-- name: ListInvoicesByStatus :many
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
+SELECT i.id, i.uuid, i.tenant_id, i.number, i.client_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid
 FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
+LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.status = ?
 ORDER BY i.created_at DESC
@@ -342,7 +456,7 @@ type ListInvoicesByStatusRow struct {
 	Uuid             string         `json:"uuid"`
 	TenantID         int64          `json:"tenant_id"`
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -356,8 +470,8 @@ type ListInvoicesByStatusRow struct {
 	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
 	CreatedAt        string         `json:"created_at"`
 	UpdatedAt        string         `json:"updated_at"`
-	ParticipantName  sql.NullString `json:"participant_name"`
-	ParticipantUuid  sql.NullString `json:"participant_uuid"`
+	ClientName       sql.NullString `json:"client_name"`
+	ClientUuid       sql.NullString `json:"client_uuid"`
 	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
 }
 
@@ -375,7 +489,7 @@ func (q *Queries) ListInvoicesByStatus(ctx context.Context, arg ListInvoicesBySt
 			&i.Uuid,
 			&i.TenantID,
 			&i.Number,
-			&i.ParticipantID,
+			&i.ClientID,
 			&i.PlanManagerID,
 			&i.Status,
 			&i.IssueDate,
@@ -389,91 +503,8 @@ func (q *Queries) ListInvoicesByStatus(ctx context.Context, arg ListInvoicesBySt
 			&i.PayerSnapshot,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ParticipantName,
-			&i.ParticipantUuid,
-			&i.PlanManagerUuid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listParticipantInvoices = `-- name: ListParticipantInvoices :many
-SELECT i.id, i.uuid, i.tenant_id, i.number, i.participant_id, i.plan_manager_id, i.status, i.issue_date, i.due_date, i.subtotal, i.tax, i.total, i.notes, i.business_snapshot, i.client_snapshot, i.payer_snapshot, i.created_at, i.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid
-FROM invoices i
-LEFT JOIN participants p ON i.participant_id = p.id AND p.tenant_id = i.tenant_id
-LEFT JOIN plan_managers pm ON i.plan_manager_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.participant_id = ?
-ORDER BY i.created_at DESC
-`
-
-type ListParticipantInvoicesParams struct {
-	TenantID      int64 `json:"tenant_id"`
-	ParticipantID int64 `json:"participant_id"`
-}
-
-type ListParticipantInvoicesRow struct {
-	ID               int64          `json:"id"`
-	Uuid             string         `json:"uuid"`
-	TenantID         int64          `json:"tenant_id"`
-	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
-	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
-	Status           string         `json:"status"`
-	IssueDate        string         `json:"issue_date"`
-	DueDate          string         `json:"due_date"`
-	Subtotal         float64        `json:"subtotal"`
-	Tax              float64        `json:"tax"`
-	Total            float64        `json:"total"`
-	Notes            sql.NullString `json:"notes"`
-	BusinessSnapshot sql.NullString `json:"business_snapshot"`
-	ClientSnapshot   sql.NullString `json:"client_snapshot"`
-	PayerSnapshot    sql.NullString `json:"payer_snapshot"`
-	CreatedAt        string         `json:"created_at"`
-	UpdatedAt        string         `json:"updated_at"`
-	ParticipantName  sql.NullString `json:"participant_name"`
-	ParticipantUuid  sql.NullString `json:"participant_uuid"`
-	PlanManagerUuid  sql.NullString `json:"plan_manager_uuid"`
-}
-
-func (q *Queries) ListParticipantInvoices(ctx context.Context, arg ListParticipantInvoicesParams) ([]ListParticipantInvoicesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listParticipantInvoices, arg.TenantID, arg.ParticipantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListParticipantInvoicesRow
-	for rows.Next() {
-		var i ListParticipantInvoicesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Uuid,
-			&i.TenantID,
-			&i.Number,
-			&i.ParticipantID,
-			&i.PlanManagerID,
-			&i.Status,
-			&i.IssueDate,
-			&i.DueDate,
-			&i.Subtotal,
-			&i.Tax,
-			&i.Total,
-			&i.Notes,
-			&i.BusinessSnapshot,
-			&i.ClientSnapshot,
-			&i.PayerSnapshot,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ParticipantName,
-			&i.ParticipantUuid,
+			&i.ClientName,
+			&i.ClientUuid,
 			&i.PlanManagerUuid,
 		); err != nil {
 			return nil, err
@@ -509,37 +540,6 @@ func (q *Queries) MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumber
 	var max_seq int64
 	err := row.Scan(&max_seq)
 	return max_seq, err
-}
-
-const participantInvoiceStats = `-- name: ParticipantInvoiceStats :one
-SELECT
-  COUNT(*) AS invoice_count,
-  CAST(COALESCE(SUM(i.total), 0) AS REAL) AS total_invoiced,
-  CAST(COALESCE((
-    SELECT SUM(p.amount) FROM payments p
-    JOIN invoices iv ON p.invoice_id = iv.id
-    WHERE iv.tenant_id = ?1 AND iv.participant_id = ?2
-  ), 0) AS REAL) AS total_paid
-FROM invoices i
-WHERE i.tenant_id = ?1 AND i.participant_id = ?2
-`
-
-type ParticipantInvoiceStatsParams struct {
-	TenantID      int64 `json:"tenant_id"`
-	ParticipantID int64 `json:"participant_id"`
-}
-
-type ParticipantInvoiceStatsRow struct {
-	InvoiceCount  int64   `json:"invoice_count"`
-	TotalInvoiced float64 `json:"total_invoiced"`
-	TotalPaid     float64 `json:"total_paid"`
-}
-
-func (q *Queries) ParticipantInvoiceStats(ctx context.Context, arg ParticipantInvoiceStatsParams) (ParticipantInvoiceStatsRow, error) {
-	row := q.db.QueryRowContext(ctx, participantInvoiceStats, arg.TenantID, arg.ParticipantID)
-	var i ParticipantInvoiceStatsRow
-	err := row.Scan(&i.InvoiceCount, &i.TotalInvoiced, &i.TotalPaid)
-	return i, err
 }
 
 const selectOverdueInvoicesForTenant = `-- name: SelectOverdueInvoicesForTenant :many
@@ -578,16 +578,16 @@ func (q *Queries) SelectOverdueInvoicesForTenant(ctx context.Context, tenantID i
 
 const updateInvoice = `-- name: UpdateInvoice :one
 UPDATE invoices SET
-    number = ?, participant_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, due_date = ?,
+    number = ?, client_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, due_date = ?,
     subtotal = ?, tax = ?, total = ?, notes = ?,
     business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?
-RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+RETURNING id, uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type UpdateInvoiceParams struct {
 	Number           string         `json:"number"`
-	ParticipantID    int64          `json:"participant_id"`
+	ClientID         int64          `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -607,7 +607,7 @@ type UpdateInvoiceParams struct {
 func (q *Queries) UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error) {
 	row := q.db.QueryRowContext(ctx, updateInvoice,
 		arg.Number,
-		arg.ParticipantID,
+		arg.ClientID,
 		arg.PlanManagerID,
 		arg.Status,
 		arg.IssueDate,
@@ -629,7 +629,7 @@ func (q *Queries) UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (I
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -671,7 +671,7 @@ func (q *Queries) UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStat
 const updateInvoiceTotals = `-- name: UpdateInvoiceTotals :one
 UPDATE invoices SET subtotal = ?, tax = ?, total = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?
-RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+RETURNING id, uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type UpdateInvoiceTotalsParams struct {
@@ -698,7 +698,7 @@ func (q *Queries) UpdateInvoiceTotals(ctx context.Context, arg UpdateInvoiceTota
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,

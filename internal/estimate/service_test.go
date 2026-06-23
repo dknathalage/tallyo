@@ -8,13 +8,13 @@ import (
 )
 
 func TestEstimateCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	svc, hub, tenantID, clientID := newEstimateSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
 	est, err := svc.Create(ctx, EstimateInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -33,11 +33,11 @@ func TestEstimateCreateBroadcasts(t *testing.T) {
 }
 
 func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
-	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	svc, hub, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est, err := svc.Create(ctx, EstimateInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -78,11 +78,11 @@ func TestEstimateConvertBroadcastsEstimateAndInvoice(t *testing.T) {
 }
 
 func TestEstimateDuplicateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newEstimateSvc(t)
+	svc, hub, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est, err := svc.Create(ctx, EstimateInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)

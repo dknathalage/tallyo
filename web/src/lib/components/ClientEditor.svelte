@@ -5,7 +5,7 @@
 	import { createAutosave, type SaveState } from './autosave';
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
-	import { participants } from '$lib/stores/participants.svelte';
+	import { clients } from '$lib/stores/clients.svelte';
 	import { planManagers } from '$lib/stores/planManagers.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
@@ -13,18 +13,21 @@
 	import Calendar from '$lib/components/Calendar.svelte';
 	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
 	import { todayISO } from '$lib/shifts/format';
-	import type { Participant, ParticipantInput, Shift } from '$lib/api/types';
+	import type { Client, ClientInput, Shift } from '$lib/api/types';
 
 	type Props = {
-		/** Existing participant uuid, or 'new' to create. */
+		/** Existing client uuid, or 'new' to create. */
 		idParam: string | 'new';
 	};
 
 	let { idParam }: Props = $props();
 
-	// ── Editable fields (each its own $state, seeded from the participant). ──
+	// ── Editable fields (each its own $state, seeded from the client). ──
 	let name = $state('');
-	let ndisNumber = $state('');
+	// type defaults to 'standard'; conditional show/hide of NDIS-only fields by
+	// type is deferred to a later phase — this is just a plain select for now.
+	let clientType = $state<'ndis' | 'standard'>('standard');
+	let reference = $state('');
 	let planStart = $state('');
 	let planEnd = $state('');
 	let mgmtType = $state<'plan' | 'self'>('plan');
@@ -42,15 +45,16 @@
 	let loaded = $state(false);
 	let nameError = $state<string | null>(null);
 	let status = $state<SaveState>('idle');
-	// currentId is the participant uuid once the record exists ('' until created,
+	// currentId is the client uuid once the record exists ('' until created,
 	// or set in onCreated) — gates the shifts/invoices section, mirroring the old
 	// `row.id > 0` guard.
 	// svelte-ignore state_referenced_locally -- intentional one-time seed; this component is remounted by a {#key idParam} on the route, so an id change is handled by remount, not reactivity. onCreated owns currentId thereafter.
 	let currentId = $state<string>(idParam === 'new' ? '' : idParam);
 
-	function seedFrom(p: Participant): void {
+	function seedFrom(p: Client): void {
 		name = p.name;
-		ndisNumber = p.ndisNumber;
+		clientType = p.type === 'ndis' ? 'ndis' : 'standard';
+		reference = p.reference;
 		planStart = p.planStart;
 		planEnd = p.planEnd;
 		mgmtType = p.mgmtType === 'self' ? 'self' : 'plan';
@@ -67,25 +71,25 @@
 			return;
 		}
 		try {
-			const p = await participants.crud.get(idParam);
+			const p = await clients.crud.get(idParam);
 			seedFrom(p);
 			loaded = true;
 		} catch (err) {
-			loadError = err instanceof Error ? err.message : 'Failed to load participant.';
+			loadError = err instanceof Error ? err.message : 'Failed to load client.';
 		}
 	}
 	void init();
 
 	// ── Autosave wiring ──
-	const autosave = createAutosave<ParticipantInput, Participant>({
+	const autosave = createAutosave<ClientInput, Client>({
 		// svelte-ignore state_referenced_locally -- intentional one-time seed (remounted by {#key idParam}).
 		initialId: idParam === 'new' ? null : idParam,
-		create: (input) => participants.crud.create(input),
-		update: (id, input) => participants.crud.update(id, input),
+		create: (input) => clients.crud.create(input),
+		update: (id, input) => clients.crud.update(id, input),
 		onState: (s) => (status = s),
 		onCreated: (newId) => {
 			currentId = newId;
-			replaceState(t(`/participants/${newId}`), {});
+			replaceState(t(`/clients/${newId}`), {});
 		}
 	});
 	onDestroy(() => autosave.dispose());
@@ -93,11 +97,12 @@
 	// buildInput assembles the FULL writable payload from current field state, so a
 	// save of ANY field carries the latest value of EVERY field — neither name nor
 	// planManagerId can be reverted by the other's autosave.
-	function buildInput(): ParticipantInput {
+	function buildInput(): ClientInput {
 		const pmId = planManager === '' ? null : planManager;
 		return {
 			name,
-			ndisNumber,
+			type: clientType,
+			reference,
 			planStart,
 			planEnd,
 			mgmtType,
@@ -136,14 +141,14 @@
 		void shifts.load();
 		invoices.ensureSubscribed();
 		void invoices.load();
-		participants.ensureSubscribed();
-		void participants.load();
+		clients.ensureSubscribed();
+		void clients.load();
 		planManagers.ensureSubscribed();
 		void planManagers.query({ page: 1, limit: 500 });
 	});
 
 	function nameFor(id: string): string {
-		const p = participants.items.find((x) => x.id === id);
+		const p = clients.items.find((x) => x.id === id);
 		return p ? p.name : `#${id}`;
 	}
 
@@ -172,13 +177,13 @@
 	let formShift = $state<Shift | null>(null);
 	let formRecording = $state(false);
 	let formDate = $state('');
-	let formParticipantId = $state('');
+	let formClientId = $state('');
 
 	function openAdd(pid: string): void {
 		formShift = null;
 		formRecording = false;
 		formDate = '';
-		formParticipantId = pid;
+		formClientId = pid;
 		formOpen = true;
 	}
 
@@ -186,14 +191,14 @@
 		formShift = null;
 		formRecording = false;
 		formDate = dateISO;
-		formParticipantId = pid;
+		formClientId = pid;
 		formOpen = true;
 	}
 
 	function openShift(s: Shift): void {
 		formShift = s;
 		formRecording = s.status === 'scheduled';
-		formParticipantId = s.participantId;
+		formClientId = s.clientId;
 		formOpen = true;
 	}
 
@@ -208,14 +213,14 @@
 		await shifts.load();
 	}
 
-	const myShifts = $derived(shifts.items.filter((s) => s.participantId === currentId));
-	const myInvoices = $derived(invoices.items.filter((i) => i.participantId === currentId));
+	const myShifts = $derived(shifts.items.filter((s) => s.clientId === currentId));
+	const myInvoices = $derived(invoices.items.filter((i) => i.clientId === currentId));
 	const planManagerOptions = $derived(planManagers.items);
 </script>
 
 <div class="space-y-5">
 	<div class="flex items-center justify-between">
-		<a href={t('/participants')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
+		<a href={t('/clients')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
 		<div class="flex items-center gap-3">
 			<span class="h-4 text-xs">
 				{#if status === 'saving'}<span class="text-gray-400">saving…</span>
@@ -238,7 +243,7 @@
 		</div>
 	</div>
 
-	<h1 class="text-xl font-semibold">{idParam === 'new' ? 'New Participant' : 'Participant'}</h1>
+	<h1 class="text-xl font-semibold">{idParam === 'new' ? 'New Client' : 'Client'}</h1>
 
 	{#if loadError}
 		<p class="text-sm text-red-600">{loadError}</p>
@@ -258,10 +263,25 @@
 			</label>
 
 			<label class="block">
-				<span class="mb-1 block text-sm font-medium">NDIS number</span>
+				<span class="mb-1 block text-sm font-medium">Type</span>
+				<select
+					value={clientType}
+					onchange={(e) => {
+						clientType = e.currentTarget.value === 'ndis' ? 'ndis' : 'standard';
+						changed();
+					}}
+					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+				>
+					<option value="standard">Standard</option>
+					<option value="ndis">NDIS</option>
+				</select>
+			</label>
+
+			<label class="block">
+				<span class="mb-1 block text-sm font-medium">Reference</span>
 				<input
 					type="text"
-					bind:value={ndisNumber}
+					bind:value={reference}
 					oninput={changed}
 					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 				/>
@@ -351,7 +371,7 @@
 
 		{#if currentId !== ''}
 			<div class="space-y-6">
-				<InvoiceSuggestions suggestions={shifts.suggestions} {nameFor} participantId={currentId} />
+				<InvoiceSuggestions suggestions={shifts.suggestions} {nameFor} clientId={currentId} />
 
 				<section class="space-y-3">
 					<div class="flex flex-wrap items-center justify-between gap-3">
@@ -386,7 +406,7 @@
 					{#if shiftView === 'table'}
 						<ShiftTable
 							shifts={myShifts}
-							participantName={nameFor}
+							clientName={nameFor}
 							onopen={openShift}
 							ondelete={deleteShifts}
 						/>
@@ -401,7 +421,7 @@
 							/>
 						</div>
 						<p class="text-xs text-gray-500">
-							This participant's shifts this month. Click a day to add, a chip to edit or record.
+							This client's shifts this month. Click a day to add, a chip to edit or record.
 						</p>
 					{/if}
 				</section>
@@ -432,7 +452,7 @@
 				</section>
 			</div>
 		{:else}
-			<p class="text-sm text-gray-500">Save this participant to add shifts.</p>
+			<p class="text-sm text-gray-500">Save this client to add shifts.</p>
 		{/if}
 	{/if}
 </div>
@@ -442,6 +462,6 @@
 	shift={formShift}
 	recording={formRecording}
 	presetDate={formDate}
-	presetParticipantId={formParticipantId}
+	presetClientId={formClientId}
 	onsaved={onSaved}
 />

@@ -25,9 +25,9 @@ import (
 
 // estimateListSelect mirrors the ListEstimates sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/estimates.sql. tenant_id is the only ?.
-const estimateListSelect = `SELECT e.*, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+const estimateListSelect = `SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ?`
@@ -35,11 +35,11 @@ WHERE e.tenant_id = ?`
 // EstimateCols is the listquery allowlist for estimates. Keys match the JSON
 // field names so one column key drives filter, sort and display.
 var EstimateCols = listquery.Spec{
-	"number":          {Col: "e.number", Filter: listquery.Text},
-	"participantName": {Col: "p.name", Filter: listquery.Text},
-	"status":          {Col: "e.status", Filter: listquery.Enum},
-	"issueDate":       {Col: "e.issue_date", Filter: listquery.Date},
-	"total":           {Col: "e.total", Filter: listquery.Number},
+	"number":     {Col: "e.number", Filter: listquery.Text},
+	"clientName": {Col: "p.name", Filter: listquery.Text},
+	"status":     {Col: "e.status", Filter: listquery.Enum},
+	"issueDate":  {Col: "e.issue_date", Filter: listquery.Date},
+	"total":      {Col: "e.total", Filter: listquery.Number},
 }
 
 // ErrNotAccepted is returned when converting an estimate that is not in the
@@ -50,7 +50,7 @@ var ErrNotAccepted = errors.New("only accepted estimates can be converted")
 // a linked invoice.
 var ErrAlreadyConverted = errors.New("estimate already converted")
 
-// Estimate is the domain view of an estimate with its resolved participant name
+// Estimate is the domain view of an estimate with its resolved client name
 // and embedded line items. Mirrors Invoice with estimate-specific deltas:
 // valid_until replaces due_date, and an optional converted_invoice_id records
 // the invoice produced by Convert.
@@ -58,9 +58,9 @@ type Estimate struct {
 	ID                   int64               `json:"-"`  // internal PK; the public identifier is the uuid
 	UUID                 string              `json:"id"` // public identifier (estimate uuid)
 	Number               string              `json:"number"`
-	ParticipantID        *int64              `json:"-"`             // internal FK; the public ref is participantId (uuid)
-	ParticipantUUID      string              `json:"participantId"` // participant uuid
-	ParticipantName      string              `json:"participantName"`
+	ClientID             *int64              `json:"-"`        // internal FK; the public ref is clientId (uuid)
+	ClientUUID           string              `json:"clientId"` // client uuid
+	ClientName           string              `json:"clientName"`
 	PlanManagerID        *int64              `json:"-"`             // internal FK; the public ref is planManagerId (uuid)
 	PlanManagerUUID      *string             `json:"planManagerId"` // plan-manager uuid (nil when none)
 	Status               string              `json:"status"`
@@ -73,7 +73,7 @@ type Estimate struct {
 	ConvertedInvoiceID   *int64              `json:"-"`                  // internal FK; the public ref is convertedInvoiceId (the produced invoice's uuid)
 	ConvertedInvoiceUUID *string             `json:"convertedInvoiceId"` // produced invoice uuid (nil until converted)
 	BusinessSnapshot     string              `json:"businessSnapshot"`
-	ClientSnapshot       string              `json:"participantSnapshot"`
+	ClientSnapshot       string              `json:"clientSnapshot"`
 	PayerSnapshot        string              `json:"planManagerSnapshot"`
 	CreatedAt            string              `json:"createdAt"`
 	UpdatedAt            string              `json:"updatedAt"`
@@ -82,7 +82,7 @@ type Estimate struct {
 
 // EstimateInput is the writable subset of an estimate header.
 type EstimateInput struct {
-	ParticipantID    int64   `json:"participantId"`
+	ClientID         int64   `json:"clientId"`
 	PlanManagerID    *int64  `json:"planManagerId"`
 	Status           string  `json:"status"`
 	IssueDate        string  `json:"issueDate"`
@@ -90,7 +90,7 @@ type EstimateInput struct {
 	Tax              float64 `json:"tax"`
 	Notes            string  `json:"notes"`
 	BusinessSnapshot string  `json:"businessSnapshot"`
-	ClientSnapshot   string  `json:"participantSnapshot"`
+	ClientSnapshot   string  `json:"clientSnapshot"`
 	PayerSnapshot    string  `json:"planManagerSnapshot"`
 }
 
@@ -120,13 +120,13 @@ func NewEstimates(db db.Executor) *EstimatesRepo {
 }
 
 // fillSnapshots fills any empty snapshot field on in with a default built from
-// the business profile, participant and plan manager.
+// the business profile, client and plan manager.
 func (r *EstimatesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *EstimateInput) {
 	if in.BusinessSnapshot == "" {
 		in.BusinessSnapshot = r.snap.Business(ctx, tenantID)
 	}
 	if in.ClientSnapshot == "" {
-		in.ClientSnapshot = r.snap.Participant(ctx, tenantID, in.ParticipantID)
+		in.ClientSnapshot = r.snap.Client(ctx, tenantID, in.ClientID)
 	}
 	if in.PayerSnapshot == "" {
 		in.PayerSnapshot = r.snap.PlanManager(ctx, tenantID, in.PlanManagerID)
@@ -134,14 +134,14 @@ func (r *EstimatesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *E
 }
 
 // Create inserts an estimate plus its line items inside one numbering-retried
-// transaction, audits the create, and re-reads the row. ParticipantID and at
+// transaction, audits the create, and re-reads the row. ClientID and at
 // least one line item are required.
 func (r *EstimatesRepo) Create(ctx context.Context, tenantID int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	if tenantID == 0 {
 		return nil, errors.New("create estimate: tenant id required")
 	}
-	if in.ParticipantID == 0 {
-		return nil, errors.New("create estimate: participant is required")
+	if in.ClientID == 0 {
+		return nil, errors.New("create estimate: client is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("create estimate: at least one line item is required")
@@ -213,7 +213,7 @@ func createEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 		Uuid:               uuid.NewString(),
 		TenantID:           tenantID,
 		Number:             num,
-		ParticipantID:      db.NullID(&in.ParticipantID),
+		ClientID:           db.NullID(&in.ClientID),
 		PlanManagerID:      db.NullID(in.PlanManagerID),
 		Status:             orDefault(in.Status, "draft"),
 		IssueDate:          in.IssueDate,
@@ -263,7 +263,7 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 	return nil
 }
 
-// Get returns the estimate (with participant name and line items) by int PK, or
+// Get returns the estimate (with client name and line items) by int PK, or
 // (nil, nil) when absent. Internal read used by the convert/duplicate paths and
 // the int-keyed service methods.
 func (r *EstimatesRepo) Get(ctx context.Context, tenantID, id int64) (*Estimate, error) {
@@ -335,15 +335,15 @@ func (r *EstimatesRepo) ResolveEstimateIDs(ctx context.Context, tenantID int64, 
 	return out, nil
 }
 
-// ResolveParticipantID translates a participant uuid into its int PK, scoped to
-// the tenant. Returns (0, nil) when no participant matches (caller 400s).
-func (r *EstimatesRepo) ResolveParticipantID(ctx context.Context, tenantID int64, participantUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetParticipantIDByUUID(ctx, gen.GetParticipantIDByUUIDParams{TenantID: tenantID, Uuid: participantUUID})
+// ResolveClientID translates a client uuid into its int PK, scoped to
+// the tenant. Returns (0, nil) when no client matches (caller 400s).
+func (r *EstimatesRepo) ResolveClientID(ctx context.Context, tenantID int64, clientUUID string) (int64, error) {
+	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve participant uuid: %w", err)
+		return 0, fmt.Errorf("resolve client uuid: %w", err)
 	}
 	return id, nil
 }
@@ -403,11 +403,11 @@ func (r *EstimatesRepo) Query(ctx context.Context, tenantID int64, c listquery.C
 	for rows.Next() { // bounded by LIMIT in the query
 		var f estimateFields
 		var tenant int64
-		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.participantID,
+		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.clientID,
 			&f.planManagerID, &f.status, &f.issueDate, &f.validUntil, &f.subtotal,
 			&f.tax, &f.total, &f.notes, &f.convertedInvoiceID, &f.businessSnap,
-			&f.clientSnap, &f.payerSnap, &f.createdAt, &f.updatedAt, &f.participantName,
-			&f.participantUUID, &f.planManagerUUID, &f.convertedInvoiceUUID); err != nil {
+			&f.clientSnap, &f.payerSnap, &f.createdAt, &f.updatedAt, &f.clientName,
+			&f.clientUUID, &f.planManagerUUID, &f.convertedInvoiceUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan estimate: %w", err)
 		}
 		out = append(out, toEstimateFromRow(f))
@@ -434,18 +434,18 @@ func (r *EstimatesRepo) ListByStatus(ctx context.Context, tenantID int64, status
 	return out, nil
 }
 
-// ListParticipantEstimates returns one participant's estimates (header only).
-func (r *EstimatesRepo) ListParticipantEstimates(ctx context.Context, tenantID, participantID int64) ([]*Estimate, error) {
-	rows, err := gen.New(r.db).ListParticipantEstimates(ctx, gen.ListParticipantEstimatesParams{
-		TenantID:      tenantID,
-		ParticipantID: sql.NullInt64{Int64: participantID, Valid: true},
+// ListClientEstimates returns one client's estimates (header only).
+func (r *EstimatesRepo) ListClientEstimates(ctx context.Context, tenantID, clientID int64) ([]*Estimate, error) {
+	rows, err := gen.New(r.db).ListClientEstimates(ctx, gen.ListClientEstimatesParams{
+		TenantID: tenantID,
+		ClientID: sql.NullInt64{Int64: clientID, Valid: true},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list participant estimates: %w", err)
+		return nil, fmt.Errorf("list client estimates: %w", err)
 	}
 	out := make([]*Estimate, 0, len(rows))
 	for i := range rows {
-		out = append(out, toEstimateFromRow(estimateFieldsFromParticipant(rows[i])))
+		out = append(out, toEstimateFromRow(estimateFieldsFromClient(rows[i])))
 	}
 	return out, nil
 }
@@ -454,8 +454,8 @@ func (r *EstimatesRepo) ListParticipantEstimates(ctx context.Context, tenantID, 
 // atomically with one audit row. Empty snapshot inputs keep the existing stored
 // snapshots. Returns (nil, nil) when the estimate does not exist.
 func (r *EstimatesRepo) Update(ctx context.Context, tenantID, id int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
-	if in.ParticipantID == 0 {
-		return nil, errors.New("update estimate: participant is required")
+	if in.ClientID == 0 {
+		return nil, errors.New("update estimate: client is required")
 	}
 	if len(items) == 0 {
 		return nil, errors.New("update estimate: at least one line item is required")
@@ -506,7 +506,7 @@ func updateEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateEstimateParams{
 		Number:           number,
-		ParticipantID:    db.NullID(&in.ParticipantID),
+		ClientID:         db.NullID(&in.ClientID),
 		PlanManagerID:    db.NullID(in.PlanManagerID),
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
@@ -593,7 +593,7 @@ func (r *EstimatesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, id
 	})
 }
 
-// Duplicate creates a new draft estimate copying the source's participant, plan
+// Duplicate creates a new draft estimate copying the source's client, plan
 // manager, tax, notes, snapshots and line items, resetting the date to today,
 // clearing valid-until, and assigning a fresh number.
 func (r *EstimatesRepo) Duplicate(ctx context.Context, tenantID, id int64) (*Estimate, error) {
@@ -604,12 +604,12 @@ func (r *EstimatesRepo) Duplicate(ctx context.Context, tenantID, id int64) (*Est
 	if src == nil {
 		return nil, errors.New("duplicate estimate: source not found")
 	}
-	var participantID int64
-	if src.ParticipantID != nil {
-		participantID = *src.ParticipantID
+	var clientID int64
+	if src.ClientID != nil {
+		clientID = *src.ClientID
 	}
 	in := EstimateInput{
-		ParticipantID:    participantID,
+		ClientID:         clientID,
 		PlanManagerID:    src.PlanManagerID,
 		Status:           "draft",
 		IssueDate:        time.Now().UTC().Format("2006-01-02"),
@@ -706,16 +706,16 @@ func (r *EstimatesRepo) convertTx(ctx context.Context, tenantID int64, est *Esti
 
 // buildInvoiceFromEstimate maps an estimate header onto invoice create params.
 func buildInvoiceFromEstimate(tenantID int64, est *Estimate, num string) gen.CreateInvoiceParams {
-	var participantID int64
-	if est.ParticipantID != nil {
-		participantID = *est.ParticipantID
+	var clientID int64
+	if est.ClientID != nil {
+		clientID = *est.ClientID
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
 		Uuid:             uuid.NewString(),
 		TenantID:         tenantID,
 		Number:           num,
-		ParticipantID:    participantID,
+		ClientID:         clientID,
 		PlanManagerID:    db.NullID(est.PlanManagerID),
 		Status:           "draft",
 		IssueDate:        est.IssueDate,
@@ -787,8 +787,8 @@ func lineItemsToInput(items []*billing.LineItem) []billing.LineItemInput {
 type estimateFields struct {
 	id                                  int64
 	uuid, number                        string
-	participantID                       sql.NullInt64
-	participantUUID                     sql.NullString
+	clientID                            sql.NullInt64
+	clientUUID                          sql.NullString
 	planManagerID                       sql.NullInt64
 	planManagerUUID                     sql.NullString
 	status, issueDate, validUntil       string
@@ -798,7 +798,7 @@ type estimateFields struct {
 	convertedInvoiceUUID                sql.NullString
 	businessSnap, clientSnap, payerSnap sql.NullString
 	createdAt, updatedAt                string
-	participantName                     sql.NullString
+	clientName                          sql.NullString
 }
 
 // toEstimateFromRow builds a domain Estimate (without line items).
@@ -807,9 +807,9 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 		ID:                   f.id,
 		UUID:                 f.uuid,
 		Number:               f.number,
-		ParticipantID:        db.PtrID(f.participantID),
-		ParticipantUUID:      f.participantUUID.String,
-		ParticipantName:      f.participantName.String,
+		ClientID:             db.PtrID(f.clientID),
+		ClientUUID:           f.clientUUID.String,
+		ClientName:           f.clientName.String,
 		PlanManagerID:        db.PtrID(f.planManagerID),
 		PlanManagerUUID:      db.PtrStr(f.planManagerUUID),
 		Status:               f.status,
@@ -832,61 +832,61 @@ func toEstimateFromRow(f estimateFields) *Estimate {
 
 func estimateFieldsFromGet(r gen.GetEstimateRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		clientUUID: r.ClientUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
 	}
 }
 
 func estimateFieldsFromGetByID(r gen.GetEstimateByIDRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		clientUUID: r.ClientUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
 	}
 }
 
 func estimateFieldsFromList(r gen.ListEstimatesRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		clientUUID: r.ClientUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
 	}
 }
 
 func estimateFieldsFromStatus(r gen.ListEstimatesByStatusRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		clientUUID: r.ClientUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
 	}
 }
 
-func estimateFieldsFromParticipant(r gen.ListParticipantEstimatesRow) estimateFields {
+func estimateFieldsFromClient(r gen.ListClientEstimatesRow) estimateFields {
 	return estimateFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, participantID: r.ParticipantID,
-		participantUUID: r.ParticipantUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
+		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		clientUUID: r.ClientUuid, planManagerID: r.PlanManagerID, planManagerUUID: r.PlanManagerUuid,
 		status: r.Status, issueDate: r.IssueDate, validUntil: r.ValidUntil,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
 		convertedInvoiceID: r.ConvertedInvoiceID, convertedInvoiceUUID: r.ConvertedInvoiceUuid,
 		businessSnap: r.BusinessSnapshot, clientSnap: r.ClientSnapshot, payerSnap: r.PayerSnapshot,
-		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, participantName: r.ParticipantName,
+		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt, clientName: r.ClientName,
 	}
 }
 

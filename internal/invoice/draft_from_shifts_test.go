@@ -12,10 +12,10 @@ import (
 // pre-priced custom line items (qty 1, the given unit price each) and returns
 // its id. Items are created through the shift repo so no catalogue seeding is
 // needed (custom lines keep their supplied price).
-func recordedShiftWithItems(t *testing.T, shiftSvc *shift.Service, repo *shift.ShiftsRepo, tenantID, participantID int64, date string, prices ...float64) int64 {
+func recordedShiftWithItems(t *testing.T, shiftSvc *shift.Service, repo *shift.ShiftsRepo, tenantID, clientID int64, date string, prices ...float64) int64 {
 	t.Helper()
 	ctx := tctx(tenantID)
-	sh, err := shiftSvc.Create(ctx, shift.ShiftInput{ParticipantID: participantID, ServiceDate: date, Status: "recorded"})
+	sh, err := shiftSvc.Create(ctx, shift.ShiftInput{ClientID: clientID, ServiceDate: date, Status: "recorded"})
 	if err != nil {
 		t.Fatalf("recordedShiftWithItems create: %v", err)
 	}
@@ -34,19 +34,19 @@ func newDraftHarness(t *testing.T) (*Service, *shift.Service, *shift.ShiftsRepo,
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	invSvc := NewService(conn, conn, hub, shiftSvc)
-	return invSvc, shiftSvc, shift.NewShifts(conn), tenantID, participantID
+	return invSvc, shiftSvc, shift.NewShifts(conn), tenantID, clientID
 }
 
 func TestDraftFromShiftsLinksItemsAndTotals(t *testing.T) {
-	invSvc, shiftSvc, repo, tenantID, participantID := newDraftHarness(t)
+	invSvc, shiftSvc, repo, tenantID, clientID := newDraftHarness(t)
 	ctx := tctx(tenantID)
 
-	s1 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, participantID, "2026-01-10", 10, 20)
-	s2 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, participantID, "2026-01-11", 30, 40)
+	s1 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-10", 10, 20)
+	s2 := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-11", 30, 40)
 
 	inv, err := invSvc.DraftFromShifts(ctx, []int64{s1, s2})
 	if err != nil {
@@ -55,8 +55,8 @@ func TestDraftFromShiftsLinksItemsAndTotals(t *testing.T) {
 	if inv == nil {
 		t.Fatal("DraftFromShifts returned nil invoice")
 	}
-	if inv.ParticipantID != participantID {
-		t.Fatalf("invoice participant = %d, want %d", inv.ParticipantID, participantID)
+	if inv.ClientID != clientID {
+		t.Fatalf("invoice client = %d, want %d", inv.ClientID, clientID)
 	}
 	if len(inv.LineItems) != 4 {
 		t.Fatalf("invoice line items = %d, want 4", len(inv.LineItems))
@@ -82,12 +82,12 @@ func TestDraftFromShiftsLinksItemsAndTotals(t *testing.T) {
 }
 
 func TestDraftFromShiftsEmptyShiftErrors(t *testing.T) {
-	invSvc, shiftSvc, repo, tenantID, participantID := newDraftHarness(t)
+	invSvc, shiftSvc, repo, tenantID, clientID := newDraftHarness(t)
 	ctx := tctx(tenantID)
 
-	withItems := recordedShiftWithItems(t, shiftSvc, repo, tenantID, participantID, "2026-01-10", 10)
+	withItems := recordedShiftWithItems(t, shiftSvc, repo, tenantID, clientID, "2026-01-10", 10)
 	// A recorded shift with zero items (G5).
-	empty, err := shiftSvc.Create(ctx, shift.ShiftInput{ParticipantID: participantID, ServiceDate: "2026-01-11", Status: "recorded"})
+	empty, err := shiftSvc.Create(ctx, shift.ShiftInput{ClientID: clientID, ServiceDate: "2026-01-11", Status: "recorded"})
 	if err != nil {
 		t.Fatalf("create empty shift: %v", err)
 	}
@@ -102,11 +102,11 @@ func TestDraftFromShiftsEmptyShiftErrors(t *testing.T) {
 	}
 }
 
-func TestDraftFromShiftsSingleParticipantGuard(t *testing.T) {
+func TestDraftFromShiftsSingleClientGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T2")
-	p1 := seedParticipant(t, conn, tid, "P1")
-	p2 := seedParticipant(t, conn, tid, "P2")
+	p1 := seedClient(t, conn, tid, "P1")
+	p2 := seedClient(t, conn, tid, "P2")
 	hub := realtime.NewHub()
 	shSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	iSvc := NewService(conn, conn, hub, shSvc)
@@ -116,12 +116,12 @@ func TestDraftFromShiftsSingleParticipantGuard(t *testing.T) {
 	b := recordedShiftWithItems(t, shSvc, r, tid, p2, "2026-01-11", 20)
 
 	if _, err := iSvc.DraftFromShifts(tctx(tid), []int64{a, b}); err == nil {
-		t.Fatal("DraftFromShifts across two participants must error")
+		t.Fatal("DraftFromShifts across two clients must error")
 	}
 
-	// And a clean single-participant pair still drafts.
+	// And a clean single-client pair still drafts.
 	c := recordedShiftWithItems(t, shSvc, r, tid, p1, "2026-01-12", 5)
 	if _, err := iSvc.DraftFromShifts(tctx(tid), []int64{c}); err != nil {
-		t.Fatalf("single-participant DraftFromShifts: %v", err)
+		t.Fatalf("single-client DraftFromShifts: %v", err)
 	}
 }

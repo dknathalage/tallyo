@@ -26,21 +26,21 @@ func mountRecurring(h *Handler, tenantID int64) chi.Router {
 }
 
 // newRecurringHandler builds a handler over a fresh DB with a seeded
-// tenant+participant+template, returning the handler, tenant id, participant
+// tenant+client+template, returning the handler, tenant id, client
 // uuid, and the seeded template.
 func newRecurringHandler(t *testing.T) (*Handler, int64, string, *RecurringTemplate) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantUUID := seedParticipant(t, conn, tenantID, "Jane")
+	clientUUID := seedClient(t, conn, tenantID, "Jane")
 	repo := NewRepo(conn)
-	tpl := mkTemplate(t, repo, tenantID, participantUUID, "2026-01-01")
+	tpl := mkTemplate(t, repo, tenantID, clientUUID, "2026-01-01")
 	svc := NewService(conn, realtime.NewHub())
-	return NewHandler(svc), tenantID, participantUUID, tpl
+	return NewHandler(svc), tenantID, clientUUID, tpl
 }
 
 func TestRecurringGetByUUID(t *testing.T) {
-	h, tenantID, participantUUID, tpl := newRecurringHandler(t)
+	h, tenantID, clientUUID, tpl := newRecurringHandler(t)
 	srv := httptest.NewServer(mountRecurring(h, tenantID))
 	defer srv.Close()
 
@@ -59,8 +59,8 @@ func TestRecurringGetByUUID(t *testing.T) {
 	if got["id"] != tpl.UUID {
 		t.Fatalf("json id=%v want uuid %q", got["id"], tpl.UUID)
 	}
-	if got["participantId"] != participantUUID {
-		t.Fatalf("json participantId=%v want participant uuid %q", got["participantId"], participantUUID)
+	if got["clientId"] != clientUUID {
+		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], clientUUID)
 	}
 }
 
@@ -94,24 +94,24 @@ func TestRecurringGetNonUUID400(t *testing.T) {
 	}
 }
 
-// TestRecurringCreateResolvesParticipantUUID proves an inbound participantId uuid
+// TestRecurringCreateResolvesClientUUID proves an inbound clientId uuid
 // resolves to the FK and round-trips back as the same uuid; an unknown
-// participant uuid is rejected with 400.
-func TestRecurringCreateResolvesParticipantUUID(t *testing.T) {
+// client uuid is rejected with 400.
+func TestRecurringCreateResolvesClientUUID(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantUUID := seedParticipant(t, conn, tenantID, "Jane")
+	clientUUID := seedClient(t, conn, tenantID, "Jane")
 	h := NewHandler(NewService(conn, realtime.NewHub()))
 	srv := httptest.NewServer(mountRecurring(h, tenantID))
 	defer srv.Close()
 
 	body, _ := json.Marshal(map[string]any{
-		"name":          "Weekly",
-		"participantId": participantUUID,
-		"frequency":     "weekly",
-		"nextDue":       "2026-01-01",
-		"lineItems":     []map[string]any{{"description": "Support", "quantity": 1, "unitPrice": 100}},
-		"isActive":      true,
+		"name":      "Weekly",
+		"clientId":  clientUUID,
+		"frequency": "weekly",
+		"nextDue":   "2026-01-01",
+		"lineItems": []map[string]any{{"description": "Support", "quantity": 1, "unitPrice": 100}},
+		"isActive":  true,
 	})
 	res, err := http.Post(srv.URL+"/recurring", "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -125,16 +125,16 @@ func TestRecurringCreateResolvesParticipantUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if created["participantId"] != participantUUID {
-		t.Fatalf("created participantId=%v want %q", created["participantId"], participantUUID)
+	if created["clientId"] != clientUUID {
+		t.Fatalf("created clientId=%v want %q", created["clientId"], clientUUID)
 	}
 
-	// An unknown participant uuid is rejected with 400.
+	// An unknown client uuid is rejected with 400.
 	badBody, _ := json.Marshal(map[string]any{
-		"name":          "Bad",
-		"participantId": "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c",
-		"frequency":     "weekly",
-		"nextDue":       "2026-01-01",
+		"name":      "Bad",
+		"clientId":  "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c",
+		"frequency": "weekly",
+		"nextDue":   "2026-01-01",
 	})
 	badRes, err := http.Post(srv.URL+"/recurring", "application/json", bytes.NewReader(badBody))
 	if err != nil {
@@ -142,7 +142,7 @@ func TestRecurringCreateResolvesParticipantUUID(t *testing.T) {
 	}
 	defer badRes.Body.Close()
 	if badRes.StatusCode != http.StatusBadRequest {
-		t.Fatalf("unknown participant uuid status=%d want 400", badRes.StatusCode)
+		t.Fatalf("unknown client uuid status=%d want 400", badRes.StatusCode)
 	}
 }
 

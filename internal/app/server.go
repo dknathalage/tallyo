@@ -9,11 +9,11 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalog"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
@@ -39,10 +39,10 @@ type Deps struct {
 	BusinessProfile *businessprofile.Handler // singleton business profile
 	PlanManagers    *planmanager.Handler     // plan-manager CRUD + bulk-delete
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
-	Participants    *participant.Handler     // participant CRUD + bulk-delete
+	Clients         *client.Handler          // client CRUD + bulk-delete
 	CustomItems     *customitem.Handler      // per-tenant custom-item CRUD + bulk-delete
 	SupportCatalog  *catalog.Handler         // per-tenant NDIS catalogue (reads + owner/admin ingest)
-	Invoices        *invoice.Handler         // invoice CRUD, status, bulk, per-participant stats
+	Invoices        *invoice.Handler         // invoice CRUD, status, bulk, per-client stats
 	Shifts          *shift.Handler           // shift lifecycle, billing suggestions, CRUD
 	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert
 	Payments        *invoice.PaymentHandler  // per-invoice payment list/create + delete
@@ -134,8 +134,8 @@ func NewServer(deps Deps) *Server {
 			if deps.TaxRates != nil {
 				deps.TaxRates.Routes(pr)
 			}
-			if deps.Participants != nil {
-				deps.Participants.Routes(pr)
+			if deps.Clients != nil {
+				deps.Clients.Routes(pr)
 			}
 			if deps.CustomItems != nil {
 				deps.CustomItems.Routes(pr)

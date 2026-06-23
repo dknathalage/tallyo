@@ -164,7 +164,7 @@ func TestRequestLoggerNoSecretsOnLogin(t *testing.T) {
 		if strings.Contains(blob, "hunter2-supersecret") {
 			t.Fatalf("password leaked into logs: %s", raw)
 		}
-		for _, banned := range []string{"password", "password_hash", "token", "ndis_number"} {
+		for _, banned := range []string{"password", "password_hash", "token", "reference"} {
 			if _, ok := r[banned]; ok {
 				t.Fatalf("banned field %q present in log record: %s", banned, raw)
 			}

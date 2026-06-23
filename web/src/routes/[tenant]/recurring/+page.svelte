@@ -22,7 +22,7 @@
 	// and the "+ New" button navigate to the edit / create routes.
 	const columns: Column<RecurringTemplate>[] = [
 		{ key: 'name', label: 'Name', sortable: true, filter: 'text' },
-		{ key: 'participantName', label: 'Participant', sortable: true, filter: 'text' },
+		{ key: 'clientName', label: 'Client', sortable: true, filter: 'text' },
 		{
 			key: 'frequency',
 			label: 'Frequency',

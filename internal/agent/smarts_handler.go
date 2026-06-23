@@ -29,11 +29,11 @@ func NewSmartsHandler(s *Smarts, enabled bool) *SmartsHandler {
 	return &SmartsHandler{smarts: s, enabled: enabled}
 }
 
-// importShiftsRequest is the body of ImportShifts: the participant the shifts
+// importShiftsRequest is the body of ImportShifts: the client the shifts
 // are for, and the free-text timesheet to extract per-day rows from.
 type importShiftsRequest struct {
-	ParticipantID int64  `json:"participantId"`
-	Text          string `json:"text"`
+	ClientID int64  `json:"clientId"`
+	Text     string `json:"text"`
 }
 
 // guard enforces the enabled flag and pulls the authenticated tenant+user from
@@ -58,7 +58,7 @@ func (h *SmartsHandler) guard(w http.ResponseWriter, r *http.Request) (tenantID,
 }
 
 // ImportShifts turns a free-text timesheet into recorded shifts for one
-// participant via the import-shifts Smart. Returns the created shifts.
+// client via the import-shifts Smart. Returns the created shifts.
 func (h *SmartsHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 	tenantID, userID, ok := h.guard(w, r)
 	if !ok {
@@ -69,8 +69,8 @@ func (h *SmartsHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.ParticipantID <= 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "participantId is required")
+	if req.ClientID <= 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "clientId is required")
 		return
 	}
 	if strings.TrimSpace(req.Text) == "" {
@@ -81,7 +81,7 @@ func (h *SmartsHandler) ImportShifts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(detach(tenantID, userID), 2*time.Minute)
 	defer cancel()
 
-	created, err := h.smarts.ImportShifts(ctx, req.ParticipantID, req.Text)
+	created, err := h.smarts.ImportShifts(ctx, req.ClientID, req.Text)
 	if err != nil {
 		slog.Error("import shifts", slog.Any("error", err))
 		httpx.WriteError(w, http.StatusBadGateway, "could not extract shifts from the timesheet")

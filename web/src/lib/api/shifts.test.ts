@@ -16,7 +16,7 @@ vi.mock('./client', async (importOriginal) => {
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, setActiveTenant } from './client';
 import {
 	listAll,
-	listForParticipant,
+	listForClient,
 	suggestions,
 	toRecord,
 	create,
@@ -45,7 +45,7 @@ const ITEM_UUID = '33333333-3333-4333-8333-333333333333';
 
 const fakeShift: Shift = {
 	id: SHIFT_UUID,
-	participantId: PART_UUID,
+	clientId: PART_UUID,
 	serviceDate: '2026-06-10',
 	note: 'cleaning, laundry',
 	tags: [],
@@ -56,7 +56,7 @@ const fakeShift: Shift = {
 };
 
 const fakeInput: ShiftInput = {
-	participantId: PART_UUID,
+	clientId: PART_UUID,
 	serviceDate: '2026-06-10',
 	note: 'cleaning, laundry',
 	tags: [],
@@ -102,23 +102,23 @@ describe('listAll', () => {
 	});
 });
 
-describe('listForParticipant', () => {
-	it('filters by the participant uuid', async () => {
+describe('listForClient', () => {
+	it('filters by the client uuid', async () => {
 		mockApiGet.mockResolvedValue([fakeShift]);
-		await listForParticipant(PART_UUID);
-		expect(mockApiGet).toHaveBeenCalledWith(`/api/t/t-uuid/shifts?participant=${PART_UUID}`);
+		await listForClient(PART_UUID);
+		expect(mockApiGet).toHaveBeenCalledWith(`/api/t/t-uuid/shifts?client=${PART_UUID}`);
 	});
 
 	it('appends from, to and status when provided', async () => {
 		mockApiGet.mockResolvedValue([]);
-		await listForParticipant(PART_UUID, '2026-06-01', '2026-06-30', 'recorded');
+		await listForClient(PART_UUID, '2026-06-01', '2026-06-30', 'recorded');
 		expect(mockApiGet).toHaveBeenCalledWith(
-			`/api/t/t-uuid/shifts?participant=${PART_UUID}&from=2026-06-01&to=2026-06-30&status=recorded`
+			`/api/t/t-uuid/shifts?client=${PART_UUID}&from=2026-06-01&to=2026-06-30&status=recorded`
 		);
 	});
 
-	it('throws on an empty participantId', async () => {
-		await expect(listForParticipant('')).rejects.toThrow();
+	it('throws on an empty clientId', async () => {
+		await expect(listForClient('')).rejects.toThrow();
 	});
 });
 
@@ -181,11 +181,11 @@ describe('setStatus', () => {
 });
 
 describe('importShifts', () => {
-	it('posts {participantId, text} to /api/shifts/import and returns created shifts', async () => {
+	it('posts {clientId, text} to /api/shifts/import and returns created shifts', async () => {
 		mockApiPost.mockResolvedValue([fakeShift]);
 		const result = await importShifts(PART_UUID, 'Mon 9-3 cleaning');
 		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/import', {
-			participantId: PART_UUID,
+			clientId: PART_UUID,
 			text: 'Mon 9-3 cleaning'
 		});
 		expect(result).toEqual([fakeShift]);

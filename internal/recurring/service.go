@@ -133,7 +133,7 @@ func (s *Service) GenerateOne(ctx context.Context, uuid string) (*invoice.Invoic
 // checks are keyed on service_date, so they have nothing to validate against
 // without first defining a service-date policy for generated lines. RISK: a
 // generated line whose template unit_price exceeds the current price cap, or
-// whose participant plan window has lapsed, is NOT blocked at generation time;
+// whose client plan window has lapsed, is NOT blocked at generation time;
 // it surfaces only when the invoice is next edited (which re-validates). This is
 // acceptable for this scope: generated invoices are drafts, reviewed before
 // being sent. Revisit when adding a service-date policy for recurring lines.

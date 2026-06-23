@@ -32,19 +32,19 @@ export async function listAll(): Promise<Shift[]> {
 }
 
 /**
- * List one participant's shifts, optionally bounded to a [from, to] inclusive
+ * List one client's shifts, optionally bounded to a [from, to] inclusive
  * service-date range (YYYY-MM-DD) and/or a single lifecycle status. Returns [].
- * The participant is addressed by its uuid via the `?participant=` filter.
+ * The client is addressed by its uuid via the `?client=` filter.
  */
-export async function listForParticipant(
-	participantId: string,
+export async function listForClient(
+	clientId: string,
 	from?: string,
 	to?: string,
 	status?: ShiftStatus
 ): Promise<Shift[]> {
-	requireId(participantId, 'shifts.listForParticipant');
+	requireId(clientId, 'shifts.listForClient');
 	const params = new URLSearchParams();
-	params.set('participant', participantId);
+	params.set('client', clientId);
 	if (from !== undefined && from.length > 0) params.set('from', from);
 	if (to !== undefined && to.length > 0) params.set('to', to);
 	if (status !== undefined && status.length > 0) params.set('status', status);
@@ -52,7 +52,7 @@ export async function listForParticipant(
 	return (await apiGet<Shift[]>(path)) ?? [];
 }
 
-/** Recorded-but-unbilled shift clusters, one per participant. Returns []. */
+/** Recorded-but-unbilled shift clusters, one per client. Returns []. */
 export async function suggestions(): Promise<ShiftSuggestion[]> {
 	return (await apiGet<ShiftSuggestion[]>(tenantPath('shifts/suggestions'))) ?? [];
 }
@@ -70,7 +70,7 @@ export async function get(id: string): Promise<Shift> {
 
 /** Create a shift. Returns the persisted Shift (201). */
 export async function create(input: ShiftInput): Promise<Shift> {
-	requireId(input.participantId, 'shifts.create');
+	requireId(input.clientId, 'shifts.create');
 	if (input.serviceDate.length === 0) {
 		throw new Error('shifts.create: input.serviceDate is required');
 	}
@@ -99,20 +99,20 @@ export async function setStatus(id: string, status: ShiftStatus): Promise<void> 
 }
 
 /**
- * Extract recorded shifts from a free-text timesheet for one participant (AI).
+ * Extract recorded shifts from a free-text timesheet for one client (AI).
  * Returns the created shifts (201).
  */
-export async function importShifts(participantId: string, text: string): Promise<Shift[]> {
-	requireId(participantId, 'shifts.import');
+export async function importShifts(clientId: string, text: string): Promise<Shift[]> {
+	requireId(clientId, 'shifts.import');
 	if (text.trim().length === 0) {
 		throw new Error('shifts.import: text is required');
 	}
-	return (await apiPost<Shift[]>(tenantPath('shifts/import'), { participantId, text })) ?? [];
+	return (await apiPost<Shift[]>(tenantPath('shifts/import'), { clientId, text })) ?? [];
 }
 
 /**
  * Draft one invoice from a set of recorded shifts (deterministic link of their
- * already-priced items — no AI). All shifts must share one participant and each
+ * already-priced items — no AI). All shifts must share one client and each
  * must carry at least one item. Shifts are addressed by uuid. Returns the created
  * Invoice (201).
  */

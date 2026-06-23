@@ -31,13 +31,13 @@ func mountInvoice(inv *Handler, pay *PaymentHandler, tenantID int64) chi.Router 
 	return r
 }
 
-// newInvoiceHandler builds a fresh DB, seeds a tenant + participant + a single
-// invoice, and returns the handlers, tenant id, participant uuid, and invoice.
+// newInvoiceHandler builds a fresh DB, seeds a tenant + client + a single
+// invoice, and returns the handlers, tenant id, client uuid, and invoice.
 func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, int64, string, *Invoice) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	pid, pUUID := seedParticipantUUID(t, conn, tenantID, "Jane")
+	pid, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
 	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 	inv := makeInvoice(t, svc, tenantID, pid)
@@ -64,8 +64,8 @@ func TestInvoiceGetByUUID(t *testing.T) {
 	if got["id"] != inv.UUID {
 		t.Fatalf("json id=%v want invoice uuid %q", got["id"], inv.UUID)
 	}
-	if got["participantId"] != pUUID {
-		t.Fatalf("json participantId=%v want participant uuid %q", got["participantId"], pUUID)
+	if got["clientId"] != pUUID {
+		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
 	}
 	lines, ok := got["lineItems"].([]any)
 	if !ok || len(lines) == 0 {
@@ -166,7 +166,7 @@ func TestInvoicePaymentLifecycleByUUID(t *testing.T) {
 func TestInvoiceDraftFromShiftsByUUID(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	pid, _ := seedParticipantUUID(t, conn, tenantID, "Jane")
+	pid, _ := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
 	shiftSvc := shift.NewService(conn, conn, hub, NewInvoices(conn))
 	invSvc := NewService(conn, conn, hub, shiftSvc)
@@ -174,7 +174,7 @@ func TestInvoiceDraftFromShiftsByUUID(t *testing.T) {
 	ph := NewPaymentHandler(NewPaymentService(conn, hub))
 
 	// Seed one recorded shift with one item, capture its uuid.
-	sh, err := shiftSvc.Create(tctx(tenantID), shift.ShiftInput{ParticipantID: pid, ServiceDate: "2026-01-15", Status: "recorded"})
+	sh, err := shiftSvc.Create(tctx(tenantID), shift.ShiftInput{ClientID: pid, ServiceDate: "2026-01-15", Status: "recorded"})
 	if err != nil {
 		t.Fatalf("seed shift: %v", err)
 	}
@@ -206,14 +206,14 @@ func TestInvoiceDraftFromShiftsByUUID(t *testing.T) {
 	}
 }
 
-func TestInvoiceParticipantFilterByUUID(t *testing.T) {
+func TestInvoiceClientFilterByUUID(t *testing.T) {
 	ih, ph, tenantID, pUUID, inv := newInvoiceHandler(t)
 	srv := httptest.NewServer(mountInvoice(ih, ph, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/invoices?participant=" + pUUID)
+	res, err := http.Get(srv.URL + "/invoices?client=" + pUUID)
 	if err != nil {
-		t.Fatalf("GET ?participant: %v", err)
+		t.Fatalf("GET ?client: %v", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
@@ -224,6 +224,6 @@ func TestInvoiceParticipantFilterByUUID(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(list) != 1 || list[0]["id"] != inv.UUID {
-		t.Fatalf("participant filter list=%v want one id %q", list, inv.UUID)
+		t.Fatalf("client filter list=%v want one id %q", list, inv.UUID)
 	}
 }

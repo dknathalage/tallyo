@@ -23,7 +23,7 @@ func mustValues(t *testing.T, raw string) url.Values {
 }
 
 func TestSortRejectsUnknownColumn(t *testing.T) {
-	c := Build(mustValues(t, "sort="+url.QueryEscape("p.name;DROP TABLE participants--")+"&dir=asc"), spec)
+	c := Build(mustValues(t, "sort="+url.QueryEscape("p.name;DROP TABLE clients--")+"&dir=asc"), spec)
 	if c.Order != "" {
 		t.Fatalf("unknown sort column leaked into ORDER: %q", c.Order)
 	}

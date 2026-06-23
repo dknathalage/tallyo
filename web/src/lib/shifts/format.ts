@@ -1,6 +1,6 @@
 /**
  * Pure display + date helpers shared by the shift views (home, calendar,
- * participant profile). No I/O. Dates are YYYY-MM-DD strings in the browser's
+ * client profile). No I/O. Dates are YYYY-MM-DD strings in the browser's
  * local interpretation; we avoid `new Date(string)` parsing pitfalls by working
  * on the string parts directly where possible.
  */

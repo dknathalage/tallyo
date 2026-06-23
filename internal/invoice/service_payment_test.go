@@ -8,19 +8,19 @@ import (
 )
 
 // newPaymentSvc wires a migrated DB with a payment service, the hub, an invoices
-// repo, and a seeded tenant + participant so a seeded invoice can be paid.
+// repo, and a seeded tenant + client so a seeded invoice can be paid.
 func newPaymentSvc(t *testing.T) (*PaymentService, *realtime.Hub, *InvoicesRepo, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID := seedParticipant(t, conn, tenantID, "Jane Participant")
+	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	return NewPaymentService(conn, hub), hub, NewInvoices(conn), tenantID, participantID
+	return NewPaymentService(conn, hub), hub, NewInvoices(conn), tenantID, clientID
 }
 
 func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
-	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
+	svc, hub, invoices, tenantID, clientID := newPaymentSvc(t)
+	inv := seedInvoiceSvc(t, invoices, tenantID, clientID)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
@@ -57,8 +57,8 @@ func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 }
 
 func TestPaymentCreateZeroAmountNoEvent(t *testing.T) {
-	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
+	svc, hub, invoices, tenantID, clientID := newPaymentSvc(t)
+	inv := seedInvoiceSvc(t, invoices, tenantID, clientID)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
@@ -76,8 +76,8 @@ func TestPaymentCreateZeroAmountNoEvent(t *testing.T) {
 }
 
 func TestPaymentListForInvoice(t *testing.T) {
-	svc, _, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
+	svc, _, invoices, tenantID, clientID := newPaymentSvc(t)
+	inv := seedInvoiceSvc(t, invoices, tenantID, clientID)
 	ctx := tctx(tenantID)
 
 	if _, err := svc.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05"}); err != nil {
@@ -93,8 +93,8 @@ func TestPaymentListForInvoice(t *testing.T) {
 }
 
 func TestPaymentDeleteBroadcastsPaymentAndInvoice(t *testing.T) {
-	svc, hub, invoices, tenantID, participantID := newPaymentSvc(t)
-	inv := seedInvoiceSvc(t, invoices, tenantID, participantID)
+	svc, hub, invoices, tenantID, clientID := newPaymentSvc(t)
+	inv := seedInvoiceSvc(t, invoices, tenantID, clientID)
 	ctx := tctx(tenantID)
 
 	p, err := svc.Create(ctx, PaymentInput{InvoiceID: inv.ID, Amount: 10, PaidAt: "2026-06-05"})

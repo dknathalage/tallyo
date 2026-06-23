@@ -11,13 +11,13 @@ import (
 )
 
 func TestInvoiceCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	svc, hub, tenantID, clientID := newInvoiceSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 	ctx := tctx(tenantID)
 
 	inv, err := svc.Create(ctx, InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 2, UnitPrice: 10}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -36,11 +36,11 @@ func TestInvoiceCreateBroadcasts(t *testing.T) {
 }
 
 func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	svc, hub, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	inv, err := svc.Create(ctx, InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -73,8 +73,8 @@ func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 
 	tenantA := seedTenant(t, conn, "Active Tenant A") // active
 	tenantB := seedSuspendedTenant(t, conn)           // suspended
-	partA := seedParticipant(t, conn, tenantA, "Jane")
-	partB := seedParticipant(t, conn, tenantB, "Bob")
+	partA := seedClient(t, conn, tenantA, "Jane")
+	partB := seedClient(t, conn, tenantB, "Bob")
 
 	// One sent, past-due invoice per tenant.
 	overdueA := seedSentPastDue(t, conn, svc, tenantA, partA)
@@ -123,12 +123,12 @@ func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 }
 
 func TestInvoiceCreateEmptyItemsNoEvent(t *testing.T) {
-	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	svc, hub, tenantID, clientID := newInvoiceSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
 	if _, err := svc.Create(tctx(tenantID), InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
+		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
 	}, nil); err == nil {
 		t.Fatal("empty items must error")
 	}

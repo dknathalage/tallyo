@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Modal from '$lib/components/Modal.svelte';
-	import { participants } from '$lib/stores/participants.svelte';
+	import { clients } from '$lib/stores/clients.svelte';
 	import { supportCatalog } from '$lib/stores/supportCatalog.svelte';
 	import { features } from '$lib/stores/features.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
@@ -22,8 +22,8 @@
 		shift?: Shift | null;
 		/** Pre-filled date for a fresh shift (e.g. clicked calendar day). */
 		presetDate?: string;
-		/** Pre-selected participant (uuid) for a fresh shift. */
-		presetParticipantId?: string | null;
+		/** Pre-selected client (uuid) for a fresh shift. */
+		presetClientId?: string | null;
 		/** Recording a scheduled shift — adjusts the title + advances status. */
 		recording?: boolean;
 		/** Called after a successful save (create/update). */
@@ -37,7 +37,7 @@
 		inline = false,
 		shift = null,
 		presetDate = '',
-		presetParticipantId = null,
+		presetClientId = null,
 		recording = false,
 		onsaved,
 		oncancel
@@ -48,7 +48,7 @@
 	const saveLabel = $derived(recording ? 'Save recording' : editing ? 'Save' : 'Add');
 
 	// Form fields. Re-seeded whenever the modal opens (the form is reused).
-	let fParticipantId = $state('');
+	let fClientId = $state('');
 	let fDate = $state('');
 	let fNote = $state('');
 	let fStatus = $state<ShiftStatus>('recorded');
@@ -87,14 +87,14 @@
 		items = [];
 		resetDraft();
 		if (shift) {
-			fParticipantId = String(shift.participantId);
+			fClientId = String(shift.clientId);
 			fDate = shift.serviceDate ? shift.serviceDate.slice(0, 10) : todayISO();
 			fNote = shift.note;
 			fStatus = shift.status;
 			void loadItems(shift.id);
 		} else {
-			const first = presetParticipantId ?? participants.items[0]?.id ?? null;
-			fParticipantId = first === null ? '' : String(first);
+			const first = presetClientId ?? clients.items[0]?.id ?? null;
+			fClientId = first === null ? '' : String(first);
 			fDate = presetDate || todayISO();
 			fNote = '';
 			fStatus = 'recorded';
@@ -258,8 +258,8 @@
 	async function submit(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		error = null;
-		if (fParticipantId === '') {
-			error = 'Please select a participant.';
+		if (fClientId === '') {
+			error = 'Please select a client.';
 			return;
 		}
 		if (fDate === '') {
@@ -269,7 +269,7 @@
 		// Recording a scheduled shift advances it to recorded.
 		const nextStatus: ShiftStatus = recording && fStatus === 'scheduled' ? 'recorded' : fStatus;
 		const input: ShiftInput = {
-			participantId: fParticipantId,
+			clientId: fClientId,
 			serviceDate: fDate,
 			note: fNote,
 			tags: shift?.tags ?? [],
@@ -295,7 +295,7 @@
 {#snippet body()}
 	<form class="space-y-3" onsubmit={submit}>
 		<p class="text-xs text-gray-500">
-			Date &amp; participant are structured; the note is free text. Add billable line items below
+			Date &amp; client are structured; the note is free text. Add billable line items below
 			(or let AI divide the note into them).
 		</p>
 
@@ -310,14 +310,14 @@
 				/>
 			</label>
 			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Participant</span>
+				<span class="mb-1 block text-sm font-medium">Client</span>
 				<select
-					bind:value={fParticipantId}
+					bind:value={fClientId}
 					required
 					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 				>
 					<option value="">— select —</option>
-					{#each participants.items as p (p.id)}
+					{#each clients.items as p (p.id)}
 						<option value={String(p.id)}>{p.name}</option>
 					{/each}
 				</select>

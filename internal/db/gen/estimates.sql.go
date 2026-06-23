@@ -12,18 +12,18 @@ import (
 
 const createEstimate = `-- name: CreateEstimate :one
 INSERT INTO estimates (
-    uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until,
+    uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, valid_until,
     subtotal, tax, total, notes, converted_invoice_id,
     business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+RETURNING id, uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type CreateEstimateParams struct {
 	Uuid               string         `json:"uuid"`
 	TenantID           int64          `json:"tenant_id"`
 	Number             string         `json:"number"`
-	ParticipantID      sql.NullInt64  `json:"participant_id"`
+	ClientID           sql.NullInt64  `json:"client_id"`
 	PlanManagerID      sql.NullInt64  `json:"plan_manager_id"`
 	Status             string         `json:"status"`
 	IssueDate          string         `json:"issue_date"`
@@ -45,7 +45,7 @@ func (q *Queries) CreateEstimate(ctx context.Context, arg CreateEstimateParams) 
 		arg.Uuid,
 		arg.TenantID,
 		arg.Number,
-		arg.ParticipantID,
+		arg.ClientID,
 		arg.PlanManagerID,
 		arg.Status,
 		arg.IssueDate,
@@ -67,7 +67,7 @@ func (q *Queries) CreateEstimate(ctx context.Context, arg CreateEstimateParams) 
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -101,9 +101,9 @@ func (q *Queries) DeleteEstimate(ctx context.Context, arg DeleteEstimateParams) 
 }
 
 const getEstimate = `-- name: GetEstimate :one
-SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.client_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.uuid = ?
@@ -119,7 +119,7 @@ type GetEstimateRow struct {
 	Uuid                 string         `json:"uuid"`
 	TenantID             int64          `json:"tenant_id"`
 	Number               string         `json:"number"`
-	ParticipantID        sql.NullInt64  `json:"participant_id"`
+	ClientID             sql.NullInt64  `json:"client_id"`
 	PlanManagerID        sql.NullInt64  `json:"plan_manager_id"`
 	Status               string         `json:"status"`
 	IssueDate            string         `json:"issue_date"`
@@ -134,8 +134,8 @@ type GetEstimateRow struct {
 	PayerSnapshot        sql.NullString `json:"payer_snapshot"`
 	CreatedAt            string         `json:"created_at"`
 	UpdatedAt            string         `json:"updated_at"`
-	ParticipantName      sql.NullString `json:"participant_name"`
-	ParticipantUuid      sql.NullString `json:"participant_uuid"`
+	ClientName           sql.NullString `json:"client_name"`
+	ClientUuid           sql.NullString `json:"client_uuid"`
 	PlanManagerUuid      sql.NullString `json:"plan_manager_uuid"`
 	ConvertedInvoiceUuid sql.NullString `json:"converted_invoice_uuid"`
 }
@@ -148,7 +148,7 @@ func (q *Queries) GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEs
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -163,8 +163,8 @@ func (q *Queries) GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEs
 		&i.PayerSnapshot,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ParticipantName,
-		&i.ParticipantUuid,
+		&i.ClientName,
+		&i.ClientUuid,
 		&i.PlanManagerUuid,
 		&i.ConvertedInvoiceUuid,
 	)
@@ -172,9 +172,9 @@ func (q *Queries) GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEs
 }
 
 const getEstimateByID = `-- name: GetEstimateByID :one
-SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.client_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.id = ?
@@ -190,7 +190,7 @@ type GetEstimateByIDRow struct {
 	Uuid                 string         `json:"uuid"`
 	TenantID             int64          `json:"tenant_id"`
 	Number               string         `json:"number"`
-	ParticipantID        sql.NullInt64  `json:"participant_id"`
+	ClientID             sql.NullInt64  `json:"client_id"`
 	PlanManagerID        sql.NullInt64  `json:"plan_manager_id"`
 	Status               string         `json:"status"`
 	IssueDate            string         `json:"issue_date"`
@@ -205,8 +205,8 @@ type GetEstimateByIDRow struct {
 	PayerSnapshot        sql.NullString `json:"payer_snapshot"`
 	CreatedAt            string         `json:"created_at"`
 	UpdatedAt            string         `json:"updated_at"`
-	ParticipantName      sql.NullString `json:"participant_name"`
-	ParticipantUuid      sql.NullString `json:"participant_uuid"`
+	ClientName           sql.NullString `json:"client_name"`
+	ClientUuid           sql.NullString `json:"client_uuid"`
 	PlanManagerUuid      sql.NullString `json:"plan_manager_uuid"`
 	ConvertedInvoiceUuid sql.NullString `json:"converted_invoice_uuid"`
 }
@@ -219,7 +219,7 @@ func (q *Queries) GetEstimateByID(ctx context.Context, arg GetEstimateByIDParams
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,
@@ -234,8 +234,8 @@ func (q *Queries) GetEstimateByID(ctx context.Context, arg GetEstimateByIDParams
 		&i.PayerSnapshot,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ParticipantName,
-		&i.ParticipantUuid,
+		&i.ClientName,
+		&i.ClientUuid,
 		&i.PlanManagerUuid,
 		&i.ConvertedInvoiceUuid,
 	)
@@ -258,22 +258,27 @@ func (q *Queries) GetEstimateIDByUUID(ctx context.Context, arg GetEstimateIDByUU
 	return id, err
 }
 
-const listEstimates = `-- name: ListEstimates :many
-SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+const listClientEstimates = `-- name: ListClientEstimates :many
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.client_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ?
+WHERE e.tenant_id = ? AND e.client_id = ?
 ORDER BY e.created_at DESC
 `
 
-type ListEstimatesRow struct {
+type ListClientEstimatesParams struct {
+	TenantID int64         `json:"tenant_id"`
+	ClientID sql.NullInt64 `json:"client_id"`
+}
+
+type ListClientEstimatesRow struct {
 	ID                   int64          `json:"id"`
 	Uuid                 string         `json:"uuid"`
 	TenantID             int64          `json:"tenant_id"`
 	Number               string         `json:"number"`
-	ParticipantID        sql.NullInt64  `json:"participant_id"`
+	ClientID             sql.NullInt64  `json:"client_id"`
 	PlanManagerID        sql.NullInt64  `json:"plan_manager_id"`
 	Status               string         `json:"status"`
 	IssueDate            string         `json:"issue_date"`
@@ -288,8 +293,91 @@ type ListEstimatesRow struct {
 	PayerSnapshot        sql.NullString `json:"payer_snapshot"`
 	CreatedAt            string         `json:"created_at"`
 	UpdatedAt            string         `json:"updated_at"`
-	ParticipantName      sql.NullString `json:"participant_name"`
-	ParticipantUuid      sql.NullString `json:"participant_uuid"`
+	ClientName           sql.NullString `json:"client_name"`
+	ClientUuid           sql.NullString `json:"client_uuid"`
+	PlanManagerUuid      sql.NullString `json:"plan_manager_uuid"`
+	ConvertedInvoiceUuid sql.NullString `json:"converted_invoice_uuid"`
+}
+
+func (q *Queries) ListClientEstimates(ctx context.Context, arg ListClientEstimatesParams) ([]ListClientEstimatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listClientEstimates, arg.TenantID, arg.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClientEstimatesRow
+	for rows.Next() {
+		var i ListClientEstimatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uuid,
+			&i.TenantID,
+			&i.Number,
+			&i.ClientID,
+			&i.PlanManagerID,
+			&i.Status,
+			&i.IssueDate,
+			&i.ValidUntil,
+			&i.Subtotal,
+			&i.Tax,
+			&i.Total,
+			&i.Notes,
+			&i.ConvertedInvoiceID,
+			&i.BusinessSnapshot,
+			&i.ClientSnapshot,
+			&i.PayerSnapshot,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClientName,
+			&i.ClientUuid,
+			&i.PlanManagerUuid,
+			&i.ConvertedInvoiceUuid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEstimates = `-- name: ListEstimates :many
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.client_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+FROM estimates e
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
+LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
+WHERE e.tenant_id = ?
+ORDER BY e.created_at DESC
+`
+
+type ListEstimatesRow struct {
+	ID                   int64          `json:"id"`
+	Uuid                 string         `json:"uuid"`
+	TenantID             int64          `json:"tenant_id"`
+	Number               string         `json:"number"`
+	ClientID             sql.NullInt64  `json:"client_id"`
+	PlanManagerID        sql.NullInt64  `json:"plan_manager_id"`
+	Status               string         `json:"status"`
+	IssueDate            string         `json:"issue_date"`
+	ValidUntil           string         `json:"valid_until"`
+	Subtotal             float64        `json:"subtotal"`
+	Tax                  float64        `json:"tax"`
+	Total                float64        `json:"total"`
+	Notes                sql.NullString `json:"notes"`
+	ConvertedInvoiceID   sql.NullInt64  `json:"converted_invoice_id"`
+	BusinessSnapshot     sql.NullString `json:"business_snapshot"`
+	ClientSnapshot       sql.NullString `json:"client_snapshot"`
+	PayerSnapshot        sql.NullString `json:"payer_snapshot"`
+	CreatedAt            string         `json:"created_at"`
+	UpdatedAt            string         `json:"updated_at"`
+	ClientName           sql.NullString `json:"client_name"`
+	ClientUuid           sql.NullString `json:"client_uuid"`
 	PlanManagerUuid      sql.NullString `json:"plan_manager_uuid"`
 	ConvertedInvoiceUuid sql.NullString `json:"converted_invoice_uuid"`
 }
@@ -308,7 +396,7 @@ func (q *Queries) ListEstimates(ctx context.Context, tenantID int64) ([]ListEsti
 			&i.Uuid,
 			&i.TenantID,
 			&i.Number,
-			&i.ParticipantID,
+			&i.ClientID,
 			&i.PlanManagerID,
 			&i.Status,
 			&i.IssueDate,
@@ -323,8 +411,8 @@ func (q *Queries) ListEstimates(ctx context.Context, tenantID int64) ([]ListEsti
 			&i.PayerSnapshot,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ParticipantName,
-			&i.ParticipantUuid,
+			&i.ClientName,
+			&i.ClientUuid,
 			&i.PlanManagerUuid,
 			&i.ConvertedInvoiceUuid,
 		); err != nil {
@@ -342,9 +430,9 @@ func (q *Queries) ListEstimates(ctx context.Context, tenantID int64) ([]ListEsti
 }
 
 const listEstimatesByStatus = `-- name: ListEstimatesByStatus :many
-SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.id, e.uuid, e.tenant_id, e.number, e.client_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
 FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
+LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.status = ?
@@ -361,7 +449,7 @@ type ListEstimatesByStatusRow struct {
 	Uuid                 string         `json:"uuid"`
 	TenantID             int64          `json:"tenant_id"`
 	Number               string         `json:"number"`
-	ParticipantID        sql.NullInt64  `json:"participant_id"`
+	ClientID             sql.NullInt64  `json:"client_id"`
 	PlanManagerID        sql.NullInt64  `json:"plan_manager_id"`
 	Status               string         `json:"status"`
 	IssueDate            string         `json:"issue_date"`
@@ -376,8 +464,8 @@ type ListEstimatesByStatusRow struct {
 	PayerSnapshot        sql.NullString `json:"payer_snapshot"`
 	CreatedAt            string         `json:"created_at"`
 	UpdatedAt            string         `json:"updated_at"`
-	ParticipantName      sql.NullString `json:"participant_name"`
-	ParticipantUuid      sql.NullString `json:"participant_uuid"`
+	ClientName           sql.NullString `json:"client_name"`
+	ClientUuid           sql.NullString `json:"client_uuid"`
 	PlanManagerUuid      sql.NullString `json:"plan_manager_uuid"`
 	ConvertedInvoiceUuid sql.NullString `json:"converted_invoice_uuid"`
 }
@@ -396,7 +484,7 @@ func (q *Queries) ListEstimatesByStatus(ctx context.Context, arg ListEstimatesBy
 			&i.Uuid,
 			&i.TenantID,
 			&i.Number,
-			&i.ParticipantID,
+			&i.ClientID,
 			&i.PlanManagerID,
 			&i.Status,
 			&i.IssueDate,
@@ -411,96 +499,8 @@ func (q *Queries) ListEstimatesByStatus(ctx context.Context, arg ListEstimatesBy
 			&i.PayerSnapshot,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ParticipantName,
-			&i.ParticipantUuid,
-			&i.PlanManagerUuid,
-			&i.ConvertedInvoiceUuid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listParticipantEstimates = `-- name: ListParticipantEstimates :many
-SELECT e.id, e.uuid, e.tenant_id, e.number, e.participant_id, e.plan_manager_id, e.status, e.issue_date, e.valid_until, e.subtotal, e.tax, e.total, e.notes, e.converted_invoice_id, e.business_snapshot, e.client_snapshot, e.payer_snapshot, e.created_at, e.updated_at, p.name AS participant_name, p.uuid AS participant_uuid, pm.uuid AS plan_manager_uuid, ci.uuid AS converted_invoice_uuid
-FROM estimates e
-LEFT JOIN participants p ON e.participant_id = p.id AND p.tenant_id = e.tenant_id
-LEFT JOIN plan_managers pm ON e.plan_manager_id = pm.id AND pm.tenant_id = e.tenant_id
-LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.participant_id = ?
-ORDER BY e.created_at DESC
-`
-
-type ListParticipantEstimatesParams struct {
-	TenantID      int64         `json:"tenant_id"`
-	ParticipantID sql.NullInt64 `json:"participant_id"`
-}
-
-type ListParticipantEstimatesRow struct {
-	ID                   int64          `json:"id"`
-	Uuid                 string         `json:"uuid"`
-	TenantID             int64          `json:"tenant_id"`
-	Number               string         `json:"number"`
-	ParticipantID        sql.NullInt64  `json:"participant_id"`
-	PlanManagerID        sql.NullInt64  `json:"plan_manager_id"`
-	Status               string         `json:"status"`
-	IssueDate            string         `json:"issue_date"`
-	ValidUntil           string         `json:"valid_until"`
-	Subtotal             float64        `json:"subtotal"`
-	Tax                  float64        `json:"tax"`
-	Total                float64        `json:"total"`
-	Notes                sql.NullString `json:"notes"`
-	ConvertedInvoiceID   sql.NullInt64  `json:"converted_invoice_id"`
-	BusinessSnapshot     sql.NullString `json:"business_snapshot"`
-	ClientSnapshot       sql.NullString `json:"client_snapshot"`
-	PayerSnapshot        sql.NullString `json:"payer_snapshot"`
-	CreatedAt            string         `json:"created_at"`
-	UpdatedAt            string         `json:"updated_at"`
-	ParticipantName      sql.NullString `json:"participant_name"`
-	ParticipantUuid      sql.NullString `json:"participant_uuid"`
-	PlanManagerUuid      sql.NullString `json:"plan_manager_uuid"`
-	ConvertedInvoiceUuid sql.NullString `json:"converted_invoice_uuid"`
-}
-
-func (q *Queries) ListParticipantEstimates(ctx context.Context, arg ListParticipantEstimatesParams) ([]ListParticipantEstimatesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listParticipantEstimates, arg.TenantID, arg.ParticipantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListParticipantEstimatesRow
-	for rows.Next() {
-		var i ListParticipantEstimatesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Uuid,
-			&i.TenantID,
-			&i.Number,
-			&i.ParticipantID,
-			&i.PlanManagerID,
-			&i.Status,
-			&i.IssueDate,
-			&i.ValidUntil,
-			&i.Subtotal,
-			&i.Tax,
-			&i.Total,
-			&i.Notes,
-			&i.ConvertedInvoiceID,
-			&i.BusinessSnapshot,
-			&i.ClientSnapshot,
-			&i.PayerSnapshot,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ParticipantName,
-			&i.ParticipantUuid,
+			&i.ClientName,
+			&i.ClientUuid,
 			&i.PlanManagerUuid,
 			&i.ConvertedInvoiceUuid,
 		); err != nil {
@@ -563,16 +563,16 @@ func (q *Queries) SetEstimateConverted(ctx context.Context, arg SetEstimateConve
 
 const updateEstimate = `-- name: UpdateEstimate :one
 UPDATE estimates SET
-    number = ?, participant_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, valid_until = ?,
+    number = ?, client_id = ?, plan_manager_id = ?, status = ?, issue_date = ?, valid_until = ?,
     subtotal = ?, tax = ?, total = ?, notes = ?,
     business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
 WHERE tenant_id = ? AND id = ?
-RETURNING id, uuid, tenant_id, number, participant_id, plan_manager_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
+RETURNING id, uuid, tenant_id, number, client_id, plan_manager_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
 type UpdateEstimateParams struct {
 	Number           string         `json:"number"`
-	ParticipantID    sql.NullInt64  `json:"participant_id"`
+	ClientID         sql.NullInt64  `json:"client_id"`
 	PlanManagerID    sql.NullInt64  `json:"plan_manager_id"`
 	Status           string         `json:"status"`
 	IssueDate        string         `json:"issue_date"`
@@ -592,7 +592,7 @@ type UpdateEstimateParams struct {
 func (q *Queries) UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error) {
 	row := q.db.QueryRowContext(ctx, updateEstimate,
 		arg.Number,
-		arg.ParticipantID,
+		arg.ClientID,
 		arg.PlanManagerID,
 		arg.Status,
 		arg.IssueDate,
@@ -614,7 +614,7 @@ func (q *Queries) UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) 
 		&i.Uuid,
 		&i.TenantID,
 		&i.Number,
-		&i.ParticipantID,
+		&i.ClientID,
 		&i.PlanManagerID,
 		&i.Status,
 		&i.IssueDate,

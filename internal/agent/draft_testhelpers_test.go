@@ -2,9 +2,9 @@ package agent
 
 // Shared seeding helpers for the divide-shift Smarts tests
 // (smart_divide_shift_test.go). They reproduce the reference nursing-note
-// fixture — participant "Tania Hangevelled", a FY26 catalogue carrying the two
+// fixture — client "Tania Hangevelled", a FY26 catalogue carrying the two
 // reference support items, and the four-day timesheet (referenceWeek) — as a
-// tenant + participant + catalogue plus recorded note-only shifts.
+// tenant + client + catalogue plus recorded note-only shifts.
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/client"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/google/uuid"
@@ -88,9 +88,9 @@ func seedNoteItem(t *testing.T, conn *sql.DB, versionID int64, code, name string
 }
 
 // shiftToolsFixture opens a migrated temp DB and seeds the same tenant,
-// participant and catalogue as the reference invoice fixture, returning the open
-// connection plus the seeded tenant and participant ids.
-func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, participantID int64) {
+// client and catalogue as the reference invoice fixture, returning the open
+// connection plus the seeded tenant and client ids.
+func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) {
 	t.Helper()
 	c, err := appdb.Open(filepath.Join(t.TempDir(), "shifts.db"))
 	if err != nil {
@@ -104,11 +104,11 @@ func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, participantID int6
 	tenantID = seedNoteTenant(t, c)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 
-	p, err := participant.NewParticipants(c).Create(ctx, tenantID, participant.ParticipantInput{
+	p, err := client.NewClients(c).Create(ctx, tenantID, client.ClientInput{
 		Name: "Tania Hangevelled", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
 	})
 	if err != nil {
-		t.Fatalf("seed participant: %v", err)
+		t.Fatalf("seed client: %v", err)
 	}
 
 	verID := seedNoteCatalogVersion(t, c, "2025-07-01", "2026-06-30")
@@ -122,13 +122,13 @@ func shiftToolsFixture(t *testing.T) (conn *sql.DB, tenantID, participantID int6
 // (post-unification a shift carries no hours/km — those live on its line items)
 // and returns the created shift. The note carries the activity narrative so the
 // divide Smart has something to ground against.
-func seedReferenceShift(t *testing.T, shifts *shift.Service, ctx context.Context, participantID int64, serviceDate string) *shift.Shift {
+func seedReferenceShift(t *testing.T, shifts *shift.Service, ctx context.Context, clientID int64, serviceDate string) *shift.Shift {
 	t.Helper()
 	sh, err := shifts.Create(ctx, shift.ShiftInput{
-		ParticipantID: participantID,
-		ServiceDate:   serviceDate,
-		Note:          "Supported Tania with self care and community access.",
-		Status:        "recorded",
+		ClientID:    clientID,
+		ServiceDate: serviceDate,
+		Note:        "Supported Tania with self care and community access.",
+		Status:      "recorded",
 	})
 	if err != nil {
 		t.Fatalf("seed shift %s: %v", serviceDate, err)

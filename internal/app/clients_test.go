@@ -8,26 +8,26 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	"github.com/dknathalage/tallyo/internal/participant"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/planmanager"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
 
-// newParticipantServer wires the participant routes behind RequireSession + ResolveTenant plus the
-// plan-manager create route so a participant can reference a plan-manager FK.
-func newParticipantServer(t *testing.T) (*httptest.Server, string) {
+// newClientServer wires the client routes behind RequireSession + ResolveTenant plus the
+// plan-manager create route so a client can reference a plan-manager FK.
+func newClientServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
-	conn := openMigratedDB(t, "participant.db")
+	conn := openMigratedDB(t, "client.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	participantSvc := participant.NewService(conn, hub)
-	pH := participant.NewHandler(participantSvc)
+	clientSvc := client.NewService(conn, hub)
+	pH := client.NewHandler(clientSvc)
 	pmH := planmanager.NewHandler(planmanager.NewService(conn, hub))
 
 	router := chi.NewRouter()
@@ -46,30 +46,30 @@ func newParticipantServer(t *testing.T) (*httptest.Server, string) {
 	return srv, tenantUUID
 }
 
-// createParticipant posts a participant with the given name and returns its uuid.
-func createParticipant(t *testing.T, c *http.Client, base, uuid, name string) string {
+// createClient posts a client with the given name and returns its uuid.
+func createClient(t *testing.T, c *http.Client, base, uuid, name string) string {
 	t.Helper()
-	resp := postJSON(t, c, base+"/api/t/"+uuid+"/participants", `{"name":"`+name+`"}`)
+	resp := postJSON(t, c, base+"/api/t/"+uuid+"/clients", `{"name":"`+name+`"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create participant %q: want 201 got %d", name, resp.StatusCode)
+		t.Fatalf("create client %q: want 201 got %d", name, resp.StatusCode)
 	}
 	var out struct {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode participant: %v", err)
+		t.Fatalf("decode client: %v", err)
 	}
 	if out.ID == "" {
-		t.Fatalf("create participant: want non-empty uuid got %q", out.ID)
+		t.Fatalf("create client: want non-empty uuid got %q", out.ID)
 	}
 	return out.ID
 }
 
-func TestParticipantListEmptyReturnsArray(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientListEmptyReturnsArray(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/clients")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: want 200 got %d", resp.StatusCode)
@@ -81,8 +81,8 @@ func TestParticipantListEmptyReturnsArray(t *testing.T) {
 	}
 }
 
-func TestParticipantListPlanManagerName(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientListPlanManagerName(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
 	pmID := createPlanManager(t, c, srv.URL, uuid, "Globex")
 
@@ -90,14 +90,14 @@ func TestParticipantListPlanManagerName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients", string(body))
 	if resp.StatusCode != http.StatusCreated {
 		_ = resp.Body.Close()
-		t.Fatalf("create participant: want 201 got %d", resp.StatusCode)
+		t.Fatalf("create client: want 201 got %d", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
 
-	lr := get(t, c, srv.URL+"/api/t/"+uuid+"/participants")
+	lr := get(t, c, srv.URL+"/api/t/"+uuid+"/clients")
 	defer func() { _ = lr.Body.Close() }()
 	var out []struct {
 		Name            string `json:"name"`
@@ -107,25 +107,25 @@ func TestParticipantListPlanManagerName(t *testing.T) {
 		t.Fatalf("decode list: %v", err)
 	}
 	if len(out) != 1 {
-		t.Fatalf("want 1 participant got %d", len(out))
+		t.Fatalf("want 1 client got %d", len(out))
 	}
 	if out[0].PlanManagerName != "Globex" {
 		t.Fatalf("planManagerName: want Globex got %q", out[0].PlanManagerName)
 	}
 }
 
-func TestParticipantCreateWithFieldsAndGet(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientCreateWithFieldsAndGet(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
 	pmID := createPlanManager(t, c, srv.URL, uuid, "Acme")
 	body, err := json.Marshal(map[string]any{
-		"name": "Stark", "ndisNumber": "430000001", "mgmtType": "plan",
+		"name": "Stark", "reference": "430000001", "mgmtType": "plan",
 		"planManagerId": pmID, "email": "s@x.com", "phone": "123", "address": "1 St",
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants", string(body))
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients", string(body))
 	if resp.StatusCode != http.StatusCreated {
 		_ = resp.Body.Close()
 		t.Fatalf("create: want 201 got %d", resp.StatusCode)
@@ -139,104 +139,104 @@ func TestParticipantCreateWithFieldsAndGet(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	gr := get(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+out.ID)
+	gr := get(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+out.ID)
 	defer func() { _ = gr.Body.Close() }()
 	if gr.StatusCode != http.StatusOK {
 		t.Fatalf("get: want 200 got %d", gr.StatusCode)
 	}
 	var p struct {
-		NDISNumber string `json:"ndisNumber"`
+		Reference string `json:"reference"`
 	}
 	if err := json.NewDecoder(gr.Body).Decode(&p); err != nil {
 		t.Fatalf("decode get: %v", err)
 	}
-	if p.NDISNumber != "430000001" {
-		t.Fatalf("ndisNumber: want 430000001 got %q", p.NDISNumber)
+	if p.Reference != "430000001" {
+		t.Fatalf("reference: want 430000001 got %q", p.Reference)
 	}
 }
 
-func TestParticipantGetNotFound404(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientGetNotFound404(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+uuidpkg.NewString())
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+uuidpkg.NewString())
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing: want 404 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantCreateEmptyName400(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientCreateEmptyName400(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants", `{"name":""}`)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients", `{"name":""}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty name: want 400 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantUpdateOK(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientUpdateOK(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createParticipant(t, c, srv.URL, uuid, "Stark")
-	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+id, `{"name":"Stark Industries"}`)
+	id := createClient(t, c, srv.URL, uuid, "Stark")
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+id, `{"name":"Stark Industries"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update: want 200 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantUpdateMissing404(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientUpdateMissing404(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+uuidpkg.NewString(), `{"name":"Nope"}`)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+uuidpkg.NewString(), `{"name":"Nope"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("update missing: want 404 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantUpdateEmptyName400(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientUpdateEmptyName400(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createParticipant(t, c, srv.URL, uuid, "Stark")
-	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+id, `{"name":""}`)
+	id := createClient(t, c, srv.URL, uuid, "Stark")
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+id, `{"name":""}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("update empty name: want 400 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantDelete204(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientDelete204(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	id := createParticipant(t, c, srv.URL, uuid, "Stark")
-	resp := delete_(t, c, srv.URL+"/api/t/"+uuid+"/participants/"+id)
+	id := createClient(t, c, srv.URL, uuid, "Stark")
+	resp := delete_(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+id)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantBulkDelete204(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientBulkDelete204(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	a := createParticipant(t, c, srv.URL, uuid, "A")
-	b := createParticipant(t, c, srv.URL, uuid, "B")
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/participants/bulk-delete", `{"ids":["`+a+`","`+b+`"]}`)
+	a := createClient(t, c, srv.URL, uuid, "A")
+	b := createClient(t, c, srv.URL, uuid, "B")
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients/bulk-delete", `{"ids":["`+a+`","`+b+`"]}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bulk-delete: want 204 got %d", resp.StatusCode)
 	}
 }
 
-func TestParticipantListSearchFilters(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientListSearchFilters(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	_ = createParticipant(t, c, srv.URL, uuid, "Acme")
-	_ = createParticipant(t, c, srv.URL, uuid, "Globex")
+	_ = createClient(t, c, srv.URL, uuid, "Acme")
+	_ = createClient(t, c, srv.URL, uuid, "Globex")
 
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants?search=acm")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/clients?search=acm")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("search: want 200 got %d", resp.StatusCode)
@@ -252,10 +252,10 @@ func TestParticipantListSearchFilters(t *testing.T) {
 	}
 }
 
-func TestParticipantListUnauthenticated401(t *testing.T) {
-	srv, uuid := newParticipantServer(t)
+func TestClientListUnauthenticated401(t *testing.T) {
+	srv, uuid := newClientServer(t)
 	c := jarClient(t)
-	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/participants")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/clients")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)

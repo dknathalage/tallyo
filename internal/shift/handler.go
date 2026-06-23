@@ -21,7 +21,7 @@ type ShiftDivider interface {
 	DivideShift(ctx context.Context, shiftID int64) error
 }
 
-// Handler serves the shift lifecycle routes: per-participant listing,
+// Handler serves the shift lifecycle routes: per-client listing,
 // tenant-wide listing, the billing-suggestion and to-record prompts, plus shift
 // CRUD, the status-transition endpoint, and the AI divide route.
 type Handler struct {
@@ -56,14 +56,14 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/shifts/{shiftUUID}/divide", h.Divide)
 }
 
-// List returns the tenant's shifts. With ?participant={participantUUID} it
-// returns only that participant's shifts (resolving the participant uuid to its
-// int FK — this replaces the old nested participant→shifts read). An optional
+// List returns the tenant's shifts. With ?client={clientUUID} it
+// returns only that client's shifts (resolving the client uuid to its
+// int FK — this replaces the old nested client→shifts read). An optional
 // ?status= filter restricts the lifecycle status in either mode.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
-	if participantUUID := r.URL.Query().Get("participant"); participantUUID != "" {
-		shifts, err := h.svc.ListByParticipantUUID(r.Context(), participantUUID, status)
+	if clientUUID := r.URL.Query().Get("client"); clientUUID != "" {
+		shifts, err := h.svc.ListByClientUUID(r.Context(), clientUUID, status)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -79,7 +79,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, shifts)
 }
 
-// Suggestions returns each participant's recorded-but-unbilled billing prompt.
+// Suggestions returns each client's recorded-but-unbilled billing prompt.
 func (h *Handler) Suggestions(w http.ResponseWriter, r *http.Request) {
 	out, err := h.svc.Suggestions(r.Context())
 	if err != nil {
@@ -99,16 +99,16 @@ func (h *Handler) ToRecord(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-// shiftBody is the HTTP write shape of a shift. ParticipantUUID arrives as the
-// participant's uuid (resolved to the int FK before insert/update); the other
+// shiftBody is the HTTP write shape of a shift. ClientUUID arrives as the
+// client's uuid (resolved to the int FK before insert/update); the other
 // fields mirror ShiftInput. It is the inbound DTO — ShiftInput stays int-keyed
 // for the cross-slice ShiftCreator contract (agent import).
 type shiftBody struct {
-	ParticipantUUID string   `json:"participantId"`
-	ServiceDate     string   `json:"serviceDate"`
-	Note            string   `json:"note"`
-	Tags            []string `json:"tags"`
-	Status          string   `json:"status"`
+	ClientUUID  string   `json:"clientId"`
+	ServiceDate string   `json:"serviceDate"`
+	Note        string   `json:"note"`
+	Tags        []string `json:"tags"`
+	Status      string   `json:"status"`
 }
 
 // Get returns a single shift by uuid, or 404 when not found.
@@ -130,15 +130,15 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sh)
 }
 
-// Create inserts a shift. A missing/unknown participant uuid or service date → 400.
+// Create inserts a shift. A missing/unknown client uuid or service date → 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var body shiftBody
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if body.ParticipantUUID == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "participant required")
+	if body.ClientUUID == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "client required")
 		return
 	}
 	if body.ServiceDate == "" {
@@ -157,30 +157,30 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, sh)
 }
 
-// resolveBody translates a shiftBody's participant uuid into the int FK and
+// resolveBody translates a shiftBody's client uuid into the int FK and
 // returns the int-keyed ShiftInput. Writes a 400 and returns ok=false when the
-// participant uuid is unknown for the tenant.
+// client uuid is unknown for the tenant.
 func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body shiftBody) (ShiftInput, bool) {
-	pid, err := h.svc.ResolveParticipant(r.Context(), body.ParticipantUUID)
+	pid, err := h.svc.ResolveClient(r.Context(), body.ClientUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return ShiftInput{}, false
 	}
 	if pid == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
 		return ShiftInput{}, false
 	}
 	return ShiftInput{
-		ParticipantID: pid,
-		ServiceDate:   body.ServiceDate,
-		Note:          body.Note,
-		Tags:          body.Tags,
-		Status:        body.Status,
+		ClientID:    pid,
+		ServiceDate: body.ServiceDate,
+		Note:        body.Note,
+		Tags:        body.Tags,
+		Status:      body.Status,
 	}, true
 }
 
 // Update mutates a shift. Empty service date → 400; unknown shift uuid → 404;
-// unknown participant uuid → 400.
+// unknown client uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	shiftUUID, ok := httpx.ParseUUID(r, "shiftUUID")
 	if !ok {

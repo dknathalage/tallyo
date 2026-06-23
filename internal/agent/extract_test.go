@@ -41,10 +41,10 @@ func emitShiftsResponse(t *testing.T, drafts []ShiftDraft) llm.Response {
 // emit_shifts tool on the request.
 func TestExtractShiftsParsesFourDays(t *testing.T) {
 	want := []ShiftDraft{
-		{ParticipantName: "Tania", ServiceDate: "2026-06-09", Hours: 7.0, Km: 36, Note: "self care"},
-		{ParticipantName: "Tania", ServiceDate: "2026-06-10", Hours: 5.5, Km: 12, Note: "self care"},
-		{ParticipantName: "Tania", ServiceDate: "2026-06-11", Hours: 7.0, Km: 64, Note: "self care"},
-		{ParticipantName: "Tania", ServiceDate: "2026-06-12", Hours: 5.5, Km: 38, Note: "self care"},
+		{ClientName: "Tania", ServiceDate: "2026-06-09", Hours: 7.0, Km: 36, Note: "self care"},
+		{ClientName: "Tania", ServiceDate: "2026-06-10", Hours: 5.5, Km: 12, Note: "self care"},
+		{ClientName: "Tania", ServiceDate: "2026-06-11", Hours: 7.0, Km: 64, Note: "self care"},
+		{ClientName: "Tania", ServiceDate: "2026-06-12", Hours: 5.5, Km: 38, Note: "self care"},
 	}
 	fake := llm.NewFake(emitShiftsResponse(t, want))
 
@@ -84,9 +84,9 @@ func TestExtractShiftsParsesFourDays(t *testing.T) {
 // are dropped, keeping only the valid drafts.
 func TestExtractShiftsDropsInvalid(t *testing.T) {
 	scripted := []ShiftDraft{
-		{ParticipantName: "Tania", ServiceDate: "2026-06-09", Hours: 7.0, Km: 36},
-		{ParticipantName: "Tania", ServiceDate: "09/06/2026", Hours: 5.5, Km: 12}, // non-ISO → dropped
-		{ParticipantName: "Tania", ServiceDate: "2026-06-11", Hours: -1, Km: 64},  // negative → dropped
+		{ClientName: "Tania", ServiceDate: "2026-06-09", Hours: 7.0, Km: 36},
+		{ClientName: "Tania", ServiceDate: "09/06/2026", Hours: 5.5, Km: 12}, // non-ISO → dropped
+		{ClientName: "Tania", ServiceDate: "2026-06-11", Hours: -1, Km: 64},  // negative → dropped
 	}
 	fake := llm.NewFake(emitShiftsResponse(t, scripted))
 
@@ -106,7 +106,7 @@ func TestExtractShiftsDropsInvalid(t *testing.T) {
 // error is returned (an empty extraction is a failure, not a silent success).
 func TestExtractShiftsNoneIsError(t *testing.T) {
 	fake := llm.NewFake(emitShiftsResponse(t, []ShiftDraft{
-		{ParticipantName: "Tania", ServiceDate: "not-a-date"},
+		{ClientName: "Tania", ServiceDate: "not-a-date"},
 	}))
 	if _, err := ExtractShifts(context.Background(), fake, "m", "", "text"); err == nil {
 		t.Fatal("expected an error when no valid shift is extracted")
@@ -165,7 +165,7 @@ func TestExtractShiftsLive(t *testing.T) {
 	wantHr := map[string]float64{"2026-06-09": 7.0, "2026-06-10": 5.5, "2026-06-11": 7.0, "2026-06-12": 5.5}
 	for i := range got { // bounded by len(got)
 		d := got[i]
-		t.Logf("shift: %s hours=%.1f km=%.1f participant=%q", d.ServiceDate, d.Hours, d.Km, d.ParticipantName)
+		t.Logf("shift: %s hours=%.1f km=%.1f client=%q", d.ServiceDate, d.Hours, d.Km, d.ClientName)
 		if wk, ok := wantKm[d.ServiceDate]; !ok || d.Km != wk {
 			t.Errorf("%s km = %.1f, want %.1f", d.ServiceDate, d.Km, wk)
 		}

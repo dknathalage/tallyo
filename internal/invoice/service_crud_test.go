@@ -10,10 +10,10 @@ import (
 )
 
 func TestInvoiceListAndGet(t *testing.T) {
-	svc, _, tenantID, participantID := newInvoiceSvc(t)
+	svc, _, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	inv := makeInvoice(t, svc, tenantID, participantID)
+	inv := makeInvoice(t, svc, tenantID, clientID)
 
 	list, err := svc.List(ctx)
 	if err != nil {
@@ -48,10 +48,10 @@ func TestInvoiceGetNotFoundReturnsNil(t *testing.T) {
 }
 
 func TestInvoiceListByStatusSvc(t *testing.T) {
-	svc, _, tenantID, participantID := newInvoiceSvc(t)
+	svc, _, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	inv := makeInvoice(t, svc, tenantID, participantID)
+	inv := makeInvoice(t, svc, tenantID, clientID)
 	if err := svc.UpdateStatus(ctx, inv.ID, "sent"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
@@ -73,51 +73,51 @@ func TestInvoiceListByStatusSvc(t *testing.T) {
 	}
 }
 
-func TestInvoiceListParticipantInvoicesAndStats(t *testing.T) {
+func TestInvoiceListClientInvoicesAndStats(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	participantID, participantUUID := seedParticipantUUID(t, conn, tenantID, "Jane Participant")
+	clientID, clientUUID := seedClientUUID(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 	ctx := tctx(tenantID)
 
-	inv := makeInvoice(t, svc, tenantID, participantID)
+	inv := makeInvoice(t, svc, tenantID, clientID)
 
-	rows, err := svc.ListParticipantInvoices(ctx, participantID)
+	rows, err := svc.ListClientInvoices(ctx, clientID)
 	if err != nil {
-		t.Fatalf("ListParticipantInvoices: %v", err)
+		t.Fatalf("ListClientInvoices: %v", err)
 	}
 	if len(rows) != 1 || rows[0].ID != inv.ID {
-		t.Fatalf("ListParticipantInvoices = %+v, want one id %d", rows, inv.ID)
+		t.Fatalf("ListClientInvoices = %+v, want one id %d", rows, inv.ID)
 	}
 
-	// ParticipantStats now resolves the participant uuid → int PK.
-	stats, err := svc.ParticipantStats(ctx, participantUUID)
+	// ClientStats now resolves the client uuid → int PK.
+	stats, err := svc.ClientStats(ctx, clientUUID)
 	if err != nil {
-		t.Fatalf("ParticipantStats: %v", err)
+		t.Fatalf("ClientStats: %v", err)
 	}
 	if stats == nil {
-		t.Fatal("ParticipantStats returned nil")
+		t.Fatal("ClientStats returned nil")
 	}
 
-	// An unknown participant uuid yields no stats (handler 404s).
-	none, err := svc.ParticipantStats(ctx, "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
+	// An unknown client uuid yields no stats (handler 404s).
+	none, err := svc.ClientStats(ctx, "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
 	if err != nil {
-		t.Fatalf("ParticipantStats unknown: %v", err)
+		t.Fatalf("ClientStats unknown: %v", err)
 	}
 	if none != nil {
-		t.Fatalf("ParticipantStats unknown = %+v, want nil", none)
+		t.Fatalf("ClientStats unknown = %+v, want nil", none)
 	}
 }
 
 func TestInvoiceUpdate(t *testing.T) {
-	svc, _, tenantID, participantID := newInvoiceSvc(t)
+	svc, _, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	inv := makeInvoice(t, svc, tenantID, participantID)
+	inv := makeInvoice(t, svc, tenantID, clientID)
 
 	updated, err := svc.Update(ctx, inv.ID, InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
+		ClientID: clientID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 3, UnitPrice: 7}})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
@@ -131,10 +131,10 @@ func TestInvoiceUpdate(t *testing.T) {
 }
 
 func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
-	svc, _, tenantID, participantID := newInvoiceSvc(t)
+	svc, _, tenantID, clientID := newInvoiceSvc(t)
 
 	got, err := svc.Update(tctx(tenantID), 999999, InvoiceInput{
-		ParticipantID: participantID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
+		ClientID: clientID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
 		t.Fatalf("Update missing: unexpected err %v", err)
@@ -145,10 +145,10 @@ func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
 }
 
 func TestInvoiceDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	svc, hub, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	inv := makeInvoice(t, svc, tenantID, participantID)
+	inv := makeInvoice(t, svc, tenantID, clientID)
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
@@ -175,11 +175,11 @@ func TestInvoiceDeleteBroadcasts(t *testing.T) {
 }
 
 func TestInvoiceBulkDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	svc, hub, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	a := makeInvoice(t, svc, tenantID, participantID)
-	b := makeInvoice(t, svc, tenantID, participantID)
+	a := makeInvoice(t, svc, tenantID, clientID)
+	b := makeInvoice(t, svc, tenantID, clientID)
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
@@ -206,11 +206,11 @@ func TestInvoiceBulkDeleteBroadcasts(t *testing.T) {
 }
 
 func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, participantID := newInvoiceSvc(t)
+	svc, hub, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
-	a := makeInvoice(t, svc, tenantID, participantID)
-	b := makeInvoice(t, svc, tenantID, participantID)
+	a := makeInvoice(t, svc, tenantID, clientID)
+	b := makeInvoice(t, svc, tenantID, clientID)
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
@@ -244,7 +244,7 @@ func TestInvoiceTenantScoping(t *testing.T) {
 	svc := NewService(conn, conn, hub, shift.NewService(conn, conn, hub, NewInvoices(conn)))
 
 	tenantA := seedTenant(t, conn, "Acme NDIS")
-	partA := seedParticipant(t, conn, tenantA, "Jane")
+	partA := seedClient(t, conn, tenantA, "Jane")
 	tenantB := seedTenant(t, conn, "Beta NDIS")
 
 	inv := makeInvoice(t, svc, tenantA, partA)

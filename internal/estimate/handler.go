@@ -42,13 +42,13 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/estimates/{uuid}/convert", h.Convert)
 }
 
-// estimateRequest is the flat write payload. ParticipantUUID/PlanManagerUUID
-// arrive as uuids under the public field names (participantId/planManagerId) and
+// estimateRequest is the flat write payload. ClientUUID/PlanManagerUUID
+// arrive as uuids under the public field names (clientId/planManagerId) and
 // are resolved to int FKs before the service is called; the remaining fields
 // mirror EstimateInput. LineItems carry the priced lines (catalogue refs already
 // uuid TEXT — passed through unchanged).
 type estimateRequest struct {
-	ParticipantUUID  string                  `json:"participantId"`
+	ClientUUID       string                  `json:"clientId"`
 	PlanManagerUUID  *string                 `json:"planManagerId"`
 	Status           string                  `json:"status"`
 	IssueDate        string                  `json:"issueDate"`
@@ -56,27 +56,27 @@ type estimateRequest struct {
 	Tax              float64                 `json:"tax"`
 	Notes            string                  `json:"notes"`
 	BusinessSnapshot string                  `json:"businessSnapshot"`
-	ClientSnapshot   string                  `json:"participantSnapshot"`
+	ClientSnapshot   string                  `json:"clientSnapshot"`
 	PayerSnapshot    string                  `json:"planManagerSnapshot"`
 	LineItems        []billing.LineItemInput `json:"lineItems"`
 }
 
-// resolveInput translates an estimateRequest's participant/plan-manager uuids
+// resolveInput translates an estimateRequest's client/plan-manager uuids
 // into int FKs and returns the int-keyed EstimateInput. Writes a 400 and returns
-// ok=false when the participant uuid is missing/unknown for the tenant. A
+// ok=false when the client uuid is missing/unknown for the tenant. A
 // missing/empty plan-manager uuid stays NULL; a present-but-unknown one 400s.
 func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req estimateRequest) (EstimateInput, bool) {
-	if req.ParticipantUUID == "" || len(req.LineItems) == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "participant and at least one line item are required")
+	if req.ClientUUID == "" || len(req.LineItems) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "client and at least one line item are required")
 		return EstimateInput{}, false
 	}
-	pid, err := h.svc.ResolveParticipant(r.Context(), req.ParticipantUUID)
+	pid, err := h.svc.ResolveClient(r.Context(), req.ClientUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return EstimateInput{}, false
 	}
 	if pid == 0 {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown participant")
+		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
 		return EstimateInput{}, false
 	}
 	var pmID *int64
@@ -93,7 +93,7 @@ func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req estim
 		pmID = &id
 	}
 	return EstimateInput{
-		ParticipantID:    pid,
+		ClientID:         pid,
 		PlanManagerID:    pmID,
 		Status:           req.Status,
 		IssueDate:        req.IssueDate,
@@ -125,16 +125,16 @@ func writeValidationError(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-// participantFilter returns the participant uuid filter from the query, accepting
-// the canonical ?participant= and the legacy ?participantId= key.
-func participantFilter(q url.Values) string {
-	if v := q.Get("participant"); v != "" {
+// clientFilter returns the client uuid filter from the query, accepting
+// the canonical ?client= and the legacy ?clientId= key.
+func clientFilter(q url.Values) string {
+	if v := q.Get("client"); v != "" {
 		return v
 	}
-	return q.Get("participantId")
+	return q.Get("clientId")
 }
 
-// List returns estimates filtered by the optional ?participant= (participant
+// List returns estimates filtered by the optional ?client= (client
 // uuid) or ?status= query params. Unlike invoices there is no read-time overdue
 // sweep.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -149,17 +149,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, res)
 		return
 	}
-	if pUUID := participantFilter(q); pUUID != "" {
-		participantID, err := h.svc.ResolveParticipant(r.Context(), pUUID)
+	if pUUID := clientFilter(q); pUUID != "" {
+		clientID, err := h.svc.ResolveClient(r.Context(), pUUID)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		if participantID == 0 {
+		if clientID == 0 {
 			httpx.WriteJSON(w, http.StatusOK, []*Estimate{})
 			return
 		}
-		ests, err := h.svc.ListParticipantEstimates(r.Context(), participantID)
+		ests, err := h.svc.ListClientEstimates(r.Context(), clientID)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -203,7 +203,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, est)
 }
 
-// Create inserts an estimate. A missing/unknown participant or empty line items → 400.
+// Create inserts an estimate. A missing/unknown client or empty line items → 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req estimateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -225,7 +225,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, est)
 }
 
-// Update rewrites an estimate. Missing participant/items → 400; unknown uuid → 404.
+// Update rewrites an estimate. Missing client/items → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	uid, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {

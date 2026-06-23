@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/participant"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/shift"
 	"github.com/go-chi/chi/v5"
@@ -19,7 +19,7 @@ import (
 )
 
 // newEstimateServer wires the estimate routes behind RequireSession+ResolveTenant, plus
-// participant creation so estimates can reference a valid participant FK, and the
+// client creation so estimates can reference a valid client FK, and the
 // invoice list so converted invoices can be observed.
 func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
@@ -32,7 +32,7 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 	authH := NewAuthHandler(sm, users, tenants)
 	estH := estimate.NewHandler(estimate.NewService(conn, conn, hub))
 	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, shift.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
-	pH := participant.NewHandler(participant.NewService(conn, hub))
+	pH := client.NewHandler(client.NewService(conn, hub))
 	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
 
 	router := chi.NewRouter()
@@ -41,7 +41,7 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
-			pr.Post("/participants", pH.Create)
+			pr.Post("/clients", pH.Create)
 			ciH.Routes(pr)
 			invH.Routes(pr)
 			estH.Routes(pr)
@@ -53,13 +53,13 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 	return srv, tenantUUID
 }
 
-// createEstimate posts a two-line estimate for the given participant and returns
+// createEstimate posts a two-line estimate for the given client and returns
 // the id. Lines total 25. The J10 validation engine computes tax from the lines
 // (no tenant default tax rate → tax 0), so the total equals the subtotal (25).
-func createEstimate(t *testing.T, c *http.Client, base, uuid string, participantID string) string {
+func createEstimate(t *testing.T, c *http.Client, base, uuid string, clientID string) string {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"clientId": clientID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
 			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
@@ -88,10 +88,10 @@ func createEstimate(t *testing.T, c *http.Client, base, uuid string, participant
 func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"clientId": clientID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "A", "quantity": 2, "unitPrice": 10, "sortOrder": 0},
 			{"description": "B", "quantity": 1, "unitPrice": 5, "sortOrder": 1},
@@ -133,8 +133,8 @@ func TestEstimateCreateComputesTotalsAndNumber(t *testing.T) {
 func TestEstimateGetReturnsLineItems(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	id := createEstimate(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, clientID)
 
 	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id)
 	defer func() { _ = resp.Body.Close() }()
@@ -157,8 +157,8 @@ func TestEstimateGetReturnsLineItems(t *testing.T) {
 func TestEstimateStatusFlip(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	id := createEstimate(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, clientID)
 
 	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/status", `{"status":"sent"}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -170,8 +170,8 @@ func TestEstimateStatusFlip(t *testing.T) {
 func TestEstimateDuplicate(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	id := createEstimate(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, clientID)
 
 	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/duplicate", `{}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -192,9 +192,9 @@ func TestEstimateDuplicate(t *testing.T) {
 func TestEstimateBulkStatusAndDelete(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	a := createEstimate(t, c, srv.URL, uuid, participantID)
-	b := createEstimate(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	a := createEstimate(t, c, srv.URL, uuid, clientID)
+	b := createEstimate(t, c, srv.URL, uuid, clientID)
 
 	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/bulk-status", `{"ids":["`+a+`","`+b+`"],"status":"sent"}`)
 	_ = sr.Body.Close()
@@ -212,8 +212,8 @@ func TestEstimateBulkStatusAndDelete(t *testing.T) {
 func TestEstimateConvert(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	id := createEstimate(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, clientID)
 
 	// A draft estimate cannot be converted.
 	draftResp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/convert", `{}`)
@@ -279,9 +279,9 @@ func TestEstimateConvert(t *testing.T) {
 func TestEstimateCreateNoItems400(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01", "lineItems": []any{},
+		"clientId": clientID, "issueDate": "2026-01-01", "validUntil": "2026-02-01", "lineItems": []any{},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -326,8 +326,8 @@ func TestEstimateListUnauthenticated401(t *testing.T) {
 func TestEstimatePdf(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
-	id := createEstimate(t, c, srv.URL, uuid, participantID)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, clientID)
 
 	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/pdf")
 	defer func() { _ = resp.Body.Close() }()
@@ -361,11 +361,11 @@ func TestEstimatePdfMissing404(t *testing.T) {
 func TestEstimateLineItemCustomItemRoundTrips(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
 	customItemID := createCustomItem(t, c, srv.URL, uuid, "Mileage")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"clientId": clientID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "Trip", "quantity": 3, "unitPrice": 0.85, "sortOrder": 0, "customItemId": customItemID},
 		},
@@ -414,10 +414,10 @@ func TestEstimateLineItemCustomItemRoundTrips(t *testing.T) {
 func TestEstimateLineItemUnknownCustomItem400(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
-	participantID := createParticipant(t, c, srv.URL, uuid, "Acme")
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
 
 	body, err := json.Marshal(map[string]any{
-		"participantId": participantID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
+		"clientId": clientID, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
 			{"description": "Trip", "quantity": 1, "unitPrice": 5, "sortOrder": 0, "customItemId": uuidpkg.NewString()},
 		},
