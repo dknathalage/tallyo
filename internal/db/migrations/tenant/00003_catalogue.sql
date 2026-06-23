@@ -25,7 +25,7 @@ CREATE TABLE support_items (
     support_category   TEXT DEFAULT '' CHECK (support_category IN ('Core','CB','Capital','')),
     registration_group TEXT DEFAULT '',
     claim_type         TEXT DEFAULT '',
-    taxable            INTEGER NOT NULL DEFAULT 1,
+    taxable            INTEGER NOT NULL DEFAULT 0, -- NDIS supports are GST-free by default; ingest always sets this explicitly
     metadata           TEXT DEFAULT '{}',
     UNIQUE (catalog_version_id, code)
 );

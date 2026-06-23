@@ -135,7 +135,7 @@ func (s *Service) ParticipantStats(ctx context.Context, participantUUID string) 
 // Create inserts an invoice + line items, then broadcasts on success.
 //
 // Every line passes through the NDIS validation engine (price-cap, plan-window,
-// gst-free defaulting, snapshotting) first; tax is COMPUTED from the validated
+// taxable resolution, snapshotting) first; tax is COMPUTED from the validated
 // lines and overrides any client-supplied value (see validation.go tax note).
 // A validation failure returns a *ValidationError with field-level detail.
 func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
