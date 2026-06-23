@@ -11,7 +11,7 @@ import (
 )
 
 const getBusinessProfile = `-- name: GetBusinessProfile :one
-SELECT id, uuid, tenant_id, name, abn, email, phone, address, zone, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = ?
+SELECT id, uuid, tenant_id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = ?
 `
 
 func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID int64) (BusinessProfile, error) {
@@ -26,7 +26,6 @@ func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID int64) (Busin
 		&i.Email,
 		&i.Phone,
 		&i.Address,
-		&i.Zone,
 		&i.Logo,
 		&i.Metadata,
 		&i.DefaultCurrency,
@@ -36,32 +35,16 @@ func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID int64) (Busin
 	return i, err
 }
 
-const updateBusinessZone = `-- name: UpdateBusinessZone :exec
-UPDATE business_profile SET zone = ?, updated_at = ? WHERE tenant_id = ?
-`
-
-type UpdateBusinessZoneParams struct {
-	Zone      string `json:"zone"`
-	UpdatedAt string `json:"updated_at"`
-	TenantID  int64  `json:"tenant_id"`
-}
-
-func (q *Queries) UpdateBusinessZone(ctx context.Context, arg UpdateBusinessZoneParams) error {
-	_, err := q.db.ExecContext(ctx, updateBusinessZone, arg.Zone, arg.UpdatedAt, arg.TenantID)
-	return err
-}
-
 const upsertBusinessProfile = `-- name: UpsertBusinessProfile :exec
 INSERT INTO business_profile (
-    tenant_id, uuid, name, abn, email, phone, address, zone, logo, metadata, default_currency, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    tenant_id, uuid, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(tenant_id) DO UPDATE SET
     name = excluded.name,
     abn = excluded.abn,
     email = excluded.email,
     phone = excluded.phone,
     address = excluded.address,
-    zone = excluded.zone,
     logo = excluded.logo,
     metadata = excluded.metadata,
     default_currency = excluded.default_currency,
@@ -76,7 +59,6 @@ type UpsertBusinessProfileParams struct {
 	Email           sql.NullString `json:"email"`
 	Phone           sql.NullString `json:"phone"`
 	Address         sql.NullString `json:"address"`
-	Zone            string         `json:"zone"`
 	Logo            sql.NullString `json:"logo"`
 	Metadata        sql.NullString `json:"metadata"`
 	DefaultCurrency sql.NullString `json:"default_currency"`
@@ -93,7 +75,6 @@ func (q *Queries) UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessP
 		arg.Email,
 		arg.Phone,
 		arg.Address,
-		arg.Zone,
 		arg.Logo,
 		arg.Metadata,
 		arg.DefaultCurrency,

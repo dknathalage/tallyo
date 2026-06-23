@@ -31,7 +31,6 @@ type BusinessProfile struct {
 	Email           sql.NullString `json:"email"`
 	Phone           sql.NullString `json:"phone"`
 	Address         sql.NullString `json:"address"`
-	Zone            string         `json:"zone"`
 	Logo            sql.NullString `json:"logo"`
 	Metadata        sql.NullString `json:"metadata"`
 	DefaultCurrency sql.NullString `json:"default_currency"`

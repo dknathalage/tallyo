@@ -62,7 +62,7 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 	c := jarClient(t)
 
 	resp := postJSON(t, c, srv.URL+"/api/signup",
-		`{"businessName":"Acme Care","name":"Ada","email":"Ada@Example.com","password":"password1","zone":"remote"}`)
+		`{"businessName":"Acme Care","name":"Ada","email":"Ada@Example.com","password":"password1"}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: want 201 got %d", resp.StatusCode)
@@ -79,15 +79,15 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 		t.Fatalf("tenant status: status=%q ok=%v err=%v", status, ok, err)
 	}
 
-	// business_profile created with the form's zone.
-	var name, zone string
+	// business_profile created with the form's business name.
+	var name string
 	row := conn.QueryRowContext(t.Context(),
-		"SELECT name, zone FROM business_profile WHERE tenant_id = ?", tenantID)
-	if err := row.Scan(&name, &zone); err != nil {
+		"SELECT name FROM business_profile WHERE tenant_id = ?", tenantID)
+	if err := row.Scan(&name); err != nil {
 		t.Fatalf("business_profile scan: %v", err)
 	}
-	if name != "Acme Care" || zone != "remote" {
-		t.Fatalf("business_profile wrong: name=%q zone=%q", name, zone)
+	if name != "Acme Care" {
+		t.Fatalf("business_profile wrong: name=%q", name)
 	}
 
 	// Session is established: /auth/me works with the same cookie jar.
@@ -105,7 +105,6 @@ func TestSignupValidation(t *testing.T) {
 		{"empty business", `{"businessName":"","email":"a@b.com","password":"password1"}`},
 		{"bad email", `{"businessName":"X","email":"nope","password":"password1"}`},
 		{"short password", `{"businessName":"X","email":"a@b.com","password":"short"}`},
-		{"bad zone", `{"businessName":"X","email":"a@b.com","password":"password1","zone":"mars"}`},
 	}
 	for _, tc := range cases {
 		resp := postJSON(t, c, srv.URL+"/api/signup", tc.body)
@@ -117,35 +116,9 @@ func TestSignupValidation(t *testing.T) {
 	}
 }
 
-// TestSignupEmptyZoneCreatesGenericTenant confirms a signup with no/empty zone
-// succeeds and provisions a generic (non-NDIS) tenant whose business profile
-// zone is "" — NOT coerced to national.
-func TestSignupEmptyZoneCreatesGenericTenant(t *testing.T) {
-	srv, conn, _, _ := newSignupServer(t)
-	c := jarClient(t)
-	resp := postJSON(t, c, srv.URL+"/api/signup",
-		`{"businessName":"Zoneless","email":"z@b.com","password":"password1"}`)
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("signup: want 201 got %d", resp.StatusCode)
-	}
-	u := decodeUser(t, resp)
-	tenantID, _ := tenantForEmail(t, conn, u.Email)
-	var zone string
-	if err := conn.QueryRowContext(t.Context(),
-		"SELECT zone FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&zone); err != nil {
-		t.Fatalf("scan zone: %v", err)
-	}
-	if zone != "" {
-		t.Fatalf("generic tenant zone: want \"\" got %q", zone)
-	}
-}
-
-// TestSignupAtomicRollback drives the repo directly with a bad zone-free input
-// but a duplicate would not apply (fresh tenant). Instead we assert that when the
-// owner creation collides (same tenant created twice is impossible), the unit of
-// work is all-or-nothing by checking no orphan tenant is left after a forced
-// failure via an invalid password hash.
+// TestSignupAtomicRollback asserts the unit of work is all-or-nothing: when
+// Signup rejects before any insert (forced via an empty password hash), no
+// orphan tenant is left behind.
 func TestSignupAtomicRollback(t *testing.T) {
 	conn := openMigratedDB(t, "signup_rollback.db")
 	tenants := auth.NewTenants(conn)
@@ -156,7 +129,6 @@ func TestSignupAtomicRollback(t *testing.T) {
 		BusinessName: "Rollback Co",
 		Email:        "r@b.com",
 		PasswordHash: "",
-		Zone:         "national",
 	}, nil)
 	if err == nil {
 		t.Fatal("Signup with empty hash: want error, got nil")

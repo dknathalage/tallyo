@@ -41,7 +41,6 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 		Email:           sql.NullString{String: "billing@acme.test", Valid: true},
 		Phone:           sql.NullString{String: "555-0100", Valid: true},
 		Address:         sql.NullString{String: "1 Acme Way", Valid: true},
-		Zone:            "national",
 		Logo:            sql.NullString{},
 		Metadata:        sql.NullString{String: "{}", Valid: true},
 		DefaultCurrency: sql.NullString{String: "AUD", Valid: true},
@@ -61,9 +60,6 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 	if row.Name != "Acme" {
 		t.Fatalf("Name = %q, want %q", row.Name, "Acme")
 	}
-	if row.Zone != "national" {
-		t.Fatalf("Zone = %q, want %q", row.Zone, "national")
-	}
 	if !row.Email.Valid || row.Email.String != "billing@acme.test" {
 		t.Fatalf("Email = %#v, want billing@acme.test", row.Email)
 	}
@@ -77,7 +73,6 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 		Email:           sql.NullString{String: "ops@acme.test", Valid: true},
 		Phone:           sql.NullString{},
 		Address:         sql.NullString{},
-		Zone:            "remote",
 		Logo:            sql.NullString{},
 		Metadata:        sql.NullString{String: "{}", Valid: true},
 		DefaultCurrency: sql.NullString{String: "AUD", Valid: true},
@@ -93,8 +88,5 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 	}
 	if row.Name != "Acme Renamed" {
 		t.Fatalf("Name after update = %q, want %q", row.Name, "Acme Renamed")
-	}
-	if row.Zone != "remote" {
-		t.Fatalf("Zone after update = %q, want %q", row.Zone, "remote")
 	}
 }

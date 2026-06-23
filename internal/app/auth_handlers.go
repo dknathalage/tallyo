@@ -23,13 +23,6 @@ const minPasswordLen = 8
 // neither necessary nor desirable at this boundary.
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
-// allowedZones is the set of valid NDIS pricing zones for signup.
-var allowedZones = map[string]bool{
-	"national":    true,
-	"remote":      true,
-	"very_remote": true,
-}
-
 // ============================================================================
 // AuthHandler
 // ============================================================================
@@ -375,13 +368,12 @@ func NewSignupHandler(sm *scs.SessionManager, tenants *auth.TenantsRepo, users *
 	return &SignupHandler{sm: sm, tenants: tenants, users: users, provision: provision}
 }
 
-// signupRequest is the decoded body for Signup. zone defaults to "national".
+// signupRequest is the decoded body for Signup.
 type signupRequest struct {
 	BusinessName string `json:"businessName"`
 	Name         string `json:"name"`
 	Email        string `json:"email"`
 	Password     string `json:"password"`
-	Zone         string `json:"zone"`
 }
 
 // Signup provisions a new tenant and its owner atomically, then establishes the
@@ -407,7 +399,6 @@ func (h *SignupHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		Email:        req.Email,
 		PasswordHash: hash,
 		OwnerName:    req.Name,
-		Zone:         req.Zone,
 	}, h.provision)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
@@ -436,7 +427,6 @@ func validateSignup(req *signupRequest) (int, string) {
 	req.BusinessName = strings.TrimSpace(req.BusinessName)
 	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	req.Zone = strings.TrimSpace(req.Zone)
 	if req.BusinessName == "" {
 		return http.StatusBadRequest, "business name required"
 	}
@@ -445,11 +435,6 @@ func validateSignup(req *signupRequest) (int, string) {
 	}
 	if len(req.Password) < minPasswordLen {
 		return http.StatusBadRequest, "password too short"
-	}
-	// An empty zone creates a GENERIC (non-NDIS) tenant — no NDIS price caps.
-	// A non-empty zone must be one of the three valid NDIS zones.
-	if req.Zone != "" && !allowedZones[req.Zone] {
-		return http.StatusBadRequest, "invalid zone"
 	}
 	return 0, ""
 }

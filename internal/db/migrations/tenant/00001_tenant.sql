@@ -50,7 +50,6 @@ CREATE TABLE business_profile (
     email            TEXT DEFAULT '',
     phone            TEXT DEFAULT '',
     address          TEXT DEFAULT '',
-    zone             TEXT NOT NULL DEFAULT '' CHECK (zone IN ('','national','remote','very_remote')),
     logo             TEXT DEFAULT '',
     metadata         TEXT DEFAULT '{}',
     default_currency TEXT DEFAULT 'AUD',

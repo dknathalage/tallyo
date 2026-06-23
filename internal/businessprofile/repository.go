@@ -18,14 +18,12 @@ import (
 )
 
 // BusinessProfile is the domain view of the per-tenant business profile row.
-// All nullable columns are unwrapped to plain strings ("" when absent). Zone is
-// the tenant's NDIS pricing zone (national | remote | very_remote).
+// All nullable columns are unwrapped to plain strings ("" when absent).
 type BusinessProfile struct {
 	Name            string `json:"name"`
 	Email           string `json:"email"`
 	Phone           string `json:"phone"`
 	Address         string `json:"address"`
-	Zone            string `json:"zone"`
 	Logo            string `json:"logo"`
 	Metadata        string `json:"metadata"`
 	DefaultCurrency string `json:"defaultCurrency"`
@@ -37,22 +35,9 @@ type BusinessProfileInput struct {
 	Email           string `json:"email"`
 	Phone           string `json:"phone"`
 	Address         string `json:"address"`
-	Zone            string `json:"zone"`
 	Logo            string `json:"logo"`
 	Metadata        string `json:"metadata"`
 	DefaultCurrency string `json:"defaultCurrency"`
-}
-
-// validZone reports whether a NON-empty zone is one of the three NDIS zones.
-// An empty zone (generic tenant) is handled by the caller and is not "valid"
-// here — callers check `zone == "" || validZone(zone)`.
-func validZone(zone string) bool {
-	switch zone {
-	case "national", "remote", "very_remote":
-		return true
-	default:
-		return false
-	}
 }
 
 // BusinessProfileRepo reads and writes the per-tenant business profile (1:1).
@@ -85,7 +70,6 @@ func (r *BusinessProfileRepo) Get(ctx context.Context, tenantID int64) (*Busines
 		Email:           row.Email.String,
 		Phone:           row.Phone.String,
 		Address:         row.Address.String,
-		Zone:            row.Zone,
 		Logo:            row.Logo.String,
 		Metadata:        row.Metadata.String,
 		DefaultCurrency: row.DefaultCurrency.String,
@@ -99,11 +83,6 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID int64, in Busin
 	}
 	if in.Name == "" {
 		return errors.New("save business profile: name is required")
-	}
-	// A non-empty zone must be one of the three NDIS zones; an empty zone is a
-	// generic (non-NDIS) tenant and is persisted as "" (no price caps applied).
-	if in.Zone != "" && !validZone(in.Zone) {
-		return fmt.Errorf("save business profile: invalid zone %q", in.Zone)
 	}
 
 	return audit.WithTx(ctx, r.db, audit.Entry{
@@ -143,9 +122,6 @@ func buildParams(tenantID int64, id string, in BusinessProfileInput) gen.UpsertB
 	if currency == "" {
 		currency = "AUD"
 	}
-	// Zone is persisted as-is: "" means a generic (non-NDIS) tenant. A non-empty
-	// value has already been validated against validZone in Save.
-	zone := in.Zone
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
@@ -158,7 +134,6 @@ func buildParams(tenantID int64, id string, in BusinessProfileInput) gen.UpsertB
 		Email:           db.Nz(in.Email),
 		Phone:           db.Nz(in.Phone),
 		Address:         db.Nz(in.Address),
-		Zone:            zone,
 		Logo:            db.Nz(in.Logo),
 		Metadata:        db.Nz(metadata),
 		DefaultCurrency: db.Nz(currency),

@@ -2,14 +2,12 @@
 	import { onMount } from 'svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
 	import { session } from '$lib/stores/session.svelte';
-	import type { Zone } from '$lib/api/types';
 
 	// Local editable copies so live SSE updates to the store don't clobber typing.
 	let name = $state('');
 	let email = $state('');
 	let phone = $state('');
 	let address = $state('');
-	let zone = $state<Zone>('national');
 	let defaultCurrency = $state('');
 	let savedNotice = $state(false);
 
@@ -22,7 +20,6 @@
 		email = p.email;
 		phone = p.phone;
 		address = p.address;
-		zone = p.zone;
 		defaultCurrency = p.defaultCurrency;
 	}
 
@@ -37,7 +34,7 @@
 	async function save(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		savedNotice = false;
-		await businessProfile.save({ name, email, phone, address, zone, defaultCurrency });
+		await businessProfile.save({ name, email, phone, address, defaultCurrency });
 		syncFromStore();
 		if (businessProfile.error === null) {
 			savedNotice = true;
@@ -87,23 +84,6 @@
 				disabled={!canManage}
 				class="w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
 			/>
-		</label>
-		<label class="block">
-			<span class="mb-1 block text-sm font-medium">NDIS pricing zone (optional)</span>
-			<select
-				bind:value={zone}
-				disabled={!canManage}
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
-			>
-				<option value="">None (not NDIS)</option>
-				<option value="national">National</option>
-				<option value="remote">Remote</option>
-				<option value="very_remote">Very remote</option>
-			</select>
-			<span class="mt-1 block text-xs text-gray-500">
-				NDIS-only. Determines which NDIS price caps apply to your support-item lines. Leave it at
-				the default if you don't invoice against the NDIS price catalogue.
-			</span>
 		</label>
 		<label class="block">
 			<span class="mb-1 block text-sm font-medium">Default currency</span>

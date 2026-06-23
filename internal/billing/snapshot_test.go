@@ -59,7 +59,6 @@ func TestSnapshotBuilderBusiness(t *testing.T) {
 		Uuid:      uuid.NewString(),
 		Name:      "Snap Co",
 		Email:     sql.NullString{String: "snap@example.com", Valid: true},
-		Zone:      "national",
 		CreatedAt: now,
 		UpdatedAt: now,
 	}); err != nil {

@@ -1,8 +1,5 @@
 export type Role = 'owner' | 'admin' | 'member' | string;
 
-// '' = generic (non-NDIS) tenant — no price caps applied.
-export type Zone = '' | 'national' | 'remote' | 'very_remote';
-
 export interface User {
 	id: string;
 	tenantId: string;
@@ -28,7 +25,6 @@ export interface SignupInput {
 	name: string;
 	email: string;
 	password: string;
-	zone?: Zone;
 }
 
 export interface InviteInfo {

@@ -163,7 +163,6 @@ type Querier interface {
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UnlinkSessionItemsFromInvoice(ctx context.Context, arg UnlinkSessionItemsFromInvoiceParams) error
-	UpdateBusinessZone(ctx context.Context, arg UpdateBusinessZoneParams) error
 	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
 	UpdateCustomItem(ctx context.Context, arg UpdateCustomItemParams) (CustomItem, error)
 	UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error)

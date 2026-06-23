@@ -136,7 +136,6 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 		Email:        "owner@signup.com",
 		PasswordHash: hash,
 		OwnerName:    "Owner Person",
-		Zone:         "remote",
 	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("Signup: %v", err)
@@ -157,13 +156,10 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 		t.Fatalf("tenant Count=%d want 1", n)
 	}
 
-	// the business_profile must carry the requested zone
+	// the business_profile must be provisioned for the new tenant
 	prof, err := gen.New(conn).GetBusinessProfile(ctx, owner.TenantID)
 	if err != nil {
 		t.Fatalf("GetBusinessProfile: %v", err)
-	}
-	if prof.Zone != "remote" {
-		t.Fatalf("profile zone=%q want remote", prof.Zone)
 	}
 	if prof.Name != "Signup Co" {
 		t.Fatalf("profile name=%q want Signup Co", prof.Name)
@@ -173,35 +169,6 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 	got, err := NewUsers(conn).GetByEmailGlobal(ctx, "owner@signup.com")
 	if err != nil || got == nil {
 		t.Fatalf("GetByEmailGlobal owner=%+v err=%v", got, err)
-	}
-}
-
-// TestSignupEmptyZoneCreatesGenericTenant confirms a signup with no zone
-// provisions a generic (non-NDIS) tenant whose profile zone is "" — not coerced
-// to national.
-func TestSignupEmptyZoneCreatesGenericTenant(t *testing.T) {
-	conn := mustTenantDB(t)
-	defer conn.Close()
-	repo := NewTenants(conn)
-	ctx := context.Background()
-
-	hash, _ := HashPassword("pw123456")
-	owner, err := repo.Signup(ctx, SignupInput{
-		BusinessName: "NoZone Co",
-		Email:        "nozone@x.com",
-		PasswordHash: hash,
-		OwnerName:    "Owner",
-		// Zone intentionally empty
-	}, profileProv(conn))
-	if err != nil {
-		t.Fatalf("Signup: %v", err)
-	}
-	prof, err := gen.New(conn).GetBusinessProfile(ctx, owner.TenantID)
-	if err != nil {
-		t.Fatalf("GetBusinessProfile: %v", err)
-	}
-	if prof.Zone != "" {
-		t.Fatalf("generic tenant zone=%q want \"\"", prof.Zone)
 	}
 }
 
@@ -235,7 +202,7 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 
 	hash, _ := HashPassword("pw123456")
 	a, err := repo.Signup(ctx, SignupInput{
-		BusinessName: "First", Email: "dup@x.com", PasswordHash: hash, OwnerName: "A", Zone: "remote",
+		BusinessName: "First", Email: "dup@x.com", PasswordHash: hash, OwnerName: "A",
 	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("first signup: %v", err)
@@ -243,7 +210,7 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	// Email is unique per-tenant (not global): a second signup creates a NEW
 	// tenant, so the same email is allowed and a second tenant exists.
 	b, err := repo.Signup(ctx, SignupInput{
-		BusinessName: "Second", Email: "dup@x.com", PasswordHash: hash, OwnerName: "B", Zone: "remote",
+		BusinessName: "Second", Email: "dup@x.com", PasswordHash: hash, OwnerName: "B",
 	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("second signup: %v", err)
