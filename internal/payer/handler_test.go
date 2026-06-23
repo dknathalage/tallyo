@@ -1,4 +1,4 @@
-package planmanager
+package payer
 
 import (
 	"encoding/json"
@@ -12,15 +12,15 @@ import (
 )
 
 // newPMHandler builds a handler over a fresh DB and returns it with the tenant
-// id and a seeded plan manager.
-func newPMHandler(t *testing.T) (*Handler, int64, *PlanManager) {
+// id and a seeded payer.
+func newPMHandler(t *testing.T) (*Handler, int64, *Payer) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	svc := NewService(conn, realtime.NewHub())
-	seeded, err := svc.Create(tctx(tenantID), PlanManagerInput{Name: "Acme PM", Email: "a@b.com"})
+	seeded, err := svc.Create(tctx(tenantID), PayerInput{Name: "Acme PM", Email: "a@b.com"})
 	if err != nil {
-		t.Fatalf("seed plan manager: %v", err)
+		t.Fatalf("seed payer: %v", err)
 	}
 	return NewHandler(svc), tenantID, seeded
 }
@@ -38,12 +38,12 @@ func mountPM(h *Handler, tenantID int64) chi.Router {
 	return r
 }
 
-func TestPlanManagerGetByUUID(t *testing.T) {
+func TestPayerGetByUUID(t *testing.T) {
 	h, tenantID, seeded := newPMHandler(t)
 	srv := httptest.NewServer(mountPM(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/plan-managers/" + seeded.UUID)
+	res, err := http.Get(srv.URL + "/payers/" + seeded.UUID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -60,12 +60,12 @@ func TestPlanManagerGetByUUID(t *testing.T) {
 	}
 }
 
-func TestPlanManagerGetUnknownUUID404(t *testing.T) {
+func TestPayerGetUnknownUUID404(t *testing.T) {
 	h, tenantID, _ := newPMHandler(t)
 	srv := httptest.NewServer(mountPM(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/plan-managers/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
+	res, err := http.Get(srv.URL + "/payers/3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -75,12 +75,12 @@ func TestPlanManagerGetUnknownUUID404(t *testing.T) {
 	}
 }
 
-func TestPlanManagerGetNonUUID400(t *testing.T) {
+func TestPayerGetNonUUID400(t *testing.T) {
 	h, tenantID, _ := newPMHandler(t)
 	srv := httptest.NewServer(mountPM(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/plan-managers/123")
+	res, err := http.Get(srv.URL + "/payers/123")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}

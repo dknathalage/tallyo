@@ -97,7 +97,7 @@
 			icon: Users,
 			children: [
 				{ href: '/clients', label: 'Clients' },
-				{ href: '/plan-managers', label: 'Plan managers' }
+				{ href: '/payers', label: 'Payers' }
 			]
 		},
 		{

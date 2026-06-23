@@ -74,11 +74,11 @@ func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, 
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
-// ResolvePlanManager translates a plan-manager uuid into its int FK for the
-// tenant. Returns (0, nil) when no plan manager matches (caller 400s).
-func (s *Service) ResolvePlanManager(ctx context.Context, planManagerUUID string) (int64, error) {
+// ResolvePayer translates a payer uuid into its int FK for the
+// tenant. Returns (0, nil) when no payer matches (caller 400s).
+func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (int64, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.ResolvePlanManagerID(ctx, tenantID, planManagerUUID)
+	return s.repo.ResolvePayerID(ctx, tenantID, payerUUID)
 }
 
 // ResolveEstimateIDs translates a list of estimate uuids into their int PKs for

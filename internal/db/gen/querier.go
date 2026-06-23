@@ -31,8 +31,8 @@ type Querier interface {
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
+	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
-	CreatePlanManager(ctx context.Context, arg CreatePlanManagerParams) (PlanManager, error)
 	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
 	CreateShift(ctx context.Context, arg CreateShiftParams) (Shift, error)
 	CreateSupportItem(ctx context.Context, arg CreateSupportItemParams) (SupportItem, error)
@@ -51,10 +51,10 @@ type Querier interface {
 	DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUIDParams) error
 	DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) error
 	DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error
+	DeletePayer(ctx context.Context, arg DeletePayerParams) error
+	DeletePayerByID(ctx context.Context, arg DeletePayerByIDParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error
-	DeletePlanManager(ctx context.Context, arg DeletePlanManagerParams) error
-	DeletePlanManagerByID(ctx context.Context, arg DeletePlanManagerByIDParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteShift(ctx context.Context, arg DeleteShiftParams) error
 	DeleteShiftLineItem(ctx context.Context, arg DeleteShiftLineItemParams) error
@@ -83,11 +83,11 @@ type Querier interface {
 	GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) (GetInvoiceByIDRow, error)
 	GetInvoiceIDByUUID(ctx context.Context, arg GetInvoiceIDByUUIDParams) (int64, error)
 	GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLineItemRow, error)
+	GetPayer(ctx context.Context, arg GetPayerParams) (Payer, error)
+	GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Payer, error)
+	GetPayerIDByUUID(ctx context.Context, arg GetPayerIDByUUIDParams) (int64, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error)
-	GetPlanManager(ctx context.Context, arg GetPlanManagerParams) (PlanManager, error)
-	GetPlanManagerByID(ctx context.Context, arg GetPlanManagerByIDParams) (PlanManager, error)
-	GetPlanManagerIDByUUID(ctx context.Context, arg GetPlanManagerIDByUUIDParams) (int64, error)
 	GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error)
 	GetShift(ctx context.Context, arg GetShiftParams) (GetShiftRow, error)
 	GetShiftByID(ctx context.Context, arg GetShiftByIDParams) (GetShiftByIDRow, error)
@@ -124,7 +124,7 @@ type Querier interface {
 	ListInvoicesByStatus(ctx context.Context, arg ListInvoicesByStatusParams) ([]ListInvoicesByStatusRow, error)
 	ListLineItemsForInvoice(ctx context.Context, arg ListLineItemsForInvoiceParams) ([]ListLineItemsForInvoiceRow, error)
 	ListLineItemsForShift(ctx context.Context, arg ListLineItemsForShiftParams) ([]ListLineItemsForShiftRow, error)
-	ListPlanManagers(ctx context.Context, tenantID int64) ([]PlanManager, error)
+	ListPayers(ctx context.Context, tenantID int64) ([]Payer, error)
 	ListRecordedUnbilledByClient(ctx context.Context, arg ListRecordedUnbilledByClientParams) ([]ListRecordedUnbilledByClientRow, error)
 	ListRecurringTemplates(ctx context.Context, tenantID int64) ([]ListRecurringTemplatesRow, error)
 	ListScheduledShifts(ctx context.Context, tenantID int64) ([]ListScheduledShiftsRow, error)
@@ -159,7 +159,7 @@ type Querier interface {
 	RestampUnbilledShiftItems(ctx context.Context, arg RestampUnbilledShiftItemsParams) error
 	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchCustomItems(ctx context.Context, arg SearchCustomItemsParams) ([]CustomItem, error)
-	SearchPlanManagers(ctx context.Context, arg SearchPlanManagersParams) ([]PlanManager, error)
+	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
 	SearchSupportItems(ctx context.Context, arg SearchSupportItemsParams) ([]SupportItem, error)
 	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID int64) ([]SelectOverdueInvoicesForTenantRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
@@ -176,7 +176,7 @@ type Querier interface {
 	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
 	UpdateInvoiceTotals(ctx context.Context, arg UpdateInvoiceTotalsParams) (Invoice, error)
-	UpdatePlanManager(ctx context.Context, arg UpdatePlanManagerParams) (PlanManager, error)
+	UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error)
 	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateShift(ctx context.Context, arg UpdateShiftParams) (Shift, error)
 	UpdateShiftLineItem(ctx context.Context, arg UpdateShiftLineItemParams) (LineItem, error)

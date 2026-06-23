@@ -102,8 +102,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Create(r.Context(), in)
-	if errors.Is(err, errPlanManagerNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+	if errors.Is(err, errPayerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
 		return
 	}
 	if err != nil {
@@ -114,7 +114,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update mutates a client. Empty name → 400; unknown id → 404; unknown
-// plan-manager uuid → 400.
+// payer uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "clientUUID")
 	if !ok {
@@ -131,8 +131,8 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Update(r.Context(), id, in)
-	if errors.Is(err, errPlanManagerNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+	if errors.Is(err, errPayerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
 		return
 	}
 	if err != nil {

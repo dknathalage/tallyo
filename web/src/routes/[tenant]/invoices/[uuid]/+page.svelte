@@ -58,7 +58,7 @@
 		}));
 		return {
 			clientId: inv.clientId,
-			planManagerId: inv.planManagerId,
+			payerId: inv.payerId,
 			status: inv.status,
 			issueDate: inv.issueDate,
 			dueDate: inv.dueDate,
@@ -154,7 +154,7 @@
 		}));
 		return {
 			clientId: formClientId,
-			planManagerId: null,
+			payerId: null,
 			status: 'draft' as InvoiceStatus,
 			issueDate: formIssueDate,
 			dueDate: formDueDate,

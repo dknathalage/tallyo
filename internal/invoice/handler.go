@@ -43,14 +43,14 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/clients/{clientUUID}/stats", h.ClientStats)
 }
 
-// invoiceRequest is the flat write payload. ClientUUID/PlanManagerUUID
-// arrive as uuids under the public field names (clientId/planManagerId) and
+// invoiceRequest is the flat write payload. ClientUUID/PayerUUID
+// arrive as uuids under the public field names (clientId/payerId) and
 // are resolved to int FKs before the service is called; the remaining fields
 // mirror InvoiceInput. LineItems carry the priced lines (catalogue refs already
 // uuid TEXT — passed through unchanged).
 type invoiceRequest struct {
 	ClientUUID       string                  `json:"clientId"`
-	PlanManagerUUID  *string                 `json:"planManagerId"`
+	PayerUUID        *string                 `json:"payerId"`
 	Status           string                  `json:"status"`
 	IssueDate        string                  `json:"issueDate"`
 	DueDate          string                  `json:"dueDate"`
@@ -58,14 +58,14 @@ type invoiceRequest struct {
 	Notes            string                  `json:"notes"`
 	BusinessSnapshot string                  `json:"businessSnapshot"`
 	ClientSnapshot   string                  `json:"clientSnapshot"`
-	PayerSnapshot    string                  `json:"planManagerSnapshot"`
+	PayerSnapshot    string                  `json:"payerSnapshot"`
 	LineItems        []billing.LineItemInput `json:"lineItems"`
 }
 
-// resolveInput translates an invoiceRequest's client/plan-manager uuids into
+// resolveInput translates an invoiceRequest's client/payer uuids into
 // int FKs and returns the int-keyed InvoiceInput. Writes a 400 and returns
 // ok=false when the client uuid is missing/unknown for the tenant. A
-// missing/empty plan-manager uuid stays NULL; a present-but-unknown one 400s.
+// missing/empty payer uuid stays NULL; a present-but-unknown one 400s.
 func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req invoiceRequest) (InvoiceInput, bool) {
 	if req.ClientUUID == "" || len(req.LineItems) == 0 {
 		httpx.WriteError(w, http.StatusBadRequest, "client and at least one line item are required")
@@ -81,21 +81,21 @@ func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req invoi
 		return InvoiceInput{}, false
 	}
 	var pmID *int64
-	if req.PlanManagerUUID != nil && *req.PlanManagerUUID != "" {
-		id, err := h.svc.ResolvePlanManager(r.Context(), *req.PlanManagerUUID)
+	if req.PayerUUID != nil && *req.PayerUUID != "" {
+		id, err := h.svc.ResolvePayer(r.Context(), *req.PayerUUID)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return InvoiceInput{}, false
 		}
 		if id == 0 {
-			httpx.WriteError(w, http.StatusBadRequest, "unknown plan manager")
+			httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
 			return InvoiceInput{}, false
 		}
 		pmID = &id
 	}
 	return InvoiceInput{
 		ClientID:         pid,
-		PlanManagerID:    pmID,
+		PayerID:          pmID,
 		Status:           req.Status,
 		IssueDate:        req.IssueDate,
 		DueDate:          req.DueDate,

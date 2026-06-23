@@ -34,7 +34,7 @@ func TestMigrateCreatesTenantBusinessTables(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	for _, tbl := range []string{
-		"plan_managers", "clients", "custom_items", "tax_rates",
+		"payers", "clients", "custom_items", "tax_rates",
 		"invoices", "line_items", "estimates", "estimate_line_items",
 		"payments", "recurring_templates", "audit_log",
 	} {
@@ -76,7 +76,7 @@ func TestMigrateRemovesLegacyTablesAndColumns(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	// Removed tables must be absent.
-	for _, tbl := range []string{"rate_tiers", "catalog_item_rates", "catalog_items", "payers", "column_mappings"} {
+	for _, tbl := range []string{"rate_tiers", "catalog_item_rates", "catalog_items", "column_mappings"} {
 		var count int
 		if err := conn.QueryRow(
 			"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tbl,
@@ -206,11 +206,11 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 	}
 	exec("INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"t1", "Tenant", "active", now, now)
-	exec("INSERT INTO plan_managers (uuid, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
+	exec("INSERT INTO payers (uuid, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"pm1", 1, "PM", now, now)
-	exec("INSERT INTO clients (uuid, tenant_id, name, mgmt_type, plan_manager_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+	exec("INSERT INTO clients (uuid, tenant_id, name, mgmt_type, payer_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
 		"p1", 1, "Pat", "plan", 1, now, now)
-	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, plan_manager_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 		"inv1", 1, "INV-1", 1, 1, now, now, now, now)
 	exec("INSERT INTO line_items (uuid, tenant_id, invoice_id, description) VALUES (?,?,?,?)",
 		"li1", 1, 1, "a service")
@@ -225,16 +225,16 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 		t.Fatalf("expected line_items cascade-deleted, got count=%d", liCount)
 	}
 
-	// SET NULL: a new invoice referencing the plan_manager loses the ref on delete.
-	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, plan_manager_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+	// SET NULL: a new invoice referencing the payer loses the ref on delete.
+	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
 		"inv2", 1, "INV-2", 1, 1, now, now, now, now)
-	exec("DELETE FROM plan_managers WHERE id = 1")
+	exec("DELETE FROM payers WHERE id = 1")
 	var pmID *int64
-	if err := conn.QueryRow("SELECT plan_manager_id FROM invoices WHERE uuid = 'inv2'").Scan(&pmID); err != nil {
-		t.Fatalf("read invoice plan_manager_id: %v", err)
+	if err := conn.QueryRow("SELECT payer_id FROM invoices WHERE uuid = 'inv2'").Scan(&pmID); err != nil {
+		t.Fatalf("read invoice payer_id: %v", err)
 	}
 	if pmID != nil {
-		t.Fatalf("expected invoice.plan_manager_id set NULL on plan_manager delete, got %d", *pmID)
+		t.Fatalf("expected invoice.payer_id set NULL on payer delete, got %d", *pmID)
 	}
 }
 

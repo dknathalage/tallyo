@@ -6,7 +6,7 @@
 	import { shifts } from '$lib/stores/shifts.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
-	import { planManagers } from '$lib/stores/planManagers.svelte';
+	import { payers } from '$lib/stores/payers.svelte';
 	import * as shiftsApi from '$lib/api/shifts';
 	import ShiftTable from '$lib/components/ShiftTable.svelte';
 	import ShiftForm from '$lib/components/ShiftForm.svelte';
@@ -31,10 +31,10 @@
 	let planStart = $state('');
 	let planEnd = $state('');
 	let mgmtType = $state<'plan' | 'self'>('plan');
-	// planManagerId is held as the <select> string ('' = none) and coerced to a
+	// payerId is held as the <select> string ('' = none) and coerced to a
 	// number id in buildInput. It is relational (id → name), which is why this
 	// page manages it directly rather than via the generic flat editor.
-	let planManager = $state('');
+	let payer = $state('');
 	let email = $state('');
 	let phone = $state('');
 	let address = $state('');
@@ -58,7 +58,7 @@
 		planStart = p.planStart;
 		planEnd = p.planEnd;
 		mgmtType = p.mgmtType === 'self' ? 'self' : 'plan';
-		planManager = p.planManagerId === null ? '' : String(p.planManagerId);
+		payer = p.payerId === null ? '' : String(p.payerId);
 		email = p.email;
 		phone = p.phone;
 		address = p.address;
@@ -96,9 +96,9 @@
 
 	// buildInput assembles the FULL writable payload from current field state, so a
 	// save of ANY field carries the latest value of EVERY field — neither name nor
-	// planManagerId can be reverted by the other's autosave.
+	// payerId can be reverted by the other's autosave.
 	function buildInput(): ClientInput {
-		const pmId = planManager === '' ? null : planManager;
+		const pmId = payer === '' ? null : payer;
 		return {
 			name,
 			type: clientType,
@@ -106,7 +106,7 @@
 			planStart,
 			planEnd,
 			mgmtType,
-			planManagerId: mgmtType === 'self' ? null : pmId,
+			payerId: mgmtType === 'self' ? null : pmId,
 			email,
 			phone,
 			address,
@@ -123,7 +123,7 @@
 
 	function onMgmtTypeChange(v: string): void {
 		mgmtType = v === 'self' ? 'self' : 'plan';
-		if (mgmtType === 'self') planManager = ''; // force none when self-managed
+		if (mgmtType === 'self') payer = ''; // force none when self-managed
 		changed();
 	}
 
@@ -143,8 +143,8 @@
 		void invoices.load();
 		clients.ensureSubscribed();
 		void clients.load();
-		planManagers.ensureSubscribed();
-		void planManagers.query({ page: 1, limit: 500 });
+		payers.ensureSubscribed();
+		void payers.query({ page: 1, limit: 500 });
 	});
 
 	function nameFor(id: string): string {
@@ -215,7 +215,7 @@
 
 	const myShifts = $derived(shifts.items.filter((s) => s.clientId === currentId));
 	const myInvoices = $derived(invoices.items.filter((i) => i.clientId === currentId));
-	const planManagerOptions = $derived(planManagers.items);
+	const payerOptions = $derived(payers.items);
 </script>
 
 <div class="space-y-5">
@@ -321,17 +321,17 @@
 
 			{#if mgmtType !== 'self'}
 				<label class="block">
-					<span class="mb-1 block text-sm font-medium">Plan manager</span>
+					<span class="mb-1 block text-sm font-medium">Payer</span>
 					<select
-						value={planManager}
+						value={payer}
 						onchange={(e) => {
-							planManager = e.currentTarget.value;
+							payer = e.currentTarget.value;
 							changed();
 						}}
 						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 					>
 						<option value="">— none —</option>
-						{#each planManagerOptions as pm (pm.id)}
+						{#each payerOptions as pm (pm.id)}
 							<option value={String(pm.id)}>{pm.name}</option>
 						{/each}
 					</select>

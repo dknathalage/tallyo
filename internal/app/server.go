@@ -14,7 +14,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/shift"
@@ -37,7 +37,7 @@ type Deps struct {
 	Invites         *InviteHandler           // invite create (owner-only) + public validate/accept
 	Events          *realtime.EventsHandler  // SSE stream at GET /api/events
 	BusinessProfile *businessprofile.Handler // singleton business profile
-	PlanManagers    *planmanager.Handler     // plan-manager CRUD + bulk-delete
+	Payers          *payer.Handler           // payer CRUD + bulk-delete
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
 	Clients         *client.Handler          // client CRUD + bulk-delete
 	CustomItems     *customitem.Handler      // per-tenant custom-item CRUD + bulk-delete
@@ -128,8 +128,8 @@ func NewServer(deps Deps) *Server {
 			if deps.BusinessProfile != nil {
 				deps.BusinessProfile.Routes(pr)
 			}
-			if deps.PlanManagers != nil {
-				deps.PlanManagers.Routes(pr)
+			if deps.Payers != nil {
+				deps.Payers.Routes(pr)
 			}
 			if deps.TaxRates != nil {
 				deps.TaxRates.Routes(pr)

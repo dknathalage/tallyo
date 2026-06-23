@@ -59,13 +59,13 @@ func (b *SnapshotBuilder) Client(ctx context.Context, tenantID, clientID int64) 
 	return SnapshotJSON(p.Name, p.Email.String, p.Phone.String, p.Address.String, p.Metadata.String)
 }
 
-// PlanManager renders a default snapshot for the given plan manager, or "{}"
+// Payer renders a default snapshot for the given payer, or "{}"
 // when none is set.
-func (b *SnapshotBuilder) PlanManager(ctx context.Context, tenantID int64, planManagerID *int64) string {
-	if planManagerID == nil {
+func (b *SnapshotBuilder) Payer(ctx context.Context, tenantID int64, payerID *int64) string {
+	if payerID == nil {
 		return "{}"
 	}
-	pm, err := gen.New(b.db).GetPlanManagerByID(ctx, gen.GetPlanManagerByIDParams{TenantID: tenantID, ID: *planManagerID})
+	pm, err := gen.New(b.db).GetPayerByID(ctx, gen.GetPayerByIDParams{TenantID: tenantID, ID: *payerID})
 	if err != nil {
 		return "{}"
 	}

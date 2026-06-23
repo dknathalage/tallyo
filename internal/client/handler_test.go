@@ -7,25 +7,25 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
 
 // newClientHandler builds a handler over a fresh DB and returns it with the
-// tenant id, a seeded plan manager (its uuid), and a client seeded WITH that
-// plan manager.
+// tenant id, a seeded payer (its uuid), and a client seeded WITH that
+// payer.
 func newClientHandler(t *testing.T) (*Handler, int64, string, *Client) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	pm, err := planmanager.NewPlanManagers(conn).Create(tctx(tenantID), tenantID, planmanager.PlanManagerInput{Name: "PM Co"})
+	pm, err := payer.NewPayers(conn).Create(tctx(tenantID), tenantID, payer.PayerInput{Name: "PM Co"})
 	if err != nil {
-		t.Fatalf("seed plan manager: %v", err)
+		t.Fatalf("seed payer: %v", err)
 	}
 	svc := NewService(conn, realtime.NewHub())
-	seeded, err := svc.Create(tctx(tenantID), ClientInput{Name: "Jane", PlanManagerUUID: &pm.UUID})
+	seeded, err := svc.Create(tctx(tenantID), ClientInput{Name: "Jane", PayerUUID: &pm.UUID})
 	if err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
@@ -65,8 +65,8 @@ func TestClientGetByUUID(t *testing.T) {
 	if got["id"] != seeded.UUID {
 		t.Fatalf("json id=%v want uuid %q", got["id"], seeded.UUID)
 	}
-	if got["planManagerId"] != pmUUID {
-		t.Fatalf("json planManagerId=%v want plan-manager uuid %q", got["planManagerId"], pmUUID)
+	if got["payerId"] != pmUUID {
+		t.Fatalf("json payerId=%v want payer uuid %q", got["payerId"], pmUUID)
 	}
 }
 
@@ -100,21 +100,21 @@ func TestClientGetNonUUID400(t *testing.T) {
 	}
 }
 
-// TestClientCreateResolvesPlanManagerUUID proves an inbound planManagerId
+// TestClientCreateResolvesPayerUUID proves an inbound payerId
 // uuid resolves to the FK and round-trips back as the same uuid; an unknown
-// plan-manager uuid is rejected with 400.
-func TestClientCreateResolvesPlanManagerUUID(t *testing.T) {
+// payer uuid is rejected with 400.
+func TestClientCreateResolvesPayerUUID(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
-	pm, err := planmanager.NewPlanManagers(conn).Create(tctx(tenantID), tenantID, planmanager.PlanManagerInput{Name: "PM Co"})
+	pm, err := payer.NewPayers(conn).Create(tctx(tenantID), tenantID, payer.PayerInput{Name: "PM Co"})
 	if err != nil {
-		t.Fatalf("seed plan manager: %v", err)
+		t.Fatalf("seed payer: %v", err)
 	}
 	h := NewHandler(NewService(conn, realtime.NewHub()))
 	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
-	body, _ := json.Marshal(map[string]any{"name": "Jane", "planManagerId": pm.UUID})
+	body, _ := json.Marshal(map[string]any{"name": "Jane", "payerId": pm.UUID})
 	res, err := http.Post(srv.URL+"/clients", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST: %v", err)
@@ -127,13 +127,13 @@ func TestClientCreateResolvesPlanManagerUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if created["planManagerId"] != pm.UUID {
-		t.Fatalf("created planManagerId=%v want %q", created["planManagerId"], pm.UUID)
+	if created["payerId"] != pm.UUID {
+		t.Fatalf("created payerId=%v want %q", created["payerId"], pm.UUID)
 	}
 
-	// Update to clear the plan manager (empty string → NULL FK).
+	// Update to clear the payer (empty string → NULL FK).
 	createdUUID, _ := created["id"].(string)
-	upBody, _ := json.Marshal(map[string]any{"name": "Jane", "planManagerId": nil})
+	upBody, _ := json.Marshal(map[string]any{"name": "Jane", "payerId": nil})
 	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/clients/"+createdUUID, bytes.NewReader(upBody))
 	req.Header.Set("Content-Type", "application/json")
 	upRes, err := http.DefaultClient.Do(req)
@@ -148,18 +148,18 @@ func TestClientCreateResolvesPlanManagerUUID(t *testing.T) {
 	if err := json.NewDecoder(upRes.Body).Decode(&updated); err != nil {
 		t.Fatalf("decode update: %v", err)
 	}
-	if updated["planManagerId"] != nil {
-		t.Fatalf("updated planManagerId=%v want nil", updated["planManagerId"])
+	if updated["payerId"] != nil {
+		t.Fatalf("updated payerId=%v want nil", updated["payerId"])
 	}
 
-	// An unknown plan-manager uuid is rejected with 400.
-	badBody, _ := json.Marshal(map[string]any{"name": "Bob", "planManagerId": "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c"})
+	// An unknown payer uuid is rejected with 400.
+	badBody, _ := json.Marshal(map[string]any{"name": "Bob", "payerId": "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c"})
 	badRes, err := http.Post(srv.URL+"/clients", "application/json", bytes.NewReader(badBody))
 	if err != nil {
 		t.Fatalf("POST bad: %v", err)
 	}
 	defer badRes.Body.Close()
 	if badRes.StatusCode != http.StatusBadRequest {
-		t.Fatalf("unknown plan-manager uuid status=%d want 400", badRes.StatusCode)
+		t.Fatalf("unknown payer uuid status=%d want 400", badRes.StatusCode)
 	}
 }

@@ -1,4 +1,4 @@
-package planmanager
+package payer
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 // newTestDB opens a fresh migrated in-temp SQLite DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "planmanager.db"))
+	conn, err := appdb.Open(filepath.Join(t.TempDir(), "payer.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

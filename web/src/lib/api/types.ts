@@ -43,7 +43,7 @@ export interface InviteCreated {
 	acceptUrl: string;
 }
 
-export interface PlanManager {
+export interface Payer {
 	id: string;
 	name: string;
 	email: string;
@@ -54,7 +54,7 @@ export interface PlanManager {
 	updatedAt: string;
 }
 
-export interface PlanManagerInput {
+export interface PayerInput {
 	name: string;
 	email: string;
 	phone: string;
@@ -85,8 +85,8 @@ export interface Client {
 	planStart: string;
 	planEnd: string;
 	mgmtType: MgmtType;
-	planManagerId: string | null;
-	planManagerName: string;
+	payerId: string | null;
+	payerName: string;
 	email: string;
 	phone: string;
 	address: string;
@@ -102,7 +102,7 @@ export interface ClientInput {
 	planStart: string;
 	planEnd: string;
 	mgmtType: MgmtType;
-	planManagerId: string | null;
+	payerId: string | null;
 	email: string;
 	phone: string;
 	address: string;
@@ -208,7 +208,7 @@ export interface Invoice {
 	number: string;
 	clientId: string;
 	clientName: string;
-	planManagerId: string | null;
+	payerId: string | null;
 	status: InvoiceStatus;
 	issueDate: string;
 	dueDate: string;
@@ -218,7 +218,7 @@ export interface Invoice {
 	notes: string;
 	businessSnapshot: string;
 	clientSnapshot: string;
-	planManagerSnapshot: string;
+	payerSnapshot: string;
 	createdAt: string;
 	updatedAt: string;
 	totalPaid: number;
@@ -230,7 +230,7 @@ export interface Invoice {
 // tax is server-derived; it is intentionally omitted from the payload.
 export interface InvoiceInput {
 	clientId: string;
-	planManagerId: string | null;
+	payerId: string | null;
 	status: InvoiceStatus;
 	issueDate: string;
 	dueDate: string;
@@ -272,7 +272,7 @@ export interface Estimate {
 	number: string;
 	clientId: string | null;
 	clientName: string;
-	planManagerId: string | null;
+	payerId: string | null;
 	status: EstimateStatus;
 	issueDate: string;
 	validUntil: string;
@@ -283,7 +283,7 @@ export interface Estimate {
 	convertedInvoiceId: string | null;
 	businessSnapshot: string;
 	clientSnapshot: string;
-	planManagerSnapshot: string;
+	payerSnapshot: string;
 	createdAt: string;
 	updatedAt: string;
 	lineItems: EstimateLineItem[];
@@ -291,7 +291,7 @@ export interface Estimate {
 
 export interface EstimateInput {
 	clientId: string;
-	planManagerId: string | null;
+	payerId: string | null;
 	status: EstimateStatus;
 	issueDate: string;
 	validUntil: string;
@@ -317,7 +317,7 @@ export interface RecurringTemplate {
 	id: string;
 	clientId: string | null;
 	clientName: string;
-	planManagerId: string | null;
+	payerId: string | null;
 	name: string;
 	frequency: RecurringFrequency;
 	nextDue: string;
@@ -331,7 +331,7 @@ export interface RecurringTemplate {
 
 export interface RecurringInput {
 	clientId: string | null;
-	planManagerId: string | null;
+	payerId: string | null;
 	name: string;
 	frequency: RecurringFrequency;
 	nextDue: string;

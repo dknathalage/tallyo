@@ -3,17 +3,17 @@
 	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
-	import { planManagers } from '$lib/stores/planManagers.svelte';
-	import type { PlanManager, PlanManagerInput } from '$lib/api/types';
+	import { payers } from '$lib/stores/payers.svelte';
+	import type { Payer, PayerInput } from '$lib/api/types';
 
-	const columns: Column<PlanManager>[] = [
+	const columns: Column<Payer>[] = [
 		{ key: 'name', label: 'Name', filter: 'text' },
 		{ key: 'email', label: 'Email', filter: 'text' },
 		{ key: 'phone', label: 'Phone', filter: 'text' },
 		{ key: 'address', label: 'Address', filter: 'text' }
 	];
 
-	function toInput(p: PlanManager): PlanManagerInput {
+	function toInput(p: Payer): PayerInput {
 		return { name: p.name, email: p.email, phone: p.phone, address: p.address, metadata: p.metadata ?? '' };
 	}
 
@@ -27,12 +27,12 @@
 
 {#key idParam}
 	<EntityEditor
-		title="Plan manager"
+		title="Payer"
 		{columns}
-		crud={planManagers.crud}
+		crud={payers.crud}
 		id={idParam}
 		{toInput}
 		{validate}
-		backHref={t('/plan-managers')}
+		backHref={t('/payers')}
 	/>
 {/key}

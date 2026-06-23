@@ -146,7 +146,7 @@
 		}));
 		return {
 			clientId: formClientId === '' ? null : formClientId,
-			planManagerId: null,
+			payerId: null,
 			name: formName,
 			frequency: formFrequency,
 			nextDue: formNextDue,

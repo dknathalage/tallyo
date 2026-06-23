@@ -1,17 +1,17 @@
-package planmanager
+package payer
 
 import (
 	"context"
 	"testing"
 )
 
-func TestPlanManagerCreateGet(t *testing.T) {
+func TestPayerCreateGet(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := NewPayers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, tid, PlanManagerInput{Name: "Acme PM", Email: "a@b.com", Phone: "1", Address: "x"})
+	pm, err := repo.Create(ctx, tid, PayerInput{Name: "Acme PM", Email: "a@b.com", Phone: "1", Address: "x"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -24,22 +24,22 @@ func TestPlanManagerCreateGet(t *testing.T) {
 	}
 }
 
-func TestPlanManagerRejectsEmptyName(t *testing.T) {
+func TestPayerRejectsEmptyName(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	if _, err := NewPlanManagers(conn).Create(context.Background(), tid, PlanManagerInput{Name: ""}); err == nil {
+	if _, err := NewPayers(conn).Create(context.Background(), tid, PayerInput{Name: ""}); err == nil {
 		t.Fatal("Create empty name: want error, got nil")
 	}
 }
 
-func TestPlanManagerListOrderedAndSearch(t *testing.T) {
+func TestPayerListOrderedAndSearch(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := NewPayers(conn)
 	ctx := context.Background()
 
 	for _, n := range []string{"Beta", "Alpha", "Gamma"} {
-		if _, err := repo.Create(ctx, tid, PlanManagerInput{Name: n}); err != nil {
+		if _, err := repo.Create(ctx, tid, PayerInput{Name: n}); err != nil {
 			t.Fatalf("Create %s: %v", n, err)
 		}
 	}
@@ -60,17 +60,17 @@ func TestPlanManagerListOrderedAndSearch(t *testing.T) {
 	}
 }
 
-func TestPlanManagerUpdateDelete(t *testing.T) {
+func TestPayerUpdateDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := NewPayers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, tid, PlanManagerInput{Name: "Acme"})
+	pm, err := repo.Create(ctx, tid, PayerInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, pm.UUID, PlanManagerInput{Name: "Acme2", Email: "n@x.com"})
+	up, err := repo.Update(ctx, tid, pm.UUID, PayerInput{Name: "Acme2", Email: "n@x.com"})
 	if err != nil || up == nil || up.Name != "Acme2" || up.Email != "n@x.com" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
@@ -82,14 +82,14 @@ func TestPlanManagerUpdateDelete(t *testing.T) {
 	}
 }
 
-func TestPlanManagerBulkDelete(t *testing.T) {
+func TestPayerBulkDelete(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := NewPayers(conn)
 	ctx := context.Background()
 
-	a, _ := repo.Create(ctx, tid, PlanManagerInput{Name: "A"})
-	b, _ := repo.Create(ctx, tid, PlanManagerInput{Name: "B"})
+	a, _ := repo.Create(ctx, tid, PayerInput{Name: "A"})
+	b, _ := repo.Create(ctx, tid, PayerInput{Name: "B"})
 	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
@@ -101,38 +101,38 @@ func TestPlanManagerBulkDelete(t *testing.T) {
 	}
 }
 
-func TestPlanManagerTenantIsolation(t *testing.T) {
+func TestPayerTenantIsolation(t *testing.T) {
 	conn := newTestDB(t)
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
-	repo := NewPlanManagers(conn)
+	repo := NewPayers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, a, PlanManagerInput{Name: "A PM"})
+	pm, err := repo.Create(ctx, a, PayerInput{Name: "A PM"})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
 	if got, _ := repo.Get(ctx, b, pm.UUID); got != nil {
-		t.Fatalf("tenant B read tenant A's plan manager: %+v", got)
+		t.Fatalf("tenant B read tenant A's payer: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, ""); len(list) != 0 {
 		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 }
 
-func TestPlanManagerAuditCreate(t *testing.T) {
+func TestPayerAuditCreate(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
-	repo := NewPlanManagers(conn)
+	repo := NewPayers(conn)
 	ctx := context.Background()
 
-	pm, err := repo.Create(ctx, tid, PlanManagerInput{Name: "Acme"})
+	pm, err := repo.Create(ctx, tid, PayerInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	var n int
 	if err := conn.QueryRow(
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='plan_manager' AND action='create' AND entity_id=?",
+		"SELECT COUNT(*) FROM audit_log WHERE entity_type='payer' AND action='create' AND entity_id=?",
 		pm.ID,
 	).Scan(&n); err != nil {
 		t.Fatalf("count audit: %v", err)

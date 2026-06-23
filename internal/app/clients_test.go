@@ -9,14 +9,14 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/client"
-	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
 
 // newClientServer wires the client routes behind RequireSession + ResolveTenant plus the
-// plan-manager create route so a client can reference a plan-manager FK.
+// payer create route so a client can reference a payer FK.
 func newClientServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "client.db")
@@ -28,7 +28,7 @@ func newClientServer(t *testing.T) (*httptest.Server, string) {
 	authH := NewAuthHandler(sm, users, tenants)
 	clientSvc := client.NewService(conn, hub)
 	pH := client.NewHandler(clientSvc)
-	pmH := planmanager.NewHandler(planmanager.NewService(conn, hub))
+	pmH := payer.NewHandler(payer.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
@@ -37,7 +37,7 @@ func newClientServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pH.Routes(pr)
-			pr.Post("/plan-managers", pmH.Create)
+			pr.Post("/payers", pmH.Create)
 		})
 	})
 
@@ -81,12 +81,12 @@ func TestClientListEmptyReturnsArray(t *testing.T) {
 	}
 }
 
-func TestClientListPlanManagerName(t *testing.T) {
+func TestClientListPayerName(t *testing.T) {
 	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	pmID := createPlanManager(t, c, srv.URL, uuid, "Globex")
+	pmID := createPayer(t, c, srv.URL, uuid, "Globex")
 
-	body, err := json.Marshal(map[string]any{"name": "Wayne", "planManagerId": pmID, "mgmtType": "plan"})
+	body, err := json.Marshal(map[string]any{"name": "Wayne", "payerId": pmID, "mgmtType": "plan"})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -100,8 +100,8 @@ func TestClientListPlanManagerName(t *testing.T) {
 	lr := get(t, c, srv.URL+"/api/t/"+uuid+"/clients")
 	defer func() { _ = lr.Body.Close() }()
 	var out []struct {
-		Name            string `json:"name"`
-		PlanManagerName string `json:"planManagerName"`
+		Name      string `json:"name"`
+		PayerName string `json:"payerName"`
 	}
 	if err := json.NewDecoder(lr.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
@@ -109,18 +109,18 @@ func TestClientListPlanManagerName(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("want 1 client got %d", len(out))
 	}
-	if out[0].PlanManagerName != "Globex" {
-		t.Fatalf("planManagerName: want Globex got %q", out[0].PlanManagerName)
+	if out[0].PayerName != "Globex" {
+		t.Fatalf("payerName: want Globex got %q", out[0].PayerName)
 	}
 }
 
 func TestClientCreateWithFieldsAndGet(t *testing.T) {
 	srv, uuid := newClientServer(t)
 	c := loggedInClient(t, srv.URL)
-	pmID := createPlanManager(t, c, srv.URL, uuid, "Acme")
+	pmID := createPayer(t, c, srv.URL, uuid, "Acme")
 	body, err := json.Marshal(map[string]any{
 		"name": "Stark", "reference": "430000001", "mgmtType": "plan",
-		"planManagerId": pmID, "email": "s@x.com", "phone": "123", "address": "1 St",
+		"payerId": pmID, "email": "s@x.com", "phone": "123", "address": "1 St",
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

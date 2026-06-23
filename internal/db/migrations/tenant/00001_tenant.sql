@@ -10,7 +10,7 @@
 -- (TEXT) and validated in app; user links (author_user_id) are non-authoritative
 -- control ids. Same-file FKs are kept.
 
-CREATE TABLE plan_managers (
+CREATE TABLE payers (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid       TEXT NOT NULL UNIQUE,
     tenant_id  INTEGER NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE plan_managers (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE INDEX idx_plan_managers_tenant ON plan_managers (tenant_id);
+CREATE INDEX idx_payers_tenant ON payers (tenant_id);
 
 CREATE TABLE clients (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +34,7 @@ CREATE TABLE clients (
     plan_start      TEXT,                                    -- DATE
     plan_end        TEXT,                                    -- DATE
     mgmt_type       TEXT CHECK (mgmt_type IN ('plan','self')),
-    plan_manager_id INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
+    payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL,
     email           TEXT DEFAULT '',
     phone           TEXT DEFAULT '',
     address         TEXT DEFAULT '',
@@ -43,7 +43,7 @@ CREATE TABLE clients (
     updated_at      TEXT NOT NULL
 );
 CREATE INDEX idx_clients_tenant       ON clients (tenant_id);
-CREATE INDEX idx_clients_plan_manager ON clients (plan_manager_id);
+CREATE INDEX idx_clients_payer ON clients (payer_id);
 
 CREATE TABLE business_profile (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +94,7 @@ CREATE TABLE invoices (
     tenant_id         INTEGER NOT NULL,
     number            TEXT NOT NULL,
     client_id         INTEGER NOT NULL REFERENCES clients(id),
-    plan_manager_id   INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
+    payer_id   INTEGER REFERENCES payers(id) ON DELETE SET NULL,
     status            TEXT NOT NULL DEFAULT 'draft',
     issue_date        TEXT NOT NULL,
     due_date          TEXT NOT NULL,
@@ -170,7 +170,7 @@ CREATE TABLE estimates (
     tenant_id            INTEGER NOT NULL,
     number               TEXT NOT NULL,
     client_id            INTEGER REFERENCES clients(id),
-    plan_manager_id      INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
+    payer_id      INTEGER REFERENCES payers(id) ON DELETE SET NULL,
     status               TEXT NOT NULL DEFAULT 'draft',
     issue_date           TEXT NOT NULL,
     valid_until          TEXT NOT NULL,
@@ -232,7 +232,7 @@ CREATE TABLE recurring_templates (
     uuid            TEXT NOT NULL UNIQUE,
     tenant_id       INTEGER NOT NULL,
     client_id       INTEGER REFERENCES clients(id) ON DELETE SET NULL,
-    plan_manager_id INTEGER REFERENCES plan_managers(id) ON DELETE SET NULL,
+    payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL,
     name            TEXT NOT NULL,
     frequency       TEXT NOT NULL,
     next_due        TEXT NOT NULL,
@@ -259,4 +259,4 @@ DROP TABLE tax_rates;
 DROP TABLE custom_items;
 DROP TABLE business_profile;
 DROP TABLE clients;
-DROP TABLE plan_managers;
+DROP TABLE payers;

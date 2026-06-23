@@ -47,7 +47,7 @@
 			values: ['plan', 'self'],
 			cell: (p) => (p.mgmtType === 'self' ? 'Self-managed' : 'Plan-managed')
 		},
-		{ key: 'planManagerName', label: 'Plan manager', sortable: true, filter: 'text' }
+		{ key: 'payerName', label: 'Payer', sortable: true, filter: 'text' }
 	];
 
 	const rowActions: RowAction<Client>[] = [

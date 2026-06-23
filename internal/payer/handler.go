@@ -1,4 +1,4 @@
-package planmanager
+package payer
 
 import (
 	"net/http"
@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handler serves the plan-manager CRUD plus bulk-delete routes.
+// Handler serves the payer CRUD plus bulk-delete routes.
 type Handler struct {
 	svc *Service
 }
@@ -16,29 +16,29 @@ type Handler struct {
 // NewHandler constructs the handler. A nil svc is a programmer error.
 func NewHandler(svc *Service) *Handler {
 	if svc == nil {
-		panic("planmanager.NewHandler: nil svc")
+		panic("payer.NewHandler: nil svc")
 	}
 	return &Handler{svc: svc}
 }
 
-// Routes registers the plan-manager routes on r. Mounted inside the
+// Routes registers the payer routes on r. Mounted inside the
 // authenticated /api group by the composition root.
 func (h *Handler) Routes(r chi.Router) {
-	r.Get("/plan-managers", h.List)
-	r.Post("/plan-managers", h.Create)
-	r.Post("/plan-managers/bulk-delete", h.BulkDelete)
-	r.Get("/plan-managers/{uuid}", h.Get)
-	r.Put("/plan-managers/{uuid}", h.Update)
-	r.Delete("/plan-managers/{uuid}", h.Delete)
+	r.Get("/payers", h.List)
+	r.Post("/payers", h.Create)
+	r.Post("/payers/bulk-delete", h.BulkDelete)
+	r.Get("/payers/{uuid}", h.Get)
+	r.Put("/payers/{uuid}", h.Update)
+	r.Delete("/payers/{uuid}", h.Delete)
 }
 
-// List returns plan managers. With DataTable query params (sort/page/limit/f.*)
+// List returns payers. With DataTable query params (sort/page/limit/f.*)
 // it returns a paged {rows,total}; otherwise it keeps the legacy ?search= array
 // for callers not yet migrated.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if listquery.IsListQuery(q) {
-		c := listquery.Build(q, PlanManagerCols)
+		c := listquery.Build(q, PayerCols)
 		res, err := h.svc.Query(r.Context(), c)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
@@ -55,7 +55,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, managers)
 }
 
-// Get returns a single plan manager by uuid, or 404 when not found.
+// Get returns a single payer by uuid, or 404 when not found.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
@@ -74,9 +74,9 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Create inserts a plan manager. An empty name is rejected with 400.
+// Create inserts a payer. An empty name is rejected with 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	var in PlanManagerInput
+	var in PayerInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
@@ -93,14 +93,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
-// Update mutates a plan manager. Empty name → 400; unknown uuid → 404.
+// Update mutates a payer. Empty name → 400; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	var in PlanManagerInput
+	var in PayerInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
@@ -121,7 +121,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Delete removes a plan manager by uuid.
+// Delete removes a payer by uuid.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
@@ -135,7 +135,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// BulkDelete removes every plan manager whose uuid is in the request body. The
+// BulkDelete removes every payer whose uuid is in the request body. The
 // uuids are resolved to int PKs first; an unknown uuid → 400.
 func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -145,7 +145,7 @@ func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	ids, err := h.svc.ResolvePlanManagerIDs(r.Context(), body.Ids)
+	ids, err := h.svc.ResolvePayerIDs(r.Context(), body.Ids)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return

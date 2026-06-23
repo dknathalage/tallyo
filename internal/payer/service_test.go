@@ -1,4 +1,4 @@
-package planmanager
+package payer
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newPlanManagerSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newPayerSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
@@ -15,35 +15,35 @@ func newPlanManagerSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	return NewService(conn, hub), hub, tenantID
 }
 
-func TestPlanManagerCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newPlanManagerSvc(t)
+func TestPayerCreateBroadcasts(t *testing.T) {
+	svc, hub, tenantID := newPayerSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	pm, err := svc.Create(tctx(tenantID), PlanManagerInput{Name: "Acme"})
+	pm, err := svc.Create(tctx(tenantID), PayerInput{Name: "Acme"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if pm == nil {
-		t.Fatal("Create returned nil plan manager")
+		t.Fatal("Create returned nil payer")
 	}
 
 	select {
 	case e := <-ch:
-		if e.Entity != "plan_manager" || e.UUID != pm.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want plan_manager/%d/create", e, pm.ID)
+		if e.Entity != "payer" || e.UUID != pm.UUID || e.Action != "create" {
+			t.Fatalf("event=%+v want payer/%d/create", e, pm.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
 	}
 }
 
-func TestPlanManagerCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub, tenantID := newPlanManagerSvc(t)
+func TestPayerCreateEmptyNameNoEvent(t *testing.T) {
+	svc, hub, tenantID := newPayerSvc(t)
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if _, err := svc.Create(tctx(tenantID), PlanManagerInput{Name: ""}); err == nil {
+	if _, err := svc.Create(tctx(tenantID), PayerInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
 	}
 	select {

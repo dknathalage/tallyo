@@ -29,7 +29,7 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/shift"
@@ -163,7 +163,7 @@ func Run(cfg Config, version string) error {
 	tenants := auth.NewTenants(control)
 	invites := auth.NewInvites(control)
 	bpSvc := businessprofile.NewService(tdb, hub)
-	planManagerSvc := planmanager.NewService(tdb, hub)
+	payerSvc := payer.NewService(tdb, hub)
 	taxRateSvc := taxrate.NewService(tdb, hub)
 	clientSvc := client.NewService(tdb, hub)
 	customItemSvc := customitem.NewService(tdb, hub)
@@ -210,7 +210,7 @@ func Run(cfg Config, version string) error {
 		Invites:         NewInviteHandler(invites, users),
 		Events:          realtime.NewEventsHandler(hub),
 		BusinessProfile: businessprofile.NewHandler(bpSvc),
-		PlanManagers:    planmanager.NewHandler(planManagerSvc),
+		Payers:          payer.NewHandler(payerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
 		Clients:         client.NewHandler(clientSvc),
 		CustomItems:     customitem.NewHandler(customItemSvc),

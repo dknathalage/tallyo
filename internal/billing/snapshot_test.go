@@ -89,15 +89,15 @@ func TestSnapshotBuilderBusinessMissing(t *testing.T) {
 	}
 }
 
-func TestSnapshotBuilderPlanManagerNil(t *testing.T) {
+func TestSnapshotBuilderPayerNil(t *testing.T) {
 	conn := newTestDB(t)
 	ctx := context.Background()
 	tenantID := seedTenant(t, conn, "T")
 
 	sb := billing.NewSnapshotBuilder(conn)
-	got := sb.PlanManager(ctx, tenantID, nil)
+	got := sb.Payer(ctx, tenantID, nil)
 	if got != "{}" {
-		t.Fatalf("PlanManager(nil) = %q, want {}", got)
+		t.Fatalf("Payer(nil) = %q, want {}", got)
 	}
 }
 

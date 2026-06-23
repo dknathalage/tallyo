@@ -10,7 +10,7 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/dknathalage/tallyo/internal/planmanager"
+	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/google/uuid"
 	"net/url"
 )
@@ -86,21 +86,21 @@ func TestClientDefaults(t *testing.T) {
 	}
 }
 
-func TestClientWithPlanManagerName(t *testing.T) {
+func TestClientWithPayerName(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	ctx := context.Background()
-	pm, err := planmanager.NewPlanManagers(conn).Create(ctx, tid, planmanager.PlanManagerInput{Name: "PM Co"})
+	pm, err := payer.NewPayers(conn).Create(ctx, tid, payer.PayerInput{Name: "PM Co"})
 	if err != nil {
 		t.Fatalf("Create PM: %v", err)
 	}
 	repo := NewClients(conn)
-	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", MgmtType: "plan", PlanManagerUUID: &pm.UUID})
+	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", MgmtType: "plan", PayerUUID: &pm.UUID})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p.PlanManagerName != "PM Co" {
-		t.Fatalf("PlanManagerName = %q, want PM Co", p.PlanManagerName)
+	if p.PayerName != "PM Co" {
+		t.Fatalf("PayerName = %q, want PM Co", p.PayerName)
 	}
 }
 

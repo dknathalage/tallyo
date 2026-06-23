@@ -56,7 +56,7 @@
 		}));
 		return {
 			clientId: est.clientId ?? '',
-			planManagerId: est.planManagerId,
+			payerId: est.payerId,
 			status: est.status,
 			issueDate: est.issueDate,
 			validUntil: est.validUntil,
@@ -151,7 +151,7 @@
 		}));
 		return {
 			clientId: formClientId,
-			planManagerId: null,
+			payerId: null,
 			status: 'draft' as EstimateStatus,
 			issueDate: formIssueDate,
 			validUntil: formValidUntil,
