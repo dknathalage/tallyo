@@ -242,12 +242,16 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	snapshotSupportItem(line, versionUUID, item)
 
 	// Step 3 + 4: resolve the zone price, then either assert unit_price ≤ cap
-	// (default) or, in fill mode, OVERWRITE unit_price with the cap. SKIPPED for a
-	// generic (non-NDIS) tenant — no configured zone means no NDIS price caps to
-	// enforce, so the caller-supplied unit_price stands untouched (Phase 6
-	// data-presence gating). The snapshot and taxable defaulting above still run.
+	// (default) or, in fill mode, OVERWRITE unit_price with the cap. For a GENERIC
+	// (non-NDIS) tenant — no configured zone — the NDIS zone-cap path is SKIPPED;
+	// instead, a coded line whose item carries a generic unit_price is filled from
+	// it when the caller supplied no positive price (mirrors the NDIS fill but uses
+	// items.unit_price, not a zone cap). A positive caller price is always kept; an
+	// item with no unit_price keeps the caller's price (free-form).
 	if zone != "" {
 		v.applyZonePrice(ctx, idx, versionID, zone, line, ve, fillPrice)
+	} else {
+		applyItemUnitPrice(line, item)
 	}
 
 	// Step 5: service date within the client plan window.
@@ -327,6 +331,24 @@ func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID i
 			Message: fmt.Sprintf("unit price %.2f exceeds the NDIS price cap of %.2f for zone %q", line.UnitPrice, priceCap, zone),
 		})
 	}
+}
+
+// applyItemUnitPrice fills a generic coded line's unit price from the catalogue
+// item's generic unit_price (the non-NDIS pricing path). It only fills when the
+// item carries a positive unit_price AND the caller supplied none (UnitPrice ≤ 0);
+// a caller-supplied positive price is kept, and an item with no unit_price leaves
+// the line untouched (free-form). No cap is enforced — there is no NDIS zone.
+func applyItemUnitPrice(line *LineItemInput, item *pricelist.Item) {
+	if line == nil || item == nil {
+		return
+	}
+	if item.UnitPrice == nil {
+		return
+	}
+	if Round2(line.UnitPrice) > 0 {
+		return
+	}
+	line.UnitPrice = Round2(*item.UnitPrice)
 }
 
 // assertPlanWindow asserts serviceDate ∈ [planStart, planEnd] (spec §6 step 5).

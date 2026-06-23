@@ -39,11 +39,42 @@ func TestBusinessProfileDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Zone != "national" {
-		t.Fatalf("default zone = %q, want national", got.Zone)
+	// Empty zone persists as "" (generic, non-NDIS tenant) — NOT coerced to national.
+	if got.Zone != "" {
+		t.Fatalf("default zone = %q, want \"\" (generic)", got.Zone)
 	}
 	if got.DefaultCurrency != "AUD" {
 		t.Fatalf("default currency = %q, want AUD", got.DefaultCurrency)
+	}
+}
+
+// TestBusinessProfileEmptyZonePersists confirms an explicitly empty zone is
+// stored as "" (generic tenant) and read back as "".
+func TestBusinessProfileEmptyZonePersists(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "Generic Co")
+	repo := NewBusinessProfile(conn)
+	ctx := context.Background()
+
+	if err := repo.Save(ctx, tid, BusinessProfileInput{Name: "Generic Co", Zone: ""}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := repo.Get(ctx, tid)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Zone != "" {
+		t.Fatalf("zone = %q, want \"\"", got.Zone)
+	}
+}
+
+// TestBusinessProfileRejectsInvalidZone confirms a non-empty zone outside the
+// three NDIS zones is rejected.
+func TestBusinessProfileRejectsInvalidZone(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn, "Bad Co")
+	if err := NewBusinessProfile(conn).Save(context.Background(), tid, BusinessProfileInput{Name: "Bad Co", Zone: "foo"}); err == nil {
+		t.Fatal("Save invalid zone: want error, got nil")
 	}
 }
 

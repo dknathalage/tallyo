@@ -90,6 +90,37 @@ func addItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, 
 	}
 }
 
+// seedUnitPricedItem inserts a catalog version with one support item that has a
+// generic unit_price set but NO item_prices (no zone caps). Returns the version
+// id. Used to test the generic (non-NDIS) pricing path.
+func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
+	t.Helper()
+	ctx := context.Background()
+	q := gen.New(conn)
+	now := time.Now().UTC().Format(time.RFC3339)
+	var et sql.NullString
+	if to != "" {
+		et = sql.NullString{String: to, Valid: true}
+	}
+	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
+		Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("CreatePriceListVersion: %v", err)
+	}
+	tx := int64(1)
+	if gstFree {
+		tx = 0
+	}
+	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
+		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
+		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
+	}); err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+	return v.ID
+}
+
 // seedClientPlan inserts a client with an explicit plan window.
 func seedClientPlan(t *testing.T, conn *sql.DB, tenantID int64, planStart, planEnd string) int64 {
 	t.Helper()
@@ -336,6 +367,54 @@ func TestGenericTenantSkipsZoneCap(t *testing.T) {
 	// The catalogue snapshot (code/name) and taxable defaulting still happen.
 	if res.Items[0].ItemID == nil || res.Items[0].PriceListVersionID == nil {
 		t.Fatal("snapshot must still pin item id + price-list version even with no zone")
+	}
+}
+
+// TestGenericCodedLinePricesFromItemUnitPrice asserts that for a generic tenant
+// (NO zone) a coded line referencing an item that carries a generic unit_price
+// (but no zone caps) is priced FROM that unit_price when the caller supplies
+// none (unitPrice <= 0). Tax is computed from the applied price.
+func TestGenericCodedLinePricesFromItemUnitPrice(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn) // NO setTenantZone → generic tenant
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	// Item W1 has unit_price 9.99 and NO item_prices/caps; taxable.
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
+	v := NewLineValidator(conn, conn)
+	ctx := context.Background()
+
+	// Caller supplies unitPrice 0 → the catalogue unit_price (9.99) is applied.
+	res, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("W1", "2026-01-15", 2, 0)})
+	if err != nil {
+		t.Fatalf("generic coded line must price from item unit_price: %v", err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("res items = %d, want 1", len(res.Items))
+	}
+	if res.Items[0].UnitPrice != 9.99 {
+		t.Fatalf("unit price = %v, want 9.99 (from item unit_price)", res.Items[0].UnitPrice)
+	}
+	if res.Items[0].ItemID == nil {
+		t.Fatal("snapshot must pin item id")
+	}
+}
+
+// TestGenericCodedLineKeepsCallerPriceOverUnitPrice asserts that when the caller
+// supplies a positive unit price it is KEPT (the item unit_price is only a fill
+// default for generic coded lines, not a cap).
+func TestGenericCodedLineKeepsCallerPriceOverUnitPrice(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn)
+	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
+	v := NewLineValidator(conn, conn)
+
+	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{supportLine("W1", "2026-01-15", 1, 25)})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Items[0].UnitPrice != 25 {
+		t.Fatalf("unit price = %v, want 25 (caller price kept)", res.Items[0].UnitPrice)
 	}
 }
 

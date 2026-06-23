@@ -8,7 +8,7 @@
 	let name = $state('');
 	let email = $state('');
 	let password = $state('');
-	let zone = $state<Zone>('national');
+	let zone = $state<Zone>('');
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
 
@@ -86,12 +86,14 @@
 		<label class="block">
 			<span class="mb-1 block text-sm font-medium">NDIS pricing zone (optional, NDIS only)</span>
 			<select bind:value={zone} class="w-full rounded border border-gray-300 px-3 py-2 text-sm">
+				<option value="">None (not NDIS)</option>
 				<option value="national">National</option>
 				<option value="remote">Remote</option>
 				<option value="very_remote">Very remote</option>
 			</select>
 			<span class="mt-1 block text-xs text-gray-500">
-				Only needed if you bill against NDIS price caps — you can change this later in Settings.
+				Leave as "None" unless you bill against NDIS price caps — you can change this later in
+				Settings.
 			</span>
 		</label>
 

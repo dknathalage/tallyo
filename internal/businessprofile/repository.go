@@ -43,6 +43,18 @@ type BusinessProfileInput struct {
 	DefaultCurrency string `json:"defaultCurrency"`
 }
 
+// validZone reports whether a NON-empty zone is one of the three NDIS zones.
+// An empty zone (generic tenant) is handled by the caller and is not "valid"
+// here — callers check `zone == "" || validZone(zone)`.
+func validZone(zone string) bool {
+	switch zone {
+	case "national", "remote", "very_remote":
+		return true
+	default:
+		return false
+	}
+}
+
 // BusinessProfileRepo reads and writes the per-tenant business profile (1:1).
 type BusinessProfileRepo struct {
 	db db.Executor
@@ -88,6 +100,11 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID int64, in Busin
 	if in.Name == "" {
 		return errors.New("save business profile: name is required")
 	}
+	// A non-empty zone must be one of the three NDIS zones; an empty zone is a
+	// generic (non-NDIS) tenant and is persisted as "" (no price caps applied).
+	if in.Zone != "" && !validZone(in.Zone) {
+		return fmt.Errorf("save business profile: invalid zone %q", in.Zone)
+	}
 
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "business_profile",
@@ -126,10 +143,9 @@ func buildParams(tenantID int64, id string, in BusinessProfileInput) gen.UpsertB
 	if currency == "" {
 		currency = "AUD"
 	}
+	// Zone is persisted as-is: "" means a generic (non-NDIS) tenant. A non-empty
+	// value has already been validated against validZone in Save.
 	zone := in.Zone
-	if zone == "" {
-		zone = "national"
-	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"

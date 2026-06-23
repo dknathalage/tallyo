@@ -442,10 +442,9 @@ func validateSignup(req *signupRequest) (int, string) {
 	if len(req.Password) < minPasswordLen {
 		return http.StatusBadRequest, "password too short"
 	}
-	if req.Zone == "" {
-		req.Zone = "national"
-	}
-	if !allowedZones[req.Zone] {
+	// An empty zone creates a GENERIC (non-NDIS) tenant — no NDIS price caps.
+	// A non-empty zone must be one of the three valid NDIS zones.
+	if req.Zone != "" && !allowedZones[req.Zone] {
 		return http.StatusBadRequest, "invalid zone"
 	}
 	return 0, ""

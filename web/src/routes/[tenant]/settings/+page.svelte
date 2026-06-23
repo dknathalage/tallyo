@@ -95,6 +95,7 @@
 				disabled={!canManage}
 				class="w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
 			>
+				<option value="">None (not NDIS)</option>
 				<option value="national">National</option>
 				<option value="remote">Remote</option>
 				<option value="very_remote">Very remote</option>

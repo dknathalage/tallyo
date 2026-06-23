@@ -176,7 +176,10 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 	}
 }
 
-func TestSignupDefaultsZoneToNational(t *testing.T) {
+// TestSignupEmptyZoneCreatesGenericTenant confirms a signup with no zone
+// provisions a generic (non-NDIS) tenant whose profile zone is "" — not coerced
+// to national.
+func TestSignupEmptyZoneCreatesGenericTenant(t *testing.T) {
 	conn := mustTenantDB(t)
 	defer conn.Close()
 	repo := NewTenants(conn)
@@ -197,8 +200,8 @@ func TestSignupDefaultsZoneToNational(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetBusinessProfile: %v", err)
 	}
-	if prof.Zone != "national" {
-		t.Fatalf("default zone=%q want national", prof.Zone)
+	if prof.Zone != "" {
+		t.Fatalf("generic tenant zone=%q want \"\"", prof.Zone)
 	}
 }
 

@@ -163,14 +163,11 @@ type SignupInput struct {
 type ProfileProvisioner func(ctx context.Context, tenantID int64, in SignupInput) error
 
 // ProvisionBusinessProfile upserts the tenant's default business_profile on db
-// (the tenant DB in production). The zone defaults to "national".
+// (the tenant DB in production). The zone is persisted as-is: "" creates a
+// generic (non-NDIS) tenant with no price caps.
 func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID int64, in SignupInput) error {
 	if tenantID == 0 {
 		return errors.New("provision profile: tenant id required")
-	}
-	zone := in.Zone
-	if zone == "" {
-		zone = "national"
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.New(db).UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
@@ -178,7 +175,7 @@ func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID int6
 		Uuid:            uuid.NewString(),
 		Name:            in.BusinessName,
 		Email:           sql.NullString{String: in.Email, Valid: true},
-		Zone:            zone,
+		Zone:            in.Zone,
 		Metadata:        sql.NullString{String: "{}", Valid: true},
 		DefaultCurrency: sql.NullString{String: "AUD", Valid: true},
 		CreatedAt:       now,
@@ -195,10 +192,6 @@ func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID int6
 func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision ProfileProvisioner) (*User, error) {
 	if in.BusinessName == "" || in.Email == "" || in.PasswordHash == "" {
 		return nil, errors.New("signup: business name, email and password hash are required")
-	}
-	zone := in.Zone
-	if zone == "" {
-		zone = "national"
 	}
 	var owner gen.User
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
@@ -233,7 +226,7 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 			EntityType: "tenant",
 			EntityID:   t.ID,
 			Action:     "signup",
-			Changes:    audit.Changes(map[string]any{"name": in.BusinessName, "ownerEmail": in.Email, "zone": zone}),
+			Changes:    audit.Changes(map[string]any{"name": in.BusinessName, "ownerEmail": in.Email, "zone": in.Zone}),
 		})
 	})
 	if err != nil {

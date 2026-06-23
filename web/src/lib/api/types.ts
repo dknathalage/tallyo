@@ -1,6 +1,7 @@
 export type Role = 'owner' | 'admin' | 'member' | string;
 
-export type Zone = 'national' | 'remote' | 'very_remote';
+// '' = generic (non-NDIS) tenant — no price caps applied.
+export type Zone = '' | 'national' | 'remote' | 'very_remote';
 
 export type MgmtType = 'plan' | 'self' | string;
 export type ClientType = 'ndis' | 'standard' | string;

@@ -117,7 +117,10 @@ func TestSignupValidation(t *testing.T) {
 	}
 }
 
-func TestSignupDefaultZoneNational(t *testing.T) {
+// TestSignupEmptyZoneCreatesGenericTenant confirms a signup with no/empty zone
+// succeeds and provisions a generic (non-NDIS) tenant whose business profile
+// zone is "" — NOT coerced to national.
+func TestSignupEmptyZoneCreatesGenericTenant(t *testing.T) {
 	srv, conn, _, _ := newSignupServer(t)
 	c := jarClient(t)
 	resp := postJSON(t, c, srv.URL+"/api/signup",
@@ -133,8 +136,8 @@ func TestSignupDefaultZoneNational(t *testing.T) {
 		"SELECT zone FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&zone); err != nil {
 		t.Fatalf("scan zone: %v", err)
 	}
-	if zone != "national" {
-		t.Fatalf("default zone: want national got %q", zone)
+	if zone != "" {
+		t.Fatalf("generic tenant zone: want \"\" got %q", zone)
 	}
 }
 
