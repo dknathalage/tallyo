@@ -1,6 +1,6 @@
 // Package importer provides pure-Go (encoding/csv + excelize, both cgo-free)
 // parsing primitives for tabular catalogue files (CSV/XLSX). It reads a file
-// into headers plus header→cell maps; the NDIS catalogue ingest builds its
+// into headers plus header→cell maps; the price-catalogue ingest builds its
 // fixed-format parser on top of these primitives.
 package importer
 

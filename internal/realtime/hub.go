@@ -12,11 +12,11 @@
 // is delivered ONLY to subscribers of the same tenant, so one tenant never
 // observes another tenant's changes (cross-tenant isolation, spec §8).
 //
-// The single EXCEPTION is the global NDIS Support Catalogue (spec §4.3), which
-// is shared national reference data with no owning tenant. A broadcast carrying
-// the sentinel TenantID == GlobalTenantID (0) is delivered to EVERY current
-// subscriber regardless of their tenant, so a platform-admin catalogue ingest
-// reaches all tenants' open streams.
+// The single EXCEPTION is a broadcast with no owning tenant in scope (e.g. a
+// price-list import that runs outside a request tenant context). A broadcast
+// carrying the sentinel TenantID == GlobalTenantID (0) is delivered to EVERY
+// current subscriber regardless of their tenant, so such a change reaches all
+// tenants' open streams.
 package realtime
 
 import "sync"
@@ -26,9 +26,10 @@ import "sync"
 const clientBufferSize = 16
 
 // GlobalTenantID is the sentinel tenant id for events that belong to no single
-// tenant (the shared NDIS Support Catalogue). A Broadcast whose Event.TenantID
-// equals GlobalTenantID is delivered to every subscriber. Real tenant ids are
-// always >= 1 (AUTOINCREMENT), so 0 can never collide with a real tenant.
+// tenant (e.g. a price-list import running outside a request tenant). A
+// Broadcast whose Event.TenantID equals GlobalTenantID is delivered to every
+// subscriber. Real tenant ids are always >= 1 (AUTOINCREMENT), so 0 can never
+// collide with a real tenant.
 const GlobalTenantID int64 = 0
 
 // Event is a change notification serialized to subscribers by the SSE handler.

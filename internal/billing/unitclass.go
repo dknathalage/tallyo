@@ -11,7 +11,7 @@ const (
 	UnitDistance                  // typed distance (KM)
 )
 
-// Classify maps an NDIS unit_of_measure to its input class. Unknown units fall
+// Classify maps a catalogue unit_of_measure to its input class. Unknown units fall
 // to UnitCount. ponytail: small switch; extend when a new unit class appears.
 func Classify(unit string) UnitClass {
 	switch strings.ToUpper(strings.TrimSpace(unit)) {

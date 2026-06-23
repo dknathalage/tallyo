@@ -1,10 +1,10 @@
 package recurring
 
-// NOTE (J4): rewritten for the tenant-scoped NDIS recurring_templates schema.
+// NOTE (J4): rewritten for the tenant-scoped recurring_templates schema.
 // Templates carry client_id / payer_id and a JSON line_items column.
-// The stored line shape is NDIS-aware (code, serviceDate, unit, unitPrice,
+// The stored line shape is catalogue-aware (code, serviceDate, unit, unitPrice,
 // taxable). tax_rate is a stored percentage on the template; generation computes
-// the tax amount from it. NDIS price-cap / plan-window validation is J10.
+// the tax amount from it. price-cap / plan-window validation is J10.
 
 import (
 	"context"

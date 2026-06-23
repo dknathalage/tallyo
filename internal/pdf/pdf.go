@@ -42,7 +42,7 @@ func parseSnapshot(s string) party {
 	return p
 }
 
-// docData is the document-type-agnostic view consumed by render. NDIS amounts
+// docData is the document-type-agnostic view consumed by render. Amounts
 // are in AUD; tax is a precomputed amount (no rate is carried on the header).
 type docData struct {
 	Title    string

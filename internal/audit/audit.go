@@ -27,10 +27,10 @@ type Entry struct {
 // Log writes one audit row. Every DB mutation must call this.
 //
 // Every row is stamped with the acting tenant_id and user_id sourced from ctx
-// (reqctx). Both are nullable: tenant_id is NULL for the GLOBAL NDIS catalogue
-// (spec §4.3 — shared reference data owned by no tenant), and user_id is NULL
-// for system actions (the launch/hourly sweeps) and the pre-auth signup
-// transaction. A real, authenticated mutation carries both.
+// (reqctx). Both are nullable: tenant_id is NULL for a mutation owned by no
+// tenant (e.g. a price-list import running outside a request tenant), and
+// user_id is NULL for system actions (the launch/hourly sweeps) and the
+// pre-auth signup transaction. A real, authenticated mutation carries both.
 func Log(ctx context.Context, db Execer, e Entry) error {
 	if e.EntityType == "" {
 		return fmt.Errorf("audit: empty entity_type")

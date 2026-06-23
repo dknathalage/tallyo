@@ -19,7 +19,7 @@ const maxToolTurns = 8
 const searchCatalogueSchema = `{
   "type": "object",
   "properties": {
-    "query": { "type": "string", "description": "Keywords to match against an NDIS support-item code or name, e.g. \"self-care\", \"provider travel\", \"community participation\"." },
+    "query": { "type": "string", "description": "Keywords to match against a catalogue item code or name, e.g. \"self-care\", \"provider travel\", \"community participation\"." },
     "serviceDate": { "type": "string", "description": "Service date (YYYY-MM-DD) to resolve the active catalogue version for." }
   },
   "required": ["query", "serviceDate"],
@@ -36,7 +36,7 @@ type catalogueMatchView struct {
 
 // proposeDivide runs the divide Smart's grounding loop: the model may call the
 // read-only search_catalogue tool (bounded by maxToolTurns) to find the right
-// NDIS codes itself, then emits divide_session. It returns the decoded proposal.
+// catalogue codes itself, then emits divide_session. It returns the decoded proposal.
 func (s *Smarts) proposeDivide(ctx context.Context, system, userContent string) (divideSessionInput, error) {
 	commit := llm.ToolDef{Name: "divide_session", Description: "Emit the line items for this session. Call exactly once, when you have resolved every code.", InputSchema: json.RawMessage(divideSessionSchema)}
 	raw, err := s.proposeWithCommit(ctx, system, userContent, commit)
@@ -58,7 +58,7 @@ func (s *Smarts) proposeDivide(ctx context.Context, system, userContent string) 
 // hands the model the capability to ground itself, not a precomputed answer.
 func (s *Smarts) proposeWithCommit(ctx context.Context, system, userContent string, commit llm.ToolDef) (json.RawMessage, error) {
 	tools := []llm.ToolDef{
-		{Name: "search_catalogue", Description: "Search the NDIS support-item catalogue for a service date. Returns matching items (code, name, unit, priceCap). Use it to find the correct code for an activity before billing it — never guess a code.", InputSchema: json.RawMessage(searchCatalogueSchema)},
+		{Name: "search_catalogue", Description: "Search the price catalogue for a service date. Returns matching items (code, name, unit, priceCap). Use it to find the correct code for an activity before billing it — never guess a code.", InputSchema: json.RawMessage(searchCatalogueSchema)},
 		commit,
 	}
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: []llm.Block{{Type: llm.BlockText, Text: userContent}}}}

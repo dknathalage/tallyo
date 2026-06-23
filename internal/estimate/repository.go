@@ -1,9 +1,9 @@
 package estimate
 
-// NOTE (J4): rewritten to the NDIS estimate domain (spec §4.2), parallel to the
+// NOTE (J4): rewritten to the estimate domain (spec §4.2), parallel to the
 // invoice rewrite. Same design decisions apply: `tax` is supplied on the header
 // (computed upstream by J10); this repo only sums line totals and rounds at each
-// boundary; no NDIS price-cap / plan-window validation here (J10). Per-tenant
+// boundary; no price-cap / plan-window validation here (J10). Per-tenant
 // numbering is allocated inline via gen.MaxEstimateNumberLike inside the tx.
 
 import (

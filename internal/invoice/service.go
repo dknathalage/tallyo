@@ -24,7 +24,7 @@ type SessionLinker interface {
 }
 
 // Service orchestrates invoice reads/writes and publishes change events
-// after a successful commit. Line items pass through the NDIS validation engine
+// after a successful commit. Line items pass through the line validation engine
 // (validator) on create/update before reaching the repository.
 type Service struct {
 	repo      *InvoicesRepo
@@ -134,7 +134,7 @@ func (s *Service) ClientStats(ctx context.Context, clientUUID string) (*ClientSt
 
 // Create inserts an invoice + line items, then broadcasts on success.
 //
-// Every line passes through the NDIS validation engine (price-cap, plan-window,
+// Every line passes through the line validation engine (price-cap, plan-window,
 // taxable resolution, snapshotting) first; tax is COMPUTED from the validated
 // lines and overrides any client-supplied value (see validation.go tax note).
 // A validation failure returns a *ValidationError with field-level detail.

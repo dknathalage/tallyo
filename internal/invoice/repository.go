@@ -1,9 +1,9 @@
 package invoice
 
-// NOTE (J4): rewritten to the NDIS invoice/line-item domain (spec §4.2). The
+// NOTE (J4): rewritten to the invoice/line-item domain (spec §4.2). The
 // header no longer carries payment_terms / currency / tax_rate / tax_rate_id;
 // it carries client_id, optional payer_id, and subtotal/tax/total.
-// Line items carry NDIS fields: code, service_date, unit, unit_price, taxable,
+// Line items carry catalogue fields: code, service_date, unit, unit_price, taxable,
 // line_total, and optional item_id / custom_item_id / price_list_version_id.
 //
 // Design decisions (deferred concerns belong to J8/J10):
@@ -327,7 +327,7 @@ func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceIn
 }
 
 // totalsFromRows sums line totals from already-priced line_items rows. Tax is 0
-// (NDIS GST-free lines carry no tax; gst-bearing lines already fold tax into
+// (GST-free lines carry no tax; gst-bearing lines already fold tax into
 // their unit price upstream — same as the human invoice path).
 func totalsFromRows(rows []gen.ListLineItemsForInvoiceRow) billing.Totals {
 	var subtotal float64

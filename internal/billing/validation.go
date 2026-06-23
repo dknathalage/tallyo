@@ -1,12 +1,12 @@
 package billing
 
-// NDIS line validation engine (spec §6) — the core compliance differentiator.
+// Line validation engine (spec §6) — the core compliance differentiator.
 //
 // This unit validates and normalises invoice/estimate line items at the SERVICE
 // boundary before they reach the repository. It is shared verbatim by the
 // invoice and estimate services (estimates parallel invoices).
 //
-// For a SUPPORT-ITEM line (a line carrying an NDIS support-item code, not a
+// For a CATALOGUE line (a line carrying a price-list item code, not a
 // custom item) it enforces, in order (spec §6 steps 1-6):
 //
 //	1. resolve the catalog_version whose [effective_from, effective_to|∞] window
@@ -24,8 +24,8 @@ package billing
 // per-document totals are derived from the validated lines.
 //
 // TAX-CONTRACT DECISION (2026-06-16, for J12): tax is now COMPUTED from the
-// lines, not trusted from the client. NDIS supports are largely GST-free, so a
-// non-taxable line contributes 0 tax; every taxable line contributes
+// lines, not trusted from the client. A non-taxable catalogue line (e.g. a
+// GST-free support) contributes 0 tax; every taxable line contributes
 // Round2(line_total * defaultTaxRate). The tenant default tax rate is read from
 // tax_rates (is_default = 1); when no default exists, tax is 0. The result is
 // handed to the repository through the existing InvoiceInput.Tax /
@@ -93,9 +93,9 @@ func AsValidationError(err error) (*ValidationError, bool) {
 	return nil, false
 }
 
-// LineValidator runs the NDIS line validation engine. It depends only on the
-// global catalogue, the tenant business profile (for the zone), the tenant's
-// clients (for the plan window) and the tenant's tax rates (for the
+// LineValidator runs the line validation engine. It depends only on the
+// tenant price catalogue, the tenant business profile (for the zone), the
+// tenant's clients (for the plan window) and the tenant's tax rates (for the
 // computed tax). It holds no mutable state beyond those repositories.
 type LineValidator struct {
 	cat      *pricelist.ItemsRepo
@@ -216,7 +216,7 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planSta
 // (snapshots, pinned version, set taxable) and appending failures to ve.
 func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line.ServiceDate == "" {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for an NDIS support item"})
+		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for a catalogue item"})
 		return
 	}
 
@@ -244,9 +244,9 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 
 	// Step 3 + 4: resolve the zone price, then either assert unit_price ≤ cap
 	// (default) or, in fill mode, OVERWRITE unit_price with the cap. For a GENERIC
-	// (non-NDIS) tenant — no configured zone — the NDIS zone-cap path is SKIPPED;
+	// tenant — no configured zone — the NDIS zone-cap path is SKIPPED;
 	// instead, a coded line whose item carries a generic unit_price is filled from
-	// it when the caller supplied no positive price (mirrors the NDIS fill but uses
+	// it when the caller supplied no positive price (mirrors the zone fill but uses
 	// items.unit_price, not a zone cap). A positive caller price is always kept; an
 	// item with no unit_price keeps the caller's price (free-form).
 	if zone != "" {
@@ -281,7 +281,7 @@ func (v *LineValidator) resolveVersion(ctx context.Context, idx int, line *LineI
 		return 0, "", "", false
 	}
 	if ver == nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: fmt.Sprintf("no NDIS price catalogue is in effect for service date %s", line.ServiceDate)})
+		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: fmt.Sprintf("no price list is in effect for service date %s", line.ServiceDate)})
 		return 0, "", "", false
 	}
 	return ver.ID, ver.UUID, ver.Label, true
@@ -329,16 +329,16 @@ func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID i
 		ve.Errors = append(ve.Errors, FieldError{
 			Line:    idx,
 			Field:   "unitPrice",
-			Message: fmt.Sprintf("unit price %.2f exceeds the NDIS price cap of %.2f for zone %q", line.UnitPrice, priceCap, zone),
+			Message: fmt.Sprintf("unit price %.2f exceeds the price cap of %.2f for zone %q", line.UnitPrice, priceCap, zone),
 		})
 	}
 }
 
 // applyItemUnitPrice fills a generic coded line's unit price from the catalogue
-// item's generic unit_price (the non-NDIS pricing path). It only fills when the
+// item's generic unit_price (the no-zone pricing path). It only fills when the
 // item carries a positive unit_price AND the caller supplied none (UnitPrice ≤ 0);
 // a caller-supplied positive price is kept, and an item with no unit_price leaves
-// the line untouched (free-form). No cap is enforced — there is no NDIS zone.
+// the line untouched (free-form). No cap is enforced — there is no zone.
 func applyItemUnitPrice(line *LineItemInput, item *pricelist.Item) {
 	if line == nil || item == nil {
 		return
@@ -376,8 +376,8 @@ func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *Valid
 // identity onto the line (spec §6 step 2 + step 6). The description is filled
 // from the item name only when the caller left it blank.
 //
-// taxable is set UNCONDITIONALLY from the catalogue item: the NDIS catalogue is
-// authoritative for a support item's tax status (spec §6 step 6). A client must
+// taxable is set UNCONDITIONALLY from the catalogue item: the price catalogue is
+// authoritative for a catalogue item's tax status (spec §6 step 6). A client must
 // not be able to flip a taxable item to non-taxable (or vice versa) by sending
 // its own taxable flag, which would corrupt the computed tax. Custom-item lines
 // keep their client-controlled taxable (they never reach this function).
@@ -393,7 +393,7 @@ func snapshotSupportItem(line *LineItemInput, versionUUID string, item *pricelis
 	line.Taxable = item.Taxable
 }
 
-// isSupportItemLine reports whether a line is an NDIS support-item line (it
+// isSupportItemLine reports whether a line is a catalogue line (it
 // carries a code and is not a custom item). Custom-item lines carry a
 // CustomItemID and no catalogue code.
 func isSupportItemLine(line *LineItemInput) bool {
@@ -422,8 +422,8 @@ func computeLineTax(items []LineItemInput, rate float64) float64 {
 	return Round2(tax)
 }
 
-// tenantZone reads the tenant's configured NDIS zone. It returns "" when no
-// business profile exists or its zone is unset — a GENERIC (non-NDIS) tenant.
+// tenantZone reads the tenant's configured NDIS pricing zone. It returns "" when
+// no business profile exists or its zone is unset — a generic tenant.
 // An empty zone tells the caller to SKIP the zone-price / cap-assert block
 // entirely (data-presence gating, Phase 6); a configured zone runs the full
 // NDIS price-cap path exactly as before.
