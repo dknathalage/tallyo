@@ -168,7 +168,7 @@ func Run(cfg Config, version string) error {
 	clientSvc := client.NewService(tdb, hub)
 	customItemSvc := customitem.NewService(tdb, hub)
 	priceListSvc := pricelist.NewService(tdb)
-	priceListIngestSvc := pricelist.NewIngestService(tdb, hub)
+	priceListImportSvc := pricelist.NewImportService(tdb, hub)
 	sessionSvc := session.NewService(tdb, control, hub, invoice.NewInvoices(tdb))
 	invoiceSvc := invoice.NewService(tdb, control, hub, sessionSvc)
 	estimateSvc := estimate.NewService(tdb, control, hub)
@@ -214,7 +214,7 @@ func Run(cfg Config, version string) error {
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
 		Clients:         client.NewHandler(clientSvc),
 		CustomItems:     customitem.NewHandler(customItemSvc),
-		PriceList:       pricelist.NewHandler(priceListSvc, priceListIngestSvc),
+		PriceList:       pricelist.NewHandler(priceListSvc, priceListImportSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
 		Sessions:        session.NewHandler(sessionSvc, sessionDivider),
 		Estimates:       estimate.NewHandler(estimateSvc),

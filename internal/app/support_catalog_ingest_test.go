@@ -3,26 +3,25 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/dknathalage/tallyo/internal/httpx"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
-	"github.com/xuri/excelize/v2"
 )
 
-// newCatalogIngestServer wires the per-tenant catalogue ingest route behind
+// newPriceListImportServer wires the per-tenant price-list import routes behind
 // httpx.RequireSession + httpx.RequireRole("owner","admin"). seedTenantOwner
 // creates the "o@x.com" owner; we additionally seed a non-owner/admin "member"
 // so the 403 path is exercised.
-func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
+func newPriceListImportServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
-	conn := openMigratedDB(t, "catalog_ingest.db")
+	conn := openMigratedDB(t, "pricelist_import.db")
 	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 
 	// A non-owner/admin tenant member.
@@ -40,7 +39,7 @@ func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 	authH := NewAuthHandler(sm, users, tenants)
 	scH := pricelist.NewHandler(
 		pricelist.NewService(conn),
-		pricelist.NewIngestService(conn, hub),
+		pricelist.NewImportService(conn, hub),
 	)
 
 	router := chi.NewRouter()
@@ -50,7 +49,8 @@ func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Get("/price-list/versions", scH.ListVersions)
-			pr.With(httpx.RequireRole("owner", "admin")).Post("/price-list/versions", scH.Ingest)
+			pr.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/inspect", scH.Inspect)
+			pr.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/commit", scH.Commit)
 		})
 	})
 
@@ -59,52 +59,30 @@ func newCatalogIngestServer(t *testing.T) (*httptest.Server, string) {
 	return srv, tenantUUID
 }
 
-// catalogXLSXBytes builds a minimal NDIS-Support-Catalogue-shaped XLSX.
-func catalogXLSXBytes(t *testing.T) []byte {
-	t.Helper()
-	f := excelize.NewFile()
-	defer func() { _ = f.Close() }()
-	const sheet = "Sheet1"
-	_ = f.SetSheetRow(sheet, "A1", &[]any{
-		"Support Item Number", "Support Item Name", "Unit",
-		"Support Category", "Registration Group Name",
-		"National", "Remote", "Very Remote",
-	})
-	_ = f.SetSheetRow(sheet, "A2", &[]any{
-		"01_011_0107_1_1", "Assistance With Self-Care", "Hour",
-		"Core", "Daily Living", "$67.56", "$94.58", "$101.34",
-	})
-	buf, err := f.WriteToBuffer()
-	if err != nil {
-		t.Fatalf("WriteToBuffer: %v", err)
-	}
-	return buf.Bytes()
-}
+const priceCSV = "Product,SKU,Price\nWidget,W1,9.99\nGadget,G1,4.50\n"
 
-// uploadCatalog posts a multipart catalogue upload and returns the response.
-func uploadCatalog(t *testing.T, c *http.Client, base, uuid string, xlsx []byte, label, effectiveFrom string) *http.Response {
+// postMultipart posts a multipart form with the CSV file plus the given extra
+// text fields.
+func postMultipart(t *testing.T, c *http.Client, url string, csv []byte, fields map[string]string) *http.Response {
 	t.Helper()
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
-	if label != "" {
-		_ = w.WriteField("label", label)
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
 	}
-	if effectiveFrom != "" {
-		_ = w.WriteField("effectiveFrom", effectiveFrom)
-	}
-	if xlsx != nil {
-		fw, err := w.CreateFormFile("file", "catalogue.xlsx")
+	if csv != nil {
+		fw, err := w.CreateFormFile("file", "items.csv")
 		if err != nil {
 			t.Fatalf("CreateFormFile: %v", err)
 		}
-		if _, err := fw.Write(xlsx); err != nil {
+		if _, err := fw.Write(csv); err != nil {
 			t.Fatalf("write file part: %v", err)
 		}
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
-	req, err := http.NewRequest("POST", base+"/api/t/"+uuid+"/price-list/versions", &body)
+	req, err := http.NewRequest("POST", url, &body)
 	if err != nil {
 		t.Fatalf("new req: %v", err)
 	}
@@ -116,58 +94,115 @@ func uploadCatalog(t *testing.T, c *http.Client, base, uuid string, xlsx []byte,
 	return resp
 }
 
-func TestCatalogIngestOwnerSucceeds(t *testing.T) {
-	srv, uuid := newCatalogIngestServer(t)
+func TestPriceListInspectOwnerReturnsHeaders(t *testing.T) {
+	srv, uuid := newPriceListImportServer(t)
 	c := loggedInClient(t, srv.URL) // o@x.com is the tenant owner
-	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "2025-26 v1.1", "2025-07-01")
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/inspect", []byte(priceCSV), nil)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("admin upload: want 201 got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("inspect: want 200 got %d", resp.StatusCode)
 	}
 	var out struct {
-		VersionID  int64 `json:"versionId"`
-		ItemCount  int   `json:"itemCount"`
-		PriceCount int   `json:"priceCount"`
+		Headers    []string            `json:"headers"`
+		SampleRows []map[string]string `json:"sampleRows"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if out.VersionID <= 0 || out.ItemCount != 1 || out.PriceCount != 3 {
-		t.Fatalf("summary = %+v, want versionId>0 itemCount=1 priceCount=3", out)
+	if len(out.Headers) != 3 || out.Headers[0] != "Product" {
+		t.Fatalf("headers = %v, want [Product SKU Price]", out.Headers)
+	}
+	if len(out.SampleRows) != 2 {
+		t.Fatalf("sampleRows = %d, want 2", len(out.SampleRows))
+	}
+
+	// Inspect persists nothing: versions list stays empty.
+	vr, err := c.Get(srv.URL + "/api/t/" + uuid + "/price-list/versions")
+	if err != nil {
+		t.Fatalf("GET versions: %v", err)
+	}
+	defer func() { _ = vr.Body.Close() }()
+	var versions []map[string]any
+	if err := json.NewDecoder(vr.Body).Decode(&versions); err != nil {
+		t.Fatalf("decode versions: %v", err)
+	}
+	if len(versions) != 0 {
+		t.Fatalf("inspect persisted %d versions, want 0", len(versions))
 	}
 }
 
-func TestCatalogIngestNonAdminForbidden(t *testing.T) {
-	srv, uuid := newCatalogIngestServer(t)
+func TestPriceListCommitOwnerCreatesVersion(t *testing.T) {
+	srv, uuid := newPriceListImportServer(t)
+	c := loggedInClient(t, srv.URL)
+	mapping := `{"Product":"name","SKU":"code","Price":"unitPrice"}`
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/commit", []byte(priceCSV), map[string]string{
+		"label": "Q1 catalogue", "mapping": mapping,
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("commit: want 201 got %d", resp.StatusCode)
+	}
+	var out struct {
+		VersionID int64 `json:"versionId"`
+		ItemCount int   `json:"itemCount"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.VersionID <= 0 || out.ItemCount != 2 {
+		t.Fatalf("summary = %+v, want versionId>0 itemCount=2", out)
+	}
+
+	// The created version is queryable.
+	vr, err := c.Get(srv.URL + "/api/t/" + uuid + "/price-list/versions")
+	if err != nil {
+		t.Fatalf("GET versions: %v", err)
+	}
+	defer func() { _ = vr.Body.Close() }()
+	var versions []map[string]any
+	if err := json.NewDecoder(vr.Body).Decode(&versions); err != nil {
+		t.Fatalf("decode versions: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Fatalf("versions = %d, want 1", len(versions))
+	}
+}
+
+func TestPriceListImportNonAdminForbidden(t *testing.T) {
+	srv, uuid := newPriceListImportServer(t)
 	c := jarClient(t)
 	lr := login(t, c, srv.URL, "member@x.com", "password1")
 	_ = lr.Body.Close()
 	if lr.StatusCode != http.StatusOK {
 		t.Fatalf("member login: want 200 got %d", lr.StatusCode)
 	}
-	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "x", "2025-07-01")
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/inspect", []byte(priceCSV), nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("non-admin upload: want 403 got %d", resp.StatusCode)
+		t.Fatalf("non-admin inspect: want 403 got %d", resp.StatusCode)
 	}
 }
 
-func TestCatalogIngestUnauthenticated401(t *testing.T) {
-	srv, uuid := newCatalogIngestServer(t)
+func TestPriceListImportUnauthenticated401(t *testing.T) {
+	srv, uuid := newPriceListImportServer(t)
 	c := jarClient(t)
-	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "x", "2025-07-01")
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/commit", []byte(priceCSV), map[string]string{
+		"label": "x", "mapping": `{"Product":"name"}`,
+	})
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("anon upload: want 401 got %d", resp.StatusCode)
+		t.Fatalf("anon commit: want 401 got %d", resp.StatusCode)
 	}
 }
 
-func TestCatalogIngestMissingFieldsRejected(t *testing.T) {
-	srv, uuid := newCatalogIngestServer(t)
+func TestPriceListCommitMissingLabelRejected(t *testing.T) {
+	srv, uuid := newPriceListImportServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := uploadCatalog(t, c, srv.URL, uuid, catalogXLSXBytes(t), "", "")
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/commit", []byte(priceCSV), map[string]string{
+		"mapping": `{"Product":"name"}`,
+	})
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("missing fields: want 400 got %d", resp.StatusCode)
+		t.Fatalf("missing label: want 400 got %d", resp.StatusCode)
 	}
 }

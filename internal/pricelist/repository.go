@@ -265,14 +265,17 @@ func (r *ItemsRepo) ListPrices(ctx context.Context, itemID int64) ([]*ItemPrice,
 
 // ImportItem is one parsed item row destined for the ingest. Prices maps
 // zone → cap; a nil cap denotes a quotable item (no fixed cap). Zones absent
-// from the map get no price row.
+// from the map get no price row. UnitPrice is the generic per-unit price (nil
+// when unset); the generic upload-and-map import sets UnitPrice and leaves
+// Prices empty, while the legacy zoned helpers set Prices and leave UnitPrice nil.
 type ImportItem struct {
-	Code     string
-	Name     string
-	Unit     string
-	Category string
-	Taxable  bool
-	Prices   map[string]*float64 // zone → cap (nil = quotable)
+	Code      string
+	Name      string
+	Unit      string
+	Category  string
+	UnitPrice *float64
+	Taxable   bool
+	Prices    map[string]*float64 // zone → cap (nil = quotable)
 }
 
 // IngestResult summarises a completed price-list ingest.
@@ -325,6 +328,10 @@ func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFile
 		priceCount := 0
 		for i := range items { // bounded by len(items)
 			it := items[i]
+			unitPrice := sql.NullFloat64{}
+			if it.UnitPrice != nil {
+				unitPrice = sql.NullFloat64{Float64: *it.UnitPrice, Valid: true}
+			}
 			item, e := q.UpsertItem(ctx, gen.UpsertItemParams{
 				Uuid:               uuid.NewString(),
 				PriceListVersionID: ver.ID,
@@ -332,7 +339,7 @@ func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFile
 				Name:               it.Name,
 				Unit:               db.NzMaybe(it.Unit),
 				Category:           db.NzMaybe(it.Category),
-				UnitPrice:          sql.NullFloat64{},
+				UnitPrice:          unitPrice,
 				Taxable:            db.B2i(it.Taxable),
 				Metadata:           sql.NullString{String: "{}", Valid: true},
 			})

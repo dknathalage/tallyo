@@ -3,9 +3,9 @@ package pricelist
 import (
 	"context"
 	"fmt"
-	"github.com/dknathalage/tallyo/internal/db"
-	"strings"
+	"time"
 
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/importer"
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
@@ -13,7 +13,7 @@ import (
 // Service exposes read access to the tenant-owned price list
 // (price_list_versions / items / item_prices).
 //
-// Owner/admin write access (XLSX ingest) lives in IngestService below.
+// Owner/admin write access (upload-and-map import) lives in ImportService below.
 type Service struct {
 	repo *ItemsRepo
 }
@@ -135,220 +135,125 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate, zone st
 	return out, nil
 }
 
-// IngestService is the owner/admin WRITE path for the tenant-owned price list: it
-// parses a fixed-format XLSX (keyed to known headers — no column-mapping wizard)
-// and bulk-loads a new price_list_version + items + per-zone prices in one
-// transaction.
-type IngestService struct {
+// ImportService is the owner/admin WRITE path for the tenant-owned price list. It
+// is a generic two-step "upload a file and map columns" importer: Inspect reads
+// the headers + a sample WITHOUT persisting, then ImportMapped applies a
+// source-column→target-field map and bulk-loads a new price_list_version + items
+// in ONE transaction.
+type ImportService struct {
 	repo *ItemsRepo
 	hub  *realtime.Hub
 }
 
-// NewIngestService constructs the ingest service. A nil hub is a programmer error.
-func NewIngestService(db db.Executor, hub *realtime.Hub) *IngestService {
+// NewImportService constructs the import service. A nil hub is a programmer error.
+func NewImportService(db db.Executor, hub *realtime.Hub) *ImportService {
 	if hub == nil {
-		panic("pricelist.NewIngestService: nil hub")
+		panic("pricelist.NewImportService: nil hub")
 	}
-	return &IngestService{repo: NewItems(db), hub: hub}
+	return &ImportService{repo: NewItems(db), hub: hub}
 }
 
-// IngestSummary is the JSON-friendly result of a price-list ingest.
-type IngestSummary struct {
+// maxSampleRows caps the preview returned by Inspect so the payload stays small.
+const maxSampleRows = 10
+
+// InspectResult is the headers + a capped sample of data rows from an uploaded
+// file. It is used by the SPA to render one mapping <select> per header and a
+// preview of the mapped data. Inspect persists nothing.
+type InspectResult struct {
+	Headers    []string            `json:"headers"`
+	SampleRows []map[string]string `json:"sampleRows"`
+}
+
+// Inspect parses an uploaded file and returns its headers plus a sample of up to
+// maxSampleRows data rows, WITHOUT writing anything to the database. fileType is
+// "csv" or "xlsx"; sheetName/headerRow are forwarded to importer.ParseRows.
+func (s *ImportService) Inspect(data []byte, fileType, sheetName string, headerRow int) (*InspectResult, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("inspect: empty file")
+	}
+	headers, rows, err := importer.ParseRows(data, fileType, sheetName, headerRow)
+	if err != nil {
+		return nil, fmt.Errorf("inspect: %w", err)
+	}
+	sample := rows
+	if len(sample) > maxSampleRows {
+		sample = sample[:maxSampleRows]
+	}
+	return &InspectResult{Headers: headers, SampleRows: sample}, nil
+}
+
+// ImportSummary is the JSON-friendly result of a price-list import.
+type ImportSummary struct {
 	VersionID     int64  `json:"versionId"`
 	VersionUUID   string `json:"versionUuid"`
 	Label         string `json:"label"`
 	EffectiveFrom string `json:"effectiveFrom"`
 	ItemCount     int    `json:"itemCount"`
-	PriceCount    int    `json:"priceCount"`
 }
 
-// Canonical Support Catalogue column headers (normalised: lower-cased, internal
-// whitespace collapsed). DEFERRED: this XLSX parser is the legacy NDIS shape,
-// retained for the per-tenant ingest path wired in a later phase. The geographic
-// price-limit columns map to our three zones.
-const (
-	colCode       = "support item number"
-	colName       = "support item name"
-	colUnit       = "unit"
-	colCategory   = "support category"
-	colRegGroup   = "registration group name"
-	colNational   = "national"
-	colRemote     = "remote"
-	colVeryRemote = "very remote"
-)
-
-// nationalPriceColumns are the headers the standard ("national") zone price is
-// read from, in precedence order. The legacy catalogue has no single "National"
-// column — the standard price lives in per-state columns that are all identical,
-// so any present one is the national rate. "national" is tried first to stay
-// forward-compatible if the source reintroduces that column.
-var nationalPriceColumns = []string{
-	colNational, "act", "nsw", "nt", "qld", "sa", "tas", "vic", "wa",
-}
-
-// IngestXLSX parses fixed-format XLSX bytes and loads a new price-list version.
-// The WHOLE upload is rejected (no partial state) when a required column is
-// missing or zero data rows parse. Broadcasts an SSE event AFTER the commit
-// succeeds.
-func (s *IngestService) IngestXLSX(ctx context.Context, data []byte, label, effectiveFrom, sourceFilename string) (*IngestSummary, error) {
+// ImportMapped parses an uploaded file, applies the source-column→target-field
+// mapping, and loads a new price-list version + its items in ONE transaction. The
+// WHOLE upload is rejected (no partial state) when the required "name" target is
+// unmapped or zero data rows parse. The new version is effective from today.
+// Broadcasts an SSE event AFTER the commit succeeds.
+//
+// ponytail: single price column; multi-zone NDIS cap import later — generic
+// import sets unit_price + category and writes no item_prices.
+func (s *ImportService) ImportMapped(ctx context.Context, data []byte, fileType, sheetName string, headerRow int, mapping map[string]string, label string) (*ImportSummary, error) {
 	if label == "" {
-		return nil, fmt.Errorf("ingest: label required")
+		return nil, fmt.Errorf("import: label required")
 	}
-	if effectiveFrom == "" {
-		return nil, fmt.Errorf("ingest: effective_from required")
+	if len(data) == 0 {
+		return nil, fmt.Errorf("import: empty file")
 	}
-
-	items, err := ParseXLSX(data)
+	headers, rows, err := importer.ParseRows(data, fileType, sheetName, headerRow)
 	if err != nil {
-		return nil, fmt.Errorf("ingest: %w", err)
+		return nil, fmt.Errorf("import: %w", err)
+	}
+	parsed, err := importer.ApplyMapping(headers, rows, mapping)
+	if err != nil {
+		return nil, fmt.Errorf("import: %w", err)
 	}
 
-	res, err := s.repo.Ingest(ctx, label, effectiveFrom, sourceFilename, items)
+	items := make([]ImportItem, 0, len(parsed))
+	for i := range parsed { // bounded by len(parsed)
+		p := parsed[i]
+		var unitPrice *float64
+		if p.UnitPrice != 0 {
+			v := p.UnitPrice
+			unitPrice = &v
+		}
+		// A generic import has no item code column requirement; fall back to the
+		// name as the code so the (version, code) uniqueness key stays populated.
+		code := p.Code
+		if code == "" {
+			code = p.Name
+		}
+		items = append(items, ImportItem{
+			Code:      code,
+			Name:      p.Name,
+			Unit:      p.Unit,
+			Category:  p.Category,
+			UnitPrice: unitPrice,
+			Taxable:   p.Taxable,
+			// Prices intentionally empty: generic import writes no zone caps.
+		})
+	}
+
+	effectiveFrom := time.Now().UTC().Format("2006-01-02")
+	res, err := s.repo.Ingest(ctx, label, effectiveFrom, "", items)
 	if err != nil {
 		return nil, err
 	}
 
 	// Broadcast with the GlobalTenantID sentinel so the event reaches every open
-	// SSE stream (the ingest path has no request tenant in scope here).
-	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "price_list_version", UUID: res.Version.UUID, Action: "ingest"})
-	return &IngestSummary{
+	// SSE stream (the import path has no request tenant in scope here).
+	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "price_list_version", UUID: res.Version.UUID, Action: "import"})
+	return &ImportSummary{
 		VersionID:     res.Version.ID,
 		VersionUUID:   res.Version.UUID,
 		Label:         res.Version.Label,
 		EffectiveFrom: res.Version.EffectiveFrom,
 		ItemCount:     res.ItemCount,
-		PriceCount:    res.PriceCount,
 	}, nil
-}
-
-// ParseXLSX parses fixed-format XLSX bytes into the ImportItem domain values that
-// repo.Ingest persists. The whole upload is rejected (no partial state) when a
-// required column is missing or zero data rows parse. Retained for the deferred
-// per-tenant ingest path (IngestXLSX).
-func ParseXLSX(data []byte) ([]ImportItem, error) {
-	if len(data) == 0 {
-		return nil, fmt.Errorf("empty file")
-	}
-	headers, rows, err := importer.ParseRows(data, "xlsx", "", 1)
-	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
-	}
-
-	// Build a normalised header→original-key index so cell lookups tolerate
-	// case/whitespace differences in the source file.
-	norm := make(map[string]string, len(headers))
-	for i := range headers { // bounded by len(headers)
-		norm[normaliseHeader(headers[i])] = headers[i]
-	}
-
-	required := []string{colCode, colName}
-	for i := range required { // bounded by len(required)
-		if _, ok := norm[required[i]]; !ok {
-			return nil, fmt.Errorf("missing required column %q", required[i])
-		}
-	}
-
-	items, err := buildImportItems(rows, norm)
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("no data rows parsed")
-	}
-	return items, nil
-}
-
-// buildImportItems maps parsed rows to ImportItem values, skipping rows with a
-// blank item code. Bounded by len(rows).
-func buildImportItems(rows []map[string]string, norm map[string]string) ([]ImportItem, error) {
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("file has no data rows")
-	}
-	cell := func(row map[string]string, canonical string) string {
-		key, ok := norm[canonical]
-		if !ok {
-			return ""
-		}
-		return strings.TrimSpace(row[key])
-	}
-	out := make([]ImportItem, 0, len(rows))
-	for i := range rows { // bounded by len(rows)
-		row := rows[i]
-		code := cell(row, colCode)
-		if code == "" {
-			continue // skip blank/spacer rows
-		}
-		it := ImportItem{
-			Code:     code,
-			Name:     cell(row, colName),
-			Unit:     cell(row, colUnit),
-			Category: cell(row, colCategory),
-			// NDIS supports are GST-free by default, so taxable is false; the
-			// standard catalogue export carries no taxable column.
-			Taxable: false,
-			Prices:  zonePrices(row, norm),
-		}
-		out = append(out, it)
-	}
-	return out, nil
-}
-
-// zonePrices reads the three geographic price-limit columns into a zone→cap map.
-// A blank / non-numeric / "Quote" cell yields a nil cap (quotable item); a zone
-// column absent from the sheet yields no entry for that zone.
-func zonePrices(row map[string]string, norm map[string]string) map[string]*float64 {
-	zones := [3]struct {
-		zone   string
-		header string
-	}{
-		{"national", colNational},
-		{"remote", colRemote},
-		{"very_remote", colVeryRemote},
-	}
-	out := make(map[string]*float64, 3)
-	for i := range zones { // bounded: exactly 3 zones
-		key, ok := norm[zones[i].header]
-		if !ok {
-			continue
-		}
-		raw := strings.TrimSpace(row[key])
-		out[zones[i].zone] = parseCap(raw)
-	}
-	// The standard price has no single "national" column; read it from the first
-	// available per-state column (all states carry the identical national rate).
-	if _, have := out["national"]; !have {
-		for i := range nationalPriceColumns { // bounded by len(nationalPriceColumns)
-			key, ok := norm[nationalPriceColumns[i]]
-			if !ok {
-				continue
-			}
-			if raw := strings.TrimSpace(row[key]); raw != "" {
-				out["national"] = parseCap(raw)
-				break
-			}
-		}
-	}
-	return out
-}
-
-// parseCap returns a fixed cap, or nil for a quotable item. A blank cell, a
-// non-numeric cell, or one containing "quote" is treated as quotable (nil).
-func parseCap(raw string) *float64 {
-	if raw == "" {
-		return nil
-	}
-	if strings.Contains(strings.ToLower(raw), "quote") {
-		return nil
-	}
-	v := importer.ParseFloat(raw)
-	if v <= 0 {
-		return nil // unparseable/zero → quotable
-	}
-	return &v
-}
-
-// normaliseHeader lower-cases a header and collapses internal whitespace so the
-// fixed parser tolerates spacing/case noise in the source spreadsheet.
-func normaliseHeader(h string) string {
-	return strings.Join(strings.Fields(strings.ToLower(h)), " ")
 }

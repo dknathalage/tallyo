@@ -41,7 +41,7 @@ type Deps struct {
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
 	Clients         *client.Handler          // client CRUD + bulk-delete
 	CustomItems     *customitem.Handler      // per-tenant custom-item CRUD + bulk-delete
-	PriceList       *pricelist.Handler       // per-tenant price list (reads + owner/admin ingest)
+	PriceList       *pricelist.Handler       // per-tenant price list (reads + owner/admin upload-and-map import)
 	Invoices        *invoice.Handler         // invoice CRUD, status, bulk, per-client stats
 	Sessions        *session.Handler         // session lifecycle, billing suggestions, CRUD
 	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert

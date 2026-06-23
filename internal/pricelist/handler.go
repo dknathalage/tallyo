@@ -1,9 +1,11 @@
 package pricelist
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/go-chi/chi/v5"
@@ -11,20 +13,20 @@ import (
 
 // Handler serves access to the tenant-owned price list (versions, items, zone
 // prices). It is tenant-scoped: each tenant owns and populates its own price
-// list. Reads are open to any authenticated tenant user; the XLSX ingest (write)
-// is gated to owner/admin via Ingest.
+// list. Reads are open to any authenticated tenant user; the upload-and-map
+// import (write) is gated to owner/admin.
 type Handler struct {
-	svc    *Service
-	ingest *IngestService
+	svc     *Service
+	import_ *ImportService
 }
 
-// NewHandler constructs the handler. A nil svc is a programmer error. ingest may
-// be nil when the upload route is not mounted.
-func NewHandler(svc *Service, ingest *IngestService) *Handler {
+// NewHandler constructs the handler. A nil svc is a programmer error. imp may be
+// nil when the import routes are not mounted.
+func NewHandler(svc *Service, imp *ImportService) *Handler {
 	if svc == nil {
 		panic("pricelist.NewHandler: nil svc")
 	}
-	return &Handler{svc: svc, ingest: ingest}
+	return &Handler{svc: svc, import_: imp}
 }
 
 // Routes registers the price-list routes on r. Mounted inside the authenticated
@@ -33,64 +35,103 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/price-list/versions", h.ListVersions)
 	r.Get("/price-list/versions/{versionUUID}/items", h.ListItems)
 	r.Get("/price-list/items/{itemUUID}/prices", h.ListPrices)
-	// DEFERRED: price-list XLSX ingest. Route reserved + wired (ParseXLSX is
-	// retained), gated to owner/admin like other tenant resources. No new upload
-	// UI this pass.
-	r.With(httpx.RequireRole("owner", "admin")).Post("/price-list/versions", h.Ingest)
+	// Generic two-step upload-and-map import, owner/admin only.
+	r.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/inspect", h.Inspect)
+	r.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/commit", h.Commit)
 }
 
 // maxPriceListUpload caps the multipart price-list upload (a few MB; 32 MiB is a
 // generous safety ceiling).
 const maxPriceListUpload = 32 << 20
 
-// Ingest accepts a multipart XLSX upload (field "file") plus "label" and
-// "effectiveFrom" form fields and loads a new price-list version. Owner/admin
-// only (gated by RequireRole at the route). Returns the created version
-// summary as JSON. The whole upload is rejected (400) when parsing fails or a
-// required column is missing — no partial version is created (the tx rolls back).
-func (h *Handler) Ingest(w http.ResponseWriter, r *http.Request) {
-	if h.ingest == nil {
-		httpx.WriteError(w, http.StatusNotFound, "ingest not available")
-		return
-	}
-	// Cap the request body before parsing to bound memory.
+// readUpload parses the multipart form and returns the uploaded file bytes plus
+// the file type ("csv"/"xlsx" inferred from the filename), header row, and sheet
+// name. It writes the error response itself and returns ok=false on failure.
+func readUpload(w http.ResponseWriter, r *http.Request) (data []byte, fileType, sheetName string, headerRow int, ok bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxPriceListUpload)
 	if err := r.ParseMultipartForm(maxPriceListUpload); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid or oversized upload")
-		return
+		return nil, "", "", 0, false
 	}
-
-	label := r.FormValue("label")
-	effectiveFrom := r.FormValue("effectiveFrom")
-	if label == "" || effectiveFrom == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "label and effectiveFrom are required")
-		return
-	}
-
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "file is required")
-		return
+		return nil, "", "", 0, false
 	}
 	defer func() { _ = file.Close() }()
-
-	data, err := io.ReadAll(file)
+	data, err = io.ReadAll(file)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "could not read upload")
-		return
+		return nil, "", "", 0, false
 	}
 	if len(data) == 0 {
 		httpx.WriteError(w, http.StatusBadRequest, "uploaded file is empty")
+		return nil, "", "", 0, false
+	}
+	fileType = "csv"
+	if header != nil && len(header.Filename) >= 5 && header.Filename[len(header.Filename)-5:] == ".xlsx" {
+		fileType = "xlsx"
+	}
+	sheetName = r.FormValue("sheetName")
+	headerRow = 1
+	if hr := r.FormValue("headerRow"); hr != "" {
+		if n, err := strconv.Atoi(hr); err == nil && n >= 1 {
+			headerRow = n
+		}
+	}
+	return data, fileType, sheetName, headerRow, true
+}
+
+// Inspect accepts a multipart upload (field "file", optional "headerRow"/
+// "sheetName") and returns the parsed headers + a capped sample. Persists
+// nothing. Owner/admin only (gated at the route).
+func (h *Handler) Inspect(w http.ResponseWriter, r *http.Request) {
+	if h.import_ == nil {
+		httpx.WriteError(w, http.StatusNotFound, "import not available")
 		return
 	}
-
-	filename := ""
-	if header != nil {
-		filename = header.Filename
+	data, fileType, sheetName, headerRow, ok := readUpload(w, r)
+	if !ok {
+		return
 	}
-	summary, err := h.ingest.IngestXLSX(r.Context(), data, label, effectiveFrom, filename)
+	res, err := h.import_.Inspect(data, fileType, sheetName, headerRow)
 	if err != nil {
-		// Parse/validation failures are the client's problem (bad file shape).
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+// Commit accepts a multipart upload (field "file") plus a "mapping" JSON object
+// (sourceHeader→targetField) and a "label", and loads a new price-list version.
+// The whole upload is rejected (400) when parsing/mapping fails — no partial
+// version is created (the tx rolls back). Owner/admin only (gated at the route).
+func (h *Handler) Commit(w http.ResponseWriter, r *http.Request) {
+	if h.import_ == nil {
+		httpx.WriteError(w, http.StatusNotFound, "import not available")
+		return
+	}
+	data, fileType, sheetName, headerRow, ok := readUpload(w, r)
+	if !ok {
+		return
+	}
+	label := r.FormValue("label")
+	if label == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "label is required")
+		return
+	}
+	mappingRaw := r.FormValue("mapping")
+	if mappingRaw == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "mapping is required")
+		return
+	}
+	var mapping map[string]string
+	if err := json.Unmarshal([]byte(mappingRaw), &mapping); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "mapping must be a JSON object")
+		return
+	}
+	summary, err := h.import_.ImportMapped(r.Context(), data, fileType, sheetName, headerRow, mapping, label)
+	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}

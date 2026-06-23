@@ -27,7 +27,7 @@ func newCustomItemServer(t *testing.T) (*httptest.Server, string) {
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
 	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
-	scH := pricelist.NewHandler(pricelist.NewService(conn), pricelist.NewIngestService(conn, hub))
+	scH := pricelist.NewHandler(pricelist.NewService(conn), pricelist.NewImportService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
