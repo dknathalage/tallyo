@@ -184,28 +184,6 @@ func TestInvoiceCreateOverCapReturns422(t *testing.T) {
 	assertValidationEnvelope(t, resp)
 }
 
-func TestInvoiceCreateOutOfPlanReturns422(t *testing.T) {
-	srv, conn, uuid, _ := newValidationServer(t)
-	c := loggedInClient(t, srv.URL)
-	// Catalogue window is wide; the client plan ends 2025-12-31.
-	seedNationalCap(t, conn, "2025-01-01", "2026-12-31", "01_011", 100)
-	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2025-12-31")
-
-	body, err := json.Marshal(map[string]any{
-		"clientId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
-		"lineItems": []map[string]any{
-			// Service date is after the plan end (but in a valid catalogue window).
-			{"code": "01_011", "serviceDate": "2026-02-01", "quantity": 1, "unitPrice": 50, "sortOrder": 0},
-		},
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invoices", string(body))
-	defer func() { _ = resp.Body.Close() }()
-	assertValidationEnvelope(t, resp)
-}
-
 func TestEstimateCreateOverCapReturns422(t *testing.T) {
 	srv, conn, uuid, tenantID := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)

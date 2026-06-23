@@ -16,10 +16,9 @@ package billing
 //	3. look up the price_cap for the TENANT's configured zone (business_profile);
 //	4. assert unit_price ≤ price_cap (skipped when the cap is NULL — a quotable
 //	   item, spec §6 step 4);
-//	5. assert service_date ∈ [client.plan_start, client.plan_end];
-//	6. set taxable from the support item (the catalogue is authoritative).
+//	5. set taxable from the support item (the catalogue is authoritative).
 //
-// For a CUSTOM-ITEM line it skips steps 1-5 and only checks quantity ≥ 0 and
+// For a CUSTOM-ITEM line it skips steps 1-4 and only checks quantity ≥ 0 and
 // unit_price ≥ 0. Either way the line_total is recomputed (Round2) and the
 // per-document totals are derived from the validated lines.
 //
@@ -45,7 +44,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/businessprofile"
-	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
@@ -94,21 +92,20 @@ func AsValidationError(err error) (*ValidationError, bool) {
 }
 
 // LineValidator runs the line validation engine. It depends only on the
-// tenant price catalogue, the tenant business profile (for the zone), the
-// tenant's clients (for the plan window) and the tenant's tax rates (for the
-// computed tax). It holds no mutable state beyond those repositories.
+// tenant price catalogue, the tenant business profile (for the zone) and the
+// tenant's tax rates (for the computed tax). It holds no mutable state beyond
+// those repositories.
 type LineValidator struct {
 	cat      *pricelist.ItemsRepo
 	profiles *businessprofile.BusinessProfileRepo
-	clients  *client.ClientsRepo
 	taxRates *taxrate.TaxRatesRepo
 }
 
 // NewLineValidator constructs the engine. ALL reads — catalogue/price list,
-// business profile, clients and tax rates — come from the TENANT DB (the price
-// list is tenant-owned). The control handle is retained for signature
-// compatibility but no longer used for catalogue reads. In single-DB mode
-// (tests) pass the same handle for both. Nil handles are a programmer error.
+// business profile and tax rates — come from the TENANT DB (the price list is
+// tenant-owned). The control handle is retained for signature compatibility but
+// no longer used for catalogue reads. In single-DB mode (tests) pass the same
+// handle for both. Nil handles are a programmer error.
 func NewLineValidator(tenant, control db.Executor) *LineValidator {
 	if tenant == nil || control == nil {
 		panic("NewLineValidator: nil db")
@@ -116,7 +113,6 @@ func NewLineValidator(tenant, control db.Executor) *LineValidator {
 	return &LineValidator{
 		cat:      pricelist.NewItems(tenant),
 		profiles: businessprofile.NewBusinessProfile(tenant),
-		clients:  client.NewClients(tenant),
 		taxRates: taxrate.NewTaxRates(tenant),
 	}
 }
@@ -165,10 +161,6 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 	if err != nil {
 		return nil, err
 	}
-	planStart, planEnd, err := v.planWindow(ctx, tenantID, clientID)
-	if err != nil {
-		return nil, err
-	}
 	taxRate, err := v.defaultTaxRate(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -178,7 +170,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 	copy(out, items)
 	var ve ValidationError
 	for i := range out { // bounded by len(out)
-		v.validateLine(ctx, i, zone, planStart, planEnd, &out[i], &ve, fillPrice)
+		v.validateLine(ctx, i, zone, &out[i], &ve, fillPrice)
 	}
 	if len(ve.Errors) > 0 {
 		return nil, &ve
@@ -192,7 +184,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 // failures to ve. Support-item lines run the full catalogue flow; custom-item
 // lines run only the non-negativity checks. Errors are accumulated, not thrown,
 // so the caller collects every problem in one pass.
-func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
+func (v *LineValidator) validateLine(ctx context.Context, idx int, zone string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line == nil {
 		return
 	}
@@ -209,12 +201,12 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, zone, planSta
 		return
 	}
 
-	v.validateSupportLine(ctx, idx, zone, planStart, planEnd, line, ve, fillPrice)
+	v.validateSupportLine(ctx, idx, zone, line, ve, fillPrice)
 }
 
-// validateSupportLine runs steps 1-6 for a support-item line, mutating the line
+// validateSupportLine runs steps 1-5 for a support-item line, mutating the line
 // (snapshots, pinned version, set taxable) and appending failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, planStart, planEnd string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
+func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for a catalogue item"})
 		return
@@ -254,9 +246,6 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	} else {
 		applyItemUnitPrice(line, item)
 	}
-
-	// Step 5: service date within the client plan window.
-	assertPlanWindow(idx, planStart, planEnd, line.ServiceDate, ve)
 }
 
 // resolveVersion picks the catalogue version a support line validates against.
@@ -352,26 +341,6 @@ func applyItemUnitPrice(line *LineItemInput, item *pricelist.Item) {
 	line.UnitPrice = Round2(*item.UnitPrice)
 }
 
-// assertPlanWindow asserts serviceDate ∈ [planStart, planEnd] (spec §6 step 5).
-// Empty bounds are treated as open (the client has no recorded plan dates),
-// which is permissive by design — plan-date capture is a client concern.
-func assertPlanWindow(idx int, planStart, planEnd, serviceDate string, ve *ValidationError) {
-	if planStart != "" && serviceDate < planStart {
-		ve.Errors = append(ve.Errors, FieldError{
-			Line:    idx,
-			Field:   "serviceDate",
-			Message: fmt.Sprintf("service date %s is before the client's plan start %s", serviceDate, planStart),
-		})
-	}
-	if planEnd != "" && serviceDate > planEnd {
-		ve.Errors = append(ve.Errors, FieldError{
-			Line:    idx,
-			Field:   "serviceDate",
-			Message: fmt.Sprintf("service date %s is after the client's plan end %s", serviceDate, planEnd),
-		})
-	}
-}
-
 // snapshotSupportItem pins the resolved version and snapshots the support item's
 // identity onto the line (spec §6 step 2 + step 6). The description is filled
 // from the item name only when the caller left it blank.
@@ -436,19 +405,6 @@ func (v *LineValidator) tenantZone(ctx context.Context, tenantID int64) (string,
 		return "", nil
 	}
 	return bp.Zone, nil
-}
-
-// planWindow reads the client's plan window. A missing client is a
-// caller error (the repository would reject the write anyway).
-func (v *LineValidator) planWindow(ctx context.Context, tenantID, clientID int64) (start, end string, err error) {
-	p, err := v.clients.GetByID(ctx, tenantID, clientID)
-	if err != nil {
-		return "", "", fmt.Errorf("validate lines: read client: %w", err)
-	}
-	if p == nil {
-		return "", "", fmt.Errorf("validate lines: client %d not found", clientID)
-	}
-	return p.PlanStart, p.PlanEnd, nil
 }
 
 // defaultTaxRate reads the tenant's default tax rate (0 when none is set).

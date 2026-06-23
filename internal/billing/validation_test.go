@@ -2,9 +2,10 @@ package billing
 
 // Tests for the NDIS line validation engine (spec §6 / §10). This is the
 // heaviest-coverage unit per the testing strategy: over-cap rejection, at-cap
-// acceptance, quotable (NULL cap), unknown code, plan-window boundaries,
+// acceptance, quotable (NULL cap), unknown code,
 // version resolution by service date, zone selection, taxable defaulting, the
 // custom-item path, totals rounding, and the field-level error shape.
+// (The plan-window step was removed when client NDIS attributes were dropped.)
 
 import (
 	"context"
@@ -274,39 +275,6 @@ func TestValidateVersionBoundaryDatesInclusive(t *testing.T) {
 	}
 }
 
-// --- plan window (spec §6 step 5) -----------------------------------------
-
-func TestValidateServiceDateOutsidePlanRejected(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2025-12-31")
-	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
-	ctx := context.Background()
-
-	// After plan end (date still inside a valid catalogue window).
-	_, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 50)})
-	ve, ok := err.(*ValidationError)
-	if !ok || len(ve.Errors) != 1 || ve.Errors[0].Field != "serviceDate" {
-		t.Fatalf("after plan end: want one serviceDate error, got %v (%T)", err, err)
-	}
-}
-
-func TestValidateServiceDateOnPlanBoundaryAllowed(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2025-12-31")
-	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
-	ctx := context.Background()
-
-	for _, d := range []string{"2025-07-01", "2025-12-31"} { // plan window boundaries
-		if _, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", d, 1, 50)}); err != nil {
-			t.Fatalf("plan boundary date %s should pass: %v", d, err)
-		}
-	}
-}
-
 // --- zone selection (spec §6 step 3) --------------------------------------
 
 func TestValidateZoneSelectsDifferentCap(t *testing.T) {
@@ -558,40 +526,6 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 	}
 }
 
-// TestGenericHappyPathNoZoneNoPlan locks the end-to-end generic (non-NDIS)
-// happy path (Phase 6): a client with NO plan dates on a zone-less tenant, with
-// a coded line, passes with ONLY tax + non-negativity applied — no cap, no
-// zone-price, and no plan-window error. assertPlanWindow is already permissive
-// on empty bounds; this guards that the whole flow stays open for generic use.
-func TestGenericHappyPathNoZoneNoPlan(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn) // no zone → generic tenant
-	// Client with no plan window at all.
-	pid := seedClientPlan(t, conn, tid, "", "")
-	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
-		Name: "GST", Rate: 0.10, IsDefault: true,
-	}); err != nil {
-		t.Fatalf("seed tax rate: %v", err)
-	}
-	// A taxable coded item priced above its national cap — must NOT be enforced.
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", false, map[string]*float64{"national": fptr(50)})
-	v := NewLineValidator(conn, conn)
-
-	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 2, 100), // 100 > cap 50, but no zone → allowed
-	})
-	if err != nil {
-		t.Fatalf("generic happy path must pass with no zone + no plan dates: %v", err)
-	}
-	if res.Items[0].UnitPrice != 100 {
-		t.Fatalf("unit price = %v, want 100 (untouched)", res.Items[0].UnitPrice)
-	}
-	// Tax still computed from the taxable line: round2(round2(2*100)*0.10) = 20.
-	if res.Tax != 20 {
-		t.Fatalf("tax = %v, want 20 (tax still applied)", res.Tax)
-	}
-}
-
 // --- tax computation + totals rounding ------------------------------------
 
 func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
@@ -693,7 +627,7 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2025-08-01", 1, 200), // line 0: over cap
 		supportLine("NOPE", "2025-08-01", 1, 1),     // line 1: unknown code
-		supportLine("01_011", "2026-06-01", 1, 50),  // line 2: after plan end
+		supportLine("01_011", "2026-06-01", -1, 50), // line 2: negative quantity
 	})
 	ve, ok := err.(*ValidationError)
 	if !ok {
