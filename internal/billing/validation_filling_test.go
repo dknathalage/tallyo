@@ -1,8 +1,8 @@
 package billing
 
-// Tests for the catalogue-authoritative fill-pricing mode (ValidateFilling, used
-// by the agent create path) plus the ValidationError rendering / unwrap helpers.
-// These exercise branch-new code the human-UI Validate tests do not reach.
+// Tests for ValidateFilling (now a thin alias for Validate — both fill a
+// catalogue line's price from the item's generic unit_price) plus the
+// ValidationError rendering / unwrap helpers.
 
 import (
 	"context"
@@ -13,119 +13,72 @@ import (
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
-// --- ValidateFilling: catalogue-authoritative pricing ---------------------
+// --- ValidateFilling: unit_price fill --------------------------------------
 
-// TestValidateFillingOverwritesUnitPriceWithCap proves fill mode IGNORES the
-// caller's unit price and pins the resolved zone cap onto the line, even when
-// the caller supplied a price well below (or above) the cap.
-func TestValidateFillingOverwritesUnitPriceWithCap(t *testing.T) {
+// TestValidateFillingFillsFromItemUnitPrice proves fill mode prices a coded line
+// from the item's generic unit_price when the caller supplies none.
+func TestValidateFillingFillsFromItemUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	setTenantZone(t, conn, tid, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
-	// Caller sends a nonsense price; fill mode must replace it with the cap (100).
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 2, 7),
+		supportLine("01_011", "2026-01-15", 2, 0),
 	})
 	if err != nil {
 		t.Fatalf("ValidateFilling: %v", err)
 	}
 	if res.Items[0].UnitPrice != 100 {
-		t.Fatalf("unit price = %v, want 100 (cap pinned)", res.Items[0].UnitPrice)
+		t.Fatalf("unit price = %v, want 100 (filled from item unit_price)", res.Items[0].UnitPrice)
 	}
 }
 
-// TestValidateFillingOverCapPriceStillPinnedToCap proves fill mode never
-// rejects on price — an over-cap caller price is simply overwritten, not an
-// error (the model cannot misprice a coded line).
-func TestValidateFillingOverCapPriceStillPinnedToCap(t *testing.T) {
+// TestValidateFillingKeepsPositiveCallerPrice proves a positive caller price is
+// kept (the item unit_price is only a fill default).
+func TestValidateFillingKeepsPositiveCallerPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	setTenantZone(t, conn, tid, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 1, 9999),
+		supportLine("01_011", "2026-01-15", 1, 250),
 	})
 	if err != nil {
-		t.Fatalf("over-cap price in fill mode must not error: %v", err)
-	}
-	if res.Items[0].UnitPrice != 100 {
-		t.Fatalf("unit price = %v, want 100 (cap pinned, caller 9999 ignored)", res.Items[0].UnitPrice)
-	}
-}
-
-// TestValidateFillingQuotableKeepsPositiveCallerPrice proves a quotable item
-// (nil cap) has no price to apply, so fill mode keeps the caller's positive
-// unit price.
-func TestValidateFillingQuotableKeepsPositiveCallerPrice(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	setTenantZone(t, conn, tid, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
-	v := NewLineValidator(conn, conn)
-
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_999", "2026-01-15", 1, 250),
-	})
-	if err != nil {
-		t.Fatalf("quotable item with positive price should pass: %v", err)
+		t.Fatalf("ValidateFilling: %v", err)
 	}
 	if res.Items[0].UnitPrice != 250 {
-		t.Fatalf("unit price = %v, want 250 (caller price kept for quotable)", res.Items[0].UnitPrice)
+		t.Fatalf("unit price = %v, want 250 (caller price kept)", res.Items[0].UnitPrice)
 	}
 }
 
-// TestValidateFillingQuotableZeroPriceRejected proves a quotable item with no
-// positive caller price is a failure (there is no published price to apply).
-func TestValidateFillingQuotableZeroPriceRejected(t *testing.T) {
+// TestValidateFillingComputesTaxOnFilledPrice proves the engine-computed tax in
+// fill mode is derived from the filled unit_price.
+func TestValidateFillingComputesTaxOnFilledPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	setTenantZone(t, conn, tid, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
-	v := NewLineValidator(conn, conn)
-
-	_, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_999", "2026-01-15", 1, 0),
-	})
-	ve, ok := err.(*ValidationError)
-	if !ok || len(ve.Errors) != 1 || ve.Errors[0].Field != "unitPrice" {
-		t.Fatalf("quotable zero price: want one unitPrice error, got %v (%T)", err, err)
-	}
-}
-
-// TestValidateFillingComputesTaxOnPinnedPrice proves the engine-computed tax in
-// fill mode is derived from the PINNED cap price, not the caller's price.
-func TestValidateFillingComputesTaxOnPinnedPrice(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
 	}
-	setTenantZone(t, conn, tid, "national")
-	// Taxable item, cap 200; caller sends 5 which must be ignored.
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(200)})
-	v := NewLineValidator(conn, conn)
+	// Taxable item, unit_price 200; caller sends 0 → filled to 200.
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, 200)
+	v := NewLineValidator(conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("02_022", "2026-01-15", 1, 5),
+		supportLine("02_022", "2026-01-15", 1, 0),
 	})
 	if err != nil {
 		t.Fatalf("ValidateFilling: %v", err)
 	}
-	// tax = round2(round2(1*200) * 0.10) = 20, from the pinned cap not the 5.
+	// tax = round2(round2(1*200) * 0.10) = 20, from the filled price.
 	if res.Tax != 20 {
-		t.Fatalf("tax = %v, want 20 (computed from pinned cap 200)", res.Tax)
+		t.Fatalf("tax = %v, want 20 (computed from filled unit_price 200)", res.Tax)
 	}
 }
 
@@ -148,10 +101,10 @@ func TestValidationErrorEmptyRendersDefault(t *testing.T) {
 func TestValidationErrorRendersEveryFieldError(t *testing.T) {
 	ve := &ValidationError{Errors: []FieldError{
 		{Line: 0, Field: "code", Message: "unknown"},
-		{Line: 2, Field: "unitPrice", Message: "over cap"},
+		{Line: 2, Field: "unitPrice", Message: "negative"},
 	}}
 	got := ve.Error()
-	want := "validation failed: line 0: code: unknown; line 2: unitPrice: over cap"
+	want := "validation failed: line 0: code: unknown; line 2: unitPrice: negative"
 	if got != want {
 		t.Fatalf("Error() = %q, want %q", got, want)
 	}

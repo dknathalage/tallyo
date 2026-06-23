@@ -39,7 +39,7 @@ func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, int64, string, 
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	pid, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
 	inv := makeInvoice(t, svc, tenantID, pid)
 	return NewHandler(svc), NewPaymentHandler(NewPaymentService(conn, hub)), tenantID, pUUID, inv
 }
@@ -168,8 +168,8 @@ func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	pid, _ := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, hub, sessionSvc)
 	ih := NewHandler(invSvc)
 	ph := NewPaymentHandler(NewPaymentService(conn, hub))
 

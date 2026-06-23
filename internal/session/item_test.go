@@ -84,7 +84,7 @@ func TestSessionDeleteBilledGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedClient(t, conn, tid, "Jane")
-	svc := NewService(conn, conn, realtime.NewHub(), nil)
+	svc := NewService(conn, realtime.NewHub(), nil)
 	repo := NewSessions(conn)
 	ctx := tctx(tid)
 

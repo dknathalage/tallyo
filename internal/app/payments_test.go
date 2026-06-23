@@ -28,7 +28,7 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
 	pH := client.NewHandler(client.NewService(conn, hub))
-	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, session.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
 	payH := invoice.NewPaymentHandler(invoice.NewPaymentService(conn, hub))
 
 	router := chi.NewRouter()

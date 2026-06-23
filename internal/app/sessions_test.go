@@ -57,7 +57,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		t.Fatalf("seed custom item: want uuid got %+v", ci)
 	}
 
-	h := session.NewHandler(session.NewService(conn, conn, hub, invoice.NewInvoices(conn)), nil)
+	h := session.NewHandler(session.NewService(conn, hub, invoice.NewInvoices(conn)), nil)
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

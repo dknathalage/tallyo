@@ -36,8 +36,8 @@ func newDraftHarness(t *testing.T) (*Service, *session.Service, *session.Session
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, hub, sessionSvc)
 	return invSvc, sessionSvc, session.NewSessions(conn), tenantID, clientID
 }
 
@@ -108,8 +108,8 @@ func TestDraftFromSessionsSingleClientGuard(t *testing.T) {
 	p1 := seedClient(t, conn, tid, "P1")
 	p2 := seedClient(t, conn, tid, "P2")
 	hub := realtime.NewHub()
-	shSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
-	iSvc := NewService(conn, conn, hub, shSvc)
+	shSvc := session.NewService(conn, hub, NewInvoices(conn))
+	iSvc := NewService(conn, hub, shSvc)
 	r := session.NewSessions(conn)
 
 	a := recordedSessionWithItems(t, shSvc, r, tid, p1, "2026-01-10", 10)

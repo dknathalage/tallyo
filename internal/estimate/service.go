@@ -20,11 +20,11 @@ type Service struct {
 }
 
 // NewService constructs the estimate service. A nil hub is a programmer error.
-func NewService(db, control db.Executor, hub *realtime.Hub) *Service {
+func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("estimate.NewService: nil hub")
 	}
-	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db, control), hub: hub}
+	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub}
 }
 
 func (s *Service) List(ctx context.Context) ([]*Estimate, error) {

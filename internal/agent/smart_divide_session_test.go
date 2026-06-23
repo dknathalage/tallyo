@@ -36,7 +36,7 @@ func divideFixture(t *testing.T) (*Smarts, *llm.Fake, *session.Service, context.
 	t.Helper()
 	conn, tenantID, clientID := sessionToolsFixture(t)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
-	sessions := session.NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	sessions := session.NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	sh := seedReferenceSession(t, sessions, ctx, clientID, referenceWeek[0].date)
 	cat := pricelist.NewService(conn)
 	fake := llm.NewFake()

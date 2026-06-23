@@ -30,8 +30,8 @@ func newEstimateServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	estH := estimate.NewHandler(estimate.NewService(conn, conn, hub))
-	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, session.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
+	estH := estimate.NewHandler(estimate.NewService(conn, hub))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
 	pH := client.NewHandler(client.NewService(conn, hub))
 	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
 

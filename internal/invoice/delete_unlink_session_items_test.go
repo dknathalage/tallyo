@@ -59,8 +59,8 @@ func TestDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	tenantID := seedTenant(t, conn, "T")
 	clientID := seedClient(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, hub, sessionSvc)
 	repo := session.NewSessions(conn)
 	ctx := tctx(tenantID)
 
@@ -96,8 +96,8 @@ func TestBulkDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	tenantID := seedTenant(t, conn, "T")
 	clientID := seedClient(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, hub, sessionSvc)
 	repo := session.NewSessions(conn)
 	ctx := tctx(tenantID)
 

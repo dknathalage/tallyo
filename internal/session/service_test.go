@@ -15,7 +15,7 @@ func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	return NewService(conn, conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
+	return NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
 }
 
 func sessionInput(pid int64, date string) SessionInput {
@@ -54,7 +54,7 @@ func TestSessionCreateAttributesAuthor(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	uid := seedUser(t, conn, tenantID)
-	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
 	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
@@ -167,7 +167,7 @@ func TestSessionSuggestions(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	p1 := seedClient(t, conn, tenantID, "Jane")
 	p2 := seedClient(t, conn, tenantID, "Bob")
-	svc := NewService(conn, conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	var p1ids []int64
@@ -208,7 +208,7 @@ func TestSessionMarkDrafted(t *testing.T) {
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	invID := seedDraftInvoice(t, conn, tenantID, clientID)
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, hub, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
@@ -245,7 +245,7 @@ func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	tenantB := seedTenant(t, conn, "Beta NDIS")
 	clientB := seedClient(t, conn, tenantB, "Bob")
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, hub, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
 	sh, err := svc.Create(ctxB, sessionInput(clientB, "2026-01-15"))

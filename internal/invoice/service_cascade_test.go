@@ -30,8 +30,8 @@ func TestInvoiceStatusCascadesToSessions(t *testing.T) {
 			tenantID := seedTenant(t, conn, "Acme NDIS")
 			clientID := seedClient(t, conn, tenantID, "Jane Client")
 			hub := realtime.NewHub()
-			invSvc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
-			sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
+			invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
+			sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
 			ctx := tctx(tenantID)
 
 			inv, err := invSvc.Create(ctx, InvoiceInput{
@@ -58,8 +58,8 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	invSvc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
-	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
+	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, InvoiceInput{
@@ -85,8 +85,8 @@ func TestInvoiceDeleteRevertsSessionsToRecorded(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
-	invSvc := NewService(conn, conn, hub, session.NewService(conn, conn, hub, NewInvoices(conn)))
-	sessionSvc := session.NewService(conn, conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
+	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, InvoiceInput{

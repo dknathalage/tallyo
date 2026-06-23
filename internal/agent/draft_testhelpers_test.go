@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/client"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
@@ -70,21 +69,16 @@ func seedNoteCatalogVersion(t *testing.T, conn *sql.DB, from, to string) int64 {
 	return v.ID
 }
 
-// seedNoteItem adds a GST-free item to a version, priced at `cap` in the national
-// zone (the validator's default zone when no business profile exists).
-func seedNoteItem(t *testing.T, conn *sql.DB, versionID int64, code, name string, cap float64) {
+// seedNoteItem adds a GST-free item to a version with the given generic
+// unit_price (the validator fills a coded line from it).
+func seedNoteItem(t *testing.T, conn *sql.DB, versionID int64, code, name string, unitPrice float64) {
 	t.Helper()
 	q := gen.New(conn)
-	si, err := q.CreateItem(context.Background(), gen.CreateItemParams{
+	if _, err := q.CreateItem(context.Background(), gen.CreateItemParams{
 		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: name, Taxable: 0,
-	})
-	if err != nil {
-		t.Fatalf("seed item %s: %v", code, err)
-	}
-	if _, err := q.CreateItemPrice(context.Background(), gen.CreateItemPriceParams{
-		ItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: cap, Valid: true},
+		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true},
 	}); err != nil {
-		t.Fatalf("seed item price %s: %v", code, err)
+		t.Fatalf("seed item %s: %v", code, err)
 	}
 }
 
@@ -104,14 +98,6 @@ func sessionToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) 
 
 	tenantID = seedNoteTenant(t, c)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
-
-	// The agent fill-pricing path enforces zone caps; give the tenant a national
-	// zone so the validator runs the cap block (Phase 6 data-presence gate).
-	if err := businessprofile.NewBusinessProfile(c).Save(ctx, tenantID, businessprofile.BusinessProfileInput{
-		Name: "Acme NDIS", Zone: "national",
-	}); err != nil {
-		t.Fatalf("seed business zone: %v", err)
-	}
 
 	p, err := client.NewClients(c).Create(ctx, tenantID, client.ClientInput{
 		Name: "Tania Hangevelled",

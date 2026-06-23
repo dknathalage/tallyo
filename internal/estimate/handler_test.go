@@ -38,7 +38,7 @@ func newEstimateHandler(t *testing.T) (*Handler, int64, string, *Estimate) {
 		t.Fatalf("seed client: %v", err)
 	}
 	hub := realtime.NewHub()
-	svc := NewService(conn, conn, hub)
+	svc := NewService(conn, hub)
 	est := makeEstimate(t, svc, tenantID, p.ID)
 	return NewHandler(svc), tenantID, p.UUID, est
 }

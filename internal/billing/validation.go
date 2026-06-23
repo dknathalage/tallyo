@@ -7,20 +7,20 @@ package billing
 // invoice and estimate services (estimates parallel invoices).
 //
 // For a CATALOGUE line (a line carrying a price-list item code, not a
-// custom item) it enforces, in order (spec §6 steps 1-6):
+// custom item) it enforces, in order:
 //
 //	1. resolve the catalog_version whose [effective_from, effective_to|∞] window
 //	   contains the line's service_date;
 //	2. find the support_item by code within that version, snapshotting code +
 //	   name/description and pinning price_list_version_id onto the line;
-//	3. look up the price_cap for the TENANT's configured zone (business_profile);
-//	4. assert unit_price ≤ price_cap (skipped when the cap is NULL — a quotable
-//	   item, spec §6 step 4);
-//	5. set taxable from the support item (the catalogue is authoritative).
+//	3. fill unit_price from the catalogue item's generic unit_price when the
+//	   caller supplied no positive price (a free-form item with no unit_price
+//	   keeps the caller's price);
+//	4. set taxable from the support item (the catalogue is authoritative).
 //
-// For a CUSTOM-ITEM line it skips steps 1-4 and only checks quantity ≥ 0 and
-// unit_price ≥ 0. Either way the line_total is recomputed (Round2) and the
-// per-document totals are derived from the validated lines.
+// For a CUSTOM-ITEM line it skips the catalogue steps and only checks
+// quantity ≥ 0 and unit_price ≥ 0. Either way the line_total is recomputed
+// (Round2) and the per-document totals are derived from the validated lines.
 //
 // TAX-CONTRACT DECISION (2026-06-16, for J12): tax is now COMPUTED from the
 // lines, not trusted from the client. A non-taxable catalogue line (e.g. a
@@ -43,7 +43,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/db"
 
-	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
@@ -92,27 +91,22 @@ func AsValidationError(err error) (*ValidationError, bool) {
 }
 
 // LineValidator runs the line validation engine. It depends only on the
-// tenant price catalogue, the tenant business profile (for the zone) and the
-// tenant's tax rates (for the computed tax). It holds no mutable state beyond
-// those repositories.
+// tenant price catalogue and the tenant's tax rates (for the computed tax).
+// It holds no mutable state beyond those repositories.
 type LineValidator struct {
 	cat      *pricelist.ItemsRepo
-	profiles *businessprofile.BusinessProfileRepo
 	taxRates *taxrate.TaxRatesRepo
 }
 
-// NewLineValidator constructs the engine. ALL reads — catalogue/price list,
-// business profile and tax rates — come from the TENANT DB (the price list is
-// tenant-owned). The control handle is retained for signature compatibility but
-// no longer used for catalogue reads. In single-DB mode (tests) pass the same
-// handle for both. Nil handles are a programmer error.
-func NewLineValidator(tenant, control db.Executor) *LineValidator {
-	if tenant == nil || control == nil {
+// NewLineValidator constructs the engine. ALL reads — catalogue/price list and
+// tax rates — come from the TENANT DB (the price list is tenant-owned). A nil
+// handle is a programmer error.
+func NewLineValidator(tenant db.Executor) *LineValidator {
+	if tenant == nil {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
 		cat:      pricelist.NewItems(tenant),
-		profiles: businessprofile.NewBusinessProfile(tenant),
 		taxRates: taxrate.NewTaxRates(tenant),
 	}
 }
@@ -133,20 +127,18 @@ type ValidationResult struct {
 // least one line must be present; violations are programmer errors surfaced as
 // plain errors (the caller's repository would reject them anyway).
 func (v *LineValidator) Validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
-	return v.validate(ctx, tenantID, clientID, items, false)
+	return v.validate(ctx, tenantID, clientID, items)
 }
 
-// ValidateFilling runs the engine in catalogue-authoritative pricing mode: for a
-// support-item line it OVERWRITES unit_price with the resolved zone price cap
-// (a quotable item with no cap keeps the caller's price, or errors when that is
-// ≤ 0). Used by the agent's create path so the model only chooses code, service
-// date and quantity — the platform owns the price. The human UI path uses
-// Validate (caller-supplied price, capped) so providers may bill sub-cap.
+// ValidateFilling is kept as a thin alias for Validate: both now price a
+// catalogue line from the item's generic unit_price (filling when the caller
+// supplied no positive price). It is retained so the agent create path and the
+// session pricing path don't need to change call sites.
 func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
-	return v.validate(ctx, tenantID, clientID, items, true)
+	return v.validate(ctx, tenantID, clientID, items)
 }
 
-func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput, fillPrice bool) (*ValidationResult, error) {
+func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
 	if tenantID == 0 {
 		return nil, fmt.Errorf("validate lines: tenant id required")
 	}
@@ -157,10 +149,6 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 		return nil, fmt.Errorf("validate lines: at least one line item is required")
 	}
 
-	zone, err := v.tenantZone(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
 	taxRate, err := v.defaultTaxRate(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -170,7 +158,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 	copy(out, items)
 	var ve ValidationError
 	for i := range out { // bounded by len(out)
-		v.validateLine(ctx, i, zone, &out[i], &ve, fillPrice)
+		v.validateLine(ctx, i, &out[i], &ve)
 	}
 	if len(ve.Errors) > 0 {
 		return nil, &ve
@@ -184,7 +172,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 // failures to ve. Support-item lines run the full catalogue flow; custom-item
 // lines run only the non-negativity checks. Errors are accumulated, not thrown,
 // so the caller collects every problem in one pass.
-func (v *LineValidator) validateLine(ctx context.Context, idx int, zone string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
+func (v *LineValidator) validateLine(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) {
 	if line == nil {
 		return
 	}
@@ -196,17 +184,18 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, zone string, 
 	}
 
 	if !isSupportItemLine(line) {
-		// Custom-item line: skip the catalogue checks (spec §6) entirely. The
-		// repository recomputes line_total = Round2(qty*unitPrice) on write.
+		// Custom-item line: skip the catalogue checks entirely. The repository
+		// recomputes line_total = Round2(qty*unitPrice) on write.
 		return
 	}
 
-	v.validateSupportLine(ctx, idx, zone, line, ve, fillPrice)
+	v.validateSupportLine(ctx, idx, line, ve)
 }
 
-// validateSupportLine runs steps 1-5 for a support-item line, mutating the line
-// (snapshots, pinned version, set taxable) and appending failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
+// validateSupportLine runs the catalogue steps for a support-item line, mutating
+// the line (snapshots, pinned version, filled price, set taxable) and appending
+// failures to ve.
+func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for a catalogue item"})
 		return
@@ -234,18 +223,10 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone s
 	}
 	snapshotSupportItem(line, versionUUID, item)
 
-	// Step 3 + 4: resolve the zone price, then either assert unit_price ≤ cap
-	// (default) or, in fill mode, OVERWRITE unit_price with the cap. For a GENERIC
-	// tenant — no configured zone — the NDIS zone-cap path is SKIPPED;
-	// instead, a coded line whose item carries a generic unit_price is filled from
-	// it when the caller supplied no positive price (mirrors the zone fill but uses
-	// items.unit_price, not a zone cap). A positive caller price is always kept; an
-	// item with no unit_price keeps the caller's price (free-form).
-	if zone != "" {
-		v.applyZonePrice(ctx, idx, versionID, zone, line, ve, fillPrice)
-	} else {
-		applyItemUnitPrice(line, item)
-	}
+	// Step 3: fill the unit price from the catalogue item's generic unit_price
+	// when the caller supplied no positive price. A positive caller price is
+	// always kept; an item with no unit_price keeps the caller's price (free-form).
+	applyItemUnitPrice(line, item)
 }
 
 // resolveVersion picks the catalogue version a support line validates against.
@@ -276,58 +257,10 @@ func (v *LineValidator) resolveVersion(ctx context.Context, idx int, line *LineI
 	return ver.ID, ver.UUID, ver.Label, true
 }
 
-// applyZonePrice looks up the tenant-zone price for the line's code and, by
-// default, asserts unit_price ≤ price_cap (spec §6 step 4). When fillPrice is
-// true it instead OVERWRITES unit_price with the cap (catalogue-authoritative
-// pricing for the agent path). A nil cap (quotable item) has no fixed price:
-// the cap assertion is skipped, and in fill mode the caller-supplied price is
-// kept — but a quotable line with unit_price ≤ 0 is a failure (no price to
-// apply). A missing price row is itself a failure.
-func (v *LineValidator) applyZonePrice(ctx context.Context, idx int, versionID int64, zone string, line *LineItemInput, ve *ValidationError, fillPrice bool) {
-	price, err := v.cat.ResolveZonePrice(ctx, versionID, line.Code, zone)
-	if err != nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "unitPrice", Message: "could not look up the price cap for your zone"})
-		return
-	}
-	if price == nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "unitPrice", Message: fmt.Sprintf("no price is published for code %q in zone %q", line.Code, zone)})
-		return
-	}
-	if price.PriceCap == nil {
-		// Quotable item: no fixed cap. In fill mode there is no price to apply,
-		// so the caller must supply a positive one.
-		if fillPrice && Round2(line.UnitPrice) <= 0 {
-			ve.Errors = append(ve.Errors, FieldError{
-				Line:    idx,
-				Field:   "unitPrice",
-				Message: fmt.Sprintf("code %q is a quotable item with no published price — supply an explicit unit price", line.Code),
-			})
-		}
-		return
-	}
-	priceCap := *price.PriceCap
-	if fillPrice {
-		// Catalogue-authoritative: the platform owns the price. The model's
-		// unit_price (if any) is ignored — it cannot misprice a coded line.
-		line.UnitPrice = Round2(priceCap)
-		return
-	}
-	// Compare at cent granularity (Round2 both sides) so float representation
-	// noise can't spuriously fail an at-cap price; the cap is a money value.
-	if Round2(line.UnitPrice) > Round2(priceCap) {
-		ve.Errors = append(ve.Errors, FieldError{
-			Line:    idx,
-			Field:   "unitPrice",
-			Message: fmt.Sprintf("unit price %.2f exceeds the price cap of %.2f for zone %q", line.UnitPrice, priceCap, zone),
-		})
-	}
-}
-
-// applyItemUnitPrice fills a generic coded line's unit price from the catalogue
-// item's generic unit_price (the no-zone pricing path). It only fills when the
-// item carries a positive unit_price AND the caller supplied none (UnitPrice ≤ 0);
-// a caller-supplied positive price is kept, and an item with no unit_price leaves
-// the line untouched (free-form). No cap is enforced — there is no zone.
+// applyItemUnitPrice fills a coded line's unit price from the catalogue item's
+// generic unit_price. It only fills when the item carries a positive unit_price
+// AND the caller supplied none (UnitPrice ≤ 0); a caller-supplied positive price
+// is kept, and an item with no unit_price leaves the line untouched (free-form).
 func applyItemUnitPrice(line *LineItemInput, item *pricelist.Item) {
 	if line == nil || item == nil {
 		return
@@ -389,22 +322,6 @@ func computeLineTax(items []LineItemInput, rate float64) float64 {
 		tax += Round2(lineTotal * rate)
 	}
 	return Round2(tax)
-}
-
-// tenantZone reads the tenant's configured NDIS pricing zone. It returns "" when
-// no business profile exists or its zone is unset — a generic tenant.
-// An empty zone tells the caller to SKIP the zone-price / cap-assert block
-// entirely (data-presence gating, Phase 6); a configured zone runs the full
-// NDIS price-cap path exactly as before.
-func (v *LineValidator) tenantZone(ctx context.Context, tenantID int64) (string, error) {
-	bp, err := v.profiles.Get(ctx, tenantID)
-	if err != nil {
-		return "", fmt.Errorf("validate lines: read business zone: %w", err)
-	}
-	if bp == nil || bp.Zone == "" {
-		return "", nil
-	}
-	return bp.Zone, nil
 }
 
 // defaultTaxRate reads the tenant's default tax rate (0 when none is set).

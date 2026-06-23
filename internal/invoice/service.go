@@ -35,14 +35,14 @@ type Service struct {
 
 // NewService constructs the invoice service. A nil hub is a programmer error.
 // sessions may be nil (session cascade is skipped when nil).
-func NewService(db, control db.Executor, hub *realtime.Hub, sessions SessionLinker) *Service {
+func NewService(db db.Executor, hub *realtime.Hub, sessions SessionLinker) *Service {
 	if hub == nil {
 		panic("invoice.NewService: nil hub")
 	}
 	return &Service{
 		repo:      NewInvoices(db),
 		sessions:  sessions,
-		validator: billing.NewLineValidator(db, control),
+		validator: billing.NewLineValidator(db),
 		hub:       hub,
 	}
 }

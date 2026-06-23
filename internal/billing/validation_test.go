@@ -1,11 +1,12 @@
 package billing
 
-// Tests for the NDIS line validation engine (spec §6 / §10). This is the
-// heaviest-coverage unit per the testing strategy: over-cap rejection, at-cap
-// acceptance, quotable (NULL cap), unknown code,
-// version resolution by service date, zone selection, taxable defaulting, the
-// custom-item path, totals rounding, and the field-level error shape.
-// (The plan-window step was removed when client NDIS attributes were dropped.)
+// Tests for the line validation engine. Catalogue lines resolve a version by
+// service date, snapshot the item, fill the unit price from the item's generic
+// unit_price (when the caller supplies none), and default taxable from the item.
+// Coverage: unknown code, version resolution by service date, unit_price fill +
+// caller-price override, taxable defaulting, the custom-item path, tax
+// computation, totals rounding, and the field-level error shape.
+// (The plan-window step and the NDIS zone/price-cap path were removed.)
 
 import (
 	"context"
@@ -13,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -22,78 +22,8 @@ import (
 
 // --- test seeders ---------------------------------------------------------
 
-// seedZonedCatalog inserts a catalog version with one support item priced per
-// the given zone→cap map (a nil cap value = quotable). Returns the version id.
-func seedZonedCatalog(t *testing.T, conn *sql.DB, label, from, to, code string, gstFree bool, prices map[string]*float64) int64 {
-	t.Helper()
-	ctx := context.Background()
-	q := gen.New(conn)
-	now := time.Now().UTC().Format(time.RFC3339)
-	var et sql.NullString
-	if to != "" {
-		et = sql.NullString{String: to, Valid: true}
-	}
-	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
-	})
-	if err != nil {
-		t.Fatalf("CreatePriceListVersion: %v", err)
-	}
-	tx := int64(1) // taxable is the inverse of gst-free
-	if gstFree {
-		tx = 0
-	}
-	si, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
-	})
-	if err != nil {
-		t.Fatalf("CreateItem: %v", err)
-	}
-	for zone, capPtr := range prices { // bounded by len(prices)
-		var pc sql.NullFloat64
-		if capPtr != nil {
-			pc = sql.NullFloat64{Float64: *capPtr, Valid: true}
-		}
-		if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
-			ItemID: si.ID, Zone: zone, PriceCap: pc,
-		}); err != nil {
-			t.Fatalf("CreateItemPrice %s: %v", zone, err)
-		}
-	}
-	return v.ID
-}
-
-// addItemToVersion adds one more priced support item to an existing version.
-func addItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, gstFree bool, prices map[string]*float64) {
-	t.Helper()
-	ctx := context.Background()
-	q := gen.New(conn)
-	tx := int64(1) // taxable is the inverse of gst-free
-	if gstFree {
-		tx = 0
-	}
-	si, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
-	})
-	if err != nil {
-		t.Fatalf("CreateItem %s: %v", code, err)
-	}
-	for zone, capPtr := range prices { // bounded by len(prices)
-		var pc sql.NullFloat64
-		if capPtr != nil {
-			pc = sql.NullFloat64{Float64: *capPtr, Valid: true}
-		}
-		if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
-			ItemID: si.ID, Zone: zone, PriceCap: pc,
-		}); err != nil {
-			t.Fatalf("CreateItemPrice %s/%s: %v", code, zone, err)
-		}
-	}
-}
-
 // seedUnitPricedItem inserts a catalog version with one support item that has a
-// generic unit_price set but NO item_prices (no zone caps). Returns the version
-// id. Used to test the generic (non-NDIS) pricing path.
+// generic unit_price set. Returns the version id.
 func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -122,99 +52,49 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 	return v.ID
 }
 
-// seedClientPlan inserts a client and returns its int PK. The plan-window
-// arguments are retained for call-site compatibility but ignored — the
-// validator no longer reads a client plan window (NDIS removal).
-func seedClientPlan(t *testing.T, conn *sql.DB, tenantID int64, _, _ string) int64 {
+// addUnitPricedItemToVersion adds one more support item (with a generic
+// unit_price) to an existing version.
+func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, gstFree bool, unitPrice float64) {
+	t.Helper()
+	ctx := context.Background()
+	q := gen.New(conn)
+	tx := int64(1)
+	if gstFree {
+		tx = 0
+	}
+	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
+		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
+		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
+	}); err != nil {
+		t.Fatalf("CreateItem %s: %v", code, err)
+	}
+}
+
+// seedClient inserts a name-only client and returns its int PK.
+func seedClient(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(tctx(tenantID), tenantID, client.ClientInput{
 		Name: "Test Client",
 	})
 	if err != nil {
-		t.Fatalf("seedClientPlan: %v", err)
+		t.Fatalf("seedClient: %v", err)
 	}
 	return p.ID
 }
-
-// setTenantZone saves a business profile with the given zone for the tenant.
-func setTenantZone(t *testing.T, conn *sql.DB, tenantID int64, zone string) {
-	t.Helper()
-	if err := businessprofile.NewBusinessProfile(conn).Save(tctx(tenantID), tenantID, businessprofile.BusinessProfileInput{
-		Name: "Acme NDIS", Zone: zone,
-	}); err != nil {
-		t.Fatalf("setTenantZone: %v", err)
-	}
-}
-
-func fptr(f float64) *float64 { return &f }
 
 // supportLine builds a support-item line input for the given code/date/price.
 func supportLine(code, date string, qty, unitPrice float64) LineItemInput {
 	return LineItemInput{Code: code, ServiceDate: date, Quantity: qty, UnitPrice: unitPrice}
 }
 
-// --- price-cap assertion (spec §6 step 4) --------------------------------
-
-func TestValidateOverCapRejected(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	setTenantZone(t, conn, tid, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
-
-	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 1, 100.01),
-	})
-	ve, ok := err.(*ValidationError)
-	if !ok {
-		t.Fatalf("want *ValidationError, got %T: %v", err, err)
-	}
-	if len(ve.Errors) != 1 || ve.Errors[0].Field != "unitPrice" || ve.Errors[0].Line != 0 {
-		t.Fatalf("field error shape = %+v", ve.Errors)
-	}
-}
-
-func TestValidateAtCapAllowed(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
-
-	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 2, 100),
-	})
-	if err != nil {
-		t.Fatalf("at-cap should pass: %v", err)
-	}
-	if res == nil || len(res.Items) != 1 {
-		t.Fatalf("res = %+v", res)
-	}
-}
-
-func TestValidateQuotableNilCapAllowsAnyPrice(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
-	v := NewLineValidator(conn, conn)
-
-	if _, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_999", "2026-01-15", 1, 999999),
-	}); err != nil {
-		t.Fatalf("quotable item (nil cap) should allow any price: %v", err)
-	}
-}
-
-// --- unknown code / version resolution (spec §6 steps 1-2) ----------------
+// --- unknown code / version resolution ------------------------------------
 
 func TestValidateUnknownCodeRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("NOPE", "2026-01-15", 1, 1),
@@ -228,9 +108,9 @@ func TestValidateUnknownCodeRejected(t *testing.T) {
 func TestValidateNoVersionForDateRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2024-01-01", "2030-01-01")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
 	// Service date before any catalogue window.
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -245,29 +125,36 @@ func TestValidateNoVersionForDateRejected(t *testing.T) {
 func TestValidateVersionResolutionPicksRightVersion(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2024-01-01", "2030-01-01")
-	setTenantZone(t, conn, tid, "national")
-	// Two consecutive versions; the SAME code has different caps per version.
-	seedZonedCatalog(t, conn, "2024-25", "2024-07-01", "2025-06-30", "01_011", true, map[string]*float64{"national": fptr(90)})
-	seedZonedCatalog(t, conn, "2025-26", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(110)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	// Two consecutive versions; the SAME code carries a different unit_price.
+	seedUnitPricedItem(t, conn, "2024-25", "2024-07-01", "2025-06-30", "01_011", true, 90)
+	seedUnitPricedItem(t, conn, "2025-26", "2025-07-01", "2026-06-30", "01_011", true, 110)
+	v := NewLineValidator(conn)
 	ctx := context.Background()
 
-	// 100 is over the 2024-25 cap (90) but under the 2025-26 cap (110).
-	if _, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2024-12-01", 1, 100)}); err == nil {
-		t.Fatal("date in 2024-25 window: 100 > cap 90 must reject")
+	// Caller supplies no price → fill from the version resolved for the date.
+	res, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2024-12-01", 1, 0)})
+	if err != nil {
+		t.Fatalf("date in 2024-25 window must resolve: %v", err)
 	}
-	if _, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2025-12-01", 1, 100)}); err != nil {
-		t.Fatalf("date in 2025-26 window: 100 < cap 110 must pass: %v", err)
+	if res.Items[0].UnitPrice != 90 {
+		t.Fatalf("unit price = %v, want 90 (2024-25 version)", res.Items[0].UnitPrice)
+	}
+	res, err = v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2025-12-01", 1, 0)})
+	if err != nil {
+		t.Fatalf("date in 2025-26 window must resolve: %v", err)
+	}
+	if res.Items[0].UnitPrice != 110 {
+		t.Fatalf("unit price = %v, want 110 (2025-26 version)", res.Items[0].UnitPrice)
 	}
 }
 
 func TestValidateVersionBoundaryDatesInclusive(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2024-01-01", "2030-01-01")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 	ctx := context.Background()
 
 	for _, d := range []string{"2025-07-01", "2026-06-30"} { // both window boundaries
@@ -277,80 +164,18 @@ func TestValidateVersionBoundaryDatesInclusive(t *testing.T) {
 	}
 }
 
-// --- zone selection (spec §6 step 3) --------------------------------------
+// --- unit_price fill -------------------------------------------------------
 
-func TestValidateZoneSelectsDifferentCap(t *testing.T) {
-	conn := newTestDB(t)
-	pid2start, pid2end := "2025-07-01", "2026-06-30"
-	// national cap 100, remote cap 150 for the same code.
-	prices := map[string]*float64{"national": fptr(100), "remote": fptr(150)}
-
-	// Tenant A: national zone → cap 100, 130 rejected.
-	a := seedTenant(t, conn)
-	pa := seedClientPlan(t, conn, a, pid2start, pid2end)
-	setTenantZone(t, conn, a, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, prices)
-	v := NewLineValidator(conn, conn)
-	ctx := context.Background()
-
-	if _, err := v.Validate(ctx, a, pa, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err == nil {
-		t.Fatal("national tenant: 130 > cap 100 must reject")
-	}
-
-	// Tenant B: remote zone → cap 150, 130 allowed.
-	b := seedTenant(t, conn)
-	pb := seedClientPlan(t, conn, b, pid2start, pid2end)
-	setTenantZone(t, conn, b, "remote")
-	if _, err := v.Validate(ctx, b, pb, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 130)}); err != nil {
-		t.Fatalf("remote tenant: 130 < cap 150 must pass: %v", err)
-	}
-}
-
-// TestGenericTenantSkipsZoneCap asserts the data-presence gate (Phase 6): a
-// tenant with NO business_profile (zone unset) is a generic (non-NDIS) tenant,
-// so the zone-price resolve + cap-assert block is SKIPPED entirely. A coded line
-// passes with its caller-supplied unit_price UNTOUCHED — no "no price published"
-// / "exceeds cap" error — even though a national price (100) exists in the
-// catalogue. (Previously the zone defaulted to "national" and this rejected.)
-func TestGenericTenantSkipsZoneCap(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn) // deliberately NO setTenantZone → no business profile
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	// national cap 100 exists; with no zone configured it must NOT be enforced.
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true,
-		map[string]*float64{"national": fptr(100), "remote": fptr(150)})
-	v := NewLineValidator(conn, conn)
-	ctx := context.Background()
-
-	// 120 is over the national cap (100) — but with no zone the cap is not applied.
-	res, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 120)})
-	if err != nil {
-		t.Fatalf("no-zone tenant: coded line must pass without cap enforcement: %v", err)
-	}
-	if len(res.Items) != 1 {
-		t.Fatalf("res items = %d, want 1", len(res.Items))
-	}
-	// Caller-supplied price is preserved untouched (not overwritten with a cap).
-	if res.Items[0].UnitPrice != 120 {
-		t.Fatalf("unit price = %v, want 120 (untouched)", res.Items[0].UnitPrice)
-	}
-	// The catalogue snapshot (code/name) and taxable defaulting still happen.
-	if res.Items[0].ItemID == nil || res.Items[0].PriceListVersionID == nil {
-		t.Fatal("snapshot must still pin item id + price-list version even with no zone")
-	}
-}
-
-// TestGenericCodedLinePricesFromItemUnitPrice asserts that for a generic tenant
-// (NO zone) a coded line referencing an item that carries a generic unit_price
-// (but no zone caps) is priced FROM that unit_price when the caller supplies
-// none (unitPrice <= 0). Tax is computed from the applied price.
+// TestGenericCodedLinePricesFromItemUnitPrice asserts a coded line referencing
+// an item that carries a generic unit_price is priced FROM that unit_price when
+// the caller supplies none (unitPrice <= 0).
 func TestGenericCodedLinePricesFromItemUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
-	tid := seedTenant(t, conn) // NO setTenantZone → generic tenant
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	// Item W1 has unit_price 9.99 and NO item_prices/caps; taxable.
+	tid := seedTenant(t, conn)
+	pid := seedClient(t, conn, tid)
+	// Item W1 has unit_price 9.99; taxable.
 	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
-	v := NewLineValidator(conn, conn)
+	v := NewLineValidator(conn)
 	ctx := context.Background()
 
 	// Caller supplies unitPrice 0 → the catalogue unit_price (9.99) is applied.
@@ -371,13 +196,13 @@ func TestGenericCodedLinePricesFromItemUnitPrice(t *testing.T) {
 
 // TestGenericCodedLineKeepsCallerPriceOverUnitPrice asserts that when the caller
 // supplies a positive unit price it is KEPT (the item unit_price is only a fill
-// default for generic coded lines, not a cap).
+// default for coded lines).
 func TestGenericCodedLineKeepsCallerPriceOverUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
-	v := NewLineValidator(conn, conn)
+	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{supportLine("W1", "2026-01-15", 1, 25)})
 	if err != nil {
@@ -388,14 +213,14 @@ func TestGenericCodedLineKeepsCallerPriceOverUnitPrice(t *testing.T) {
 	}
 }
 
-// --- taxable defaulting (spec §6 step 6) ----------------------------------
+// --- taxable defaulting ----------------------------------------------------
 
 func TestValidateTaxableDefaultedFromItem(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
 	// Line leaves taxable false; the item is GST-free so taxable stays false.
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -415,9 +240,9 @@ func TestValidateTaxableDefaultedFromItem(t *testing.T) {
 func TestValidateTaxableSetWhenItemTaxable(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, 100)
+	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("02_022", "2026-01-15", 1, 50),
@@ -437,14 +262,14 @@ func TestValidateTaxableSetWhenItemTaxable(t *testing.T) {
 func TestValidateClientTaxableOverrideIgnoredForSupportItem(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
 	}
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(1000)})
-	v := NewLineValidator(conn, conn)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, 1000)
+	v := NewLineValidator(conn)
 
 	// Client lies: taxable:false on a taxable catalogue item.
 	line := supportLine("02_022", "2026-01-15", 1, 200)
@@ -466,9 +291,9 @@ func TestValidateClientTaxableOverrideIgnoredForSupportItem(t *testing.T) {
 func TestValidateSupportItemNegativeRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("01_011", "2026-01-15", -1, -5),
@@ -491,14 +316,14 @@ func TestValidateSupportItemNegativeRejected(t *testing.T) {
 	}
 }
 
-// --- custom-item path (spec §6) -------------------------------------------
+// --- custom-item path ------------------------------------------------------
 
 func TestValidateCustomItemSkipsCatalogChecks(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	// No catalogue seeded at all.
-	v := NewLineValidator(conn, conn)
+	v := NewLineValidator(conn)
 	cid := "11111111-1111-1111-1111-111111111111"
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -515,8 +340,8 @@ func TestValidateCustomItemSkipsCatalogChecks(t *testing.T) {
 func TestValidateCustomItemNegativeRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	v := NewLineValidator(conn)
 	cid := "11111111-1111-1111-1111-111111111111"
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -533,7 +358,7 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	// Default 10% GST.
 	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
@@ -541,9 +366,9 @@ func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	// One version carrying both a GST-free item (0 tax) and a taxable item.
-	verID := seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, map[string]*float64{"national": fptr(1000)})
-	addItemToVersion(t, conn, verID, "TAX", false, map[string]*float64{"national": fptr(1000)})
-	v := NewLineValidator(conn, conn)
+	verID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, 1000)
+	addUnitPricedItemToVersion(t, conn, verID, "TAX", false, 1000)
+	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("GF", "2026-01-15", 1, 100),  // gst-free → 0 tax
@@ -557,15 +382,13 @@ func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
 	}
 }
 
-// TestCharacterizeMixedTaxMath pins today's tax math on a mixed invoice BEFORE
-// the gst_free→taxable inversion: a gst_free line contributes NO tax, and a
-// taxable (gst_free=false) line is taxed at the default rate. The computed tax
-// must equal ONLY the taxed line's Round2(lineTotal*rate). This characterizes
-// existing behaviour so the inversion can be proven to preserve it.
+// TestCharacterizeMixedTaxMath pins the tax math on a mixed invoice: a gst_free
+// line contributes NO tax, and a taxable line is taxed at the default rate. The
+// computed tax must equal ONLY the taxed line's Round2(lineTotal*rate).
 func TestCharacterizeMixedTaxMath(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	const rate = 0.10
 	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: rate, IsDefault: true,
@@ -573,9 +396,9 @@ func TestCharacterizeMixedTaxMath(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	// One version carrying a gst_free item (no tax) and a taxable item (taxed).
-	verID := seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, map[string]*float64{"national": fptr(1000)})
-	addItemToVersion(t, conn, verID, "TAX", false, map[string]*float64{"national": fptr(1000)})
-	v := NewLineValidator(conn, conn)
+	verID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, 1000)
+	addUnitPricedItemToVersion(t, conn, verID, "TAX", false, 1000)
+	v := NewLineValidator(conn)
 
 	const taxedQty, taxedPrice = 1.0, 200.0
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -595,14 +418,14 @@ func TestValidateTotalsRoundToCents(t *testing.T) {
 	// 0.1 * 3 = 0.30000000000000004 in float; round2 must collapse it to 0.30.
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, conn, tid)
 	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
 		Name: "GST", Rate: 0.10, IsDefault: true,
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
 	}
-	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "DRIFT", false, map[string]*float64{"national": fptr(1)})
-	v := NewLineValidator(conn, conn)
+	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "DRIFT", false, 1)
+	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("DRIFT", "2026-01-15", 3, 0.1),
@@ -621,13 +444,12 @@ func TestValidateTotalsRoundToCents(t *testing.T) {
 func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
-	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2025-12-31")
-	setTenantZone(t, conn, tid, "national")
-	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
-	v := NewLineValidator(conn, conn)
+	pid := seedClient(t, conn, tid)
+	seedUnitPricedItem(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, 100)
+	v := NewLineValidator(conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2025-08-01", 1, 200), // line 0: over cap
+		supportLine("01_011", "", 1, 200),           // line 0: missing service date
 		supportLine("NOPE", "2025-08-01", 1, 1),     // line 1: unknown code
 		supportLine("01_011", "2026-06-01", -1, 50), // line 2: negative quantity
 	})
@@ -650,23 +472,20 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 }
 
 // TestLineValidatorReadsCatalogueFromTenant is the regression guard for the
-// control/tenant split bug: the price list is tenant-owned, so the validator's
-// catalogue repo MUST read from the TENANT db, not control. It constructs the
-// validator with two DISTINCT handles (catalogue seeded only in tenant) — a
-// single-DB test (conn, conn) cannot catch a cat-on-control misuse.
+// control/tenant split: the price list is tenant-owned, so the validator's
+// catalogue repo MUST read from the TENANT db.
 func TestLineValidatorReadsCatalogueFromTenant(t *testing.T) {
 	tenant := newTestDB(t)
-	control := newTestDB(t) // separate db; price list is NOT seeded here
 	tid := seedTenant(t, tenant)
-	pid := seedClientPlan(t, tenant, tid, "2025-07-01", "2026-06-30")
+	pid := seedClient(t, tenant, tid)
 	seedUnitPricedItem(t, tenant, "v1", "2025-07-01", "2026-06-30", "PROD1", true, 49.95)
 
-	v := NewLineValidator(tenant, control)
+	v := NewLineValidator(tenant)
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
 		supportLine("PROD1", "2026-01-15", 2, 0),
 	})
 	if err != nil {
-		t.Fatalf("coded line must resolve from the TENANT price list (cat must not read control): %v", err)
+		t.Fatalf("coded line must resolve from the TENANT price list: %v", err)
 	}
 	if res == nil || len(res.Items) != 1 {
 		t.Fatalf("res = %+v", res)

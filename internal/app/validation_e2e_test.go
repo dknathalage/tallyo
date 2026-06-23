@@ -1,11 +1,11 @@
 package app
 
-// End-to-end coverage of the 422 validation surface (spec §10 / J12): an
-// over-cap support line driven through the REAL invoice and estimate HTTP
-// handlers must serialize as 422 with body
-// {error, details:[{line, field, message}, ...]} via WriteValidationError.
-// The engine logic itself is unit-tested in internal/service; this test pins
-// the HTTP status + JSON shape the frontend editor depends on.
+// End-to-end coverage of the 422 validation surface (J12): a line that fails
+// validation driven through the REAL invoice and estimate HTTP handlers must
+// serialize as 422 with body {error, details:[{line, field, message}, ...]} via
+// WriteValidationError. The engine logic itself is unit-tested in
+// internal/billing; this test pins the HTTP status + JSON shape the frontend
+// editor depends on.
 
 import (
 	"context"
@@ -18,13 +18,11 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -42,8 +40,8 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, int64
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, session.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
-	estH := estimate.NewHandler(estimate.NewService(conn, conn, hub))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
+	estH := estimate.NewHandler(estimate.NewService(conn, hub))
 	pH := client.NewHandler(client.NewService(conn, hub))
 
 	router := chi.NewRouter()
@@ -63,22 +61,9 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, int64
 	return srv, conn, tenantUUID, tenantID
 }
 
-// setNationalZone gives the tenant a business profile with the national NDIS
-// zone, so the line validator enforces price caps (Phase 6 data-presence gate:
-// without a configured zone the cap block is skipped).
-func setNationalZone(t *testing.T, conn *sql.DB, tenantID int64) {
-	t.Helper()
-	if err := businessprofile.NewBusinessProfile(conn).Save(
-		reqctx.WithTenant(context.Background(), tenantID), tenantID,
-		businessprofile.BusinessProfileInput{Name: "Acme NDIS", Zone: "national"},
-	); err != nil {
-		t.Fatalf("setNationalZone: %v", err)
-	}
-}
-
-// seedNationalCap inserts a one-item catalogue version priced at the given
-// national cap, valid across the given window.
-func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap float64) {
+// seedCatalogVersion inserts a one-item catalogue version valid across the given
+// window, so a known code resolves and an unknown one fails validation.
+func seedCatalogVersion(t *testing.T, conn *sql.DB, from, to, code string) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -90,45 +75,11 @@ func seedNationalCap(t *testing.T, conn *sql.DB, from, to, code string, cap floa
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
-	si, err := q.CreateItem(ctx, gen.CreateItemParams{
+	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
 		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
-	if _, err := q.CreateItemPrice(ctx, gen.CreateItemPriceParams{
-		ItemID: si.ID, Zone: "national", PriceCap: sql.NullFloat64{Float64: cap, Valid: true},
-	}); err != nil {
-		t.Fatalf("CreateItemPrice: %v", err)
-	}
-}
-
-// createClientWithPlan posts a client and returns its uuid. The plan-window
-// arguments are retained for call-site compatibility but ignored — clients no
-// longer carry plan dates (NDIS removal).
-func createClientWithPlan(t *testing.T, c *http.Client, base, uuid, _, _ string) string {
-	t.Helper()
-	body, err := json.Marshal(map[string]any{
-		"name": "Plan Client",
-	})
-	if err != nil {
-		t.Fatalf("marshal client: %v", err)
-	}
-	resp := postJSON(t, c, base+"/api/t/"+uuid+"/clients", string(body))
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create client: want 201 got %d", resp.StatusCode)
-	}
-	var out struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode client: %v", err)
-	}
-	if out.ID == "" {
-		t.Fatalf("create client: want non-empty uuid got %q", out.ID)
-	}
-	return out.ID
 }
 
 // validationEnvelope is the 422 body shape J12 depends on.
@@ -164,17 +115,16 @@ func assertValidationEnvelope(t *testing.T, resp *http.Response) {
 	}
 }
 
-func TestInvoiceCreateOverCapReturns422(t *testing.T) {
-	srv, conn, uuid, tenantID := newValidationServer(t)
+func TestInvoiceCreateUnknownCodeReturns422(t *testing.T) {
+	srv, conn, uuid, _ := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	setNationalZone(t, conn, tenantID)
-	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
-	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
+	seedCatalogVersion(t, conn, "2025-07-01", "2026-06-30", "01_011")
+	pid := createClient(t, c, srv.URL, uuid, "Plan Client")
 
 	body, err := json.Marshal(map[string]any{
 		"clientId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
 		"lineItems": []map[string]any{
-			{"code": "01_011", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
+			{"code": "NOPE", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
 		},
 	})
 	if err != nil {
@@ -185,17 +135,16 @@ func TestInvoiceCreateOverCapReturns422(t *testing.T) {
 	assertValidationEnvelope(t, resp)
 }
 
-func TestEstimateCreateOverCapReturns422(t *testing.T) {
-	srv, conn, uuid, tenantID := newValidationServer(t)
+func TestEstimateCreateUnknownCodeReturns422(t *testing.T) {
+	srv, conn, uuid, _ := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	setNationalZone(t, conn, tenantID)
-	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
-	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
+	seedCatalogVersion(t, conn, "2025-07-01", "2026-06-30", "01_011")
+	pid := createClient(t, c, srv.URL, uuid, "Plan Client")
 
 	body, err := json.Marshal(map[string]any{
 		"clientId": pid, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
-			{"code": "01_011", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
+			{"code": "NOPE", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
 		},
 	})
 	if err != nil {

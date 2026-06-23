@@ -35,13 +35,13 @@ type Service struct {
 
 // NewService constructs the session service. A nil hub is a programmer error.
 // invoices is the InvoiceChecker used to verify the invoice in MarkDrafted. The
-// session service builds its own billing.LineValidator (catalogue-authoritative
+// session service builds its own billing.LineValidator (catalogue unit_price
 // pricing) from the same db the invoice service uses — no extra wiring needed.
-func NewService(db, control db.Executor, hub *realtime.Hub, invoices InvoiceChecker) *Service {
+func NewService(db db.Executor, hub *realtime.Hub, invoices InvoiceChecker) *Service {
 	if hub == nil {
 		panic("session.NewService: nil hub")
 	}
-	return &Service{repo: NewSessions(db), invoices: invoices, validator: billing.NewLineValidator(db, control), hub: hub}
+	return &Service{repo: NewSessions(db), invoices: invoices, validator: billing.NewLineValidator(db), hub: hub}
 }
 
 // Suggestion is a billing prompt: a client's recorded-but-unbilled sessions

@@ -34,7 +34,7 @@ func newSessionHandler(t *testing.T) (*Handler, int64, string, *Session) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	_, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
-	svc := NewService(conn, conn, realtime.NewHub(), nil)
+	svc := NewService(conn, realtime.NewHub(), nil)
 	pid := clientIDFor(t, conn, tenantID, pUUID)
 	sh, err := svc.Create(tctx(tenantID), SessionInput{ClientID: pid, ServiceDate: "2026-01-15", Note: "n"})
 	if err != nil {
@@ -214,7 +214,7 @@ func TestSessionListByClientFilter(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme NDIS")
 	_, p1UUID := seedClientUUID(t, conn, tenantID, "Jane")
 	_, p2UUID := seedClientUUID(t, conn, tenantID, "Bob")
-	svc := NewService(conn, conn, realtime.NewHub(), nil)
+	svc := NewService(conn, realtime.NewHub(), nil)
 	p1 := clientIDFor(t, conn, tenantID, p1UUID)
 	p2 := clientIDFor(t, conn, tenantID, p2UUID)
 	ctx := tctx(tenantID)

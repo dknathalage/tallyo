@@ -28,7 +28,7 @@ func newInvoiceServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	invH := invoice.NewHandler(invoice.NewService(conn, conn, hub, session.NewService(conn, conn, hub, invoice.NewInvoices(conn))))
+	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
 	pH := client.NewHandler(client.NewService(conn, hub))
 	ciH := customitem.NewHandler(customitem.NewService(conn, hub))
 

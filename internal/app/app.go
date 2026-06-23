@@ -169,9 +169,9 @@ func Run(cfg Config, version string) error {
 	customItemSvc := customitem.NewService(tdb, hub)
 	priceListSvc := pricelist.NewService(tdb)
 	priceListImportSvc := pricelist.NewImportService(tdb, hub)
-	sessionSvc := session.NewService(tdb, control, hub, invoice.NewInvoices(tdb))
-	invoiceSvc := invoice.NewService(tdb, control, hub, sessionSvc)
-	estimateSvc := estimate.NewService(tdb, control, hub)
+	sessionSvc := session.NewService(tdb, hub, invoice.NewInvoices(tdb))
+	invoiceSvc := invoice.NewService(tdb, hub, sessionSvc)
+	estimateSvc := estimate.NewService(tdb, hub)
 	paymentSvc := invoice.NewPaymentService(tdb, hub)
 	recurringSvc := recurring.NewService(tdb, hub)
 
