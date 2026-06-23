@@ -34,7 +34,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/taxrate"
-	"github.com/dknathalage/tallyo/internal/tenantdb"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
 
@@ -138,42 +137,40 @@ func Run(cfg Config, version string) error {
 		dir = d
 	}
 
-	// DB-per-tenant: one shared control DB (registry, auth, sessions)
-	// and one SQLite file per tenant, opened on demand by the registry. tdb is the
-	// per-request routing handle for tenant-plane repositories; control is the
-	// shared handle for control-plane repositories.
-	control, err := appdb.Open(filepath.Join(dir, "control.db"))
+	// Single SQLite instance: the whole app — control tables (tenants, users,
+	// sessions, audit) and every tenant's business data — lives in one file.
+	// Tenancy is logical: each business row carries a tenant_id and every query
+	// guards on it; reqctx carries the request's tenant for guards + audit.
+	database, err := appdb.Open(filepath.Join(dir, "tallyo.db"))
 	if err != nil {
-		return fmt.Errorf("open control db: %w", err)
+		return fmt.Errorf("open db: %w", err)
 	}
-	if err := appdb.MigrateControl(control); err != nil {
-		return fmt.Errorf("migrate control: %w", err)
+	if err := appdb.Migrate(database); err != nil {
+		return fmt.Errorf("migrate: %w", err)
 	}
-	reg := tenantdb.New(control, dir)
 	defer func() {
-		if cerr := reg.Close(); cerr != nil {
+		if cerr := database.Close(); cerr != nil {
 			logger.Error("close db failed", slog.Any("error", cerr))
 		}
 	}()
-	tdb := reg.Tenant()
 
 	hub := realtime.NewHub()
-	sm := auth.NewSessionManager(control, cfg.SecureCookie)
-	users := auth.NewUsers(control)
-	tenants := auth.NewTenants(control)
-	invites := auth.NewInvites(control)
-	bpSvc := businessprofile.NewService(tdb, hub)
-	payerSvc := payer.NewService(tdb, hub)
-	taxRateSvc := taxrate.NewService(tdb, hub)
-	clientSvc := client.NewService(tdb, hub)
-	customItemSvc := customitem.NewService(tdb, hub)
-	priceListSvc := pricelist.NewService(tdb)
-	priceListImportSvc := pricelist.NewImportService(tdb, hub)
-	sessionSvc := session.NewService(tdb, hub, invoice.NewInvoices(tdb))
-	invoiceSvc := invoice.NewService(tdb, hub, sessionSvc)
-	estimateSvc := estimate.NewService(tdb, hub)
-	paymentSvc := invoice.NewPaymentService(tdb, hub)
-	recurringSvc := recurring.NewService(tdb, hub)
+	sm := auth.NewSessionManager(database, cfg.SecureCookie)
+	users := auth.NewUsers(database)
+	tenants := auth.NewTenants(database)
+	invites := auth.NewInvites(database)
+	bpSvc := businessprofile.NewService(database, hub)
+	payerSvc := payer.NewService(database, hub)
+	taxRateSvc := taxrate.NewService(database, hub)
+	clientSvc := client.NewService(database, hub)
+	customItemSvc := customitem.NewService(database, hub)
+	priceListSvc := pricelist.NewService(database)
+	priceListImportSvc := pricelist.NewImportService(database, hub)
+	sessionSvc := session.NewService(database, hub, invoice.NewInvoices(database))
+	invoiceSvc := invoice.NewService(database, hub, sessionSvc)
+	estimateSvc := estimate.NewService(database, hub)
+	paymentSvc := invoice.NewPaymentService(database, hub)
+	recurringSvc := recurring.NewService(database, hub)
 
 	// AI "Smarts" (optional): the service is only constructed when
 	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired:
@@ -205,7 +202,7 @@ func Run(cfg Config, version string) error {
 		Users:           users,
 		Tenants:         tenants,
 		Session:         sm,
-		Signup:          NewSignupHandler(sm, tenants, users, provisionProfile(reg)),
+		Signup:          NewSignupHandler(sm, tenants, users, provisionProfile(database)),
 		Auth:            NewAuthHandler(sm, users, tenants),
 		Invites:         NewInviteHandler(invites, users),
 		Events:          realtime.NewEventsHandler(hub),

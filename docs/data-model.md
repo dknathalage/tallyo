@@ -4,25 +4,26 @@ Living reference for the SQLite schema. Source of truth is the goose migrations
 (`internal/db/migrations/{control,tenant}/*.sql`); this diagram is the
 human-readable map. Update it whenever a migration changes a table or relationship.
 
-> **DB-per-tenant.** Tables are split across two SQLite databases. The **control
-> DB** (`control.db`) holds `tenants, users, invites, sessions` and a global
-> `audit_log`. Each **tenant DB** (`tenants/tenant-<id>.db`) holds the business
-> tables below — including the **tenant-owned price list** (`price_list_versions,
-> items`, each tenant populates its own) — plus its
-> own `audit_log`. Relationships that cross the two DBs are **logical only — NOT
-> foreign keys**: `tenant_id` (→ control `tenants`) and `author_user_id` /
-> `user_id` (→ control `users`). Within a tenant DB, `item_id` /
-> `price_list_version_id` reference the tenant price list stored as **UUID TEXT** (not
-> FKs — pinned per line so old invoices never re-price). The authoritative split
-> ERD is in `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`;
-> keep both in sync.
+> **Single SQLite file, logical tenancy.** All tables live in one file
+> (`<data-dir>/tallyo.db`). Conceptually they still group into a **control** set
+> (`tenants, users, invites, sessions`, a global `audit_log`) and **tenant**
+> business tables below — including the **tenant-owned price list**
+> (`price_list_versions, items`, each tenant populates its own) — but that split
+> is logical only; there is one physical database. Tenancy is enforced by a
+> `tenant_id` column on every business row plus a `WHERE tenant_id = ?` guard on
+> every query. `tenant_id` (→ `tenants`) and `author_user_id` / `user_id` (→
+> `users`) are **logical references — NOT foreign keys** (validated in app).
+> `item_id` / `price_list_version_id` reference the price list stored as **UUID
+> TEXT** (not FKs — pinned per line so old invoices never re-price). (The model
+> was simplified from an earlier DB-per-tenant design; that historical spec lives
+> under `docs/superpowers/specs/`.)
 
 > **Session items = invoice line items.** `line_items` is the single home for both
 > a work session's items and an invoice's lines. A row is born on a session
 > (`session_id` set, `invoice_id` NULL = unbilled); drafting an invoice sets its
 > `invoice_id`. The row is never copied. The tenant table is `work_sessions` (gen
 > model `WorkSession`, mapped to domain `Session` — named `work_sessions` to avoid
-> colliding with the control DB's scs `sessions` table when sqlc merges both
+> colliding with the scs `sessions` table in the same DB when sqlc merges both
 > schemas); it carries no `hours`/`km`/`measures` — every billable quantity is a
 > `line_items` row whose `unit` class (time / distance / count) drives how its
 > quantity is captured. A `CHECK (session_id IS NOT NULL OR invoice_id IS NOT NULL)`
@@ -118,13 +119,14 @@ erDiagram
 
 ## Conventions
 
-- Every tenant-owned table carries a `tenant_id INTEGER` column (a redundant
-  guard — the file already scopes the tenant; it is NOT a foreign key, since
-  `tenants` lives in the control DB).
+- Every tenant-owned table carries a `tenant_id INTEGER` column — the scoping
+  guard that every query filters on (`WHERE tenant_id = ?`). It is NOT a foreign
+  key (validated in app).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
   estimate); they are deliberately separate tables, not unified.
 - The price list (`price_list_versions`, `items`)
-  is **tenant-owned** — each tenant DB holds its own copy. `items` carries a
+  is **tenant-owned** — scoped per tenant by `tenant_id` in the single DB, each
+  tenant populating its own rows. `items` carries a
   nullable `category` and a generic `unit_price REAL`. `line_items` and
   `estimate_line_items` reference it by **UUID TEXT**
   (`price_list_version_id` + `item_id`), not by FK.

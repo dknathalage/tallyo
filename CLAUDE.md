@@ -32,9 +32,10 @@ interfaces declared by the consumer and wired in `internal/app`.
   Also holds the auth/invite/signup HTTP handlers (kept here to avoid an
   `auth → httpx → auth` cycle).
 - **Platform (cross-cutting, shared by slices):**
-  - `internal/db/` — modernc connection (`sqlite.go`), `migrate.go` (goose),
-    `migrations/*.sql`, `queries/*.sql` (sqlc source), `gen/` (sqlc output, ONE
-    central package — do not edit, do not split).
+  - `internal/db/` — the single modernc `*sql.DB` connection (`sqlite.go`),
+    `migrate.go` (goose), `migrations/*.sql`, `queries/*.sql` (sqlc source),
+    `gen/` (sqlc output, ONE central package — do not edit, do not split). Both
+    control and tenant repos take this one shared `db.Executor`.
   - `internal/audit/` — `WithTx` audited-mutation wrapper + `Log`/`Changes`.
   - `internal/numbering/` — concurrency-safe document numbers (tx-scoped + retry).
   - `internal/reqctx/` — tenant/user request context.
@@ -70,7 +71,7 @@ go run ./cmd/tallyo --port 8080  # or: go build -o bin/tallyo ./cmd/tallyo && ./
 # Frontend dev with hot reload (Vite proxies /api → :8080):
 cd web && npm run dev
 ```
-Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-cookie` (behind TLS). DB file: `<data-dir>/tallyo-go.db`.
+Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-cookie` (behind TLS). DB file: `<data-dir>/tallyo.db`.
 
 ## Commands
 
@@ -93,17 +94,18 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 ## Database
 
-- **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema. The Mermaid ERD in the DB-per-tenant design ([`docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`](docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md)) is the authority for the control-DB vs tenant-DB split — update both ERDs together when a migration moves a table between databases or changes a relationship.
+- **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema.
 - SQLite (modernc.org/sqlite, pure-Go) + sqlc + goose. WAL, `foreign_keys=ON`, `busy_timeout=5000`, `_txlock=immediate` (all mutations take the write lock at BEGIN).
-- **DB-per-tenant.** A shared **control DB** (`<data-dir>/control.db`) holds the global/reference tables (tenants, users, invites, sessions, global audit_log); each tenant's business data — including its own price list — lives in its own file (`<data-dir>/tenants/tenant-<id>.db`). `internal/tenantdb.Registry` opens tenant files on demand (bounded LRU, lazy migrate-on-first-open) and `Conn` (a `db.Executor`) routes each repo call to the request's tenant DB via `reqctx`. Control-plane repos use `reg.Control()`; tenant-plane repos use `reg.Tenant()`. Cross-DB references (tenant_id, author user ids) are NOT foreign keys — validated in app. See `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`.
-- Migrations are embedded in **two goose sequences** (distinct version tables): `internal/db/migrations/control/*.sql` and `internal/db/migrations/tenant/*.sql`. `MigrateControl` runs at startup; tenant DBs migrate lazily via the registry. `Migrate(conn)` applies both to one file (combined single-DB mode, used by tests). sqlc reads the control dir + the tenant business-table file (the tenant `audit_log` migration is excluded to avoid a duplicate-table; goose still applies it). Add a migration to the right dir then `sqlc generate`.
+- **Single SQLite instance, logical tenancy.** All tables — global/reference (tenants, users, invites, sessions, global audit_log) and every tenant's business data, including the price list — live in one file (`<data-dir>/tallyo.db`). The app opens one shared `*sql.DB` (the `db.Executor` interface) and passes it to both the control repos and the tenant services. Tenancy is **logical only**: every business row carries a `tenant_id` column and every query guards `WHERE tenant_id = ?`; `reqctx` carries the request's tenant for those guards + audit. `tenant_id` and author user ids are NOT foreign keys — validated in app. (The model was simplified from an earlier DB-per-tenant design; that historical spec lives under `docs/superpowers/specs/`.)
+- Migrations are embedded in **two goose sequences** (distinct version tables): `internal/db/migrations/control/*.sql` and `internal/db/migrations/tenant/*.sql`. `appdb.Migrate(db)` runs both sequences into the one file at startup. sqlc reads the control dir + the tenant business-table file (the tenant `audit_log` migration is excluded to avoid a duplicate-table; goose still applies it). Add a migration to the right dir then `sqlc generate`.
 - `DATA_DIR` / `--data-dir` override the data dir (default `./data`).
 
 ### Price list (versioned, tenant-owned)
 
 - The catalogue is a generic, **tenant-owned price list** — the two tables
-  (`price_list_versions`, `items`) live in each **tenant DB**
-  (`internal/db/migrations/tenant/`), and every tenant populates its own. An
+  (`price_list_versions`, `items`) live in the single DB under the tenant goose
+  sequence (`internal/db/migrations/tenant/`), scoped per tenant by `tenant_id`,
+  and every tenant populates its own. An
   `items` row carries `code`, `name`, `unit`, a nullable `category`, a generic
   `unit_price` (base per-unit price), and `taxable`. Each release is its own
   `price_list_versions` row; loading a newer one never mutates prior versions, and
@@ -111,7 +113,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
   `line_items`, stored as tenant price-list UUIDs) so existing invoices are never
   re-priced. There are no pricing zones, price caps, plan windows, or client types.
 - Read endpoints (`GET …/price-list/versions`, `…/versions/{versionUUID}/items`)
-  serve the tenant tables.
+  serve the tenant-scoped tables.
 - **Generic upload-and-map import.** Ingest is a two-step, file-format-agnostic
   flow (CSV/XLSX), both gated by **owner/admin**: `POST …/price-list/import/inspect`
   returns the detected headers + a row sample; the SPA mapping wizard maps each

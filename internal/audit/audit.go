@@ -71,10 +71,8 @@ func nullInt64(v int64, ok bool) any {
 //
 // If Entry.Action == "", WithTx does NOT auto-log — use this when the entity id
 // is generated inside fn and you log manually within fn instead.
-// txBeginner is the subset of *sql.DB / tenantdb.Conn that WithTx needs. Taking
-// an interface lets repos pass either a raw *sql.DB (tests) or the per-tenant
-// routing handle (production) — the tx is opened on whichever DB the handle
-// resolves for the request's tenant.
+// txBeginner is the subset of *sql.DB that WithTx needs; taking an interface
+// keeps the audit helper decoupled from the concrete connection.
 type txBeginner interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }

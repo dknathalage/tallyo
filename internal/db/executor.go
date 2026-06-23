@@ -7,9 +7,8 @@ import (
 
 // Executor is the database surface a repository needs: the sqlc DBTX methods
 // (ExecContext/PrepareContext/QueryContext/QueryRowContext) plus BeginTx for
-// audited transactions. Both *sql.DB and the per-tenant routing handle
-// (tenantdb.Conn) satisfy it, so a repository written against Executor works
-// unchanged in single-DB (tests) and per-tenant (production) modes.
+// audited transactions. Satisfied by *sql.DB (and *sql.Tx for Exec), so repos
+// stay decoupled from the concrete connection.
 type Executor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	PrepareContext(context.Context, string) (*sql.Stmt, error)

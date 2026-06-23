@@ -28,10 +28,10 @@ func MigrateTenant(conn *sql.DB) error {
 	return migrate(conn, "migrations/tenant", tenantVersionTable)
 }
 
-// Migrate applies BOTH sequences to a single DB (combined single-file mode,
-// used by tests and dev). The tenant audit_log uses IF NOT EXISTS so it does
-// not clash with the control audit_log when both run on one file. Production
-// uses MigrateControl + MigrateTenant against separate files.
+// Migrate applies BOTH sequences to the single app DB. The tenant audit_log
+// uses IF NOT EXISTS so it does not clash with the control audit_log when both
+// run on one file (the control audit_log, with FKs, wins). This is the
+// production path; MigrateControl/MigrateTenant remain as its building blocks.
 func Migrate(conn *sql.DB) error {
 	if err := MigrateControl(conn); err != nil {
 		return err

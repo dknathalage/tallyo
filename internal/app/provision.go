@@ -2,21 +2,16 @@ package app
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	"github.com/dknathalage/tallyo/internal/tenantdb"
 )
 
-// provisionProfile returns the signup profile provisioner: it opens (and lazily
-// migrates) the new tenant's DB via the registry and creates its default
-// business_profile there. Used to wire the signup handler in the composition
-// root, keeping the cross-DB orchestration out of the auth slice.
-func provisionProfile(reg *tenantdb.Registry) auth.ProfileProvisioner {
+// provisionProfile returns the signup profile provisioner: it creates the new
+// tenant's default business_profile in the shared DB. Wired in the composition
+// root so the cross-slice orchestration stays out of the auth slice.
+func provisionProfile(database *sql.DB) auth.ProfileProvisioner {
 	return func(ctx context.Context, tenantID int64, in auth.SignupInput) error {
-		tdb, err := reg.ForTenantID(tenantID)
-		if err != nil {
-			return err
-		}
-		return auth.ProvisionBusinessProfile(ctx, tdb, tenantID, in)
+		return auth.ProvisionBusinessProfile(ctx, database, tenantID, in)
 	}
 }
