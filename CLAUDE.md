@@ -43,14 +43,18 @@ interfaces declared by the consumer and wired in `internal/app`.
     `WriteValidationError`/`DecodeJSON`/`ParseID`, middleware (`Recover`,
     `RequestLogger`, `RequireAuth`, `RequireRole`, `RequirePlatformAdmin`), logging,
     `SPAHandler`.
-  - `internal/pdf/` (maroto render), `internal/importer/` (catalog parse/map/diff).
+  - `internal/pdf/` (maroto render), `internal/importer/` (generic price-list
+    parse/map: `ApplyMapping` turns header→field column mappings into typed rows).
 - `internal/billing/` — the shared **billing-document core**: `LineItem(Input)`
-  types, `ComputeTotals`/`Round2`, `SnapshotBuilder` (reads gen), and the NDIS
-  `LineValidator`. The invoice/estimate/recurring slices compose it.
-- **Domain slices:** `internal/{invoice,estimate,recurring,shift,participant,
-  planmanager,taxrate,businessprofile,customitem,catalog,auth,agent,export}`.
-  `invoice` includes payment. `invoice` declares `ShiftLinker`; `shift` declares
-  `InvoiceChecker` — these break the invoice↔shift cycle. `agent` is a consumer
+  types, `ComputeTotals`/`Round2`, `SnapshotBuilder` (reads gen), and the
+  `LineValidator`. NDIS rules in the validator are **data-gated** (zone caps run
+  only when `business_profile.zone` is set; plan-window only when the client has
+  plan dates), so a generic tenant gets tax + non-negativity only. The
+  invoice/estimate/recurring slices compose it.
+- **Domain slices:** `internal/{invoice,estimate,recurring,session,client,
+  payer,taxrate,businessprofile,customitem,pricelist,auth,agent,export}`.
+  `invoice` includes payment. `invoice` declares `SessionLinker`; `session`
+  declares `InvoiceChecker` — these break the invoice↔session cycle. `agent` is a consumer
   slice exposing one-shot **Smarts** (gather → propose → apply via a forced
   single-tool LLM call, then deterministic apply); its tools take interfaces and
   it has no persistent agent tables.
@@ -80,7 +84,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 - sqlc source SQL in `internal/db/queries/`; never hand-edit `internal/db/gen/`.
 - Each domain is a **vertical slice** (`internal/<domain>/`): handler → service → repository → sqlc gen, all in one package. Within a slice, handlers call its service, the service calls its repository, the repository calls gen — never skip a layer.
-- **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.ShiftLinker`, `shift.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` (line items, totals, snapshots, validator).
+- **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.SessionLinker`, `session.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` (line items, totals, snapshots, validator).
 - Every DB mutation is audited (via `audit.WithTx`) and broadcasts an SSE event from the service after commit.
 - JSON is camelCase (Go struct json tags); list endpoints return `[]` (non-nil) when empty.
 - **UUID addressing.** The HTTP/JSON API addresses every entity by its **uuid** — paths are `/{...UUID}` (e.g. `/invoices/{invoiceUUID}`) and every JSON `id` / `*Id` field is a uuid string. The int64 PK is internal-only: never in a URL or JSON payload. Handlers resolve `uuid → row` at the boundary (`httpx.ParseUUID` + a `GetXByUUID` lookup) and operate on the int PK internally; inbound FK uuids resolve to int before insert. SvelteKit routes use `[uuid]` params.
@@ -91,26 +95,37 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 - **ERD / data-model map: [`docs/data-model.md`](docs/data-model.md)** — Mermaid diagram of tables + relationships. Keep it in sync when a migration changes the schema. The Mermaid ERD in the DB-per-tenant design ([`docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`](docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md)) is the authority for the control-DB vs tenant-DB split — update both ERDs together when a migration moves a table between databases or changes a relationship.
 - SQLite (modernc.org/sqlite, pure-Go) + sqlc + goose. WAL, `foreign_keys=ON`, `busy_timeout=5000`, `_txlock=immediate` (all mutations take the write lock at BEGIN).
-- **DB-per-tenant.** A shared **control DB** (`<data-dir>/control.db`) holds the global/reference tables (tenants, users, invites, sessions, global audit_log); each tenant's business data — including its own NDIS catalogue — lives in its own file (`<data-dir>/tenants/tenant-<id>.db`). `internal/tenantdb.Registry` opens tenant files on demand (bounded LRU, lazy migrate-on-first-open) and `Conn` (a `db.Executor`) routes each repo call to the request's tenant DB via `reqctx`. Control-plane repos use `reg.Control()`; tenant-plane repos use `reg.Tenant()`. Cross-DB references (tenant_id, author user ids) are NOT foreign keys — validated in app. See `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`.
+- **DB-per-tenant.** A shared **control DB** (`<data-dir>/control.db`) holds the global/reference tables (tenants, users, invites, sessions, global audit_log); each tenant's business data — including its own price list — lives in its own file (`<data-dir>/tenants/tenant-<id>.db`). `internal/tenantdb.Registry` opens tenant files on demand (bounded LRU, lazy migrate-on-first-open) and `Conn` (a `db.Executor`) routes each repo call to the request's tenant DB via `reqctx`. Control-plane repos use `reg.Control()`; tenant-plane repos use `reg.Tenant()`. Cross-DB references (tenant_id, author user ids) are NOT foreign keys — validated in app. See `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`.
 - Migrations are embedded in **two goose sequences** (distinct version tables): `internal/db/migrations/control/*.sql` and `internal/db/migrations/tenant/*.sql`. `MigrateControl` runs at startup; tenant DBs migrate lazily via the registry. `Migrate(conn)` applies both to one file (combined single-DB mode, used by tests). sqlc reads the control dir + the tenant business-table file (the tenant `audit_log` migration is excluded to avoid a duplicate-table; goose still applies it). Add a migration to the right dir then `sqlc generate`.
 - `DATA_DIR` / `--data-dir` override the data dir (default `./data`).
 
-### NDIS catalogue (versioned, tenant-owned)
+### Price list (versioned, tenant-owned)
 
-- The NDIS Support Catalogue is a **tenant-owned resource** — the three tables
-  (`catalog_versions`, `support_items`, `support_item_prices`) live in each
-  **tenant DB** (`internal/db/migrations/tenant/`), and every tenant populates its
-  own. Each catalogue release is its own `catalog_versions` row; ingesting a newer
-  one never mutates prior versions, and prices are pinned per invoice line
-  (`catalog_version_id` on `line_items`, stored as the tenant catalogue UUID) so
-  existing invoices are never re-priced.
-- Read endpoints (`GET …/support-catalog/versions`, `…/versions/{versionUUID}/items`,
-  `…/items/{itemUUID}/prices`) serve the tenant tables; the ingest/create endpoints
-  are gated by **owner/admin** (no longer a platform-admin special case).
-- **XLSX ingest is DEFERRED** — the global-seed machinery is gone: `cmd/cataloguegen`,
-  the generated control catalogue migration, and `data/catalogue/` were deleted.
-  `internal/catalog`'s `ParseXLSX` is retained so the per-tenant upload path can be
-  wired in later without rework.
+- The catalogue is a generic, **tenant-owned price list** — the three tables
+  (`price_list_versions`, `items`, `item_prices`) live in each **tenant DB**
+  (`internal/db/migrations/tenant/`), and every tenant populates its own. `items`
+  carries a nullable generic `unit_price` (base per-unit price) and a nullable
+  `category` (one column that collapsed the former NDIS
+  `support_category`/`registration_group`/`claim_type`); `item_prices` holds
+  per-zone caps used only when a tenant runs NDIS rules. Each release is its own
+  `price_list_versions` row; loading a newer one never mutates prior versions, and
+  prices are pinned per invoice line (`price_list_version_id` + `item_id` on
+  `line_items`, stored as tenant price-list UUIDs) so existing invoices are never
+  re-priced.
+- Read endpoints (`GET …/price-list/versions`, `…/versions/{versionUUID}/items`,
+  `…/items/{itemUUID}/prices`) serve the tenant tables.
+- **Generic upload-and-map import.** Ingest is a two-step, file-format-agnostic
+  flow (CSV/XLSX), both gated by **owner/admin**: `POST …/price-list/import/inspect`
+  returns the detected headers + a row sample; the SPA mapping wizard maps each
+  source header to a target field; `POST …/price-list/import/commit` applies it.
+  The pipeline is `importer.ApplyMapping` (header→field → typed rows) feeding the
+  `pricelist` slice's `Inspect` / `ImportMapped`. The old fixed NDIS XLSX parser
+  (`ParseXLSX` / `IngestService`) and the global-seed machinery (`cmd/cataloguegen`,
+  the seed migration, `data/catalogue/`) were removed.
+- **NDIS is now opt-in, data-driven.** A tenant runs NDIS behaviour when its
+  clients are `type = 'ndis'` and `business_profile.zone` is configured (which
+  turns on the price-cap + plan-window validation steps). Multi-zone NDIS cap
+  import is **deferred** — the generic importer sets a single `items.unit_price`.
 
 ## Coding Rules (NASA Power of 10, adapted)
 

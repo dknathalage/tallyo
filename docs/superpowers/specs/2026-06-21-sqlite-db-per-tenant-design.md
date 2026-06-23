@@ -24,11 +24,19 @@ data dir.
 
 The current schema already supports the split with near-zero query rewrites:
 
-- Only **two** JOINs cross any table boundary, and **both sides are control
-  tables**: `users ⋈ tenants` and `support_item_prices ⋈ support_items`.
+- Only **two** JOINs cross any table boundary, and **both sides are within one
+  DB**: `users ⋈ tenants` (control) and `item_prices ⋈ items` (tenant price list).
 - **No query joins a tenant table against a control table.** `line_items`
   already **snapshots** `code / description / unit / unit_price` per line and
-  pins `catalog_version_id`, so catalogue display needs no live join.
+  pins `price_list_version_id`, so price-list display needs no live join.
+
+> **Note (de-NDIS refactor, Phase 8).** The price list moved to the **tenant DB**
+> and the tables were renamed (`catalog_versions`→`price_list_versions`,
+> `support_items`→`items`, `support_item_prices`→`item_prices`); `shifts`→
+> `work_sessions`, `participants`→`clients`, `plan_managers`→`payers`. The control
+> DB no longer holds catalogue tables. The control/tenant split below is updated;
+> the older "catalogue in control" prose is retained only as historical design
+> rationale.
 
 Therefore `sqlc`'s generated `gen` package stays a **single package** — no
 split, no join rewrites. Each repo simply runs its existing queries against the
@@ -49,14 +57,15 @@ only in scope inside `httpx.ResolveTenant`. Keying by id means `ForTenant(ctx)`
 needs no new context plumbing. Files are named `tenant-<id>.db`.
 
 **control.db** (global, single file):
-`tenants, users, invites, sessions, catalog_versions, support_items,
-support_item_prices`, plus a small `audit_log` for global admin actions
-(catalogue upload, tenant create/suspend).
+`tenants, users, invites, sessions`, plus a small `audit_log` for global admin
+actions (tenant create/suspend). _(The catalogue tables that earlier lived here
+moved to the tenant DB in the de-NDIS refactor.)_
 
 **tenant-<id>.db** (one per tenant):
-`business_profile, plan_managers, participants, custom_items, tax_rates,
+`business_profile, payers, clients, custom_items, tax_rates,
 invoices, line_items, estimates, estimate_line_items, payments,
-recurring_templates, shifts, audit_log`.
+recurring_templates, work_sessions, price_list_versions, items, item_prices,
+audit_log`.
 
 Rationale for users/invites/sessions in control: login is global
 (`POST /api/auth/login`, no tenant in URL) and must resolve email → tenant
@@ -76,8 +85,6 @@ erDiagram
     tenants ||--o{ users : has
     tenants ||--o{ invites : has
     users ||--o{ invites : "created_by"
-    catalog_versions ||--o{ support_items : contains
-    support_items ||--o{ support_item_prices : "priced by zone"
     users ||--o{ audit_log_global : "actor"
     sessions {
         text token
@@ -85,46 +92,55 @@ erDiagram
 ```
 
 `audit_log_global` is the control-DB `audit_log` (global admin actions only —
-catalogue upload, tenant create/suspend). `sessions` is the scs store, keyed by
-token, unrelated to other tables.
+tenant create/suspend). `sessions` is the scs store, keyed by token, unrelated
+to other tables. The catalogue tables (now the tenant-owned price list) no
+longer live in the control DB.
 
 ### tenant-&lt;id&gt;.db (one per tenant)
 
 ```mermaid
 erDiagram
-    plan_managers |o--o{ participants : manages
-    participants  ||--o{ invoices : "billed for"
-    plan_managers |o--o{ invoices : "bills via"
-    participants  ||--o{ estimates : "quoted for"
-    plan_managers |o--o{ estimates : "quoted via"
-    participants  ||--o{ shifts : "supported in"
+    payers        |o--o{ clients : manages
+    clients       ||--o{ invoices : "billed for"
+    payers        |o--o{ invoices : "bills via"
+    clients       ||--o{ estimates : "quoted for"
+    payers        |o--o{ estimates : "quoted via"
+    clients       ||--o{ work_sessions : "supported in"
     invoices      ||--o{ line_items : has
     invoices      ||--o{ payments : receives
     invoices      |o--o{ estimates : "converted from"
     estimates     ||--o{ estimate_line_items : has
-    shifts        |o--o{ line_items : "billable items"
+    work_sessions |o--o{ line_items : "billable items"
     custom_items  |o--o{ line_items : "custom line"
     custom_items  |o--o{ estimate_line_items : "custom line"
+    price_list_versions ||--o{ items : contains
+    items         ||--o{ item_prices : "priced by zone"
     business_profile {
         text uuid
     }
     tax_rates {
         text uuid
     }
-    recurring_templates }o--|| participants : "templates"
+    recurring_templates }o--|| clients : "templates"
 ```
 
 `business_profile` (1:1 per file) and `tax_rates` stand alone within the tenant
-file. `recurring_templates` also references `plan_managers`.
+file. `recurring_templates` also references `payers`. The tenant-owned price list
+(`price_list_versions`, `items`, `item_prices`) now lives in this file too — the
+`item_prices ⋈ items` join is the one tenant-internal cross-table join.
 
 ### Cross-DB logical references (no FK — validated in app)
 
-| From (tenant file) | To (control.db) | Stored as |
+| From (tenant file) | To | Stored as |
 |---|---|---|
-| every tenant table `.tenant_id` | `tenants.id` | int (redundant; file already scopes) |
-| `line_items` / `estimate_line_items` `.support_item_id` | `support_items` | **UUID** |
-| `line_items` / `estimate_line_items` `.catalog_version_id` | `catalog_versions` | **UUID** |
-| `audit_log.user_id`, `shifts.author_user_id`, … | `users` | control user id, **non-authoritative**, resolved app-side for display |
+| every tenant table `.tenant_id` | control `tenants.id` | int (redundant; file already scopes) |
+| `line_items` / `estimate_line_items` `.item_id` | tenant `items` (same file) | **UUID** (no FK — pinned snapshot, never re-priced) |
+| `line_items` / `estimate_line_items` `.price_list_version_id` | tenant `price_list_versions` (same file) | **UUID** (no FK — pinned) |
+| `audit_log.user_id`, `work_sessions.author_user_id`, … | control `users` | control user id, **non-authoritative**, resolved app-side for display |
+
+_(After the de-NDIS refactor the price list is tenant-local, so `item_id` /
+`price_list_version_id` are intra-file references — stored as UUID and pinned per
+line, not FKs, so a newer price-list version never re-prices old invoices.)_
 
 ## Schema changes (minimal diff)
 
@@ -136,11 +152,11 @@ constraints that point at tables **not present in the tenant file** (with
   dropped**. The column is kept (the file already scopes the tenant, but
   keeping the column means **zero query rewrites** — all `WHERE tenant_id = ?`
   filters still work as a belt-and-suspenders guard).
-- `line_items.support_item_id REFERENCES support_items(id)` and
-  `line_items.catalog_version_id REFERENCES catalog_versions(id)` → store the
-  **UUID** (control-DB integer ids are meaningless across files), FK dropped,
-  existence validated in app at write time. Display fields are already
-  snapshotted on the line.
+- `line_items.item_id` and `line_items.price_list_version_id` → store the **UUID**
+  of the tenant price-list row, FK dropped, pinned per line. (Originally these
+  pointed at control-DB catalogue tables across files; post-refactor the price
+  list is tenant-local but the columns stay UUID + no FK so old lines never
+  re-price.) Display fields are already snapshotted on the line.
 - `audit_log.tenant_id REFERENCES tenants(id)` **and** `audit_log.user_id
   REFERENCES users(id)` → **both FKs dropped** (neither target table exists in
   the tenant file; with `foreign_keys=ON` an audited insert would otherwise
@@ -148,9 +164,9 @@ constraints that point at tables **not present in the tenant file** (with
   the control-DB user id as a **non-authoritative** display reference (resolved
   app-side from control — it is a cross-file id, not an enforced FK). The same
   applies to any tenant table with `author_user_id REFERENCES users(id)`
-  (e.g. `shifts`) — drop the FK, keep the column.
+  (e.g. `work_sessions`) — drop the FK, keep the column.
 - Same-DB FKs are **kept**: `invoice_id`, `estimate_id`, `custom_item_id`,
-  `participant_id`, `plan_manager_id`, `shift_id`, etc. all reference
+  `client_id`, `payer_id`, `session_id` (→ `work_sessions`), etc. all reference
   tenant-local tables.
 
 The `audit_log` table **shape** stays identical across both files (one sqlc
@@ -209,15 +225,18 @@ func (r *Registry) ForTenantID(id int64) (*sql.DB, error)          // explicit i
 
 Two embedded goose dirs, each with its own `goose_db_version` table:
 
-- `internal/db/migrations/control/*.sql` — tenants, users, invites, sessions,
-  catalogue (incl. the 485 KB `00006` catalogue seed — runs once).
-- `internal/db/migrations/tenant/*.sql` — the business tables.
+- `internal/db/migrations/control/*.sql` — tenants, users, invites, sessions.
+  (Originally also held the catalogue + its seed; post-refactor the price-list
+  tables and seed machinery were removed from control.)
+- `internal/db/migrations/tenant/*.sql` — the business tables, including the
+  tenant-owned price list (`price_list_versions`, `items`, `item_prices`).
 
 `Migrate(control)` runs at startup. Tenant DBs migrate lazily on first open via
 the registry. Each file owns its own `goose_db_version` table; the DBs are
-fresh (clean-break), so relocating/renumbering the existing `00001–00008`
-migrations across the two dirs is safe. The 485 KB `00006` catalogue seed moves
-to `control/`.
+fresh (clean-break), so relocating/renumbering migrations across the two dirs is
+safe. _(The original design moved a 485 KB catalogue seed into `control/`; the
+de-NDIS refactor removed the global seed entirely — the price list is now
+tenant-owned and populated via the generic upload-and-map importer.)_
 
 `sqlc` is pointed at **both** schema dirs for type generation only; runtime DB
 selection is the repo's job. **`audit_log` exists in both files** but its DDL is

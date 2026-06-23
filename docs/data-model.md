@@ -17,13 +17,16 @@ human-readable map. Update it whenever a migration changes a table or relationsh
 > ERD is in `docs/superpowers/specs/2026-06-21-sqlite-db-per-tenant-design.md`;
 > keep both in sync.
 
-> **Active change — shift items = invoice line items.** `line_items` is the single
-> home for both a shift's items and an invoice's lines. A row is born on a shift
-> (`shift_id` set, `invoice_id` NULL = unbilled); drafting an invoice sets its
-> `invoice_id`. The row is never copied. `shifts` no longer carries `hours`/`km`/
-> `measures` — every billable quantity is a `line_items` row whose `unit` class
-> (time / distance / count) drives how its quantity is captured. A
-> `CHECK (shift_id IS NOT NULL OR invoice_id IS NOT NULL)` forbids orphan rows.
+> **Session items = invoice line items.** `line_items` is the single home for both
+> a work session's items and an invoice's lines. A row is born on a session
+> (`session_id` set, `invoice_id` NULL = unbilled); drafting an invoice sets its
+> `invoice_id`. The row is never copied. The tenant table is `work_sessions` (gen
+> model `WorkSession`, mapped to domain `Session` — named `work_sessions` to avoid
+> colliding with the control DB's scs `sessions` table when sqlc merges both
+> schemas); it carries no `hours`/`km`/`measures` — every billable quantity is a
+> `line_items` row whose `unit` class (time / distance / count) drives how its
+> quantity is captured. A `CHECK (session_id IS NOT NULL OR invoice_id IS NOT NULL)`
+> forbids orphan rows.
 > See `docs/superpowers/specs/2026-06-19-shift-items-unification-design.md`.
 
 ```mermaid
@@ -31,19 +34,19 @@ erDiagram
     tenants ||--o{ users : has
     tenants ||--o{ clients : has
     tenants ||--o{ invoices : has
-    tenants ||--o{ shifts : has
+    tenants ||--o{ work_sessions : has
 
-    plan_managers |o--o{ clients : manages
-    plan_managers |o--o{ invoices : "bills via"
-    clients ||--o{ shifts : "supported in"
+    payers |o--o{ clients : manages
+    payers |o--o{ invoices : "bills via"
+    clients ||--o{ work_sessions : "supported in"
     clients ||--o{ invoices : "billed for"
 
     price_list_versions ||--o{ items : contains
     items ||--o{ item_prices : "priced by zone"
 
     invoices ||--o{ line_items : "lines (invoice_id)"
-    shifts   ||--o{ line_items : "items (shift_id)"
-    shifts   }o--o| invoices : "drafted into"
+    work_sessions ||--o{ line_items : "items (session_id)"
+    work_sessions }o--o| invoices : "drafted into"
     items |o--o{ line_items : "price-list source"
     custom_items  |o--o{ line_items : "custom source"
     price_list_versions |o--o{ line_items : "pinned version"
@@ -56,25 +59,25 @@ erDiagram
     line_items {
         int     id PK
         int     tenant_id FK
-        int     shift_id   FK "ON DELETE CASCADE; NULL for manual/recurring lines"
-        int     invoice_id FK "NULL = unbilled shift item"
+        int     session_id FK "→ work_sessions; ON DELETE CASCADE; NULL for manual/recurring lines"
+        int     invoice_id FK "NULL = unbilled session item"
         text    item_id "tenant items.uuid (TEXT, no FK)"
         int     custom_item_id  FK "custom item (tenant-local, nullable)"
         text    price_list_version_id "tenant price_list_versions.uuid (TEXT, no FK), pinned"
         text    code "item code snapshot"
-        text    description "what was done (from shift note)"
+        text    description "what was done (from session note)"
         text    service_date
         text    unit "H / KM / EA / D / WK … drives input class"
         text    start_time "time-class units only"
         text    end_time   "time-class units only"
         real    quantity "derived (time/distance) or typed"
-        real    unit_price "resolved from price-list cap"
-        int     gst_free
+        real    unit_price "resolved from price list (or zone cap when NDIS)"
+        int     taxable "1 = taxable (replaces gst_free)"
         real    line_total "quantity * unit_price"
         int     sort_order
     }
 
-    shifts {
+    work_sessions {
         int  id PK
         int  tenant_id FK
         int  client_id FK
@@ -90,7 +93,7 @@ erDiagram
         int  id PK
         int  tenant_id FK
         int  client_id FK
-        int  plan_manager_id FK
+        int  payer_id FK "NULL = self-managed"
         text status
     }
 
@@ -99,7 +102,21 @@ erDiagram
         int  tenant_id FK
         text type "ndis|standard (default standard)"
         text reference "free-text (was ndis_number)"
-        int  plan_manager_id FK "NULL = self-managed"
+        int  payer_id FK "NULL = self-managed"
+        text plan_start "DATE, nullable (NDIS only)"
+        text plan_end "DATE, nullable (NDIS only)"
+        text mgmt_type "plan|self, nullable"
+    }
+
+    items {
+        int  id PK
+        int  tenant_id FK
+        int  price_list_version_id FK "→ price_list_versions"
+        text code
+        text name
+        text category "nullable; collapsed NDIS support_category/registration_group/claim_type"
+        real unit_price "nullable generic base price"
+        int  taxable
     }
 ```
 
