@@ -101,6 +101,23 @@ Custom / free-form lines: non-negativity only (unchanged). Tax: unchanged
 - The divide/create-invoice path used catalogue-authoritative zone pricing via
   `ValidateFilling`; it now fills from `items.unit_price`. Update tool
   descriptions/prompts accordingly (no "zone"/"price cap").
+- `CatalogueSearcher` interface (`deps.go`): drop the `zone` param from
+  `SearchForDate`; `catalogueMatchView` drops `PriceCap`; the `search_catalogue`
+  tool result/schema drops `priceCap`.
+
+**Additional zone/cap surfaces found in spec review (must also be removed):**
+- `pricelist.service.go`: the `Match` struct carries `Zone`/`PriceCap`/`Quotable`
+  and `SearchForDate(ctx, query, serviceDate, zone, limit)` calls
+  `ResolveZonePrice` per result — strip the zone fields + the `zone` param.
+- `pricelist.repository.go`: the import write path calls `UpsertItemPrice` —
+  remove it (generic import writes `unit_price` only).
+- `client/repository.go`: the `ClientCols` listquery allowlist entries
+  (`mgmtType`/`planStart`/`planEnd`/`type`), `normType`, and the `row.Scan`
+  column order — compiler-invisible, fix by hand.
+- Frontend: `LineItemsEditor.svelte` (per-line cap cache + "Cap (zone)" display +
+  `loadPrices`), `businessProfile.svelte.ts` store (`zone` field + `'national'`
+  default), the `priceList.loadPrices` API client method, and `zoneLabel` +
+  prices column on the price-list page.
 
 ### Frontend (`web/`)
 - Settings: remove the pricing-zone field entirely (signup field already
