@@ -18,11 +18,13 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -31,10 +33,10 @@ import (
 // newValidationServer wires the invoice + estimate + client routes behind
 // httpx.RequireAuth and returns both the server and the underlying conn so the test
 // can seed a catalogue version directly.
-func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
+func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, int64) {
 	t.Helper()
 	conn := openMigratedDB(t, "validation_e2e.db")
-	users, _, _, tenantUUID := seedTenantOwner(t, conn)
+	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
@@ -58,7 +60,20 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string) {
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, conn, tenantUUID
+	return srv, conn, tenantUUID, tenantID
+}
+
+// setNationalZone gives the tenant a business profile with the national NDIS
+// zone, so the line validator enforces price caps (Phase 6 data-presence gate:
+// without a configured zone the cap block is skipped).
+func setNationalZone(t *testing.T, conn *sql.DB, tenantID int64) {
+	t.Helper()
+	if err := businessprofile.NewBusinessProfile(conn).Save(
+		reqctx.WithTenant(context.Background(), tenantID), tenantID,
+		businessprofile.BusinessProfileInput{Name: "Acme NDIS", Zone: "national"},
+	); err != nil {
+		t.Fatalf("setNationalZone: %v", err)
+	}
 }
 
 // seedNationalCap inserts a one-item catalogue version priced at the given
@@ -149,8 +164,9 @@ func assertValidationEnvelope(t *testing.T, resp *http.Response) {
 }
 
 func TestInvoiceCreateOverCapReturns422(t *testing.T) {
-	srv, conn, uuid := newValidationServer(t)
+	srv, conn, uuid, tenantID := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
+	setNationalZone(t, conn, tenantID)
 	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
 	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
 
@@ -169,7 +185,7 @@ func TestInvoiceCreateOverCapReturns422(t *testing.T) {
 }
 
 func TestInvoiceCreateOutOfPlanReturns422(t *testing.T) {
-	srv, conn, uuid := newValidationServer(t)
+	srv, conn, uuid, _ := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
 	// Catalogue window is wide; the client plan ends 2025-12-31.
 	seedNationalCap(t, conn, "2025-01-01", "2026-12-31", "01_011", 100)
@@ -191,8 +207,9 @@ func TestInvoiceCreateOutOfPlanReturns422(t *testing.T) {
 }
 
 func TestEstimateCreateOverCapReturns422(t *testing.T) {
-	srv, conn, uuid := newValidationServer(t)
+	srv, conn, uuid, tenantID := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
+	setNationalZone(t, conn, tenantID)
 	seedNationalCap(t, conn, "2025-07-01", "2026-06-30", "01_011", 100)
 	pid := createClientWithPlan(t, c, srv.URL, uuid, "2025-07-01", "2026-06-30")
 

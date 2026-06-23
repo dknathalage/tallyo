@@ -89,7 +89,7 @@
 			/>
 		</label>
 		<label class="block">
-			<span class="mb-1 block text-sm font-medium">NDIS pricing zone</span>
+			<span class="mb-1 block text-sm font-medium">NDIS pricing zone (optional)</span>
 			<select
 				bind:value={zone}
 				disabled={!canManage}
@@ -100,7 +100,8 @@
 				<option value="very_remote">Very remote</option>
 			</select>
 			<span class="mt-1 block text-xs text-gray-500">
-				Determines which NDIS price caps apply to your support-item lines.
+				NDIS-only. Determines which NDIS price caps apply to your support-item lines. Leave it at
+				the default if you don't invoice against the NDIS price catalogue.
 			</span>
 		</label>
 		<label class="block">

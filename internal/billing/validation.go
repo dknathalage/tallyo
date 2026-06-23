@@ -242,8 +242,13 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, zone, 
 	snapshotSupportItem(line, versionUUID, item)
 
 	// Step 3 + 4: resolve the zone price, then either assert unit_price ≤ cap
-	// (default) or, in fill mode, OVERWRITE unit_price with the cap.
-	v.applyZonePrice(ctx, idx, versionID, zone, line, ve, fillPrice)
+	// (default) or, in fill mode, OVERWRITE unit_price with the cap. SKIPPED for a
+	// generic (non-NDIS) tenant — no configured zone means no NDIS price caps to
+	// enforce, so the caller-supplied unit_price stands untouched (Phase 6
+	// data-presence gating). The snapshot and taxable defaulting above still run.
+	if zone != "" {
+		v.applyZonePrice(ctx, idx, versionID, zone, line, ve, fillPrice)
+	}
 
 	// Step 5: service date within the client plan window.
 	assertPlanWindow(idx, planStart, planEnd, line.ServiceDate, ve)
@@ -394,15 +399,18 @@ func computeLineTax(items []LineItemInput, rate float64) float64 {
 	return Round2(tax)
 }
 
-// tenantZone reads the tenant's configured NDIS zone, defaulting to "national"
-// when no business profile exists yet.
+// tenantZone reads the tenant's configured NDIS zone. It returns "" when no
+// business profile exists or its zone is unset — a GENERIC (non-NDIS) tenant.
+// An empty zone tells the caller to SKIP the zone-price / cap-assert block
+// entirely (data-presence gating, Phase 6); a configured zone runs the full
+// NDIS price-cap path exactly as before.
 func (v *LineValidator) tenantZone(ctx context.Context, tenantID int64) (string, error) {
 	bp, err := v.profiles.Get(ctx, tenantID)
 	if err != nil {
 		return "", fmt.Errorf("validate lines: read business zone: %w", err)
 	}
 	if bp == nil || bp.Zone == "" {
-		return "national", nil
+		return "", nil
 	}
 	return bp.Zone, nil
 }

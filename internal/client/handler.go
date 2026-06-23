@@ -102,8 +102,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Create(r.Context(), in)
-	if errors.Is(err, errPayerNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
+	if writeClientInputError(w, err) {
 		return
 	}
 	if err != nil {
@@ -131,8 +130,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Update(r.Context(), id, in)
-	if errors.Is(err, errPayerNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
+	if writeClientInputError(w, err) {
 		return
 	}
 	if err != nil {
@@ -144,6 +142,31 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
+// writeClientInputError maps a client-input validation failure to a 400 and
+// returns true; on any other error (or nil) it writes nothing and returns false
+// so the caller falls through to its generic handling. It covers the payer and
+// type sentinels plus the field-level *ValidationError (type-driven NDIS field
+// gating), mirroring the invoice/estimate validation-error handling.
+func writeClientInputError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, errPayerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
+		return true
+	}
+	if errors.Is(err, errInvalidType) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid client type")
+		return true
+	}
+	var ve *ValidationError
+	if errors.As(err, &ve) && ve != nil {
+		httpx.WriteJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "validation failed",
+			"details": ve.Errors,
+		})
+		return true
+	}
+	return false
 }
 
 // Delete removes a client by uuid.

@@ -22,6 +22,7 @@ func TestValidateFillingOverwritesUnitPriceWithCap(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	setTenantZone(t, conn, tid, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 
@@ -44,6 +45,7 @@ func TestValidateFillingOverCapPriceStillPinnedToCap(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	setTenantZone(t, conn, tid, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 
@@ -65,6 +67,7 @@ func TestValidateFillingQuotableKeepsPositiveCallerPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	setTenantZone(t, conn, tid, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn, conn)
 
@@ -85,6 +88,7 @@ func TestValidateFillingQuotableZeroPriceRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	setTenantZone(t, conn, tid, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_999", true, map[string]*float64{"national": nil})
 	v := NewLineValidator(conn, conn)
 
@@ -108,6 +112,7 @@ func TestValidateFillingComputesTaxOnPinnedPrice(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
 	}
+	setTenantZone(t, conn, tid, "national")
 	// Taxable item, cap 200; caller sends 5 which must be ignored.
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, map[string]*float64{"national": fptr(200)})
 	v := NewLineValidator(conn, conn)

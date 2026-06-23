@@ -16,6 +16,7 @@ func TestValidatePinnedVersionNotRepriced(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-01-01", "2026-12-31")
+	setTenantZone(t, conn, tid, "national")
 
 	// v1: cap 100 for code 99_test. v2 (later effective, overlapping): cap 50.
 	v1 := seedZonedCatalog(t, conn, "v1", "2025-01-01", "2025-12-31", "99_test", true, map[string]*float64{"national": fptr(100)})

@@ -24,8 +24,9 @@
 
 	// ── Editable fields (each its own $state, seeded from the client). ──
 	let name = $state('');
-	// type defaults to 'standard'; conditional show/hide of NDIS-only fields by
-	// type is deferred to a later phase — this is just a plain select for now.
+	// type defaults to 'standard'; the NDIS-only fields (reference, plan dates,
+	// management type, payer) are shown only when clientType === 'ndis' — a
+	// standard client sees just name + contact details (Phase 6).
 	let clientType = $state<'ndis' | 'standard'>('standard');
 	let reference = $state('');
 	let planStart = $state('');
@@ -277,65 +278,67 @@
 				</select>
 			</label>
 
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Reference</span>
-				<input
-					type="text"
-					bind:value={reference}
-					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Plan start</span>
-				<input
-					type="date"
-					bind:value={planStart}
-					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Plan end</span>
-				<input
-					type="date"
-					bind:value={planEnd}
-					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Management type</span>
-				<select
-					value={mgmtType}
-					onchange={(e) => onMgmtTypeChange(e.currentTarget.value)}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				>
-					<option value="plan">Plan-managed</option>
-					<option value="self">Self-managed</option>
-				</select>
-			</label>
-
-			{#if mgmtType !== 'self'}
+			{#if clientType === 'ndis'}
 				<label class="block">
-					<span class="mb-1 block text-sm font-medium">Payer</span>
+					<span class="mb-1 block text-sm font-medium">Reference</span>
+					<input
+						type="text"
+						bind:value={reference}
+						oninput={changed}
+						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					/>
+				</label>
+
+				<label class="block">
+					<span class="mb-1 block text-sm font-medium">Plan start</span>
+					<input
+						type="date"
+						bind:value={planStart}
+						oninput={changed}
+						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					/>
+				</label>
+
+				<label class="block">
+					<span class="mb-1 block text-sm font-medium">Plan end</span>
+					<input
+						type="date"
+						bind:value={planEnd}
+						oninput={changed}
+						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					/>
+				</label>
+
+				<label class="block">
+					<span class="mb-1 block text-sm font-medium">Management type</span>
 					<select
-						value={payer}
-						onchange={(e) => {
-							payer = e.currentTarget.value;
-							changed();
-						}}
+						value={mgmtType}
+						onchange={(e) => onMgmtTypeChange(e.currentTarget.value)}
 						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
 					>
-						<option value="">— none —</option>
-						{#each payerOptions as pm (pm.id)}
-							<option value={String(pm.id)}>{pm.name}</option>
-						{/each}
+						<option value="plan">Plan-managed</option>
+						<option value="self">Self-managed</option>
 					</select>
 				</label>
+
+				{#if mgmtType !== 'self'}
+					<label class="block">
+						<span class="mb-1 block text-sm font-medium">Payer</span>
+						<select
+							value={payer}
+							onchange={(e) => {
+								payer = e.currentTarget.value;
+								changed();
+							}}
+							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						>
+							<option value="">— none —</option>
+							{#each payerOptions as pm (pm.id)}
+								<option value={String(pm.id)}>{pm.name}</option>
+							{/each}
+						</select>
+					</label>
+				{/if}
 			{/if}
 
 			<label class="block">

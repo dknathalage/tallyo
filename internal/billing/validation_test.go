@@ -125,6 +125,7 @@ func TestValidateOverCapRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
+	setTenantZone(t, conn, tid, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 
@@ -211,6 +212,7 @@ func TestValidateVersionResolutionPicksRightVersion(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2024-01-01", "2030-01-01")
+	setTenantZone(t, conn, tid, "national")
 	// Two consecutive versions; the SAME code has different caps per version.
 	seedZonedCatalog(t, conn, "2024-25", "2024-07-01", "2025-06-30", "01_011", true, map[string]*float64{"national": fptr(90)})
 	seedZonedCatalog(t, conn, "2025-26", "2025-07-01", "2026-06-30", "01_011", true, map[string]*float64{"national": fptr(110)})
@@ -303,28 +305,37 @@ func TestValidateZoneSelectsDifferentCap(t *testing.T) {
 	}
 }
 
-// TestValidateDefaultsToNationalZoneWhenNoProfile asserts the tenantZone
-// fallback (validation.go): a tenant with NO business_profile (zone unset) is
-// treated as "national", so caps resolve against the national price.
-func TestValidateDefaultsToNationalZoneWhenNoProfile(t *testing.T) {
+// TestGenericTenantSkipsZoneCap asserts the data-presence gate (Phase 6): a
+// tenant with NO business_profile (zone unset) is a generic (non-NDIS) tenant,
+// so the zone-price resolve + cap-assert block is SKIPPED entirely. A coded line
+// passes with its caller-supplied unit_price UNTOUCHED — no "no price published"
+// / "exceeds cap" error — even though a national price (100) exists in the
+// catalogue. (Previously the zone defaulted to "national" and this rejected.)
+func TestGenericTenantSkipsZoneCap(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn) // deliberately NO setTenantZone → no business profile
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2026-06-30")
-	// national cap 100; a remote price also exists at 150 to prove the fallback
-	// picks national (not remote, and not "any zone").
+	// national cap 100 exists; with no zone configured it must NOT be enforced.
 	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true,
 		map[string]*float64{"national": fptr(100), "remote": fptr(150)})
 	v := NewLineValidator(conn, conn)
 	ctx := context.Background()
 
-	// 120 is over the national cap (100) but under the remote cap (150). With the
-	// national fallback this must be REJECTED.
-	if _, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 120)}); err == nil {
-		t.Fatal("no-profile tenant: 120 > national cap 100 must reject (national fallback)")
+	// 120 is over the national cap (100) — but with no zone the cap is not applied.
+	res, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 120)})
+	if err != nil {
+		t.Fatalf("no-zone tenant: coded line must pass without cap enforcement: %v", err)
 	}
-	// 100 is exactly the national cap → must pass.
-	if _, err := v.Validate(ctx, tid, pid, []LineItemInput{supportLine("01_011", "2026-01-15", 1, 100)}); err != nil {
-		t.Fatalf("no-profile tenant: 100 == national cap must pass: %v", err)
+	if len(res.Items) != 1 {
+		t.Fatalf("res items = %d, want 1", len(res.Items))
+	}
+	// Caller-supplied price is preserved untouched (not overwritten with a cap).
+	if res.Items[0].UnitPrice != 120 {
+		t.Fatalf("unit price = %v, want 120 (untouched)", res.Items[0].UnitPrice)
+	}
+	// The catalogue snapshot (code/name) and taxable defaulting still happen.
+	if res.Items[0].ItemID == nil || res.Items[0].PriceListVersionID == nil {
+		t.Fatal("snapshot must still pin item id + price-list version even with no zone")
 	}
 }
 
@@ -468,6 +479,40 @@ func TestValidateCustomItemNegativeRejected(t *testing.T) {
 	}
 }
 
+// TestGenericHappyPathNoZoneNoPlan locks the end-to-end generic (non-NDIS)
+// happy path (Phase 6): a client with NO plan dates on a zone-less tenant, with
+// a coded line, passes with ONLY tax + non-negativity applied — no cap, no
+// zone-price, and no plan-window error. assertPlanWindow is already permissive
+// on empty bounds; this guards that the whole flow stays open for generic use.
+func TestGenericHappyPathNoZoneNoPlan(t *testing.T) {
+	conn := newTestDB(t)
+	tid := seedTenant(t, conn) // no zone → generic tenant
+	// Client with no plan window at all.
+	pid := seedClientPlan(t, conn, tid, "", "")
+	if _, err := taxrate.NewTaxRates(conn).Create(tctx(tid), tid, taxrate.TaxRateInput{
+		Name: "GST", Rate: 0.10, IsDefault: true,
+	}); err != nil {
+		t.Fatalf("seed tax rate: %v", err)
+	}
+	// A taxable coded item priced above its national cap — must NOT be enforced.
+	seedZonedCatalog(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", false, map[string]*float64{"national": fptr(50)})
+	v := NewLineValidator(conn, conn)
+
+	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
+		supportLine("01_011", "2026-01-15", 2, 100), // 100 > cap 50, but no zone → allowed
+	})
+	if err != nil {
+		t.Fatalf("generic happy path must pass with no zone + no plan dates: %v", err)
+	}
+	if res.Items[0].UnitPrice != 100 {
+		t.Fatalf("unit price = %v, want 100 (untouched)", res.Items[0].UnitPrice)
+	}
+	// Tax still computed from the taxable line: round2(round2(2*100)*0.10) = 20.
+	if res.Tax != 20 {
+		t.Fatalf("tax = %v, want 20 (tax still applied)", res.Tax)
+	}
+}
+
 // --- tax computation + totals rounding ------------------------------------
 
 func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
@@ -562,6 +607,7 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClientPlan(t, conn, tid, "2025-07-01", "2025-12-31")
+	setTenantZone(t, conn, tid, "national")
 	seedZonedCatalog(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, map[string]*float64{"national": fptr(100)})
 	v := NewLineValidator(conn, conn)
 

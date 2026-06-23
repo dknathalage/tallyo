@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/client"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
@@ -103,6 +104,14 @@ func sessionToolsFixture(t *testing.T) (conn *sql.DB, tenantID, clientID int64) 
 
 	tenantID = seedNoteTenant(t, c)
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
+
+	// The agent fill-pricing path enforces zone caps; give the tenant a national
+	// zone so the validator runs the cap block (Phase 6 data-presence gate).
+	if err := businessprofile.NewBusinessProfile(c).Save(ctx, tenantID, businessprofile.BusinessProfileInput{
+		Name: "Acme NDIS", Zone: "national",
+	}); err != nil {
+		t.Fatalf("seed business zone: %v", err)
+	}
 
 	p, err := client.NewClients(c).Create(ctx, tenantID, client.ClientInput{
 		Name: "Tania Hangevelled", PlanStart: "2025-07-01", PlanEnd: "2026-06-30",
