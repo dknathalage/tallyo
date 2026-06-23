@@ -70,7 +70,7 @@ func (s *Service) Create(ctx context.Context, in ClientInput) (*Client, error) {
 
 // Update mutates a client by uuid, then broadcasts on success. A nil result
 // means the row was not found, in which case no event is published. The SSE
-// event carries the row's int PK (Phase 2.8 retypes the SSE payload).
+// event carries the row's uuid.
 func (s *Service) Update(ctx context.Context, uuid string, in ClientInput) (*Client, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	c, err := s.repo.Update(ctx, tenantID, uuid, in)
