@@ -165,20 +165,6 @@ func TestMigrateEnforcesEnumChecks(t *testing.T) {
 	); err == nil {
 		t.Fatalf("expected CHECK violation for tenants.status='frozen', got nil")
 	}
-	// Valid tenant for downstream enum checks.
-	if _, err := conn.Exec(
-		"INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
-		"t1", "Tenant One", "active", now, now,
-	); err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
-	// Invalid business_profile.zone must be rejected (load-bearing for price caps).
-	if _, err := conn.Exec(
-		"INSERT INTO business_profile (uuid, tenant_id, name, zone, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-		"bp1", 1, "Biz", "metro", now, now,
-	); err == nil {
-		t.Fatalf("expected CHECK violation for business_profile.zone='metro', got nil")
-	}
 }
 
 func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {

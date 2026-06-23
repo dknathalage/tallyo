@@ -134,10 +134,10 @@ func (s *Service) ClientStats(ctx context.Context, clientUUID string) (*ClientSt
 
 // Create inserts an invoice + line items, then broadcasts on success.
 //
-// Every line passes through the line validation engine (price-cap, plan-window,
-// taxable resolution, snapshotting) first; tax is COMPUTED from the validated
-// lines and overrides any client-supplied value (see validation.go tax note).
-// A validation failure returns a *ValidationError with field-level detail.
+// Every line passes through the line validation engine (catalogue resolution,
+// unit_price fill, taxable resolution, snapshotting) first; tax is COMPUTED from
+// the validated lines and overrides any client-supplied value (see validation.go
+// tax note). A validation failure returns a *ValidationError with field-level detail.
 func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
@@ -153,12 +153,11 @@ func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.L
 	return inv, nil
 }
 
-// CreateWithCatalogPricing is Create in catalogue-authoritative pricing mode:
-// every support-item line's unit price is resolved from the catalogue (the
-// tenant-zone cap) rather than trusted from the caller. Used by the AI agent's
-// create_invoice tool so the model owns only the code, service date and
-// quantity — never the price. A quotable item with no published cap still
-// requires a caller-supplied price (a *ValidationError otherwise).
+// CreateWithCatalogPricing is Create in catalogue pricing mode: every
+// support-item line's unit price is filled from the catalogue item's generic
+// unit_price when the caller supplies none. Used by the AI agent's
+// create_invoice tool so the model owns the code, service date and quantity. An
+// item with no unit_price keeps the caller's price (free-form).
 func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.ValidateFilling(ctx, tenantID, in.ClientID, items)

@@ -231,7 +231,7 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, line *
 
 // resolveVersion picks the catalogue version a support line validates against.
 // A pinned line (CatalogVersionID set — an existing/edited line) resolves to that
-// exact version so its price cap never shifts under a newer catalogue; a fresh
+// exact version so its price never shifts under a newer catalogue; a fresh
 // line resolves by service date. Returns (versionID, label, ok); on failure it
 // has already appended the field error.
 // Returns (versionID for downstream control-DB lookups, versionUUID to pin onto
