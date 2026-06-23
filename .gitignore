@@ -27,3 +27,6 @@ web/build/*
 .superpowers/
 tallyo
 *.db*
+
+# ralph-loop transient state (never commit)
+.claude/ralph-loop.local.md
