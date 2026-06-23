@@ -36,7 +36,7 @@ func mountInvoice(inv *Handler, pay *PaymentHandler, tenantID int64) chi.Router 
 func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, int64, string, *Invoice) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	pid, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
 	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
@@ -165,7 +165,7 @@ func TestInvoicePaymentLifecycleByUUID(t *testing.T) {
 
 func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	pid, _ := seedClientUUID(t, conn, tenantID, "Jane")
 	hub := realtime.NewHub()
 	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))

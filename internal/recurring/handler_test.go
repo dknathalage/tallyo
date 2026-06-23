@@ -31,7 +31,7 @@ func mountRecurring(h *Handler, tenantID int64) chi.Router {
 func newRecurringHandler(t *testing.T) (*Handler, int64, string, *RecurringTemplate) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientUUID := seedClient(t, conn, tenantID, "Jane")
 	repo := NewRepo(conn)
 	tpl := mkTemplate(t, repo, tenantID, clientUUID, "2026-01-01")
@@ -99,7 +99,7 @@ func TestRecurringGetNonUUID400(t *testing.T) {
 // client uuid is rejected with 400.
 func TestRecurringCreateResolvesClientUUID(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientUUID := seedClient(t, conn, tenantID, "Jane")
 	h := NewHandler(NewService(conn, realtime.NewHub()))
 	srv := httptest.NewServer(mountRecurring(h, tenantID))

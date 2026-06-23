@@ -12,7 +12,7 @@ import (
 func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	return NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
@@ -51,7 +51,7 @@ func TestSessionCreateBroadcasts(t *testing.T) {
 
 func TestSessionCreateAttributesAuthor(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	uid := seedUser(t, conn, tenantID)
 	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
@@ -164,7 +164,7 @@ func TestSessionToRecord(t *testing.T) {
 
 func TestSessionSuggestions(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	p1 := seedClient(t, conn, tenantID, "Jane")
 	p2 := seedClient(t, conn, tenantID, "Bob")
 	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
@@ -204,7 +204,7 @@ func TestSessionSuggestions(t *testing.T) {
 
 func TestSessionMarkDrafted(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	invID := seedDraftInvoice(t, conn, tenantID, clientID)
 	hub := realtime.NewHub()
@@ -238,11 +238,11 @@ func TestSessionMarkDrafted(t *testing.T) {
 func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	conn := newTestDB(t)
 
-	tenantA := seedTenant(t, conn, "Acme NDIS")
+	tenantA := seedTenant(t, conn, "Acme")
 	clientA := seedClient(t, conn, tenantA, "Jane")
 	invA := seedDraftInvoice(t, conn, tenantA, clientA)
 
-	tenantB := seedTenant(t, conn, "Beta NDIS")
+	tenantB := seedTenant(t, conn, "Beta")
 	clientB := seedClient(t, conn, tenantB, "Bob")
 	hub := realtime.NewHub()
 	svc := NewService(conn, hub, invoice.NewInvoices(conn))

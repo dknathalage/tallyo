@@ -7,7 +7,7 @@ import (
 
 func TestBusinessProfileSaveThenGet(t *testing.T) {
 	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "Acme NDIS")
+	tid := seedTenant(t, conn, "Acme")
 	repo := NewBusinessProfile(conn)
 	ctx := context.Background()
 

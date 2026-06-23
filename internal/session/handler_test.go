@@ -32,7 +32,7 @@ func seedClientUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (in
 func newSessionHandler(t *testing.T) (*Handler, int64, string, *Session) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	_, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
 	svc := NewService(conn, realtime.NewHub(), nil)
 	pid := clientIDFor(t, conn, tenantID, pUUID)
@@ -211,7 +211,7 @@ func TestSessionItemLifecycleByUUID(t *testing.T) {
 // to that client's sessions (resolving the client uuid→int internally).
 func TestSessionListByClientFilter(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	_, p1UUID := seedClientUUID(t, conn, tenantID, "Jane")
 	_, p2UUID := seedClientUUID(t, conn, tenantID, "Bob")
 	svc := NewService(conn, realtime.NewHub(), nil)

@@ -22,7 +22,7 @@ CREATE TABLE items (
     code                  TEXT NOT NULL,
     name                  TEXT NOT NULL,
     unit                  TEXT DEFAULT '',
-    category              TEXT,                       -- generic grouping (was NDIS support_category/registration_group/claim_type)
+    category              TEXT,                       -- generic grouping
     unit_price            REAL,                       -- generic per-unit price (NULL = none/free-form)
     taxable               INTEGER NOT NULL DEFAULT 0, -- ingest always sets this explicitly
     metadata              TEXT DEFAULT '{}',

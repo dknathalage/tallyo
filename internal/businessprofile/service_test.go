@@ -10,7 +10,7 @@ import (
 func newSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	hub := realtime.NewHub()
 	return NewService(conn, hub), hub, tenantID
 }

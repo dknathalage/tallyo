@@ -1,7 +1,7 @@
 -- +goose Up
 -- Control-plane baseline (DB-per-tenant). Holds the global registry, auth, the
 -- scs session store, and the global-admin audit log. Tenant business data
--- (including the per-tenant NDIS Support Catalogue) lives in per-tenant files
+-- (including the per-tenant price list) lives in per-tenant files
 -- (see migrations/tenant). Fresh clean-break schema — no data migration.
 
 -- ---------------------------------------------------------------------------

@@ -67,7 +67,7 @@ func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
 func newEstimateSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	return NewService(conn, hub), hub, tenantID, clientID

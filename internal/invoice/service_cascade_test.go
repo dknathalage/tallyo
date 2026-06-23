@@ -27,7 +27,7 @@ func TestInvoiceStatusCascadesToSessions(t *testing.T) {
 	for _, status := range []string{"sent", "paid"} {
 		t.Run(status, func(t *testing.T) {
 			conn := newTestDB(t)
-			tenantID := seedTenant(t, conn, "Acme NDIS")
+			tenantID := seedTenant(t, conn, "Acme")
 			clientID := seedClient(t, conn, tenantID, "Jane Client")
 			hub := realtime.NewHub()
 			invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
@@ -55,7 +55,7 @@ func TestInvoiceStatusCascadesToSessions(t *testing.T) {
 
 func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
@@ -82,7 +82,7 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 
 func TestInvoiceDeleteRevertsSessionsToRecorded(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))

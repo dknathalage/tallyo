@@ -67,7 +67,7 @@ func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) string 
 func newRecurringSvc(t *testing.T) (*Service, *realtime.Hub, int64, string) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientUUID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	return NewService(conn, hub), hub, tenantID, clientUUID

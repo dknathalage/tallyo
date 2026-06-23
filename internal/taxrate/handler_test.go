@@ -16,7 +16,7 @@ import (
 func newTaxHandler(t *testing.T) (*Handler, int64, *TaxRate) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	svc := NewService(conn, realtime.NewHub())
 	seeded, err := svc.Create(tctx(tenantID), TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {

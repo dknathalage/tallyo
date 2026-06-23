@@ -16,7 +16,7 @@ import (
 func newPMHandler(t *testing.T) (*Handler, int64, *Payer) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	svc := NewService(conn, realtime.NewHub())
 	seeded, err := svc.Create(tctx(tenantID), PayerInput{Name: "Acme PM", Email: "a@b.com"})
 	if err != nil {

@@ -242,9 +242,9 @@ func TestEstimateTenantScoping(t *testing.T) {
 	hub := realtime.NewHub()
 	svc := NewService(conn, hub)
 
-	tenantA := seedTenant(t, conn, "Acme NDIS")
+	tenantA := seedTenant(t, conn, "Acme")
 	partA := seedClient(t, conn, tenantA, "Jane")
-	tenantB := seedTenant(t, conn, "Beta NDIS")
+	tenantB := seedTenant(t, conn, "Beta")
 
 	est := makeEstimate(t, svc, tenantA, partA)
 

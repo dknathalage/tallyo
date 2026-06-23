@@ -6,7 +6,7 @@ package billing
 // Coverage: unknown code, version resolution by service date, unit_price fill +
 // caller-price override, taxable defaulting, the custom-item path, tax
 // computation, totals rounding, and the field-level error shape.
-// (The plan-window step and the NDIS zone/price-cap path were removed.)
+// (The plan-window step and the zone/price-cap path were removed.)
 
 import (
 	"context"

@@ -75,7 +75,7 @@ func TestInvoiceListByStatusSvc(t *testing.T) {
 
 func TestInvoiceListClientInvoicesAndStats(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID, clientUUID := seedClientUUID(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
@@ -243,9 +243,9 @@ func TestInvoiceTenantScoping(t *testing.T) {
 	hub := realtime.NewHub()
 	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
 
-	tenantA := seedTenant(t, conn, "Acme NDIS")
+	tenantA := seedTenant(t, conn, "Acme")
 	partA := seedClient(t, conn, tenantA, "Jane")
-	tenantB := seedTenant(t, conn, "Beta NDIS")
+	tenantB := seedTenant(t, conn, "Beta")
 
 	inv := makeInvoice(t, svc, tenantA, partA)
 

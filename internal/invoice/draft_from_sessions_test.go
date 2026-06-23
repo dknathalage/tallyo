@@ -33,7 +33,7 @@ func recordedSessionWithItems(t *testing.T, sessionSvc *session.Service, repo *s
 func newDraftHarness(t *testing.T) (*Service, *session.Service, *session.SessionsRepo, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))

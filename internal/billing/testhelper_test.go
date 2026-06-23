@@ -43,7 +43,7 @@ func seedTenant(t *testing.T, conn *sql.DB) int64 {
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
 		Uuid:      uuid.NewString(),
-		Name:      "Acme NDIS",
+		Name:      "Acme",
 		Status:    "active",
 		CreatedAt: now,
 		UpdatedAt: now,

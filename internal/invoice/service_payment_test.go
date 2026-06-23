@@ -12,7 +12,7 @@ import (
 func newPaymentSvc(t *testing.T) (*PaymentService, *realtime.Hub, *InvoicesRepo, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	return NewPaymentService(conn, hub), hub, NewInvoices(conn), tenantID, clientID

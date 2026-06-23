@@ -32,7 +32,7 @@ func mountEstimate(h *Handler, tenantID int64) chi.Router {
 func newEstimateHandler(t *testing.T) (*Handler, int64, string, *Estimate) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	p, err := client.NewClients(conn).Create(tctx(tenantID), tenantID, client.ClientInput{Name: "Jane"})
 	if err != nil {
 		t.Fatalf("seed client: %v", err)

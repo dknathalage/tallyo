@@ -24,7 +24,7 @@
 
 	// ── Editable fields (each its own $state, seeded from the client). ──
 	// A client is generic: a name, contact details, an optional free-text
-	// reference and an optional payer. (NDIS attributes — type, plan window,
+	// reference and an optional payer. (The former type, plan-window,
 	// management type — were removed.)
 	let name = $state('');
 	let reference = $state('');

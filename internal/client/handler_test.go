@@ -19,7 +19,7 @@ import (
 func newClientHandler(t *testing.T) (*Handler, int64, string, *Client) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	pm, err := payer.NewPayers(conn).Create(tctx(tenantID), tenantID, payer.PayerInput{Name: "PM Co"})
 	if err != nil {
 		t.Fatalf("seed payer: %v", err)
@@ -105,7 +105,7 @@ func TestClientGetNonUUID400(t *testing.T) {
 // payer uuid is rejected with 400.
 func TestClientCreateResolvesPayerUUID(t *testing.T) {
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	pm, err := payer.NewPayers(conn).Create(tctx(tenantID), tenantID, payer.PayerInput{Name: "PM Co"})
 	if err != nil {
 		t.Fatalf("seed payer: %v", err)

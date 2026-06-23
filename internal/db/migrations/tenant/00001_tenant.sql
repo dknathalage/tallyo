@@ -233,7 +233,7 @@ CREATE TABLE recurring_templates (
     name            TEXT NOT NULL,
     frequency       TEXT NOT NULL,
     next_due        TEXT NOT NULL,
-    line_items      TEXT NOT NULL DEFAULT '[]',  -- NDIS-aware line template (JSON)
+    line_items      TEXT NOT NULL DEFAULT '[]',  -- line template (JSON)
     tax_rate        REAL NOT NULL DEFAULT 0,
     notes           TEXT NOT NULL DEFAULT '',
     is_active       INTEGER NOT NULL DEFAULT 1,

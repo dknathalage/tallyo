@@ -133,7 +133,7 @@ func containsID(ids []int64, target int64) bool {
 func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	t.Helper()
 	conn := newTestDB(t)
-	tenantID := seedTenant(t, conn, "Acme NDIS")
+	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	hub := realtime.NewHub()
 	return NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn))), hub, tenantID, clientID
