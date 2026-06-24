@@ -28,12 +28,13 @@ func main() {
 	}
 
 	cfg := app.Config{
-		Port:          *port,
-		DataDir:       *dataDir,
-		SecureCookie:  *secureCookie,
-		LogLevel:      *logLevel,
-		LogFormat:     *logFormat,
-		FeatureSmarts: app.EnvBool("TALLYO_FEATURE_SMARTS", true),
+		Port:           *port,
+		DataDir:        *dataDir,
+		SecureCookie:   *secureCookie,
+		LogLevel:       *logLevel,
+		LogFormat:      *logFormat,
+		FeatureSmarts:  app.EnvBool("TALLYO_FEATURE_SMARTS", true),
+		FeatureInvites: app.EnvBool("TALLYO_FEATURE_INVITES", true),
 	}
 
 	if err := app.Run(cfg, version); err != nil {

@@ -87,7 +87,7 @@
 	// Sidebar shows one entry per group (links to the first child); each page renders
 	// the group's sub-tabs. Hrefs are UNPREFIXED here and matched against subPath;
 	// rendered links go through t() to add the active tenant.
-	const NAV_GROUPS: NavGroup[] = [
+	const NAV_GROUPS: NavGroup[] = $derived([
 		{
 			label: 'Sessions',
 			icon: LayoutGrid,
@@ -124,11 +124,11 @@
 			icon: Settings,
 			children: [
 				{ href: '/settings', label: 'Business profile' },
-				{ href: '/settings/users', label: 'Users' },
+				...(features.invites ? [{ href: '/settings/users', label: 'Users' }] : []),
 				{ href: '/settings/account', label: 'Account' }
 			]
 		}
-	];
+	]);
 
 	// Match length of href against path (-1 = no match). Used to pick the most
 	// specific sibling when routes nest, e.g. /settings vs /settings/users.

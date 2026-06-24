@@ -117,7 +117,7 @@ func NewServer(deps Deps) *Server {
 			if deps.Auth != nil {
 				pr.Get("/auth/me", deps.Auth.Me)
 			}
-			if deps.Invites != nil {
+			if deps.Invites != nil && deps.Features["invites"] {
 				// User management is owner/admin only (spec §3.2).
 				pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
 				pr.With(httpx.RequireRole("owner", "admin")).Delete("/invites/{inviteUUID}", deps.Invites.Revoke)

@@ -40,12 +40,13 @@ import (
 // Tallyo server. All fields are already validated/defaulted by main before Run
 // is called.
 type Config struct {
-	Port          int
-	DataDir       string // empty → DATA_DIR env, else ./data
-	SecureCookie  bool
-	LogLevel      string
-	LogFormat     string
-	FeatureSmarts bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
+	Port           int
+	DataDir        string // empty → DATA_DIR env, else ./data
+	SecureCookie   bool
+	LogLevel       string
+	LogFormat      string
+	FeatureSmarts  bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
+	FeatureInvites bool // gates inviting new users (create/revoke invites + UI)
 }
 
 // EnvOr returns the value of env var key, or def when it is unset/empty. Used
@@ -208,7 +209,8 @@ func Run(cfg Config, version string) error {
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
-			"smarts": smartsEnabled,
+			"smarts":  smartsEnabled,
+			"invites": cfg.FeatureInvites,
 		},
 	}
 

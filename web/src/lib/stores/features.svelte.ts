@@ -20,6 +20,9 @@ function createFeaturesStore() {
 		load,
 		get smarts(): boolean {
 			return flags.smarts === true;
+		},
+		get invites(): boolean {
+			return flags.invites === true;
 		}
 	};
 }

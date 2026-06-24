@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { session } from '$lib/stores/session.svelte';
+	import { features } from '$lib/stores/features.svelte';
 	import { apiPost, tenantPath } from '$lib/api/client';
 	import type { InviteCreated, Role } from '$lib/api/types';
 	import Button from '$lib/components/Button.svelte';
@@ -38,7 +39,9 @@
 	<h1 class="mb-1 text-2xl font-semibold tracking-tight">Users</h1>
 	<p class="mb-6 text-sm text-gray-500">Generate an invite link for a new team member.</p>
 
-	{#if canManage}
+	{#if !features.invites}
+		<p class="text-sm text-gray-500">Inviting users is disabled.</p>
+	{:else if canManage}
 		<form class="flex max-w-lg flex-wrap items-end gap-3" onsubmit={createInvite}>
 			<div class="flex-1">
 				<Field label="Email" id="invite-email" required>
