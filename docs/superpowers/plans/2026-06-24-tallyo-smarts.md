@@ -158,6 +158,8 @@ ALTER TABLE price_list_versions DROP COLUMN tenant_id;
 
 **Files:** Modify `internal/db/queries/items.sql`, `internal/db/queries/price_list_versions.sql`
 
+> **Both INSERTs need it.** `items.sql` has `CreateItem` (used by test seeds) AND `UpsertItem` (used by `Ingest`) — add `tenant_id` column + value to **both**.
+
 - [ ] **Step 1:** Add `tenant_id = ?` to every read/write in both files. Use `sqlc.arg(tenant_id)` named args so generated params are clear. Key changes:
 
 `price_list_versions.sql`:
@@ -215,9 +217,9 @@ Expected: `internal/db/gen` updated; no errors.
 
 **Files:** Modify `internal/pricelist/service.go`, `internal/pricelist/handler.go`, `internal/billing/validation.go`, plus whatever the compiler flags.
 
-- [ ] **Step 1:** In `pricelist` service/handler, obtain the tenant via `reqctx.MustTenant(ctx)` (the pattern used elsewhere — verify the exact helper name in `internal/reqctx`) and pass it to every repo call.
-- [ ] **Step 2:** In `billing/validation.go`, the `LineValidator` already receives `tenantID` in `Validate(ctx, tenantID, clientID, items)`. Pass that `tenantID` down to the catalogue calls (`cat.GetItemByCode`, `ResolveVersionForDate`, etc.) it now needs the extra arg for.
-- [ ] **Step 3:** Build and fix every remaining call site.
+- [ ] **Step 1:** `pricelist.Service` methods read the tenant **internally** via `reqctx.MustTenant(ctx)` (mirroring `invoice.Service.Create`, service.go:142) and pass it to the now-`tenantID`-taking repo methods. Do **not** add a `tenantID` param to the public service methods — keeps the handler/HTTP surface unchanged. `MustTenant` **panics if no tenant is in ctx** (reqctx.go:100) — safe because every pricelist + smarts route mounts under the `/api/t/{tenantUUID}` group.
+- [ ] **Step 2:** In `billing/validation.go`, `Validate`/`ValidateFilling` already carry `tenantID` (public signatures unchanged — invoice/estimate/session callers compile as-is). Thread `tenantID` into the **private helper chain** that calls the catalogue: add `tenantID int64` to `validateLine` (validation.go:215), `validateSupportLine` (:241), and `resolveVersion` (:248), and pass it from `validate()` (which has it in scope) down through to `cat.GetItemByCode` / `ResolveVersionForDate`.
+- [ ] **Step 3:** Build and fix every remaining call site. Grep first: `grep -rn '\.ResolveVersionForDate(\|\.SearchItems(\|\.GetItemByCode(\|\.ListItems(\|\.Ingest(\|\.GetVersion\|\.ResolveVersionIDByUUID(' internal/ | grep -v _test` to enumerate them.
 
 Run: `CGO_ENABLED=0 go build ./...`
 Expected: PASS after all call sites updated.
@@ -330,9 +332,9 @@ func newAnthropicClient(apiKey, model, effort string) *anthropicClient {
 }
 ```
 
-- [ ] **Step 2:** Implement `Propose` — one streaming request with `ToolChoice` forcing `Force.Name`, `Thinking` adaptive, effort via `output_config` (per the claude-api Go patterns: build the tool with `anthropic.ToolParam{Name, Description, InputSchema: anthropic.ToolInputSchemaParam{Properties: schema["properties"]}}`, wrap in `ToolUnionParam{OfTool:&t}`, set `ToolChoice: anthropic.ToolChoiceParamOfTool(name)`). Stream + `message.Accumulate` to the final message, find the `ToolUseBlock`, return `block.JSON.Input.Raw()` as `json.RawMessage`. Two assertions: non-empty system, exactly-one forced tool block found.
+- [ ] **Step 2:** Implement `Propose` — one streaming request with `ToolChoice` forcing `Force.Name`, effort via `output_config`. **Do NOT set `Thinking`** — adaptive thinking and a forced `tool_choice` are mutually exclusive (the old `agent/llm/anthropic.go:67` only enabled thinking when no tool was forced). Build the tool with `anthropic.ToolParam{Name, Description, InputSchema: anthropic.ToolInputSchemaParam{Properties: schema["properties"]}}`, wrap in `ToolUnionParam{OfTool:&t}`, set `ToolChoice: anthropic.ToolChoiceParamOfTool(name)`. Stream + `message.Accumulate` to the final message, find the `ToolUseBlock`, **return `json.RawMessage(block.Input)`** (`ToolUseBlock.Input` is already `json.RawMessage` in v1.50.2 — do NOT use `block.JSON.Input.Raw()`, which is field metadata). Two assertions: non-empty system, exactly-one forced tool block found.
 
-- [ ] **Step 3:** Implement `ProposeGrounded` — a manual loop `for i:=0; i<maxToolCalls; i++`: send `messages` with both tools; on `StopReasonToolUse` walk blocks: if a `search` tool_use, call `SearchFunc`, append the assistant turn + a `tool_result` user turn, continue; if a `commit` tool_use, return its input. If the loop exhausts without commit, return a typed `errNoCommit`. Cap enforced by the counter (NASA rule 2).
+- [ ] **Step 3:** Implement `ProposeGrounded` — a manual loop `for i:=0; i<maxToolCalls; i++`: send `messages` with both tools and **adaptive `Thinking`** (no forced tool here, so thinking is allowed); on `StopReasonToolUse` walk blocks: if a `search` tool_use, call `SearchFunc`, append the assistant turn (`resp.ToParam()`) + a `tool_result` user turn (`anthropic.NewToolResultBlock(block.ID, result, false)`), continue; if a `commit` tool_use, return `json.RawMessage(block.Input)`. If the loop exhausts without commit, return a typed `errNoCommit`. Cap enforced by the counter (NASA rule 2).
 
 ### Task 2.2: Build verification (no live API)
 
@@ -359,7 +361,7 @@ git add internal/smarts/llm.go && git commit -m "feat(smarts): Anthropic client 
 
 ```go
 type SessionReader interface {
-    ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]session.Session, error)
+    ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]*session.Session, error)
 }
 type CatalogueSearcher interface {
     ResolveVersionForDate(ctx context.Context, tenantID int64, serviceDate string) (*pricelist.PriceListVersion, error)
@@ -383,7 +385,7 @@ type ClientReader interface {
 
 **Files:** Modify `internal/session/service.go` (or repository)
 
-- [ ] **Step 1:** Add `func (s *Service) ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]Session, error)` delegating to `s.repo.ListRecordedUnbilled(ctx, tenantID, clientID)`. (Verify the repo method returns `[]Session` / adjust.)
+- [ ] **Step 1:** Add `func (s *Service) ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]*Session, error)` delegating to `s.repo.ListRecordedUnbilled(ctx, tenantID, clientID)` (repository.go:246 returns `[]*Session`).
 
 ### Task 3.3: Handler + routes (stubs first)
 
@@ -445,7 +447,8 @@ CGO_ENABLED=0 go build ./... && git add -A && git commit -m "feat(smarts): servi
 **Files:** Create `internal/smarts/map_import.go`, `_test.go`
 
 - [ ] **Step 1: Failing test** — given headers `["Item Code","Description","Price"]` + sample rows + the importer's known target fields, fake `Propose` returns `{"mappings":[{"header":"Item Code","field":"code"},...]}`; assert unknown target fields are dropped and known ones pass through.
-- [ ] **Step 2-4:** Implement `MapImport(ctx, in MapInput) (MapResult, error)` — single forced-tool `Propose` over the fixed target-field set (read the importer's field constants — verify in `internal/importer`); validate each `field` against that set, drop unknowns. Run → pass.
+- [ ] **Step 0 (prereq):** `internal/importer/mapping.go` keeps the valid targets in an **unexported** `validTargets` (`name`(required)`, code, unit, category, unitPrice, taxable`). Export them: add `func TargetFields() []string` (or `var TargetFields = []string{...}`) and have `validTargets` derive from it. Commit this as a tiny standalone change first.
+- [ ] **Step 2-4:** Implement `MapImport(ctx, in MapInput) (MapResult, error)` — single forced-tool `Propose` over `importer.TargetFields()`; validate each `field` against that set, drop unknowns. Run → pass.
 - [ ] **Step 5: Commit** `feat(smarts): map price-list import columns`.
 
 ### Task 4.5: Wire the four handlers to the service methods
