@@ -4,6 +4,8 @@
 	import { session } from '$lib/stores/session.svelte';
 	import { apiUpload, tenantPath } from '$lib/api/client';
 	import type { PriceListVersion, Item } from '$lib/api/types';
+	import { features } from '$lib/stores/features.svelte';
+	import * as smarts from '$lib/api/smarts';
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 
@@ -57,6 +59,32 @@
 	});
 
 	const hasNameMapped = $derived(Object.values(mapping).includes('name'));
+
+	// ── AI: auto-map detected headers to target fields. ──
+	let autoMapping = $state(false);
+	let autoMapError = $state<string | null>(null);
+	const VALID_TARGETS = new Set<string>(TARGETS);
+
+	async function autoMap(): Promise<void> {
+		autoMapError = null;
+		if (inspectHeaders.length === 0) return;
+		autoMapping = true;
+		try {
+			const proposed = await smarts.mapImport(inspectHeaders, inspectSample);
+			// Pre-fill: keep current selections, overlaying any proposed target that is
+			// a known field. The user can still adjust every select afterwards.
+			const next = { ...mapping };
+			for (const header of inspectHeaders) {
+				const target = proposed[header];
+				if (target && VALID_TARGETS.has(target)) next[header] = target;
+			}
+			mapping = next;
+		} catch (err) {
+			autoMapError = err instanceof Error ? err.message : 'Auto-map failed.';
+		} finally {
+			autoMapping = false;
+		}
+	}
 
 	onMount(() => {
 		priceList.ensureSubscribed();
@@ -210,7 +238,22 @@
 			{#if inspectHeaders.length > 0}
 				<div class="mt-4 space-y-4">
 					<div>
-						<h3 class="mb-2 text-sm font-semibold">Map columns</h3>
+						<div class="mb-2 flex items-center justify-between gap-3">
+							<h3 class="text-sm font-semibold">Map columns</h3>
+							{#if features.smarts}
+								<Button
+									type="button"
+									variant="secondary"
+									size="sm"
+									loading={autoMapping}
+									disabled={autoMapping}
+									onclick={autoMap}
+								>
+									✨ Auto-map columns
+								</Button>
+							{/if}
+						</div>
+						{#if autoMapError}<p class="mb-2 text-sm text-red-600">{autoMapError}</p>{/if}
 						<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
 							{#each inspectHeaders as header (header)}
 								<label class="text-sm">

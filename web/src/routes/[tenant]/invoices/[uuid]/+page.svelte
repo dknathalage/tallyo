@@ -8,6 +8,8 @@
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
+	import { features } from '$lib/stores/features.svelte';
+	import * as smarts from '$lib/api/smarts';
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { invoices as invoiceStore } from '$lib/stores/invoices.svelte';
@@ -97,6 +99,35 @@
 	let validationDetails = $state<ValidationDetail[]>([]);
 	let saving = $state(false);
 	let formError = $state<string | null>(null);
+
+	// ── AI: suggest catalogue-priced lines from a free-text note. ──
+	let lineEditor = $state<LineItemsEditor | null>(null);
+	let aiNote = $state('');
+	let aiSuggesting = $state(false);
+	let aiSuggestError = $state<string | null>(null);
+
+	async function suggestLines(): Promise<void> {
+		aiSuggestError = null;
+		if (aiNote.trim() === '') {
+			aiSuggestError = 'Describe the work to suggest line items.';
+			return;
+		}
+		aiSuggesting = true;
+		try {
+			const date = formIssueDate || new Date().toISOString().slice(0, 10);
+			const suggested = await smarts.suggestLines(aiNote.trim(), date);
+			if (suggested.length === 0) {
+				aiSuggestError = 'No line items were suggested.';
+			} else {
+				lineEditor?.addLines(suggested);
+				aiNote = '';
+			}
+		} catch (err) {
+			aiSuggestError = err instanceof Error ? err.message : 'Failed to suggest line items.';
+		} finally {
+			aiSuggesting = false;
+		}
+	}
 
 	const subtotalPreview = $derived.by<number>(() => {
 		let sum = 0;
@@ -252,6 +283,29 @@
 		}
 	}
 
+	// ── AI: draft a follow-up reminder for an overdue/sent invoice. ──
+	let reminderSubject = $state('');
+	let reminderBody = $state('');
+	let reminderOpen = $state(false);
+	let reminderBusy = $state(false);
+	let reminderError = $state<string | null>(null);
+
+	async function draftReminder(): Promise<void> {
+		if (!detail) return;
+		reminderError = null;
+		reminderBusy = true;
+		try {
+			const draft = await smarts.draftFollowUp(detail.id);
+			reminderSubject = draft.subject;
+			reminderBody = draft.body;
+			reminderOpen = true;
+		} catch (err) {
+			reminderError = err instanceof Error ? err.message : 'Failed to draft the reminder.';
+		} finally {
+			reminderBusy = false;
+		}
+	}
+
 	// Source sessions: those attached to this invoice.
 	const sourceSessions = $derived(
 		idParam === 'new'
@@ -315,7 +369,34 @@
 					</label>
 				</div>
 
-				<LineItemsEditor bind:lines details={validationDetails} />
+				{#if features.smarts}
+					<div class="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+						<label class="mb-2 block">
+							<span class="mb-1 block text-sm font-medium">✨ Describe the work</span>
+							<textarea
+								bind:value={aiNote}
+								rows="2"
+								placeholder="e.g. 2 hours of consulting on Tuesday plus travel"
+								class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							></textarea>
+						</label>
+						<div class="flex items-center gap-3">
+							<Button
+								type="button"
+								variant="secondary"
+								size="sm"
+								loading={aiSuggesting}
+								disabled={aiSuggesting}
+								onclick={suggestLines}
+							>
+								Suggest items
+							</Button>
+							{#if aiSuggestError}<span class="text-sm text-red-600">{aiSuggestError}</span>{/if}
+						</div>
+					</div>
+				{/if}
+
+				<LineItemsEditor bind:this={lineEditor} bind:lines details={validationDetails} />
 
 				<div class="flex justify-end">
 					<dl class="w-56 space-y-1 text-sm">
@@ -432,6 +513,46 @@
 				<p class="text-sm text-gray-500">No sessions are linked to this invoice.</p>
 			{/each}
 		</section>
+
+		{#if features.smarts && ((detail ?? row).status === 'overdue' || (detail ?? row).status === 'sent')}
+			<section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+				<div class="flex items-center justify-between gap-3">
+					<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Reminder</h2>
+					<Button
+						type="button"
+						variant="secondary"
+						size="sm"
+						loading={reminderBusy}
+						disabled={reminderBusy}
+						onclick={draftReminder}
+					>
+						✨ Draft reminder
+					</Button>
+				</div>
+				{#if reminderError}<p class="mt-2 text-sm text-red-600">{reminderError}</p>{/if}
+				{#if reminderOpen}
+					<div class="mt-3 space-y-2">
+						<label class="block">
+							<span class="mb-1 block text-xs font-medium text-gray-500">Subject</span>
+							<input
+								type="text"
+								bind:value={reminderSubject}
+								class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							/>
+						</label>
+						<label class="block">
+							<span class="mb-1 block text-xs font-medium text-gray-500">Body</span>
+							<textarea
+								bind:value={reminderBody}
+								rows="6"
+								class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							></textarea>
+						</label>
+						<p class="text-xs text-gray-400">Draft only — copy this into your email to send.</p>
+					</div>
+				{/if}
+			</section>
+		{/if}
 
 		<div class="flex items-center justify-end gap-2">
 			{#if detailError}

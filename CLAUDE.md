@@ -53,12 +53,19 @@ interfaces declared by the consumer and wired in `internal/app`.
   there are no pricing zones, price caps, or plan windows. The
   invoice/estimate/recurring slices compose it.
 - **Domain slices:** `internal/{invoice,estimate,recurring,session,client,
-  payer,taxrate,businessprofile,customitem,pricelist,auth,agent,export}`.
+  payer,taxrate,businessprofile,customitem,pricelist,auth,smarts,export}`.
   `invoice` includes payment. `invoice` declares `SessionLinker`; `session`
-  declares `InvoiceChecker` — these break the invoice↔session cycle. `agent` is a consumer
-  slice exposing one-shot **Smarts** (gather → propose → apply via a forced
-  single-tool LLM call, then deterministic apply); its tools take interfaces and
-  it has no persistent agent tables.
+  declares `InvoiceChecker` — these break the invoice↔session cycle. `smarts` is the
+  curated AI layer: a small set of user-initiated, button-triggered **Smarts**, each
+  `gather → propose → apply` returning an editable draft — no agent loop, no chat, no
+  persisted conversation/step tables. A thin Anthropic SDK wrapper (`llm.go`) exposes
+  `Propose` (one forced-single-tool call) and `ProposeGrounded` (a bounded read-tool
+  loop where the model uses a tenant-scoped, all-fields catalogue `search` to ground
+  specifics, then emits a final commit). Four Smarts exist: draft-invoice-from-sessions
+  (grounded; creates a draft invoice the user lands in), suggest-line-items,
+  draft-overdue-follow-up, map-price-list-import. The model proposes structure;
+  deterministic code prices from the catalogue and the invoice service validates. Its
+  tools take interfaces; routes return 503 when no `ANTHROPIC_API_KEY`.
 - `web/` — SvelteKit SPA (`src/lib/api`, `src/lib/stores`, `src/routes`); `web/embed.go` embeds `web/build`.
 
 ## Run
@@ -104,8 +111,10 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 
 - The catalogue is a generic, **tenant-owned price list** — the two tables
   (`price_list_versions`, `items`) live in the single DB under the tenant goose
-  sequence (`internal/db/migrations/tenant/`), scoped per tenant by `tenant_id`,
-  and every tenant populates its own. An
+  sequence (`internal/db/migrations/tenant/`). Both carry a `tenant_id` column
+  (added in `00004_catalogue_tenant.sql`); every catalogue query guards
+  `WHERE tenant_id = ?` and the `pricelist` repo threads `tenantID`, so the
+  catalogue is genuinely scoped per tenant and every tenant populates its own. An
   `items` row carries `code`, `name`, `unit`, a nullable `category`, a generic
   `unit_price` (base per-unit price), and `taxable`. Each release is its own
   `price_list_versions` row; loading a newer one never mutates prior versions, and

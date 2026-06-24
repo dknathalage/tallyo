@@ -105,8 +105,14 @@ erDiagram
         int  payer_id FK "NULL = self-billed"
     }
 
+    price_list_versions {
+        int  id PK
+        int  tenant_id FK
+    }
+
     items {
         int  id PK
+        int  tenant_id FK
         int  price_list_version_id FK "→ price_list_versions"
         text code
         text name
@@ -133,8 +139,10 @@ erDiagram
 - Prices are pinned per line via `price_list_version_id` + `item_id` (tenant
   price-list UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
   is never re-priced when a newer price-list version loads.
-- Agent has **no persistent tables** (Smarts are one-shot). The `notes` table and
-  all `agent_*` chat tables were dropped (migrations `00005`, `00007`).
+- The `smarts` slice has **no persistent tables** (Smarts are one-shot
+  `gather → propose → apply` drafts — no chat or conversation/step state). The
+  `notes` table and all `agent_*` chat tables were dropped (migrations `00005`,
+  `00007`).
 
 ## Tables not shown
 

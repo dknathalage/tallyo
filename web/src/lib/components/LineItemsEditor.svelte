@@ -2,7 +2,7 @@
 	import { priceList } from '$lib/stores/priceList.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import Button from '$lib/components/Button.svelte';
-	import type { Item, ValidationDetail } from '$lib/api/types';
+	import type { Item, LineItem, ValidationDetail } from '$lib/api/types';
 
 	// An editor row. `kind` distinguishes a price-list item line (code-driven,
 	// gst server-authoritative) from a custom line (free text, user gst).
@@ -21,6 +21,9 @@
 		unitPrice: number;
 		taxable: boolean;
 		sortOrder: number;
+		// True when this line was proposed by an AI Smart (shows a subtle marker so
+		// the user knows to review it). Always editable; never auto-submitted.
+		aiSuggested?: boolean;
 	}
 
 	interface Props {
@@ -111,6 +114,28 @@
 		});
 	}
 
+	// Append AI-suggested catalogue-priced lines (from a LineItem[] payload) as
+	// editable rows, flagged aiSuggested so the user reviews them before saving.
+	export function addLines(suggested: LineItem[]): void {
+		for (let i = 0; i < suggested.length; i++) {
+			const s = suggested[i];
+			lines.push({
+				kind: s.itemId !== null || s.code !== '' ? 'support' : 'custom',
+				customItemId: s.customItemId,
+				priceListVersionId: s.priceListVersionId,
+				code: s.code,
+				description: s.description,
+				serviceDate: s.serviceDate,
+				unit: s.unit,
+				quantity: s.quantity,
+				unitPrice: s.unitPrice,
+				taxable: s.taxable,
+				sortOrder: lines.length,
+				aiSuggested: true
+			});
+		}
+	}
+
 	function removeLine(index: number): void {
 		lines.splice(index, 1);
 	}
@@ -169,8 +194,13 @@
 	{#each lines as line, i (i)}
 		<div class="rounded-lg border border-gray-200 p-3">
 			<div class="mb-2 flex items-center justify-between">
-				<span class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+				<span class="flex items-center gap-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
 					{line.kind === 'support' ? 'Catalogue item' : 'Custom item'}
+					{#if line.aiSuggested}
+						<span class="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700 normal-case tracking-normal">
+							✨ AI suggested · review
+						</span>
+					{/if}
 				</span>
 				<button
 					type="button"

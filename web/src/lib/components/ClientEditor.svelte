@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { replaceState } from '$app/navigation';
+	import { replaceState, goto } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import { createAutosave, type SaveState } from './autosave';
 	import { sessions } from '$lib/stores/sessions.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { payers } from '$lib/stores/payers.svelte';
+	import { features } from '$lib/stores/features.svelte';
 	import * as sessionsApi from '$lib/api/sessions';
+	import * as smarts from '$lib/api/smarts';
 	import SessionTable from '$lib/components/SessionTable.svelte';
 	import SessionForm from '$lib/components/SessionForm.svelte';
 	import Calendar from '$lib/components/Calendar.svelte';
@@ -197,6 +199,24 @@
 		await sessions.load();
 	}
 
+	// ── AI: draft a blank invoice for this client ──
+	let aiDrafting = $state(false);
+	let aiDraftError = $state<string | null>(null);
+
+	async function draftInvoiceWithAI(): Promise<void> {
+		if (currentId === '') return;
+		aiDraftError = null;
+		aiDrafting = true;
+		try {
+			const newId = await smarts.draftInvoice(currentId);
+			await goto(t(`/invoices/${newId}`));
+		} catch (err) {
+			aiDraftError = err instanceof Error ? err.message : 'Failed to draft the invoice.';
+		} finally {
+			aiDrafting = false;
+		}
+	}
+
 	const mySessions = $derived(sessions.items.filter((s) => s.clientId === currentId));
 	const myInvoices = $derived(invoices.items.filter((i) => i.clientId === currentId));
 	const payerOptions = $derived(payers.items);
@@ -358,7 +378,21 @@
 				</section>
 
 				<section class="space-y-2">
-					<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Invoices</h2>
+					<div class="flex items-center justify-between gap-3">
+						<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Invoices</h2>
+						{#if features.smarts}
+							<Button
+								variant="secondary"
+								size="sm"
+								loading={aiDrafting}
+								disabled={aiDrafting}
+								onclick={draftInvoiceWithAI}
+							>
+								✨ Draft invoice with AI
+							</Button>
+						{/if}
+					</div>
+					{#if aiDraftError}<p class="text-sm text-red-600">{aiDraftError}</p>{/if}
 					{#each myInvoices as inv (inv.id)}
 						<a
 							href={t(`/invoices/${inv.id}`)}
