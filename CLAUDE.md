@@ -32,6 +32,7 @@ interfaces declared by the consumer and wired in `internal/app`.
   Also holds the auth/invite/signup HTTP handlers (kept here to avoid an
   `auth → httpx → auth` cycle).
 - **Platform (cross-cutting, shared by slices):**
+  - `internal/ids/` — `New()` mints a UUIDv7 (time-ordered) string id; the sole id source for every row's PK and FK.
   - `internal/db/` — the single modernc `*sql.DB` connection (`sqlite.go`),
     `migrate.go` (goose), `migrations/*.sql`, `queries/*.sql` (sqlc source),
     `gen/` (sqlc output, ONE central package — do not edit, do not split). Both
@@ -41,7 +42,7 @@ interfaces declared by the consumer and wired in `internal/app`.
   - `internal/reqctx/` — tenant/user request context.
   - `internal/realtime/` — SSE hub + the `/api/events` stream handler.
   - `internal/httpx/` — domain-agnostic HTTP helpers: `WriteJSON`/`WriteError`/
-    `WriteValidationError`/`DecodeJSON`/`ParseID`, middleware (`Recover`,
+    `WriteValidationError`/`DecodeJSON`/`ParseUUID`, middleware (`Recover`,
     `RequestLogger`, `RequireAuth`, `RequireRole`, `RequirePlatformAdmin`), logging,
     `SPAHandler`.
   - `internal/pdf/` (maroto render), `internal/importer/` (generic price-list
@@ -95,7 +96,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 - **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.SessionLinker`, `session.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` (line items, totals, snapshots, validator).
 - Every DB mutation is audited (via `audit.WithTx`) and broadcasts an SSE event from the service after commit.
 - JSON is camelCase (Go struct json tags); list endpoints return `[]` (non-nil) when empty.
-- **UUID addressing.** The HTTP/JSON API addresses every entity by its **uuid** — paths are `/{...UUID}` (e.g. `/invoices/{invoiceUUID}`) and every JSON `id` / `*Id` field is a uuid string. The int64 PK is internal-only: never in a URL or JSON payload. Handlers resolve `uuid → row` at the boundary (`httpx.ParseUUID` + a `GetXByUUID` lookup) and operate on the int PK internally; inbound FK uuids resolve to int before insert. SvelteKit routes use `[uuid]` params.
+- **UUIDv7 ids, end to end.** Every row's primary key **is** a UUIDv7 string (`id`) — the same value in the URL, the JSON, and as the DB key. There is no separate int PK and no `uuid → int` resolution step: handlers parse the uuid (`httpx.ParseUUID`) and query by it directly as the PK, and inbound FK uuids are stored as-is. JSON `id` / `*Id` fields are uuid strings; paths are `/{...UUID}` (e.g. `/invoices/{invoiceUUID}`); SvelteKit routes use `[uuid]` params. All ids are minted by `internal/ids.New()` (UUIDv7, time-ordered) — never `uuid.NewString()` (v4).
 - Clean-break data model (fresh goose schema; no migration from the old Electron `tallyo.db`).
 - **Gotchas: [`docs/gotchas.md`](docs/gotchas.md)** — hard-won traps (e.g. seeding lazily-mounted modal forms with `$effect.pre`). Read before touching a listed area; add an entry when you hit a new one.
 - Commits follow Conventional Commits.

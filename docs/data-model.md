@@ -13,10 +13,13 @@ human-readable map. Update it whenever a migration changes a table or relationsh
 > `tenant_id` column on every business row plus a `WHERE tenant_id = ?` guard on
 > every query. `tenant_id` (→ `tenants`) and `author_user_id` / `user_id` (→
 > `users`) are **logical references — NOT foreign keys** (validated in app).
-> `item_id` / `price_list_version_id` reference the price list stored as **UUID
-> TEXT** (not FKs — pinned per line so old invoices never re-price). (The model
-> was simplified from an earlier DB-per-tenant design; that historical spec lives
-> under `docs/superpowers/specs/`.)
+> Every id is a **UUIDv7 string** (`id TEXT PRIMARY KEY`, minted by
+> `internal/ids.New()`); there is no int PK and no separate `uuid` column — the
+> uuid id is used end to end. `item_id` / `price_list_version_id` likewise
+> reference the price list by uuid id without a FK (pinned per line so old
+> invoices never re-price). (The model was simplified from an earlier
+> DB-per-tenant design; that historical spec lives under
+> `docs/superpowers/specs/`.)
 
 > **Session items = invoice line items.** `line_items` is the single home for both
 > a work session's items and an invoice's lines. A row is born on a session
@@ -57,13 +60,13 @@ erDiagram
     clients |o--o{ recurring_templates : "auto-bills"
 
     line_items {
-        int     id PK
-        int     tenant_id FK
-        int     session_id FK "→ work_sessions; ON DELETE CASCADE; NULL for manual/recurring lines"
-        int     invoice_id FK "NULL = unbilled session item"
-        text    item_id "tenant items.uuid (TEXT, no FK)"
-        int     custom_item_id  FK "custom item (tenant-local, nullable)"
-        text    price_list_version_id "tenant price_list_versions.uuid (TEXT, no FK), pinned"
+        text    id PK "UUIDv7"
+        text    tenant_id FK
+        text    session_id FK "→ work_sessions; ON DELETE CASCADE; NULL for manual/recurring lines"
+        text    invoice_id FK "NULL = unbilled session item"
+        text    item_id "tenant items.id (uuid, no FK)"
+        text    custom_item_id  FK "custom item (tenant-local, nullable)"
+        text    price_list_version_id "tenant price_list_versions.id (uuid, no FK), pinned"
         text    code "item code snapshot"
         text    description "what was done (from session note)"
         text    service_date
@@ -78,42 +81,42 @@ erDiagram
     }
 
     work_sessions {
-        int  id PK
-        int  tenant_id FK
-        int  client_id FK
+        text id PK "UUIDv7"
+        text tenant_id FK
+        text client_id FK
         text service_date
         text note "free text; AI or user divides into line_items"
         text tags "JSON array"
         text status "scheduled|recorded|drafted|sent|paid"
-        int  invoice_id FK "set when drafted (lifecycle)"
-        int  author_user_id FK
+        text invoice_id FK "set when drafted (lifecycle)"
+        text author_user_id FK
     }
 
     invoices {
-        int  id PK
-        int  tenant_id FK
-        int  client_id FK
-        int  payer_id FK "NULL = self-managed"
+        text id PK "UUIDv7"
+        text tenant_id FK
+        text client_id FK
+        text payer_id FK "NULL = self-managed"
         text status
     }
 
     clients {
-        int  id PK
-        int  tenant_id FK
+        text id PK "UUIDv7"
+        text tenant_id FK
         text name
         text reference "free-text, nullable"
-        int  payer_id FK "NULL = self-billed"
+        text payer_id FK "NULL = self-billed"
     }
 
     price_list_versions {
-        int  id PK
-        int  tenant_id FK
+        text id PK "UUIDv7"
+        text tenant_id FK
     }
 
     items {
-        int  id PK
-        int  tenant_id FK
-        int  price_list_version_id FK "→ price_list_versions"
+        text id PK "UUIDv7"
+        text tenant_id FK
+        text price_list_version_id FK "→ price_list_versions"
         text code
         text name
         text unit
@@ -125,7 +128,11 @@ erDiagram
 
 ## Conventions
 
-- Every tenant-owned table carries a `tenant_id INTEGER` column — the scoping
+- Every id is a UUIDv7 string: `id TEXT PRIMARY KEY` (minted by
+  `internal/ids.New()`), every FK column `TEXT` holding that uuid. No int PKs, no
+  separate `uuid` column — the uuid id is the DB key, the URL segment, and the
+  JSON `id`.
+- Every tenant-owned table carries a `tenant_id TEXT` column — the scoping
   guard that every query filters on (`WHERE tenant_id = ?`). It is NOT a foreign
   key (validated in app).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
@@ -134,10 +141,10 @@ erDiagram
   is **tenant-owned** — scoped per tenant by `tenant_id` in the single DB, each
   tenant populating its own rows. `items` carries a
   nullable `category` and a generic `unit_price REAL`. `line_items` and
-  `estimate_line_items` reference it by **UUID TEXT**
+  `estimate_line_items` reference it by uuid id
   (`price_list_version_id` + `item_id`), not by FK.
 - Prices are pinned per line via `price_list_version_id` + `item_id` (tenant
-  price-list UUIDs) plus the snapshotted `code`/`unit_price`, so an existing invoice
+  price-list uuid ids) plus the snapshotted `code`/`unit_price`, so an existing invoice
   is never re-priced when a newer price-list version loads.
 - The `smarts` slice has **no persistent tables** (Smarts are one-shot
   `gather → propose → apply` drafts — no chat or conversation/step state). The

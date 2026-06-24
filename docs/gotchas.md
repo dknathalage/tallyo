@@ -39,14 +39,6 @@ them (currently a `haiku` name check), so cheaper models work. If you add a new
 model override and a Smart starts returning `502`, check the server log for a
 real `400` and extend `supportsTuning`.
 
-### Signup response `tenantId` is empty — read the tenant uuid from the session
-
-`POST /api/signup` returns the owner JSON, but `TenantsRepo.Signup` skips the
-`fillTenantUUID` backfill every other user-returning path runs, so the response's
-`tenantId` is `""`. To get the new tenant's uuid, call `GET /api/auth/session`
-and read `tenants[0].id`. The e2e seed helper (`web/e2e/fixtures.ts`,
-`signupOwner`) does exactly this.
-
 ## Testing
 
 ### Live Smarts e2e: catalogue `effectiveFrom` defaults to the commit date
