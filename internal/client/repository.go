@@ -21,7 +21,7 @@ import (
 
 // clientListSelect mirrors the ListClients sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/clients.sql.
-const clientListSelect = `SELECT p.*, pm.name AS payer_name, pm.uuid AS payer_uuid
+const clientListSelect = `SELECT p.*, pm.name AS payer_name, pm.id AS payer_uuid
 FROM clients p
 LEFT JOIN payers pm ON p.payer_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ?`
@@ -46,8 +46,7 @@ var errPayerNotFound = errors.New("payer not found")
 // related payer uuid (nil when self-managed), resolved via LEFT JOIN,
 // never the int FK.
 type Client struct {
-	ID        int64   `json:"-"`
-	UUID      string  `json:"id"`
+	ID        string  `json:"id"`
 	Name      string  `json:"name"`
 	Reference string  `json:"reference"`
 	PayerUUID *string `json:"payerId"`
@@ -89,7 +88,7 @@ func NewClients(db db.Executor) *ClientsRepo {
 
 // List returns the tenant's clients ordered by name. When search is non-empty
 // it filters to name, email, or reference matches (LIKE).
-func (r *ClientsRepo) List(ctx context.Context, tenantID int64, search string) ([]*Client, error) {
+func (r *ClientsRepo) List(ctx context.Context, tenantID string, search string) ([]*Client, error) {
 	q := gen.New(r.db)
 	if search == "" {
 		rows, err := q.ListClients(ctx, tenantID)
@@ -122,8 +121,8 @@ func (r *ClientsRepo) List(ctx context.Context, tenantID int64, search string) (
 // Query returns one page of clients plus the total row count for the filter
 // (ignoring pagination). The clause is built by listquery from an allowlisted
 // spec, so its Where/Order fragments are injection-safe.
-func (r *ClientsRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*Client, int64, error) {
-	if tenantID == 0 {
+func (r *ClientsRepo) Query(ctx context.Context, tenantID string, c listquery.Clause) ([]*Client, int64, error) {
+	if tenantID == "" {
 		return nil, 0, errors.New("query clients: tenant id required")
 	}
 	var total int64
@@ -142,9 +141,9 @@ func (r *ClientsRepo) Query(ctx context.Context, tenantID int64, c listquery.Cla
 	out := make([]*Client, 0, 50)
 	for rows.Next() { // bounded by LIMIT in the query
 		var f clientFields
-		var tenant int64
-		var payerID sql.NullInt64 // internal FK column; never surfaced
-		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.name, &f.reference,
+		var tenant string
+		var payerID sql.NullString // internal FK column; never surfaced
+		if err := rows.Scan(&f.id, &tenant, &f.name, &f.reference,
 			&payerID, &f.email, &f.phone, &f.address,
 			&f.metadata, &f.createdAt, &f.updatedAt, &f.payerName, &f.payerUUID); err != nil {
 			return nil, 0, fmt.Errorf("scan client: %w", err)
@@ -159,8 +158,8 @@ func (r *ClientsRepo) Query(ctx context.Context, tenantID int64, c listquery.Cla
 
 // Get returns the tenant's client by uuid with resolved payer name +
 // uuid, or (nil, nil) when absent.
-func (r *ClientsRepo) Get(ctx context.Context, tenantID int64, uuid string) (*Client, error) {
-	row, err := gen.New(r.db).GetClient(ctx, gen.GetClientParams{TenantID: tenantID, Uuid: uuid})
+func (r *ClientsRepo) Get(ctx context.Context, tenantID string, uuid string) (*Client, error) {
+	row, err := gen.New(r.db).GetClient(ctx, gen.GetClientParams{TenantID: tenantID, ID: uuid})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -173,7 +172,7 @@ func (r *ClientsRepo) Get(ctx context.Context, tenantID int64, uuid string) (*Cl
 // GetByID returns the tenant's client by int PK, for internal cross-slice reads
 // (e.g. billing's plan-window lookup) that already hold the FK. The public API
 // addresses clients by uuid via Get.
-func (r *ClientsRepo) GetByID(ctx context.Context, tenantID, id int64) (*Client, error) {
+func (r *ClientsRepo) GetByID(ctx context.Context, tenantID, id string) (*Client, error) {
 	row, err := gen.New(r.db).GetClientByID(ctx, gen.GetClientByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -187,24 +186,24 @@ func (r *ClientsRepo) GetByID(ctx context.Context, tenantID, id int64) (*Client,
 // resolvePayer translates an inbound payer uuid into the int FK for
 // insert/update. A nil/empty uuid → NULL FK. An unknown uuid (foreign or absent)
 // → errPayerNotFound so the handler can 400.
-func (r *ClientsRepo) resolvePayer(ctx context.Context, q *gen.Queries, tenantID int64, pmUUID *string) (sql.NullInt64, error) {
+func (r *ClientsRepo) resolvePayer(ctx context.Context, q *gen.Queries, tenantID string, pmUUID *string) (sql.NullString, error) {
 	if pmUUID == nil || *pmUUID == "" {
-		return sql.NullInt64{}, nil
+		return sql.NullString{}, nil
 	}
-	id, err := q.GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, Uuid: *pmUUID})
+	id, err := q.GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, ID: *pmUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return sql.NullInt64{}, errPayerNotFound
+		return sql.NullString{}, errPayerNotFound
 	}
 	if err != nil {
-		return sql.NullInt64{}, fmt.Errorf("resolve payer: %w", err)
+		return sql.NullString{}, fmt.Errorf("resolve payer: %w", err)
 	}
-	return sql.NullInt64{Int64: id, Valid: true}, nil
+	return sql.NullString{String: id, Valid: true}, nil
 }
 
 // Create inserts a client and writes one audit row, atomically, then re-reads
 // the row so the returned Client carries the payer name.
-func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput) (*Client, error) {
-	if tenantID == 0 {
+func (r *ClientsRepo) Create(ctx context.Context, tenantID string, in ClientInput) (*Client, error) {
+	if tenantID == "" {
 		return nil, errors.New("create client: tenant id required")
 	}
 	if in.Name == "" {
@@ -224,7 +223,7 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		c, e := q.CreateClient(ctx, gen.CreateClientParams{
-			Uuid:      ids.New(),
+			ID:        ids.New(),
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Reference: db.NzMaybe(in.Reference),
@@ -239,7 +238,7 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
 		}
-		newUUID = c.Uuid
+		newUUID = c.ID
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "client",
 			EntityID:   c.ID,
@@ -259,7 +258,7 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput
 // Update writes the client's fields and one audit row, atomically, then
 // re-reads. Returns (nil, nil) when the client does not exist. The audit entry
 // records the row's int PK, resolved by-uuid in the same tx.
-func (r *ClientsRepo) Update(ctx context.Context, tenantID int64, uuid string, in ClientInput) (*Client, error) {
+func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, in ClientInput) (*Client, error) {
 	if in.Name == "" {
 		return nil, errors.New("update client: name is required")
 	}
@@ -286,7 +285,7 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID int64, uuid string, i
 			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
-			Uuid:      uuid,
+			ID:        uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -317,17 +316,17 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID int64, uuid string, i
 // Delete removes a client by uuid and writes one audit row, atomically. The
 // audit entry records the row's int PK, resolved by-uuid in the same tx. A
 // missing row is a silent no-op.
-func (r *ClientsRepo) Delete(ctx context.Context, tenantID int64, uuid string) error {
+func (r *ClientsRepo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		row, e := q.GetClient(ctx, gen.GetClientParams{TenantID: tenantID, Uuid: uuid})
+		row, e := q.GetClient(ctx, gen.GetClientParams{TenantID: tenantID, ID: uuid})
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil
 		}
 		if e != nil {
 			return fmt.Errorf("lookup: %w", e)
 		}
-		if e := q.DeleteClient(ctx, gen.DeleteClientParams{TenantID: tenantID, Uuid: uuid}); e != nil {
+		if e := q.DeleteClient(ctx, gen.DeleteClientParams{TenantID: tenantID, ID: uuid}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return audit.Log(ctx, tx, audit.Entry{
@@ -340,11 +339,11 @@ func (r *ClientsRepo) Delete(ctx context.Context, tenantID int64, uuid string) e
 
 // ResolveClientIDs translates client uuids into their int PKs (preserving
 // order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
-func (r *ClientsRepo) ResolveClientIDs(ctx context.Context, tenantID int64, clientUUIDs []string) ([]int64, error) {
+func (r *ClientsRepo) ResolveClientIDs(ctx context.Context, tenantID string, clientUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)
-	out := make([]int64, 0, len(clientUUIDs))
+	out := make([]string, 0, len(clientUUIDs))
 	for i := range clientUUIDs { // bounded by len(clientUUIDs)
-		id, err := q.GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: clientUUIDs[i]})
+		id, err := q.GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, ID: clientUUIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("unknown client %q", clientUUIDs[i])
 		}
@@ -358,7 +357,7 @@ func (r *ClientsRepo) ResolveClientIDs(ctx context.Context, tenantID int64, clie
 
 // BulkDelete removes several clients and writes one audit row, atomically. An
 // empty id list is a no-op.
-func (r *ClientsRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {
+func (r *ClientsRepo) BulkDelete(ctx context.Context, tenantID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -366,12 +365,12 @@ func (r *ClientsRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int6
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
 			if err := q.DeleteClientByID(ctx, gen.DeleteClientByIDParams{TenantID: tenantID, ID: id}); err != nil {
-				return fmt.Errorf("delete %d: %w", id, err)
+				return fmt.Errorf("delete %s: %w", id, err)
 			}
 		}
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "client",
-			EntityID:   0,
+			EntityID:   "",
 			Action:     "bulk_delete",
 			Changes:    audit.Changes(map[string]any{"ids": ids}),
 		})
@@ -381,8 +380,7 @@ func (r *ClientsRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int6
 // clientFields is the shared, flat shape of every clients join row (List,
 // Search and Get produce identical structs under distinct gen names).
 type clientFields struct {
-	id                              int64
-	uuid, name                      string
+	id, name                        string
 	reference                       sql.NullString
 	email, phone, address, metadata sql.NullString
 	createdAt, updatedAt            string
@@ -394,7 +392,6 @@ type clientFields struct {
 func mapClientFields(f clientFields) *Client {
 	return &Client{
 		ID:        f.id,
-		UUID:      f.uuid,
 		Name:      f.name,
 		Reference: f.reference.String,
 		PayerUUID: db.PtrStr(f.payerUUID),
@@ -410,7 +407,7 @@ func mapClientFields(f clientFields) *Client {
 
 func toClientList(r gen.ListClientsRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name,
+		id: r.ID, name: r.Name,
 		reference: r.Reference,
 		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
@@ -420,7 +417,7 @@ func toClientList(r gen.ListClientsRow) *Client {
 
 func toClientSearch(r gen.SearchClientsRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name,
+		id: r.ID, name: r.Name,
 		reference: r.Reference,
 		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
@@ -430,7 +427,7 @@ func toClientSearch(r gen.SearchClientsRow) *Client {
 
 func toClientGet(r gen.GetClientRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name,
+		id: r.ID, name: r.Name,
 		reference: r.Reference,
 		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,
@@ -440,7 +437,7 @@ func toClientGet(r gen.GetClientRow) *Client {
 
 func toClientGetByID(r gen.GetClientByIDRow) *Client {
 	return mapClientFields(clientFields{
-		id: r.ID, uuid: r.Uuid, name: r.Name,
+		id: r.ID, name: r.Name,
 		reference: r.Reference,
 		email:     r.Email, phone: r.Phone, address: r.Address, metadata: r.Metadata,
 		createdAt: r.CreatedAt, updatedAt: r.UpdatedAt,

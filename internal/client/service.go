@@ -65,7 +65,7 @@ func (s *Service) Create(ctx context.Context, in ClientInput) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: c.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: c.ID, Action: "create"})
 	return c, nil
 }
 
@@ -81,7 +81,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in ClientInput) (*Cli
 	if c == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: c.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: c.ID, Action: "update"})
 	return c, nil
 }
 
@@ -99,21 +99,21 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: p.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: p.ID, Action: "delete"})
 	return nil
 }
 
 // ResolveClientIDs translates a list of client uuids into their int
 // PKs for the tenant (preserving order). An unknown uuid surfaces as an error so
 // the caller can 400 — bulk operations must not silently drop a member.
-func (s *Service) ResolveClientIDs(ctx context.Context, clientUUIDs []string) ([]int64, error) {
+func (s *Service) ResolveClientIDs(ctx context.Context, clientUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientIDs(ctx, tenantID, clientUUIDs)
 }
 
 // BulkDelete removes multiple clients, then broadcasts a single bulk_delete
 // event on success.
-func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
