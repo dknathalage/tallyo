@@ -31,11 +31,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -56,7 +56,7 @@ func TestSnapshotBuilderBusiness(t *testing.T) {
 	// Seed a business profile for the tenant.
 	if err := gen.New(conn).UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
 		TenantID:  tenantID,
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      "Snap Co",
 		Email:     sql.NullString{String: "snap@example.com", Valid: true},
 		CreatedAt: now,

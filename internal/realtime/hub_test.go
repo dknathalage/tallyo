@@ -2,12 +2,13 @@ package realtime
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 )
 
-const testTenant int64 = 1
+const testTenant string = "t-1"
 
 func TestSubscribeReceivesBroadcast(t *testing.T) {
 	h := NewHub()
@@ -68,7 +69,7 @@ func TestConcurrentSubscribeBroadcast(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
-		go func(tid int64) {
+		go func(tid string) {
 			defer wg.Done()
 			ch, unsub := h.Subscribe(tid)
 			defer unsub()
@@ -79,7 +80,7 @@ func TestConcurrentSubscribeBroadcast(t *testing.T) {
 				default:
 				}
 			}
-		}(int64(i%3) + 1)
+		}(fmt.Sprintf("t-%d", i%3+1))
 	}
 	wg.Wait()
 }
@@ -88,7 +89,7 @@ func TestConcurrentSubscribeBroadcast(t *testing.T) {
 // broadcast for tenant A must NOT reach a subscriber of tenant B.
 func TestEventsDoNotLeakAcrossTenants(t *testing.T) {
 	h := NewHub()
-	const tenantA, tenantB int64 = 1, 2
+	const tenantA, tenantB string = "t-1", "t-2"
 	chA, unsubA := h.Subscribe(tenantA)
 	defer unsubA()
 	chB, unsubB := h.Subscribe(tenantB)
@@ -119,9 +120,9 @@ func TestEventsDoNotLeakAcrossTenants(t *testing.T) {
 // of tenant.
 func TestGlobalEventReachesAllTenants(t *testing.T) {
 	h := NewHub()
-	chA, unsubA := h.Subscribe(1)
+	chA, unsubA := h.Subscribe("t-1")
 	defer unsubA()
-	chB, unsubB := h.Subscribe(2)
+	chB, unsubB := h.Subscribe("t-2")
 	defer unsubB()
 
 	h.Broadcast(Event{TenantID: GlobalTenantID, Entity: "catalog_version", UUID: "cv3", Action: "ingest"})
@@ -142,7 +143,7 @@ func TestGlobalEventReachesAllTenants(t *testing.T) {
 // payload's "id" is the entity uuid (a string), never an int PK. TenantID stays
 // server-side only ("-").
 func TestEventJSONIDIsUUIDString(t *testing.T) {
-	e := Event{TenantID: 5, Entity: "invoice", UUID: "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c", Action: "update"}
+	e := Event{TenantID: "t-5", Entity: "invoice", UUID: "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c", Action: "update"}
 	raw, err := json.Marshal(e)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

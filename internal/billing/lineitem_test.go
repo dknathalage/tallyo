@@ -20,8 +20,8 @@ func TestLineItemTypes(t *testing.T) {
 // internal int parent FKs (sessionId/invoiceId): a line item is always fetched
 // embedded in its parent, so the parent pointer is dropped from the API surface.
 func TestLineItemJSONNoParentIntFK(t *testing.T) {
-	sessionID, invoiceID := int64(7), int64(9)
-	li := LineItem{ID: 3, UUID: "item-uuid", SessionID: &sessionID, InvoiceID: &invoiceID}
+	sessionID, invoiceID := "session-uuid", "invoice-uuid"
+	li := LineItem{ID: "item-uuid", SessionID: &sessionID, InvoiceID: &invoiceID}
 	b, err := json.Marshal(li)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

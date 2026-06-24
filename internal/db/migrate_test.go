@@ -121,28 +121,28 @@ func TestMigrateEnforcesTenantUniqueConstraints(t *testing.T) {
 	}
 	now := "2026-06-16T00:00:00Z"
 	if _, err := conn.Exec(
-		"INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+		"INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"t1", "Tenant One", "active", now, now,
 	); err != nil {
 		t.Fatalf("insert tenant: %v", err)
 	}
 	// UNIQUE(tenant_id, email) on users: same email in same tenant must fail.
 	if _, err := conn.Exec(
-		"INSERT INTO users (uuid, tenant_id, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-		"u1", 1, "a@b.com", "h", now, now,
+		"INSERT INTO users (id, tenant_id, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+		"u1", "t1", "a@b.com", "h", now, now,
 	); err != nil {
 		t.Fatalf("insert first user: %v", err)
 	}
 	if _, err := conn.Exec(
-		"INSERT INTO users (uuid, tenant_id, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-		"u2", 1, "a@b.com", "h", now, now,
+		"INSERT INTO users (id, tenant_id, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+		"u2", "t1", "a@b.com", "h", now, now,
 	); err == nil {
 		t.Fatalf("expected UNIQUE(tenant_id, email) violation, got nil")
 	}
 	// FK enforcement: inserting a user for a non-existent tenant must fail.
 	if _, err := conn.Exec(
-		"INSERT INTO users (uuid, tenant_id, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-		"u3", 999, "c@d.com", "h", now, now,
+		"INSERT INTO users (id, tenant_id, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+		"u3", "no-such-tenant", "c@d.com", "h", now, now,
 	); err == nil {
 		t.Fatalf("expected FK violation for missing tenant, got nil")
 	}
@@ -160,7 +160,7 @@ func TestMigrateEnforcesEnumChecks(t *testing.T) {
 	now := "2026-06-16T00:00:00Z"
 	// Invalid tenants.status must be rejected by CHECK.
 	if _, err := conn.Exec(
-		"INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+		"INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"tbad", "Bad", "frozen", now, now,
 	); err == nil {
 		t.Fatalf("expected CHECK violation for tenants.status='frozen', got nil")
@@ -183,21 +183,21 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 			t.Fatalf("exec %q: %v", q, err)
 		}
 	}
-	exec("INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+	exec("INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES (?,?,?,?,?)",
 		"t1", "Tenant", "active", now, now)
-	exec("INSERT INTO payers (uuid, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
-		"pm1", 1, "PM", now, now)
-	exec("INSERT INTO clients (uuid, tenant_id, name, payer_id, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-		"p1", 1, "Pat", 1, now, now)
-	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-		"inv1", 1, "INV-1", 1, 1, now, now, now, now)
-	exec("INSERT INTO line_items (uuid, tenant_id, invoice_id, description) VALUES (?,?,?,?)",
-		"li1", 1, 1, "a service")
+	exec("INSERT INTO payers (id, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
+		"pm1", "t1", "PM", now, now)
+	exec("INSERT INTO clients (id, tenant_id, name, payer_id, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+		"p1", "t1", "Pat", "pm1", now, now)
+	exec("INSERT INTO invoices (id, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+		"inv1", "t1", "INV-1", "p1", "pm1", now, now, now, now)
+	exec("INSERT INTO line_items (id, tenant_id, invoice_id, description) VALUES (?,?,?,?)",
+		"li1", "t1", "inv1", "a service")
 
 	// CASCADE: deleting the invoice removes its line_items.
-	exec("DELETE FROM invoices WHERE id = 1")
+	exec("DELETE FROM invoices WHERE id = 'inv1'")
 	var liCount int
-	if err := conn.QueryRow("SELECT COUNT(*) FROM line_items WHERE invoice_id = 1").Scan(&liCount); err != nil {
+	if err := conn.QueryRow("SELECT COUNT(*) FROM line_items WHERE invoice_id = 'inv1'").Scan(&liCount); err != nil {
 		t.Fatalf("count line_items: %v", err)
 	}
 	if liCount != 0 {
@@ -205,15 +205,15 @@ func TestMigrateForeignKeyDeleteBehavior(t *testing.T) {
 	}
 
 	// SET NULL: a new invoice referencing the payer loses the ref on delete.
-	exec("INSERT INTO invoices (uuid, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-		"inv2", 1, "INV-2", 1, 1, now, now, now, now)
-	exec("DELETE FROM payers WHERE id = 1")
-	var pmID *int64
-	if err := conn.QueryRow("SELECT payer_id FROM invoices WHERE uuid = 'inv2'").Scan(&pmID); err != nil {
+	exec("INSERT INTO invoices (id, tenant_id, number, client_id, payer_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+		"inv2", "t1", "INV-2", "p1", "pm1", now, now, now, now)
+	exec("DELETE FROM payers WHERE id = 'pm1'")
+	var pmID *string
+	if err := conn.QueryRow("SELECT payer_id FROM invoices WHERE id = 'inv2'").Scan(&pmID); err != nil {
 		t.Fatalf("read invoice payer_id: %v", err)
 	}
 	if pmID != nil {
-		t.Fatalf("expected invoice.payer_id set NULL on payer delete, got %d", *pmID)
+		t.Fatalf("expected invoice.payer_id set NULL on payer delete, got %s", *pmID)
 	}
 }
 

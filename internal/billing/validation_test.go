@@ -24,7 +24,7 @@ import (
 
 // seedUnitPricedItem inserts a catalog version with one support item that has a
 // generic unit_price set. Returns the version id.
-func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
+func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID string, label, from, to, code string, gstFree bool, unitPrice float64) string {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -34,7 +34,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, ID: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -44,7 +44,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
+		TenantID: tenantID, ID: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -54,7 +54,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 
 // addUnitPricedItemToVersion adds one more support item (with a generic
 // unit_price) to an existing version.
-func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID int64, code string, gstFree bool, unitPrice float64) {
+func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID string, code string, gstFree bool, unitPrice float64) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -63,7 +63,7 @@ func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID 
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
+		TenantID: tenantID, ID: ids.New(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
 	}); err != nil {
 		t.Fatalf("CreateItem %s: %v", code, err)
@@ -71,7 +71,7 @@ func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID 
 }
 
 // seedClient inserts a name-only client and returns its int PK.
-func seedClient(t *testing.T, conn *sql.DB, tenantID int64) int64 {
+func seedClient(t *testing.T, conn *sql.DB, tenantID string) string {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(tctx(tenantID), tenantID, client.ClientInput{
 		Name: "Test Client",

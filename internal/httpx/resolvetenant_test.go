@@ -50,7 +50,7 @@ func serve(t *testing.T, users MemberLookup, tenants TenantLookup, tenantUUID, e
 
 func TestResolveTenant_MemberResolvesTenantAndRole(t *testing.T) {
 	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{
-		"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusActive},
+		"uuid-a": {ID: "t-7", Status: auth.StatusActive},
 	}}
 	users := &fakeUsers{rows: map[string]*auth.User{
 		memberKey("t-7", "x@y.com"): {ID: "u-42", TenantID: "t-7", Email: "x@y.com", Role: "admin"},
@@ -76,7 +76,7 @@ func TestResolveTenant_MemberResolvesTenantAndRole(t *testing.T) {
 }
 
 func TestResolveTenant_NonMemberForbidden(t *testing.T) {
-	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusActive}}}
+	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", Status: auth.StatusActive}}}
 	users := &fakeUsers{rows: map[string]*auth.User{}} // email has no row in tenant t-7
 
 	ran := false
@@ -100,7 +100,7 @@ func TestResolveTenant_UnknownTenant404(t *testing.T) {
 }
 
 func TestResolveTenant_SuspendedForbidden(t *testing.T) {
-	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusSuspended}}}
+	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", Status: auth.StatusSuspended}}}
 	users := &fakeUsers{rows: map[string]*auth.User{memberKey("t-7", "x@y.com"): {ID: "u-42", TenantID: "t-7", Role: "owner"}}}
 	rec := serve(t, users, tenants, "uuid-a", "x@y.com", func(w http.ResponseWriter, r *http.Request) {})
 	if rec.Code != http.StatusForbidden {
@@ -109,7 +109,7 @@ func TestResolveTenant_SuspendedForbidden(t *testing.T) {
 }
 
 func TestResolveTenant_MissingEmailUnauthorized(t *testing.T) {
-	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusActive}}}
+	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", Status: auth.StatusActive}}}
 	users := &fakeUsers{rows: map[string]*auth.User{}}
 	rec := serve(t, users, tenants, "uuid-a", "", func(w http.ResponseWriter, r *http.Request) {})
 	if rec.Code != http.StatusUnauthorized {
@@ -121,8 +121,8 @@ func TestResolveTenant_MissingEmailUnauthorized(t *testing.T) {
 // ResolveTenant must reflect the URL tenant's role.
 func TestResolveTenant_PerTenantRoleGate(t *testing.T) {
 	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{
-		"uuid-a": {ID: "t-1", UUID: "uuid-a", Status: auth.StatusActive},
-		"uuid-b": {ID: "t-2", UUID: "uuid-b", Status: auth.StatusActive},
+		"uuid-a": {ID: "t-1", Status: auth.StatusActive},
+		"uuid-b": {ID: "t-2", Status: auth.StatusActive},
 	}}
 	users := &fakeUsers{rows: map[string]*auth.User{
 		memberKey("t-1", "x@y.com"): {ID: "u-10", TenantID: "t-1", Email: "x@y.com", Role: "owner"},

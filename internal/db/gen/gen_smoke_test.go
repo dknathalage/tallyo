@@ -23,7 +23,7 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 	ctx := context.Background()
 
 	tenant, err := q.CreateTenant(ctx, CreateTenantParams{
-		Uuid:      "00000000-0000-0000-0000-000000000001",
+		ID:        "00000000-0000-0000-0000-000000000001",
 		Name:      "Acme Tenant",
 		Status:    "active",
 		CreatedAt: "2026-06-04T00:00:00Z",
@@ -35,7 +35,7 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 
 	if err := q.UpsertBusinessProfile(ctx, UpsertBusinessProfileParams{
 		TenantID:        tenant.ID,
-		Uuid:            "11111111-1111-1111-1111-111111111111",
+		ID:              "11111111-1111-1111-1111-111111111111",
 		Name:            "Acme",
 		Abn:             sql.NullString{String: "12345678901", Valid: true},
 		Email:           sql.NullString{String: "billing@acme.test", Valid: true},
@@ -55,7 +55,7 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	if row.TenantID != tenant.ID {
-		t.Fatalf("TenantID = %d, want %d", row.TenantID, tenant.ID)
+		t.Fatalf("TenantID = %q, want %q", row.TenantID, tenant.ID)
 	}
 	if row.Name != "Acme" {
 		t.Fatalf("Name = %q, want %q", row.Name, "Acme")
@@ -67,7 +67,7 @@ func TestGenRunsAgainstModernc(t *testing.T) {
 	// Verify ON CONFLICT(tenant_id) update path: same tenant, changed fields.
 	if err := q.UpsertBusinessProfile(ctx, UpsertBusinessProfileParams{
 		TenantID:        tenant.ID,
-		Uuid:            "22222222-2222-2222-2222-222222222222",
+		ID:              "22222222-2222-2222-2222-222222222222",
 		Name:            "Acme Renamed",
 		Abn:             sql.NullString{},
 		Email:           sql.NullString{String: "ops@acme.test", Valid: true},

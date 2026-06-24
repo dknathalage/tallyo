@@ -25,13 +25,14 @@ func TestValidatePinnedVersionNotRepriced(t *testing.T) {
 	val := NewLineValidator(conn)
 	ctx := context.Background()
 
-	// Lines pin the price-list version by its UUID (the tenant reference), not
-	// its integer id.
+	// Lines pin the price-list version by its UUID (the tenant reference). The
+	// version id is itself the uuid; round-trip it through gen to confirm it
+	// resolves.
 	v1ver, err := gen.New(conn).GetPriceListVersion(ctx, gen.GetPriceListVersionParams{TenantID: tid, ID: v1})
 	if err != nil {
 		t.Fatalf("get v1 uuid: %v", err)
 	}
-	v1uuid := v1ver.Uuid
+	v1uuid := v1ver.ID
 
 	// Existing line pinned to v1, caller supplies no price → fills from v1's
 	// unit_price (100), staying on v1 even though v2 is current for that date.
