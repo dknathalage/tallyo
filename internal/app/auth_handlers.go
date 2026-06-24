@@ -110,8 +110,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	h.sm.Put(r.Context(), "userID", int(creds.ID))
-	h.sm.Put(r.Context(), "tenantID", int(creds.TenantID))
+	h.sm.Put(r.Context(), "userID", creds.ID)
+	h.sm.Put(r.Context(), "tenantID", creds.TenantID)
 	// Email is the durable cross-tenant identity used by ResolveTenant to
 	// authorize the URL tenant per request. Normalize to match stored email.
 	h.sm.Put(r.Context(), "email", strings.ToLower(strings.TrimSpace(in.Email)))
@@ -411,8 +411,8 @@ func (h *SignupHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	h.sm.Put(r.Context(), "userID", int(owner.ID))
-	h.sm.Put(r.Context(), "tenantID", int(owner.TenantID))
+	h.sm.Put(r.Context(), "userID", owner.ID)
+	h.sm.Put(r.Context(), "tenantID", owner.TenantID)
 	// Email identity for ResolveTenant (owner.Email is already normalized).
 	h.sm.Put(r.Context(), "email", owner.Email)
 	httpx.LoggerFrom(r.Context()).Info("tenant signup",

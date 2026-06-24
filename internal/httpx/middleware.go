@@ -88,25 +88,25 @@ func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth.Te
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := sm.GetInt(r.Context(), "userID")
-			tenantID := sm.GetInt(r.Context(), "tenantID")
-			if id == 0 || tenantID == 0 {
+			id := sm.GetString(r.Context(), "userID")
+			tenantID := sm.GetString(r.Context(), "tenantID")
+			if id == "" || tenantID == "" {
 				WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 			// Attach the tenant to the context BEFORE the user re-check so the
 			// tenant-scoped GetByID is filtered to the session's tenant. Attach
 			// the acting user id too so audited mutations record who acted.
-			ctx := reqctx.WithTenant(r.Context(), int64(tenantID))
-			ctx = reqctx.WithUser(ctx, int64(id))
+			ctx := reqctx.WithTenant(r.Context(), tenantID)
+			ctx = reqctx.WithUser(ctx, id)
 			// Enrich the request-scoped logger so every line for this request
 			// (including the final request summary) carries tenant_id/user_id.
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {
-				return l.With(slog.Int("tenant_id", tenantID), slog.Int("user_id", id))
+				return l.With(slog.String("tenant_id", tenantID), slog.String("user_id", id))
 			})
 			// Suspended-tenant guard: reject existing sessions whose tenant was
 			// suspended after they logged in (spec §3.1).
-			status, ok, err := tenants.Status(ctx, int64(tenantID))
+			status, ok, err := tenants.Status(ctx, tenantID)
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal error")
 				return
@@ -118,7 +118,7 @@ func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth.Te
 				WriteError(w, http.StatusForbidden, "tenant suspended")
 				return
 			}
-			u, err := users.GetByID(ctx, int64(tenantID), int64(id))
+			u, err := users.GetByID(ctx, tenantID, id)
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal error")
 				return
@@ -194,7 +194,7 @@ type TenantLookup interface {
 // MemberLookup resolves the user row (with role) for an email within a tenant,
 // returning (nil, nil) when the email is not a member (satisfied by *auth.UsersRepo).
 type MemberLookup interface {
-	GetByEmail(ctx context.Context, tenantID int64, email string) (*auth.User, error)
+	GetByEmail(ctx context.Context, tenantID string, email string) (*auth.User, error)
 }
 
 // RequireSession requires a valid session carrying a userID + email, attaching
@@ -207,13 +207,13 @@ func RequireSession(sm *scs.SessionManager) func(http.Handler) http.Handler {
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := sm.GetInt(r.Context(), "userID")
+			id := sm.GetString(r.Context(), "userID")
 			email := sm.GetString(r.Context(), "email")
-			if id == 0 || email == "" {
+			if id == "" || email == "" {
 				WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-			ctx := reqctx.WithUser(r.Context(), int64(id))
+			ctx := reqctx.WithUser(r.Context(), id)
 			ctx = reqctx.WithEmail(ctx, email)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -273,7 +273,7 @@ func ResolveTenant(users MemberLookup, tenants TenantLookup) func(http.Handler) 
 			ctx = reqctx.WithUser(ctx, u.ID)
 			tenantID, userID := tenant.ID, u.ID
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {
-				return l.With(slog.Int64("tenant_id", tenantID), slog.Int64("user_id", userID))
+				return l.With(slog.String("tenant_id", tenantID), slog.String("user_id", userID))
 			})
 			ctx = context.WithValue(ctx, userCtxKey, u)
 			next.ServeHTTP(w, r.WithContext(ctx))

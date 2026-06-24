@@ -21,12 +21,12 @@ func (f *fakeTenants) GetByUUID(_ context.Context, u string) (*auth.Tenant, erro
 // fakeUsers implements MemberLookup keyed by "tenantID\x00email".
 type fakeUsers struct{ rows map[string]*auth.User }
 
-func (f *fakeUsers) GetByEmail(_ context.Context, tenantID int64, email string) (*auth.User, error) {
+func (f *fakeUsers) GetByEmail(_ context.Context, tenantID string, email string) (*auth.User, error) {
 	return f.rows[memberKey(tenantID, email)], nil
 }
 
-func memberKey(tenantID int64, email string) string {
-	return string(rune(tenantID)) + "\x00" + email
+func memberKey(tenantID string, email string) string {
+	return tenantID + "\x00" + email
 }
 
 // serve routes one GET through ResolveTenant (with email pre-attached as
@@ -50,13 +50,13 @@ func serve(t *testing.T, users MemberLookup, tenants TenantLookup, tenantUUID, e
 
 func TestResolveTenant_MemberResolvesTenantAndRole(t *testing.T) {
 	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{
-		"uuid-a": {ID: 7, UUID: "uuid-a", Status: auth.StatusActive},
+		"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusActive},
 	}}
 	users := &fakeUsers{rows: map[string]*auth.User{
-		memberKey(7, "x@y.com"): {ID: 42, TenantID: 7, Email: "x@y.com", Role: "admin"},
+		memberKey("t-7", "x@y.com"): {ID: "u-42", TenantID: "t-7", Email: "x@y.com", Role: "admin"},
 	}}
 
-	var gotTenant int64
+	var gotTenant string
 	var gotUser *auth.User
 	rec := serve(t, users, tenants, "uuid-a", "x@y.com", func(w http.ResponseWriter, r *http.Request) {
 		gotTenant = reqctx.MustTenant(r.Context())
@@ -67,17 +67,17 @@ func TestResolveTenant_MemberResolvesTenantAndRole(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
-	if gotTenant != 7 {
-		t.Errorf("reqctx tenant = %d, want 7", gotTenant)
+	if gotTenant != "t-7" {
+		t.Errorf("reqctx tenant = %q, want t-7", gotTenant)
 	}
-	if gotUser == nil || gotUser.ID != 42 || gotUser.Role != "admin" {
-		t.Errorf("resolved user = %+v, want id 42 role admin", gotUser)
+	if gotUser == nil || gotUser.ID != "u-42" || gotUser.Role != "admin" {
+		t.Errorf("resolved user = %+v, want id u-42 role admin", gotUser)
 	}
 }
 
 func TestResolveTenant_NonMemberForbidden(t *testing.T) {
-	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: 7, UUID: "uuid-a", Status: auth.StatusActive}}}
-	users := &fakeUsers{rows: map[string]*auth.User{}} // email has no row in tenant 7
+	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusActive}}}
+	users := &fakeUsers{rows: map[string]*auth.User{}} // email has no row in tenant t-7
 
 	ran := false
 	rec := serve(t, users, tenants, "uuid-a", "x@y.com", func(w http.ResponseWriter, r *http.Request) { ran = true })
@@ -100,8 +100,8 @@ func TestResolveTenant_UnknownTenant404(t *testing.T) {
 }
 
 func TestResolveTenant_SuspendedForbidden(t *testing.T) {
-	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: 7, UUID: "uuid-a", Status: auth.StatusSuspended}}}
-	users := &fakeUsers{rows: map[string]*auth.User{memberKey(7, "x@y.com"): {ID: 42, TenantID: 7, Role: "owner"}}}
+	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusSuspended}}}
+	users := &fakeUsers{rows: map[string]*auth.User{memberKey("t-7", "x@y.com"): {ID: "u-42", TenantID: "t-7", Role: "owner"}}}
 	rec := serve(t, users, tenants, "uuid-a", "x@y.com", func(w http.ResponseWriter, r *http.Request) {})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("want 403, got %d", rec.Code)
@@ -109,7 +109,7 @@ func TestResolveTenant_SuspendedForbidden(t *testing.T) {
 }
 
 func TestResolveTenant_MissingEmailUnauthorized(t *testing.T) {
-	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: 7, UUID: "uuid-a", Status: auth.StatusActive}}}
+	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{"uuid-a": {ID: "t-7", UUID: "uuid-a", Status: auth.StatusActive}}}
 	users := &fakeUsers{rows: map[string]*auth.User{}}
 	rec := serve(t, users, tenants, "uuid-a", "", func(w http.ResponseWriter, r *http.Request) {})
 	if rec.Code != http.StatusUnauthorized {
@@ -121,12 +121,12 @@ func TestResolveTenant_MissingEmailUnauthorized(t *testing.T) {
 // ResolveTenant must reflect the URL tenant's role.
 func TestResolveTenant_PerTenantRoleGate(t *testing.T) {
 	tenants := &fakeTenants{byUUID: map[string]*auth.Tenant{
-		"uuid-a": {ID: 1, UUID: "uuid-a", Status: auth.StatusActive},
-		"uuid-b": {ID: 2, UUID: "uuid-b", Status: auth.StatusActive},
+		"uuid-a": {ID: "t-1", UUID: "uuid-a", Status: auth.StatusActive},
+		"uuid-b": {ID: "t-2", UUID: "uuid-b", Status: auth.StatusActive},
 	}}
 	users := &fakeUsers{rows: map[string]*auth.User{
-		memberKey(1, "x@y.com"): {ID: 10, TenantID: 1, Email: "x@y.com", Role: "owner"},
-		memberKey(2, "x@y.com"): {ID: 20, TenantID: 2, Email: "x@y.com", Role: "member"},
+		memberKey("t-1", "x@y.com"): {ID: "u-10", TenantID: "t-1", Email: "x@y.com", Role: "owner"},
+		memberKey("t-2", "x@y.com"): {ID: "u-20", TenantID: "t-2", Email: "x@y.com", Role: "member"},
 	}}
 
 	run := func(tenantUUID string) int {
