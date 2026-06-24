@@ -10,7 +10,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // Tenant is the domain view of a row in the tenants table.
@@ -74,7 +74,7 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		t, e := gen.New(tx).CreateTenant(ctx, gen.CreateTenantParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			Name:      name,
 			Status:    "active",
 			CreatedAt: now,
@@ -170,7 +170,7 @@ func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID int6
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.New(db).UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
 		TenantID:        tenantID,
-		Uuid:            uuid.NewString(),
+		Uuid:            ids.New(),
 		Name:            in.BusinessName,
 		Email:           sql.NullString{String: in.Email, Valid: true},
 		Metadata:        sql.NullString{String: "{}", Valid: true},
@@ -195,7 +195,7 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 		q := gen.New(tx)
 		now := time.Now().UTC().Format(time.RFC3339)
 		t, e := q.CreateTenant(ctx, gen.CreateTenantParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			Name:      in.BusinessName,
 			Status:    StatusActive,
 			CreatedAt: now,
@@ -205,7 +205,7 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 			return fmt.Errorf("create tenant: %w", e)
 		}
 		u, e := q.CreateUser(ctx, gen.CreateUserParams{
-			Uuid:            uuid.NewString(),
+			Uuid:            ids.New(),
 			TenantID:        t.ID,
 			Email:           in.Email,
 			PasswordHash:    in.PasswordHash,

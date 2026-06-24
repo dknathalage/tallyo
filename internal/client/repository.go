@@ -15,8 +15,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/google/uuid"
 )
 
 // clientListSelect mirrors the ListClients sqlc query body up to the WHERE.
@@ -224,7 +224,7 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID int64, in ClientInput
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		c, e := q.CreateClient(ctx, gen.CreateClientParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Reference: db.NzMaybe(in.Reference),

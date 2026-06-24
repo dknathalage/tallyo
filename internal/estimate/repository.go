@@ -17,10 +17,10 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/numbering"
-	"github.com/google/uuid"
 )
 
 // estimateListSelect mirrors the ListEstimates sqlc query body up to the WHERE.
@@ -210,7 +210,7 @@ func createEstimateParams(tenantID int64, in EstimateInput, items []billing.Line
 	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateEstimateParams{
-		Uuid:               uuid.NewString(),
+		Uuid:               ids.New(),
 		TenantID:           tenantID,
 		Number:             num,
 		ClientID:           db.NullID(&in.ClientID),
@@ -240,7 +240,7 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 			return fmt.Errorf("insert estimate line item %d: %w", i, err)
 		}
 		_, err = q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
-			Uuid:               uuid.NewString(),
+			Uuid:               ids.New(),
 			TenantID:           tenantID,
 			EstimateID:         estimateID,
 			ItemID:             db.NullStr(it.ItemID),
@@ -712,7 +712,7 @@ func buildInvoiceFromEstimate(tenantID int64, est *Estimate, num string) gen.Cre
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
-		Uuid:             uuid.NewString(),
+		Uuid:             ids.New(),
 		TenantID:         tenantID,
 		Number:           num,
 		ClientID:         clientID,
@@ -737,7 +737,7 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:               uuid.NewString(),
+			Uuid:               ids.New(),
 			TenantID:           tenantID,
 			SessionID:          sql.NullInt64{}, // estimate-converted lines are not session items
 			InvoiceID:          sql.NullInt64{Int64: invoiceID, Valid: true},

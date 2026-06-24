@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/google/uuid"
 )
 
 // Execer is satisfied by *sql.DB and *sql.Tx.
@@ -47,7 +47,7 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO audit_log (uuid, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-		uuid.NewString(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context,
+		ids.New(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context,
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {

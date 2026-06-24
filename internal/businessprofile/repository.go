@@ -14,7 +14,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // BusinessProfile is the domain view of the per-tenant business profile row.
@@ -108,7 +108,7 @@ func existingUUID(ctx context.Context, tx *sql.Tx, tenantID int64) (string, erro
 	var id string
 	err := tx.QueryRowContext(ctx, "SELECT uuid FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return uuid.NewString(), nil
+		return ids.New(), nil
 	}
 	if err != nil {
 		return "", err

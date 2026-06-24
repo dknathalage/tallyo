@@ -16,8 +16,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/taxrate"
-	"github.com/google/uuid"
 )
 
 // --- test seeders ---------------------------------------------------------
@@ -34,7 +34,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, Uuid: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -44,7 +44,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
+		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -63,7 +63,7 @@ func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID 
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
+		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
 	}); err != nil {
 		t.Fatalf("CreateItem %s: %v", code, err)

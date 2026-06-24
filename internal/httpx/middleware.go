@@ -9,9 +9,9 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 type ctxKey int
@@ -44,7 +44,7 @@ func Recover(next http.Handler) http.Handler {
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		requestID := uuid.NewString()
+		requestID := ids.New()
 		base := slog.Default().With(slog.String("request_id", requestID))
 		ctx := WithLogger(r.Context(), base)
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}

@@ -16,7 +16,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // Session is the domain view of a row in the sessions table — the delivered-support
@@ -99,7 +99,7 @@ func (r *SessionsRepo) Create(ctx context.Context, tenantID int64, authorUserID 
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		s, e := gen.New(tx).CreateSession(ctx, gen.CreateSessionParams{
-			Uuid:         uuid.NewString(),
+			Uuid:         ids.New(),
 			TenantID:     tenantID,
 			ClientID:     in.ClientID,
 			ServiceDate:  in.ServiceDate,
@@ -705,7 +705,7 @@ func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItem
 // inbound custom-item uuid is resolved to the int FK by the caller and passed in.
 func lineItemParams(tenantID int64, sessionID *int64, customItemID sql.NullInt64, in billing.LineItemInput) gen.CreateLineItemParams {
 	return gen.CreateLineItemParams{
-		Uuid:               uuid.NewString(),
+		Uuid:               ids.New(),
 		TenantID:           tenantID,
 		SessionID:          db.NullID(sessionID),
 		InvoiceID:          sql.NullInt64{}, // unbilled session item

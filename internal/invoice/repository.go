@@ -28,9 +28,9 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/numbering"
-	"github.com/google/uuid"
 )
 
 // invoiceListSelect mirrors the ListInvoices sqlc query body up to the WHERE.
@@ -359,7 +359,7 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
-		Uuid:             uuid.NewString(),
+		Uuid:             ids.New(),
 		TenantID:         tenantID,
 		Number:           num,
 		ClientID:         in.ClientID,
@@ -389,7 +389,7 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 			return fmt.Errorf("insert line item %d: %w", i, err)
 		}
 		_, err = q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:               uuid.NewString(),
+			Uuid:               ids.New(),
 			TenantID:           tenantID,
 			SessionID:          sql.NullInt64{}, // invoice lines from this path are not session items
 			InvoiceID:          sql.NullInt64{Int64: invoiceID, Valid: true},

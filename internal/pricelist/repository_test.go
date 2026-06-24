@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // --- ItemsRepo (tenant-owned price list) ---
@@ -23,7 +23,7 @@ func seedCatalog(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, co
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, Uuid: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -33,7 +33,7 @@ func seedCatalog(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, co
 		up = sql.NullFloat64{Float64: *unitPrice, Valid: true}
 	}
 	si, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
+		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 		UnitPrice: up,
 	})
 	if err != nil {

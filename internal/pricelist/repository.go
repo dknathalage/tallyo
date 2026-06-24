@@ -14,7 +14,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ func (r *ItemsRepo) Ingest(ctx context.Context, tenantID int64, label, effective
 		}
 		ver, e := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
 			TenantID:       tenantID,
-			Uuid:           uuid.NewString(),
+			Uuid:           ids.New(),
 			Label:          label,
 			EffectiveFrom:  effectiveFrom,
 			EffectiveTo:    sql.NullString{},
@@ -275,7 +275,7 @@ func (r *ItemsRepo) Ingest(ctx context.Context, tenantID int64, label, effective
 			}
 			if _, e := q.UpsertItem(ctx, gen.UpsertItemParams{
 				TenantID:           tenantID,
-				Uuid:               uuid.NewString(),
+				Uuid:               ids.New(),
 				PriceListVersionID: ver.ID,
 				Code:               it.Code,
 				Name:               it.Name,

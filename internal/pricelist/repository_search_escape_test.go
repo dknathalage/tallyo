@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // seedNamedItem inserts an item with an explicit name into the
@@ -19,7 +19,7 @@ func seedNamedItem(t *testing.T, conn *sql.DB, tenantID, versionID int64, code, 
 	q := gen.New(conn)
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
 		TenantID:           tenantID,
-		Uuid:               uuid.NewString(),
+		Uuid:               ids.New(),
 		PriceListVersionID: versionID,
 		Code:               code,
 		Name:               name,
@@ -34,7 +34,7 @@ func seedBareVersion(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 	ctx := context.Background()
 	now := time.Now().UTC().Format(time.RFC3339)
 	v, err := gen.New(conn).CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), Label: "v", EffectiveFrom: "2025-07-01", CreatedAt: now,
+		TenantID: tenantID, Uuid: ids.New(), Label: "v", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -131,7 +131,7 @@ func TestSearchItemsAllFieldsTenantScoped(t *testing.T) {
 
 	// Both items share code/name; they differ only by category + unit.
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tidA, Uuid: uuid.NewString(), PriceListVersionID: vA,
+		TenantID: tidA, Uuid: ids.New(), PriceListVersionID: vA,
 		Code: "AAA", Name: "Shared Name", Taxable: 0,
 		Category: sql.NullString{String: "AlphaCat", Valid: true},
 		Unit:     sql.NullString{String: "HourA", Valid: true},
@@ -139,7 +139,7 @@ func TestSearchItemsAllFieldsTenantScoped(t *testing.T) {
 		t.Fatalf("CreateItem A: %v", err)
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tidB, Uuid: uuid.NewString(), PriceListVersionID: vB,
+		TenantID: tidB, Uuid: ids.New(), PriceListVersionID: vB,
 		Code: "BBB", Name: "Shared Name", Taxable: 0,
 		Category: sql.NullString{String: "BetaCat", Valid: true},
 		Unit:     sql.NullString{String: "HourB", Valid: true},

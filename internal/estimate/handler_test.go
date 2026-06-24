@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/client"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
@@ -81,7 +82,7 @@ func TestEstimateGetUnknownUUID404(t *testing.T) {
 	srv := httptest.NewServer(mountEstimate(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/estimates/" + uuid.NewString())
+	res, err := http.Get(srv.URL + "/estimates/" + ids.New())
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}

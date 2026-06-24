@@ -9,7 +9,7 @@ import (
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 func mustUserDB(t *testing.T) *sql.DB {
@@ -29,7 +29,7 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid: uuid.NewString(), Name: name, Status: "active", CreatedAt: now, UpdatedAt: now,
+		Uuid: ids.New(), Name: name, Status: "active", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("seedTenant %q: %v", name, err)

@@ -14,8 +14,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/google/uuid"
 )
 
 // payerListSelect is the base SELECT for the listquery-driven Query path.
@@ -159,7 +159,7 @@ func (r *PayersRepo) Create(ctx context.Context, tenantID int64, in PayerInput) 
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).CreatePayer(ctx, gen.CreatePayerParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Email:     db.Nz(in.Email),

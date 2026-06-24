@@ -13,7 +13,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // ErrInviteInvalid is returned by Validate when an invite is unknown, expired,
@@ -79,7 +79,7 @@ func (r *InvitesRepo) Create(ctx context.Context, tenantID int64, email, role st
 	var created gen.Invite
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		row, e := gen.New(tx).CreateInvite(ctx, gen.CreateInviteParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			Token:     token,
 			Email:     email,
@@ -209,7 +209,7 @@ func (r *InvitesRepo) Accept(ctx context.Context, token, name, passwordHash stri
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		u, e := q.CreateUser(ctx, gen.CreateUserParams{
-			Uuid:            uuid.NewString(),
+			Uuid:            ids.New(),
 			TenantID:        inv.TenantID,
 			Email:           inv.Email,
 			PasswordHash:    passwordHash,

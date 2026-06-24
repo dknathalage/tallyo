@@ -10,7 +10,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // Payment is the domain view of a row in the payments table. Nullable columns
@@ -69,7 +69,7 @@ func (r *PaymentsRepo) Create(ctx context.Context, tenantID int64, in PaymentInp
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).CreatePayment(ctx, gen.CreatePaymentParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			InvoiceID: in.InvoiceID,
 			Amount:    in.Amount,

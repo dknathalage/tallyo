@@ -8,8 +8,8 @@ import (
 	"time"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/google/uuid"
 )
 
 func TestLogInsertsRow(t *testing.T) {
@@ -116,7 +116,7 @@ func seedTenantUser(t *testing.T, conn *sql.DB) (tenantID, userID int64) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := conn.Exec(
 		`INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?, 'Acme', 'active', ?, ?)`,
-		uuid.NewString(), now, now)
+		ids.New(), now, now)
 	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
@@ -124,7 +124,7 @@ func seedTenantUser(t *testing.T, conn *sql.DB) (tenantID, userID int64) {
 	res, err = conn.Exec(
 		`INSERT INTO users (uuid, tenant_id, email, password_hash, name, role, created_at, updated_at)
 		 VALUES (?, ?, 'o@acme.test', 'x', 'Owner', 'owner', ?, ?)`,
-		uuid.NewString(), tenantID, now, now)
+		ids.New(), tenantID, now, now)
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
 	}

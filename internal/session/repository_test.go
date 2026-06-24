@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 func sampleSessionInput(pid int64) SessionInput {
@@ -350,7 +350,7 @@ func TestSessionUpdateRepo(t *testing.T) {
 		t.Fatalf("Update tags = %+v", up.Tags)
 	}
 
-	if miss, err := repo.Update(ctx, tid, uuid.NewString(), in); err != nil || miss != nil {
+	if miss, err := repo.Update(ctx, tid, ids.New(), in); err != nil || miss != nil {
 		t.Fatalf("Update unknown = %+v err=%v", miss, err)
 	}
 }

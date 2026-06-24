@@ -21,11 +21,11 @@ import (
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/estimate"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // newValidationServer wires the invoice + estimate + client routes behind
@@ -69,14 +69,14 @@ func seedCatalogVersion(t *testing.T, conn *sql.DB, from, to, code string) {
 	q := gen.New(conn)
 	now := time.Now().UTC().Format(time.RFC3339)
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: uuid.NewString(), Label: "v1", EffectiveFrom: from,
+		Uuid: ids.New(), Label: "v1", EffectiveFrom: from,
 		EffectiveTo: sql.NullString{String: to, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
+		Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // ErrAmbiguousEmail is returned by GetCredentialsGlobal when an email is
@@ -77,7 +77,7 @@ func (r *UsersRepo) Create(ctx context.Context, tenantID int64, email, hash, nam
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		u, e := gen.New(tx).CreateUser(ctx, gen.CreateUserParams{
-			Uuid:            uuid.NewString(),
+			Uuid:            ids.New(),
 			TenantID:        tenantID,
 			Email:           email,
 			PasswordHash:    hash,

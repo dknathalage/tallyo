@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
@@ -82,7 +83,7 @@ func TestInvoiceGetUnknownUUID404(t *testing.T) {
 	srv := httptest.NewServer(mountInvoice(ih, ph, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/invoices/" + uuid.NewString())
+	res, err := http.Get(srv.URL + "/invoices/" + ids.New())
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 		t.Fatalf("seed session: %v", err)
 	}
 	if _, err := gen.New(conn).CreateLineItem(context.Background(), gen.CreateLineItemParams{
-		Uuid: uuid.NewString(), TenantID: tenantID, SessionID: sql.NullInt64{Int64: sh.ID, Valid: true},
+		Uuid: ids.New(), TenantID: tenantID, SessionID: sql.NullInt64{Int64: sh.ID, Valid: true},
 		Description: "Work", Quantity: 1, UnitPrice: 10, LineTotal: 10,
 	}); err != nil {
 		t.Fatalf("seed item: %v", err)

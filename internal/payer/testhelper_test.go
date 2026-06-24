@@ -9,8 +9,8 @@ import (
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/google/uuid"
 )
 
 // newTestDB opens a fresh migrated in-temp SQLite DB.
@@ -32,7 +32,7 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      uuid.NewString(),
+		Uuid:      ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,

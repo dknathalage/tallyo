@@ -13,6 +13,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -341,7 +342,7 @@ func TestAuthLoginMultiTenantByUUID(t *testing.T) {
 
 	// Step 3: a well-formed but unknown tenant uuid → 401 (no enumeration).
 	c2 := jarClient(t)
-	resp3 := loginWithTenant(t, c2, srv.URL, "dup@x.com", "password1", uuid.NewString())
+	resp3 := loginWithTenant(t, c2, srv.URL, "dup@x.com", "password1", ids.New())
 	defer func() { _ = resp3.Body.Close() }()
 	if resp3.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("bogus tenant uuid: want 401 got %d", resp3.StatusCode)

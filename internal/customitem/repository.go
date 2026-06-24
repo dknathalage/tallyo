@@ -10,8 +10,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/google/uuid"
 )
 
 // customItemListSelect mirrors the ListCustomItems sqlc query body up to the
@@ -175,7 +175,7 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in CustomItemInput) (
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		c, e := gen.New(tx).CreateCustomItem(ctx, gen.CreateCustomItemParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Rate:      in.Rate,

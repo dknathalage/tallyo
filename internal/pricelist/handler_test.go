@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // newCatalogHandler builds a handler over a fresh DB and seeds one version with
@@ -25,14 +25,14 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 	q := gen.New(conn)
 	ctx := context.Background()
 	now := time.Now().UTC().Format(time.RFC3339)
-	vUUID := uuid.NewString()
+	vUUID := ids.New()
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
 		TenantID: tenantID, Uuid: vUUID, Label: "2025-26", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
-	iUUID := uuid.NewString()
+	iUUID := ids.New()
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
 		TenantID: tenantID, Uuid: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
 		UnitPrice: sql.NullFloat64{Float64: 100, Valid: true},

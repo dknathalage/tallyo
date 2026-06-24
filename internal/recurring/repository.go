@@ -18,10 +18,10 @@ import (
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/numbering"
-	"github.com/google/uuid"
 )
 
 // recurringListSelect mirrors the ListRecurringTemplates sqlc query body up to
@@ -290,7 +290,7 @@ func (r *Repo) Create(ctx context.Context, tenantID int64, in RecurringInput) (*
 			return e
 		}
 		tpl, e := q.CreateRecurringTemplate(ctx, gen.CreateRecurringTemplateParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			ClientID:  pid,
 			PayerID:   pmID,
@@ -532,7 +532,7 @@ func recurringInvoiceParams(tenantID int64, tpl *RecurringTemplate, items []bill
 	t := billing.ComputeTotals(items, tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
-		Uuid:             uuid.NewString(),
+		Uuid:             ids.New(),
 		TenantID:         tenantID,
 		Number:           num,
 		ClientID:         pid,

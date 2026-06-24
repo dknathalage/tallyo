@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
@@ -35,7 +35,7 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      uuid.NewString(),
+		Uuid:      ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -56,7 +56,7 @@ func TestSnapshotBuilderBusiness(t *testing.T) {
 	// Seed a business profile for the tenant.
 	if err := gen.New(conn).UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
 		TenantID:  tenantID,
-		Uuid:      uuid.NewString(),
+		Uuid:      ids.New(),
 		Name:      "Snap Co",
 		Email:     sql.NullString{String: "snap@example.com", Valid: true},
 		CreatedAt: now,

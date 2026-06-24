@@ -14,8 +14,8 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/google/uuid"
 )
 
 // taxRateListSelect is the base SELECT for paged tax-rate queries; listquery
@@ -166,7 +166,7 @@ func (r *TaxRatesRepo) Create(ctx context.Context, tenantID int64, in TaxRateInp
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		t, e := q.CreateTaxRate(ctx, gen.CreateTaxRateParams{
-			Uuid:      uuid.NewString(),
+			Uuid:      ids.New(),
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Rate:      in.Rate,

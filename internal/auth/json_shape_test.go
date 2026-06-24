@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/dknathalage/tallyo/internal/ids"
 )
 
 // TestUserJSONExposesUUIDsNotInts is the Task 2.8 guarantee for the /auth/me +
@@ -14,9 +14,9 @@ import (
 func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 	u := &User{
 		ID:         42,
-		UUID:       uuid.NewString(),
+		UUID:       ids.New(),
 		TenantID:   7,
-		TenantUUID: uuid.NewString(),
+		TenantUUID: ids.New(),
 		Email:      "owner@x.com",
 		Name:       "Owner",
 		Role:       "owner",
@@ -45,7 +45,7 @@ func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 func TestEmailTenantJSONExposesUUIDNotInt(t *testing.T) {
 	et := EmailTenant{
 		TenantID:   9,
-		TenantUUID: uuid.NewString(),
+		TenantUUID: ids.New(),
 		TenantName: "Acme",
 		Role:       "owner",
 	}

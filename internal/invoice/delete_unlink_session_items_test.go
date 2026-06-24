@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
-	"github.com/google/uuid"
 )
 
 // addManualLine inserts a manual (session-less) line onto an invoice — a line that
@@ -16,7 +16,7 @@ import (
 func addManualLine(t *testing.T, conn *sql.DB, tenantID, invoiceID int64, price float64) {
 	t.Helper()
 	_, err := gen.New(conn).CreateLineItem(context.Background(), gen.CreateLineItemParams{
-		Uuid:        uuid.NewString(),
+		Uuid:        ids.New(),
 		TenantID:    tenantID,
 		InvoiceID:   sql.NullInt64{Int64: invoiceID, Valid: true},
 		Description: "manual",

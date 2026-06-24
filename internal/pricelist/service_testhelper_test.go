@@ -7,15 +7,15 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/google/uuid"
 )
 
 func seedTenant(t *testing.T, conn *sql.DB) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      uuid.NewString(),
+		Uuid:      ids.New(),
 		Name:      "Acme",
 		Status:    "active",
 		CreatedAt: now,
@@ -41,7 +41,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, Uuid: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -51,7 +51,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from,
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
+		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true},
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -68,7 +68,7 @@ func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID 
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
+		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true},
 	}); err != nil {
 		t.Fatalf("CreateItem %s: %v", code, err)
