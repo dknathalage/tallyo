@@ -48,45 +48,47 @@ func EmailFrom(ctx context.Context) (string, bool) {
 	return s, ok
 }
 
-// WithTenant returns a copy of ctx that carries the given tenant id. A non-zero
-// tenant id is expected; callers that need a value should validate at the
-// boundary (this helper does not, so it stays allocation-cheap and total).
-func WithTenant(ctx context.Context, tenantID int64) context.Context {
+// WithTenant returns a copy of ctx that carries the given tenant id (a uuid
+// string). A non-empty tenant id is expected; callers that need a value should
+// validate at the boundary (this helper does not, so it stays allocation-cheap
+// and total).
+func WithTenant(ctx context.Context, tenantID string) context.Context {
 	return context.WithValue(ctx, tenantKey, tenantID)
 }
 
 // TenantFrom returns the tenant id stored in ctx and whether one was present.
-// ok is false (and the id is 0) when no tenant has been attached.
-func TenantFrom(ctx context.Context) (int64, bool) {
+// ok is false (and the id is "") when no tenant has been attached.
+func TenantFrom(ctx context.Context) (string, bool) {
 	v := ctx.Value(tenantKey)
 	if v == nil {
-		return 0, false
+		return "", false
 	}
-	id, ok := v.(int64)
+	id, ok := v.(string)
 	if !ok {
-		return 0, false
+		return "", false
 	}
 	return id, true
 }
 
-// WithUser returns a copy of ctx that carries the acting user's id. The auth
-// middleware attaches it after resolving the session so audited mutations can
-// record who performed them. A zero/absent user id means "no user" (e.g. system
-// sweeps or the pre-auth signup transaction) and is recorded as NULL by audit.
-func WithUser(ctx context.Context, userID int64) context.Context {
+// WithUser returns a copy of ctx that carries the acting user's id (a uuid
+// string). The auth middleware attaches it after resolving the session so
+// audited mutations can record who performed them. An empty/absent user id means
+// "no user" (e.g. system sweeps or the pre-auth signup transaction) and is
+// recorded as NULL by audit.
+func WithUser(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, userKey, userID)
 }
 
 // UserFrom returns the acting user id stored in ctx and whether one was present.
-// ok is false (and the id is 0) when no user has been attached.
-func UserFrom(ctx context.Context) (int64, bool) {
+// ok is false (and the id is "") when no user has been attached.
+func UserFrom(ctx context.Context) (string, bool) {
 	v := ctx.Value(userKey)
 	if v == nil {
-		return 0, false
+		return "", false
 	}
-	id, ok := v.(int64)
+	id, ok := v.(string)
 	if !ok {
-		return 0, false
+		return "", false
 	}
 	return id, true
 }
@@ -97,7 +99,7 @@ func UserFrom(ctx context.Context) (int64, bool) {
 // code path ran without the auth middleware having attached a tenant (or a test
 // forgot to seed one). Per NASA rule 5 we fail loudly on the invariant violation
 // rather than silently defaulting to tenant 0 and leaking data across tenants.
-func MustTenant(ctx context.Context) int64 {
+func MustTenant(ctx context.Context) string {
 	id, ok := TenantFrom(ctx)
 	if !ok {
 		panic("reqctx: tenant id missing from context (programmer error)")

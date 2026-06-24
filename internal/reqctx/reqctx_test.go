@@ -6,13 +6,13 @@ import (
 )
 
 func TestWithTenantThenTenantFrom(t *testing.T) {
-	ctx := WithTenant(context.Background(), 42)
+	ctx := WithTenant(context.Background(), "t-42")
 	id, ok := TenantFrom(ctx)
 	if !ok {
 		t.Fatal("TenantFrom: ok = false, want true")
 	}
-	if id != 42 {
-		t.Fatalf("TenantFrom: id = %d, want 42", id)
+	if id != "t-42" {
+		t.Fatalf("TenantFrom: id = %q, want t-42", id)
 	}
 }
 
@@ -21,15 +21,15 @@ func TestTenantFromMissing(t *testing.T) {
 	if ok {
 		t.Fatal("TenantFrom on bare ctx: ok = true, want false")
 	}
-	if id != 0 {
-		t.Fatalf("TenantFrom on bare ctx: id = %d, want 0", id)
+	if id != "" {
+		t.Fatalf("TenantFrom on bare ctx: id = %q, want empty", id)
 	}
 }
 
 func TestMustTenantPresent(t *testing.T) {
-	ctx := WithTenant(context.Background(), 7)
-	if got := MustTenant(ctx); got != 7 {
-		t.Fatalf("MustTenant: got %d, want 7", got)
+	ctx := WithTenant(context.Background(), "t-7")
+	if got := MustTenant(ctx); got != "t-7" {
+		t.Fatalf("MustTenant: got %q, want t-7", got)
 	}
 }
 
@@ -43,10 +43,10 @@ func TestMustTenantPanicsWhenMissing(t *testing.T) {
 }
 
 func TestWithTenantOverwrites(t *testing.T) {
-	ctx := WithTenant(context.Background(), 1)
-	ctx = WithTenant(ctx, 2)
+	ctx := WithTenant(context.Background(), "t-1")
+	ctx = WithTenant(ctx, "t-2")
 	id, ok := TenantFrom(ctx)
-	if !ok || id != 2 {
-		t.Fatalf("TenantFrom after overwrite: id=%d ok=%v, want 2/true", id, ok)
+	if !ok || id != "t-2" {
+		t.Fatalf("TenantFrom after overwrite: id=%q ok=%v, want t-2/true", id, ok)
 	}
 }
