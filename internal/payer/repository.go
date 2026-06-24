@@ -33,8 +33,7 @@ var PayerCols = listquery.Spec{
 // Payer is the domain view of a row in the payers table. All
 // nullable columns are unwrapped to plain strings ("" when absent).
 type Payer struct {
-	ID        int64  `json:"-"`
-	UUID      string `json:"id"`
+	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Email     string `json:"email"`
 	Phone     string `json:"phone"`
@@ -69,7 +68,7 @@ func NewPayers(db db.Executor) *PayersRepo {
 
 // List returns the tenant's payers ordered by name. When search is
 // non-empty it filters to name or email matches (LIKE).
-func (r *PayersRepo) List(ctx context.Context, tenantID int64, search string) ([]*Payer, error) {
+func (r *PayersRepo) List(ctx context.Context, tenantID string, search string) ([]*Payer, error) {
 	q := gen.New(r.db)
 	if search == "" {
 		rows, err := q.ListPayers(ctx, tenantID)
@@ -91,8 +90,8 @@ func (r *PayersRepo) List(ctx context.Context, tenantID int64, search string) ([
 }
 
 // Get returns the tenant's payer by uuid, or (nil, nil) when none matches.
-func (r *PayersRepo) Get(ctx context.Context, tenantID int64, uuid string) (*Payer, error) {
-	row, err := gen.New(r.db).GetPayer(ctx, gen.GetPayerParams{TenantID: tenantID, Uuid: uuid})
+func (r *PayersRepo) Get(ctx context.Context, tenantID string, uuid string) (*Payer, error) {
+	row, err := gen.New(r.db).GetPayer(ctx, gen.GetPayerParams{TenantID: tenantID, ID: uuid})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -105,8 +104,8 @@ func (r *PayersRepo) Get(ctx context.Context, tenantID int64, uuid string) (*Pay
 // Query returns one page of payers plus the total row count for the
 // filter (ignoring pagination). The clause is built by listquery from an
 // allowlisted spec, so its Where/Order fragments are injection-safe.
-func (r *PayersRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*Payer, int64, error) {
-	if tenantID == 0 {
+func (r *PayersRepo) Query(ctx context.Context, tenantID string, c listquery.Clause) ([]*Payer, int64, error) {
+	if tenantID == "" {
 		return nil, 0, errors.New("query payers: tenant id required")
 	}
 	var total int64
@@ -129,8 +128,8 @@ func (r *PayersRepo) Query(ctx context.Context, tenantID int64, c listquery.Clau
 	out := make([]*Payer, 0, 50)
 	for rows.Next() { // bounded by LIMIT in the query
 		var row gen.Payer
-		var tenant int64
-		if err := rows.Scan(&row.ID, &row.Uuid, &tenant, &row.Name, &row.Email,
+		var tenant string
+		if err := rows.Scan(&row.ID, &tenant, &row.Name, &row.Email,
 			&row.Phone, &row.Address, &row.Metadata, &row.CreatedAt, &row.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan payer: %w", err)
 		}
@@ -143,8 +142,8 @@ func (r *PayersRepo) Query(ctx context.Context, tenantID int64, c listquery.Clau
 }
 
 // Create inserts a payer and writes one audit row, atomically.
-func (r *PayersRepo) Create(ctx context.Context, tenantID int64, in PayerInput) (*Payer, error) {
-	if tenantID == 0 {
+func (r *PayersRepo) Create(ctx context.Context, tenantID string, in PayerInput) (*Payer, error) {
+	if tenantID == "" {
 		return nil, errors.New("create payer: tenant id required")
 	}
 	if in.Name == "" {
@@ -159,7 +158,7 @@ func (r *PayersRepo) Create(ctx context.Context, tenantID int64, in PayerInput) 
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).CreatePayer(ctx, gen.CreatePayerParams{
-			Uuid:      ids.New(),
+			ID:        ids.New(),
 			TenantID:  tenantID,
 			Name:      in.Name,
 			Email:     db.Nz(in.Email),
@@ -189,7 +188,7 @@ func (r *PayersRepo) Create(ctx context.Context, tenantID int64, in PayerInput) 
 // Update writes the payer's fields and one audit row, atomically. The
 // audit entry records the row's int PK, resolved by-uuid inside the tx. Returns
 // (nil, nil) when the row does not exist so the caller can 404.
-func (r *PayersRepo) Update(ctx context.Context, tenantID int64, uuid string, in PayerInput) (*Payer, error) {
+func (r *PayersRepo) Update(ctx context.Context, tenantID string, uuid string, in PayerInput) (*Payer, error) {
 	if in.Name == "" {
 		return nil, errors.New("update payer: name is required")
 	}
@@ -210,7 +209,7 @@ func (r *PayersRepo) Update(ctx context.Context, tenantID int64, uuid string, in
 			Metadata:  db.Nz(metadata),
 			UpdatedAt: now,
 			TenantID:  tenantID,
-			Uuid:      uuid,
+			ID:        uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -238,17 +237,17 @@ func (r *PayersRepo) Update(ctx context.Context, tenantID int64, uuid string, in
 
 // Delete removes a payer by uuid and writes one audit row, atomically.
 // The audit entry records the row's int PK, resolved by-uuid in the same tx.
-func (r *PayersRepo) Delete(ctx context.Context, tenantID int64, uuid string) error {
+func (r *PayersRepo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		row, e := q.GetPayer(ctx, gen.GetPayerParams{TenantID: tenantID, Uuid: uuid})
+		row, e := q.GetPayer(ctx, gen.GetPayerParams{TenantID: tenantID, ID: uuid})
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil
 		}
 		if e != nil {
 			return fmt.Errorf("lookup: %w", e)
 		}
-		if e := q.DeletePayer(ctx, gen.DeletePayerParams{TenantID: tenantID, Uuid: uuid}); e != nil {
+		if e := q.DeletePayer(ctx, gen.DeletePayerParams{TenantID: tenantID, ID: uuid}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		return audit.Log(ctx, tx, audit.Entry{
@@ -262,11 +261,11 @@ func (r *PayersRepo) Delete(ctx context.Context, tenantID int64, uuid string) er
 // ResolvePayerIDs translates payer uuids into their int PKs
 // (preserving order), tenant-scoped. An unknown uuid is an error so bulk ops can
 // 400.
-func (r *PayersRepo) ResolvePayerIDs(ctx context.Context, tenantID int64, pmUUIDs []string) ([]int64, error) {
+func (r *PayersRepo) ResolvePayerIDs(ctx context.Context, tenantID string, pmUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)
-	out := make([]int64, 0, len(pmUUIDs))
+	out := make([]string, 0, len(pmUUIDs))
 	for i := range pmUUIDs { // bounded by len(pmUUIDs)
-		id, err := q.GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, Uuid: pmUUIDs[i]})
+		id, err := q.GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, ID: pmUUIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("unknown payer %q", pmUUIDs[i])
 		}
@@ -280,7 +279,7 @@ func (r *PayersRepo) ResolvePayerIDs(ctx context.Context, tenantID int64, pmUUID
 
 // BulkDelete removes several payers and writes one audit row, atomically.
 // An empty id list is a no-op.
-func (r *PayersRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {
+func (r *PayersRepo) BulkDelete(ctx context.Context, tenantID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -288,12 +287,12 @@ func (r *PayersRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
 			if err := q.DeletePayerByID(ctx, gen.DeletePayerByIDParams{TenantID: tenantID, ID: id}); err != nil {
-				return fmt.Errorf("delete %d: %w", id, err)
+				return fmt.Errorf("delete %s: %w", id, err)
 			}
 		}
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "payer",
-			EntityID:   0,
+			EntityID:   "",
 			Action:     "bulk_delete",
 			Changes:    audit.Changes(map[string]any{"ids": ids}),
 		})
@@ -313,7 +312,6 @@ func mapPayers(rows []gen.Payer) []*Payer {
 func toPayer(row gen.Payer) *Payer {
 	return &Payer{
 		ID:        row.ID,
-		UUID:      row.Uuid,
 		Name:      row.Name,
 		Email:     row.Email.String,
 		Phone:     row.Phone.String,

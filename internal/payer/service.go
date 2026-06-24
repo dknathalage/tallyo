@@ -55,7 +55,7 @@ func (s *Service) Create(ctx context.Context, in PayerInput) (*Payer, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: p.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: p.ID, Action: "create"})
 	return p, nil
 }
 
@@ -70,7 +70,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in PayerInput) (*Paye
 	if p == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: p.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: p.ID, Action: "update"})
 	return p, nil
 }
 
@@ -88,21 +88,21 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: p.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: p.ID, Action: "delete"})
 	return nil
 }
 
 // ResolvePayerIDs translates a list of payer uuids into their int
 // PKs for the tenant (preserving order). An unknown uuid surfaces as an error so
 // the caller can 400 — bulk operations must not silently drop a member.
-func (s *Service) ResolvePayerIDs(ctx context.Context, pmUUIDs []string) ([]int64, error) {
+func (s *Service) ResolvePayerIDs(ctx context.Context, pmUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolvePayerIDs(ctx, tenantID, pmUUIDs)
 }
 
 // BulkDelete removes multiple payers, then broadcasts a single
 // bulk_delete event on success.
-func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
