@@ -99,18 +99,6 @@ export async function setStatus(id: string, status: SessionStatus): Promise<void
 }
 
 /**
- * Extract recorded sessions from a free-text timesheet for one client (AI).
- * Returns the created sessions (201).
- */
-export async function importShifts(clientId: string, text: string): Promise<Session[]> {
-	requireId(clientId, 'sessions.import');
-	if (text.trim().length === 0) {
-		throw new Error('sessions.import: text is required');
-	}
-	return (await apiPost<Session[]>(tenantPath('shifts/import'), { clientId, text })) ?? [];
-}
-
-/**
  * Draft one invoice from a set of recorded sessions (deterministic link of their
  * already-priced items — no AI). All sessions must share one client and each
  * must carry at least one item. Sessions are addressed by uuid. Returns the created
@@ -157,13 +145,4 @@ export async function deleteItem(sessionId: string, itemId: string): Promise<voi
 	requireId(sessionId, 'sessions.deleteItem');
 	requireId(itemId, 'sessions.deleteItem');
 	await apiDelete<void>(tenantPath(`sessions/${sessionId}/items/${itemId}`));
-}
-
-/**
- * Divide a session's note into priced catalogue line items via AI (idempotent —
- * replaces the session's unbilled items). Returns the session's items.
- */
-export async function divideSession(sessionId: string): Promise<LineItem[]> {
-	requireId(sessionId, 'sessions.divideSession');
-	return (await apiPost<LineItem[]>(tenantPath(`sessions/${sessionId}/divide`), {})) ?? [];
 }

@@ -23,13 +23,11 @@ import {
 	update,
 	remove,
 	setStatus,
-	importShifts,
 	draftFromSessions,
 	listItems,
 	addItem,
 	updateItem,
-	deleteItem,
-	divideSession
+	deleteItem
 } from './sessions';
 import type { Session, SessionInput, LineItem, LineItemInput } from './types';
 
@@ -180,22 +178,6 @@ describe('setStatus', () => {
 	});
 });
 
-describe('importShifts', () => {
-	it('posts {clientId, text} to /api/shifts/import and returns created sessions', async () => {
-		mockApiPost.mockResolvedValue([fakeSession]);
-		const result = await importShifts(PART_UUID, 'Mon 9-3 cleaning');
-		expect(mockApiPost).toHaveBeenCalledWith('/api/t/t-uuid/shifts/import', {
-			clientId: PART_UUID,
-			text: 'Mon 9-3 cleaning'
-		});
-		expect(result).toEqual([fakeSession]);
-	});
-
-	it('throws on blank text', async () => {
-		await expect(importShifts(PART_UUID, '   ')).rejects.toThrow();
-	});
-});
-
 describe('draftFromSessions', () => {
 	it('posts {sessionIds} to /api/invoices/draft-from-sessions', async () => {
 		mockApiPost.mockResolvedValue({ id: 'inv-uuid' } as unknown);
@@ -244,11 +226,5 @@ describe('session items', () => {
 		expect(mockApiDelete).toHaveBeenCalledWith(
 			`/api/t/t-uuid/sessions/${SESSION_UUID}/items/${ITEM_UUID}`
 		);
-	});
-
-	it('divideSession posts to /api/sessions/{uuid}/divide and coalesces null to []', async () => {
-		mockApiPost.mockResolvedValue(null);
-		expect(await divideSession(SESSION_UUID)).toEqual([]);
-		expect(mockApiPost).toHaveBeenCalledWith(`/api/t/t-uuid/sessions/${SESSION_UUID}/divide`, {});
 	});
 });

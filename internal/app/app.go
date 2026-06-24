@@ -19,8 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dknathalage/tallyo/internal/agent"
-	"github.com/dknathalage/tallyo/internal/agent/llm"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/client"
@@ -41,12 +39,12 @@ import (
 // Tallyo server. All fields are already validated/defaulted by main before Run
 // is called.
 type Config struct {
-	Port         int
-	DataDir      string // empty → DATA_DIR env, else ./data
-	SecureCookie bool
-	LogLevel     string
-	LogFormat    string
-	FeatureAgent bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
+	Port          int
+	DataDir       string // empty → DATA_DIR env, else ./data
+	SecureCookie  bool
+	LogLevel      string
+	LogFormat     string
+	FeatureSmarts bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
 }
 
 // EnvOr returns the value of env var key, or def when it is unset/empty. Used
@@ -111,23 +109,13 @@ func Run(cfg Config, version string) error {
 	logger := setupLogger(cfg.LogFormat, cfg.LogLevel)
 	logger.Info("starting tallyo", slog.String("version", version), slog.Int("port", cfg.Port))
 
-	agentCfg := agent.Config{
-		APIKey: EnvOr("ANTHROPIC_API_KEY", ""),
-		Model:  EnvOr("ANTHROPIC_MODEL", ""),
-		Effort: EnvOr("ANTHROPIC_EFFORT", ""),
+	apiKey := EnvOr("ANTHROPIC_API_KEY", "")
+	smartsEnabled := cfg.FeatureSmarts && apiKey != ""
+	if !cfg.FeatureSmarts {
+		logger.Warn("smarts disabled: TALLYO_FEATURE_SMARTS off")
+	} else if apiKey == "" {
+		logger.Warn("smarts disabled: ANTHROPIC_API_KEY unset")
 	}
-	if e := agentCfg.Effort; e != "" && !agent.ValidEffort(e) {
-		logger.Warn("invalid ANTHROPIC_EFFORT; falling back to default",
-			slog.String("value", e))
-	}
-	agentCfg = agentCfg.WithDefaults()
-	if !cfg.FeatureAgent {
-		logger.Warn("agent disabled: TALLYO_FEATURE_AGENT off")
-	} else if !agentCfg.Enabled() {
-		logger.Warn("agent disabled: ANTHROPIC_API_KEY unset")
-	}
-	logger.Info("agent model configured",
-		slog.String("model", agentCfg.Model), slog.String("effort", agentCfg.Effort))
 
 	dir := cfg.DataDir
 	if dir == "" {
@@ -174,22 +162,6 @@ func Run(cfg Config, version string) error {
 	paymentSvc := invoice.NewPaymentService(database, hub)
 	recurringSvc := recurring.NewService(database, hub)
 
-	// AI "Smarts" (optional): the service is only constructed when
-	// ANTHROPIC_API_KEY is set. The HTTP handler is ALWAYS constructed and wired:
-	// when disabled it is a guard-only handler (nil smarts, enabled=false) so the
-	// Smart routes are registered and return a clean 503 instead of falling
-	// through to the SPA catch-all (200 index.html).
-	var smartsHandler *agent.SmartsHandler
-	var sessionDivider session.SessionDivider // nil when AI is disabled → /divide 503s
-	if cfg.FeatureAgent && agentCfg.APIKey != "" {
-		llmClient := llm.NewAnthropic(agentCfg.APIKey, agentCfg.Model, agentCfg.EffortFor())
-		smarts := agent.NewSmarts(agentCfg, llmClient, sessionSvc, priceListSvc)
-		smartsHandler = agent.NewSmartsHandler(smarts, true)
-		sessionDivider = smarts
-	} else {
-		smartsHandler = agent.NewSmartsHandler(nil, false)
-	}
-
 	assets, err := fs.Sub(tallyoweb.Build, "build")
 	if err != nil {
 		return fmt.Errorf("sub web build: %w", err)
@@ -215,15 +187,14 @@ func Run(cfg Config, version string) error {
 		CustomItems:     customitem.NewHandler(customItemSvc),
 		PriceList:       pricelist.NewHandler(priceListSvc, priceListImportSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
-		Sessions:        session.NewHandler(sessionSvc, sessionDivider),
+		Sessions:        session.NewHandler(sessionSvc),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),
-		Smarts:          smartsHandler,
-		// agent is "on" only when both the gate and the API key allow it, so the
+		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
-			"agent": cfg.FeatureAgent && agentCfg.APIKey != "",
+			"smarts": smartsEnabled,
 		},
 	}
 

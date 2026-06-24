@@ -1,41 +1,27 @@
 package session
 
 import (
-	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/httpx"
-	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
 
-// SessionDivider is the narrow interface the session handler needs to divide ONE
-// session's note into priced line items. It is declared here (not imported from the
-// agent slice) and satisfied by *agent.Smarts, wired in internal/app — the same
-// consumer-declared pattern as InvoiceChecker. A nil divider (AI disabled) makes
-// the /divide route return 503.
-type SessionDivider interface {
-	DivideSession(ctx context.Context, sessionID int64) error
-}
-
 // Handler serves the session lifecycle routes: per-client listing,
 // tenant-wide listing, the billing-suggestion and to-record prompts, plus session
-// CRUD, the status-transition endpoint, and the AI divide route.
+// CRUD and the status-transition endpoint.
 type Handler struct {
-	svc     *Service
-	divider SessionDivider // nil when AI is disabled → /divide returns 503
+	svc *Service
 }
 
-// NewHandler constructs the handler. A nil svc is a programmer error. divider may
-// be nil (AI disabled), in which case the /divide route returns 503.
-func NewHandler(svc *Service, divider SessionDivider) *Handler {
+// NewHandler constructs the handler. A nil svc is a programmer error.
+func NewHandler(svc *Service) *Handler {
 	if svc == nil {
 		panic("session.NewHandler: nil svc")
 	}
-	return &Handler{svc: svc, divider: divider}
+	return &Handler{svc: svc}
 }
 
 // Routes registers all session routes on r. Mounted inside the authenticated
@@ -53,7 +39,6 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Post("/sessions/{sessionUUID}/items", h.AddItem)
 	r.Patch("/sessions/{sessionUUID}/items/{itemUUID}", h.UpdateItem)
 	r.Delete("/sessions/{sessionUUID}/items/{itemUUID}", h.DeleteItem)
-	r.Post("/sessions/{sessionUUID}/divide", h.Divide)
 }
 
 // List returns the tenant's sessions. With ?client={clientUUID} it
@@ -328,55 +313,6 @@ func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// Divide runs the AI divide Smart over ONE session — turning its note into priced
-// catalogue line items (idempotent: a re-divide replaces the session's unbilled
-// items) — then returns the session's items. Returns 503 when AI is disabled.
-// Synchronous: it blocks for the Smart run on a detached, bounded context so a
-// client disconnect does not abort the model call.
-func (h *Handler) Divide(w http.ResponseWriter, r *http.Request) {
-	if h.divider == nil {
-		httpx.WriteError(w, http.StatusServiceUnavailable, "AI not configured")
-		return
-	}
-	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
-	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
-		return
-	}
-	tenantID, tok := reqctx.TenantFrom(r.Context())
-	if !tok || tenantID <= 0 {
-		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	uid, _ := reqctx.UserFrom(r.Context())
-
-	ctx, cancel := context.WithTimeout(reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), uid), 5*time.Minute)
-	defer cancel()
-
-	id, err := h.svc.ResolveSessionID(ctx, sessionUUID)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if id == 0 {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
-		return
-	}
-	if err := h.divider.DivideSession(ctx, id); err != nil {
-		httpx.WriteError(w, http.StatusBadGateway, "couldn't divide this session into line items")
-		return
-	}
-	items, err := h.svc.ListItems(ctx, id)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if items == nil {
-		items = []*billing.LineItem{}
-	}
-	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
 // decodeItem decodes + validates a line-item body: quantity ≥ 0 and a line is

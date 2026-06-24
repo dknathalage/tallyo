@@ -3,7 +3,6 @@
 	import Button from '$lib/components/Button.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { priceList } from '$lib/stores/priceList.svelte';
-	import { features } from '$lib/stores/features.svelte';
 	import * as sessionsApi from '$lib/api/sessions';
 	import { hoursBetween, todayISO } from '$lib/sessions/format';
 	import type {
@@ -110,18 +109,6 @@
 		}
 	}
 
-	async function divideAI(): Promise<void> {
-		if (!session) return;
-		itemError = null;
-		itemsBusy = true;
-		try {
-			items = await sessionsApi.divideSession(session.id);
-		} catch (err) {
-			itemError = err instanceof Error ? err.message : 'AI could not divide this session.';
-		} finally {
-			itemsBusy = false;
-		}
-	}
 
 	async function removeItem(id: string): Promise<void> {
 		if (!session) return;
@@ -296,8 +283,7 @@
 {#snippet body()}
 	<form class="space-y-3" onsubmit={submit}>
 		<p class="text-xs text-gray-500">
-			Date &amp; client are structured; the note is free text. Add billable line items below
-			(or let AI divide the note into them).
+			Date &amp; client are structured; the note is free text. Add billable line items below.
 		</p>
 
 		<div class="grid grid-cols-2 gap-3">
@@ -338,16 +324,6 @@
 			<div class="rounded-lg border border-gray-200 p-3">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm font-medium">Line items</span>
-					{#if features.agent}
-						<button
-							type="button"
-							onclick={divideAI}
-							disabled={itemsBusy}
-							class="rounded-lg border border-indigo-300 px-3 py-1 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-						>
-							{itemsBusy ? 'Working…' : 'Divide with AI'}
-						</button>
-					{/if}
 				</div>
 
 				{#if itemError}

@@ -40,7 +40,7 @@ func newSessionHandler(t *testing.T) (*Handler, int64, string, *Session) {
 	if err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
-	return NewHandler(svc, nil), tenantID, pUUID, sh
+	return NewHandler(svc), tenantID, pUUID, sh
 }
 
 func clientIDFor(t *testing.T, conn *sql.DB, tenantID int64, pUUID string) int64 {
@@ -228,7 +228,7 @@ func TestSessionListByClientFilter(t *testing.T) {
 		t.Fatalf("seed p2: %v", err)
 	}
 
-	h := NewHandler(svc, nil)
+	h := NewHandler(svc)
 	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
