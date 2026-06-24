@@ -27,9 +27,8 @@ var ErrEmailTaken = errors.New("email already registered")
 // Invite is the domain view of a row in the invites table. Invites are
 // tenant-scoped: an owner/admin invites users into their own tenant (spec §3.2).
 type Invite struct {
-	ID        int64  `json:"-"`
-	UUID      string `json:"id"`
-	TenantID  int64  `json:"-"`
+	ID        string `json:"id"`
+	TenantID  string `json:"-"`
 	Token     string `json:"token"`
 	Email     string `json:"email"`
 	Role      string `json:"role"`
@@ -62,8 +61,8 @@ func newToken() (string, error) {
 
 // Create inserts a tenant-scoped invite and writes one audit row, atomically.
 // ttl is the lifetime from now until the invite expires.
-func (r *InvitesRepo) Create(ctx context.Context, tenantID int64, email, role string, createdBy int64, ttl time.Duration) (*Invite, error) {
-	if tenantID == 0 {
+func (r *InvitesRepo) Create(ctx context.Context, tenantID string, email, role string, createdBy string, ttl time.Duration) (*Invite, error) {
+	if tenantID == "" {
 		return nil, errors.New("create invite: tenant id required")
 	}
 	if email == "" {
@@ -79,7 +78,7 @@ func (r *InvitesRepo) Create(ctx context.Context, tenantID int64, email, role st
 	var created gen.Invite
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		row, e := gen.New(tx).CreateInvite(ctx, gen.CreateInviteParams{
-			Uuid:      ids.New(),
+			ID:        ids.New(),
 			TenantID:  tenantID,
 			Token:     token,
 			Email:     email,
@@ -122,8 +121,8 @@ func (r *InvitesRepo) GetByToken(ctx context.Context, token string) (*Invite, er
 // row, atomically. A uuid that does not exist in this tenant is a no-op (the
 // DELETE matches no rows); callers translate that to a 404 by pre-checking
 // existence if needed.
-func (r *InvitesRepo) DeleteByUUID(ctx context.Context, tenantID int64, inviteUUID string) error {
-	if tenantID == 0 {
+func (r *InvitesRepo) DeleteByUUID(ctx context.Context, tenantID string, inviteUUID string) error {
+	if tenantID == "" {
 		return errors.New("delete invite: tenant id required")
 	}
 	if inviteUUID == "" {
@@ -136,7 +135,7 @@ func (r *InvitesRepo) DeleteByUUID(ctx context.Context, tenantID int64, inviteUU
 	}, func(tx *sql.Tx) error {
 		if err := gen.New(tx).DeleteInviteByUUID(ctx, gen.DeleteInviteByUUIDParams{
 			TenantID: tenantID,
-			Uuid:     inviteUUID,
+			ID:       inviteUUID,
 		}); err != nil {
 			return fmt.Errorf("delete: %w", err)
 		}
@@ -209,7 +208,7 @@ func (r *InvitesRepo) Accept(ctx context.Context, token, name, passwordHash stri
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		u, e := q.CreateUser(ctx, gen.CreateUserParams{
-			Uuid:            ids.New(),
+			ID:              ids.New(),
 			TenantID:        inv.TenantID,
 			Email:           inv.Email,
 			PasswordHash:    passwordHash,
@@ -278,7 +277,6 @@ func isUniqueViolation(err error) bool {
 func toInvite(row gen.Invite) *Invite {
 	return &Invite{
 		ID:        row.ID,
-		UUID:      row.Uuid,
 		TenantID:  row.TenantID,
 		Token:     row.Token,
 		Email:     row.Email,

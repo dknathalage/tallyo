@@ -28,9 +28,9 @@ const clientBufferSize = 16
 // GlobalTenantID is the sentinel tenant id for events that belong to no single
 // tenant (e.g. a price-list import running outside a request tenant). A
 // Broadcast whose Event.TenantID equals GlobalTenantID is delivered to every
-// subscriber. Real tenant ids are always >= 1 (AUTOINCREMENT), so 0 can never
+// subscriber. Real tenant ids are non-empty uuid strings, so "" can never
 // collide with a real tenant.
-const GlobalTenantID int64 = 0
+const GlobalTenantID string = ""
 
 // Event is a change notification serialized to subscribers by the SSE handler.
 // TenantID routes the event: a real tenant id (>=1) reaches only that tenant's
@@ -42,7 +42,7 @@ const GlobalTenantID int64 = 0
 // API (spec: "int PK never crosses the API"), so the payload carries the uuid,
 // not the int PK. Bulk/sweep events that touch no single entity carry "".
 type Event struct {
-	TenantID int64  `json:"-"`
+	TenantID string `json:"-"`
 	Entity   string `json:"entity"`
 	UUID     string `json:"id"`
 	Action   string `json:"action"`
@@ -53,7 +53,7 @@ type Event struct {
 // (unsubscribe and overflow both funnel through removeLocked).
 type client struct {
 	ch       chan Event
-	tenantID int64
+	tenantID string
 	once     sync.Once
 }
 
@@ -74,7 +74,7 @@ func NewHub() *Hub {
 // more than once is safe. The channel is closed when the subscriber is removed
 // (by unsubscribe or by overflow drop). The subscriber receives events
 // broadcast for its own tenant plus global events (TenantID == GlobalTenantID).
-func (h *Hub) Subscribe(tenantID int64) (<-chan Event, func()) {
+func (h *Hub) Subscribe(tenantID string) (<-chan Event, func()) {
 	c := &client{ch: make(chan Event, clientBufferSize), tenantID: tenantID}
 	h.mu.Lock()
 	h.clients[c] = struct{}{}

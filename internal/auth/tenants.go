@@ -15,8 +15,7 @@ import (
 
 // Tenant is the domain view of a row in the tenants table.
 type Tenant struct {
-	ID        int64  `json:"id"`
-	UUID      string `json:"uuid"`
+	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
@@ -57,7 +56,7 @@ func (r *TenantsRepo) Count(ctx context.Context) (int64, error) {
 // ActiveTenantIDs returns the ids of active (non-suspended) tenants. The
 // per-tenant sweep iterates these; suspended tenants are skipped. Reads the
 // control DB (the tenants registry).
-func (r *TenantsRepo) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+func (r *TenantsRepo) ActiveTenantIDs(ctx context.Context) ([]string, error) {
 	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("active tenant ids: %w", err)
@@ -74,7 +73,7 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		t, e := gen.New(tx).CreateTenant(ctx, gen.CreateTenantParams{
-			Uuid:      ids.New(),
+			ID:        ids.New(),
 			Name:      name,
 			Status:    "active",
 			CreatedAt: now,
@@ -96,7 +95,6 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 	}
 	return &Tenant{
 		ID:        created.ID,
-		UUID:      created.Uuid,
 		Name:      created.Name,
 		Status:    created.Status,
 		CreatedAt: created.CreatedAt,
@@ -106,8 +104,8 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 
 // Status returns a tenant's status string. Returns ("", false, nil) when no such
 // tenant exists. Used by the login + auth-guard suspended-tenant check.
-func (r *TenantsRepo) Status(ctx context.Context, tenantID int64) (status string, found bool, err error) {
-	if tenantID == 0 {
+func (r *TenantsRepo) Status(ctx context.Context, tenantID string) (status string, found bool, err error) {
+	if tenantID == "" {
 		return "", false, errors.New("tenant status: tenant id required")
 	}
 	row, qerr := gen.New(r.db).GetTenant(ctx, tenantID)
@@ -135,7 +133,6 @@ func (r *TenantsRepo) GetByUUID(ctx context.Context, tenantUUID string) (*Tenant
 	}
 	return &Tenant{
 		ID:        row.ID,
-		UUID:      row.Uuid,
 		Name:      row.Name,
 		Status:    row.Status,
 		CreatedAt: row.CreatedAt,
@@ -159,18 +156,18 @@ type SignupInput struct {
 // calls it AFTER the control-tx tenant+owner commit. In single-DB tests the
 // provisioner writes to the same handle; in production it opens the tenant file
 // via the registry. See ProvisionBusinessProfile.
-type ProfileProvisioner func(ctx context.Context, tenantID int64, in SignupInput) error
+type ProfileProvisioner func(ctx context.Context, tenantID string, in SignupInput) error
 
 // ProvisionBusinessProfile upserts the tenant's default business_profile on db
 // (the tenant DB in production).
-func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID int64, in SignupInput) error {
-	if tenantID == 0 {
+func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID string, in SignupInput) error {
+	if tenantID == "" {
 		return errors.New("provision profile: tenant id required")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.New(db).UpsertBusinessProfile(ctx, gen.UpsertBusinessProfileParams{
 		TenantID:        tenantID,
-		Uuid:            ids.New(),
+		ID:              ids.New(),
 		Name:            in.BusinessName,
 		Email:           sql.NullString{String: in.Email, Valid: true},
 		Metadata:        sql.NullString{String: "{}", Valid: true},
@@ -195,7 +192,7 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 		q := gen.New(tx)
 		now := time.Now().UTC().Format(time.RFC3339)
 		t, e := q.CreateTenant(ctx, gen.CreateTenantParams{
-			Uuid:      ids.New(),
+			ID:        ids.New(),
 			Name:      in.BusinessName,
 			Status:    StatusActive,
 			CreatedAt: now,
@@ -205,7 +202,7 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 			return fmt.Errorf("create tenant: %w", e)
 		}
 		u, e := q.CreateUser(ctx, gen.CreateUserParams{
-			Uuid:            ids.New(),
+			ID:              ids.New(),
 			TenantID:        t.ID,
 			Email:           in.Email,
 			PasswordHash:    in.PasswordHash,
