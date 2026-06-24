@@ -45,8 +45,11 @@ Delete `internal/agent/` entirely:
 - Its tests.
 
 Remove its wiring in `internal/app` (the `smartsHandler` / `sessionDivider`
-branch around `app.go:184-191`, plus the `/shifts/import` and
-`/sessions/{sessionUUID}/divide` route registration in `server.go`).
+branch around `app.go:184-191`, plus the `/shifts/import` route in
+`server.go:165`). The `/sessions/{sessionUUID}/divide` route is owned by the
+session slice — registered in `internal/session/handler.go:56` via the
+`session.SessionDivider` interface; remove that interface, the `Divide` handler
+(`handler.go:20,338`), and its route too.
 
 Frontend: remove the "Divide with AI" button in `SessionForm.svelte` and the
 `importShifts` / `divideSession` bindings in `web/src/lib/api/sessions.ts`.
@@ -94,18 +97,47 @@ Grounding is "give capability, not answers": instead of the app pre-resolving
 "measure X → code Z" and handing the model a candidate list, we expose **one
 read-only `search` tool** and let the model map facts → specifics itself.
 
-**Requirement (added during design): the search covers all searchable fields,
-scoped to the tenant, seamlessly.** Today `pricelist.SearchItems` (repository.go:155)
-LIKE-matches only `code` OR `name`. We extend it (or add a sibling query) to match
-across **all searchable columns** — `code`, `name`, `category`, `unit` — so the
-model can find an item by any field a human could, in one call. The query stays
-tenant-scoped: it resolves through the tenant-owned `price_list_versions` →
-`items` (every row carries `tenant_id`), guarded `WHERE tenant_id = ?`.
+### 4.0 Prerequisite: make the catalogue genuinely tenant-scoped
+
+**The catalogue is not tenant-scoped today.** Despite CLAUDE.md and the query
+comments claiming "per-tenant", `price_list_versions` and `items`
+(`internal/db/migrations/tenant/00003_catalogue.sql`) carry **no `tenant_id`
+column** — a latent bug left over from the DB-per-tenant → single-DB collapse
+(commit `c812968`). All tenants currently share one global catalogue, and
+`ResolveVersionForDate` / `SearchItems` have no tenant predicate.
+
+This work fixes that as a **prerequisite migration** (decided during design):
+
+1. New tenant goose migration adds `tenant_id INTEGER NOT NULL` to both
+   `price_list_versions` and `items`, with an index on `(tenant_id, ...)` used by
+   the lookups. Backfill: if exactly one tenant exists, stamp all rows with it;
+   otherwise the migration assigns rows to their owning tenant if derivable, else
+   the operator reloads catalogues post-migration (document this — a fresh
+   clean-break data model means most installs have one tenant).
+2. Every catalogue query (`ResolvePriceListVersionForDate`, `SearchItems`,
+   `ListItems`, `GetItemByCode`, the import writes) gains a `tenant_id = ?`
+   predicate; the repo methods take the tenant from `reqctx` like every other
+   tenant repo. `sqlc generate` regenerates `internal/db/gen`.
+3. Update CLAUDE.md + `docs/data-model.md` to match (the "scoped per tenant by
+   `tenant_id`" claim becomes true).
+
+After this, catalogue reads are tenant-scoped exactly like clients/sessions, and
+the search tool below is genuinely "for the given tenant".
+
+### 4.1 All-fields search
+
+**The search covers all searchable fields, scoped to the tenant, seamlessly.**
+Today `pricelist.SearchItems` (repository.go:155) LIKE-matches only `code` OR
+`name`. We extend it to match across **all searchable columns** — `code`,
+`name`, `category`, `unit` — so the model can find an item by any field a human
+could, in one call. With §4.0 in place the query is guarded by both the resolved
+version and the tenant:
 
 ```sql
--- internal/db/queries/pricelist.sql (extend SearchItems)
+-- internal/db/queries/items.sql (extend SearchItems)
 -- match across all searchable fields; q is the LIKE pattern, escaped.
-WHERE i.price_list_version_id = ?
+WHERE i.tenant_id = ?
+  AND i.price_list_version_id = ?
   AND ( i.code     LIKE ? ESCAPE '\'
      OR i.name     LIKE ? ESCAPE '\'
      OR i.category LIKE ? ESCAPE '\'
@@ -120,7 +152,10 @@ search column — same call signature, no API change.`
 
 The `search` tool exposed to the model returns `[]{code, name, unit, category,
 unitPrice}` for the resolved price-list version (resolved by service date via
-`ResolveVersionForDate`). The model never sees `tenant_id` or int PKs.
+`ResolveVersionForDate`, now tenant-scoped per §4.0). If no version resolves for
+the date (`ResolveVersionForDate` returns `(nil, nil)`, repository.go:115), the
+Smart aborts before any LLM call with a 422 "no price list loaded for this date".
+The model never sees `tenant_id` or int PKs.
 
 The same broad, tenant-scoped read philosophy applies to the Smarts that resolve a
 **client** by name: they call `client.Service.List(ctx, search)` (service.go:37),
@@ -188,10 +223,16 @@ public wrapper on the existing repo — the underlying queries exist
 (`ListRecordedUnbilled`, `SearchItems`); the plan phase resolves the exact
 exported surface.)
 
-`apply` always runs lines through `billing.LineValidator.Validate(ctx, tenantID,
-clientID, items)` (validation.go:129) before any write — tax is **computed**, the
-model's numbers are not trusted. Writes go through `invoice.Service.Create`, which
-already audits and broadcasts the SSE event post-commit.
+`apply` resolves the model's `code`s to prices deterministically from the
+catalogue, then writes through `invoice.Service.Create`. **`Create` is itself
+self-validating** — it already calls `s.validator.Validate` internally and
+overwrites `in.Tax` with the computed value (service.go:141-143), so the pricing
+invariant is enforced there regardless of what the Smart does. The Smart *also*
+runs `billing.LineValidator.Validate(ctx, tenantID, clientID, items)`
+(validation.go:129) up front, but only to get **early, structured error feedback**
+for the bounded re-propose loop (§7.1) — not because pre-validation is what
+enforces correctness. Either way tax is computed, the model's numbers discarded.
+`Create` audits and broadcasts the SSE event post-commit.
 
 ## 7. The four Smarts
 
