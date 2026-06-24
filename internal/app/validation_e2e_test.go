@@ -31,7 +31,7 @@ import (
 // newValidationServer wires the invoice + estimate + client routes behind
 // httpx.RequireAuth and returns both the server and the underlying conn so the test
 // can seed a catalogue version directly.
-func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, int64) {
+func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "validation_e2e.db")
 	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
@@ -63,20 +63,20 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, int64
 
 // seedCatalogVersion inserts a one-item catalogue version valid across the given
 // window, so a known code resolves and an unknown one fails validation.
-func seedCatalogVersion(t *testing.T, conn *sql.DB, from, to, code string) {
+func seedCatalogVersion(t *testing.T, conn *sql.DB, tenantID, from, to, code string) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
 	now := time.Now().UTC().Format(time.RFC3339)
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: ids.New(), Label: "v1", EffectiveFrom: from,
+		TenantID: tenantID, ID: ids.New(), Label: "v1", EffectiveFrom: from,
 		EffectiveTo: sql.NullString{String: to, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
+		TenantID: tenantID, ID: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
@@ -118,7 +118,7 @@ func assertValidationEnvelope(t *testing.T, resp *http.Response) {
 func TestInvoiceCreateUnknownCodeReturns422(t *testing.T) {
 	srv, conn, uuid, _ := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	seedCatalogVersion(t, conn, "2025-07-01", "2026-06-30", "01_011")
+	seedCatalogVersion(t, conn, uuid, "2025-07-01", "2026-06-30", "01_011")
 	pid := createClient(t, c, srv.URL, uuid, "Plan Client")
 
 	body, err := json.Marshal(map[string]any{
@@ -138,7 +138,7 @@ func TestInvoiceCreateUnknownCodeReturns422(t *testing.T) {
 func TestEstimateCreateUnknownCodeReturns422(t *testing.T) {
 	srv, conn, uuid, _ := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	seedCatalogVersion(t, conn, "2025-07-01", "2026-06-30", "01_011")
+	seedCatalogVersion(t, conn, uuid, "2025-07-01", "2026-06-30", "01_011")
 	pid := createClient(t, c, srv.URL, uuid, "Plan Client")
 
 	body, err := json.Marshal(map[string]any{

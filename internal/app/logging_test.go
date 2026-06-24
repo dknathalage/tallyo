@@ -127,12 +127,13 @@ func TestRequestLoggerAttachesRequestIDAndTenantUser(t *testing.T) {
 	if rid, _ := rec["request_id"].(string); rid == "" {
 		t.Fatalf("request_id empty: %v", rec)
 	}
-	// Authenticated request → tenant_id and user_id present and non-zero.
-	if tid, ok := rec["tenant_id"].(float64); !ok || tid == 0 {
-		t.Fatalf("tenant_id missing/zero on authed request: %v", rec)
+	// Authenticated request → tenant_id and user_id present and non-empty
+	// (uuid strings now, not int PKs).
+	if tid, ok := rec["tenant_id"].(string); !ok || tid == "" {
+		t.Fatalf("tenant_id missing/empty on authed request: %v", rec)
 	}
-	if uid, ok := rec["user_id"].(float64); !ok || uid == 0 {
-		t.Fatalf("user_id missing/zero on authed request: %v", rec)
+	if uid, ok := rec["user_id"].(string); !ok || uid == "" {
+		t.Fatalf("user_id missing/empty on authed request: %v", rec)
 	}
 }
 

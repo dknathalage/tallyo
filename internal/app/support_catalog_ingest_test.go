@@ -143,14 +143,14 @@ func TestPriceListCommitOwnerCreatesVersion(t *testing.T) {
 		t.Fatalf("commit: want 201 got %d", resp.StatusCode)
 	}
 	var out struct {
-		VersionID int64 `json:"versionId"`
-		ItemCount int   `json:"itemCount"`
+		VersionID string `json:"versionId"`
+		ItemCount int    `json:"itemCount"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if out.VersionID <= 0 || out.ItemCount != 2 {
-		t.Fatalf("summary = %+v, want versionId>0 itemCount=2", out)
+	if out.VersionID == "" || out.ItemCount != 2 {
+		t.Fatalf("summary = %+v, want non-empty versionId itemCount=2", out)
 	}
 
 	// The created version is queryable.

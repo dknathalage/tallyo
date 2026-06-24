@@ -42,7 +42,7 @@ func openMigratedDB(t *testing.T, name string) *sql.DB {
 // user id, and the tenant's public UUID. End-to-end login + RequireSession +
 // ResolveTenant wire the tenant into context from the {tenantUUID} URL segment,
 // so callers build request URLs as /api/t/<uuid>/<resource>.
-func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64, string) {
+func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, string, string, string) {
 	t.Helper()
 	users := auth.NewUsers(conn)
 	tenants := auth.NewTenants(conn)
@@ -58,14 +58,16 @@ func seedTenantOwner(t *testing.T, conn *sql.DB) (*auth.UsersRepo, int64, int64,
 	if err != nil {
 		t.Fatalf("Create owner: %v", err)
 	}
-	return users, tn.ID, owner.ID, tn.UUID
+	// Tenant ids are now uuid strings, so the tenant id and its public uuid are
+	// one and the same value.
+	return users, tn.ID, owner.ID, tn.ID
 }
 
 // newAuthServer spins up a real httptest.Server wrapping the session middleware
 // so cookies round-trip. It returns the server, the users repo, the owner id,
 // the tenant id (for tenant-scoped deletes) and the tenant's public UUID (for
 // building /api/t/<uuid>/... request URLs).
-func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, int64, int64, string) {
+func newAuthServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, string, string, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "a.db")
 	users, tenantID, ownerID, tenantUUID := seedTenantOwner(t, conn)
@@ -330,14 +332,14 @@ func TestAuthLoginMultiTenantByUUID(t *testing.T) {
 	}
 
 	// Step 2: re-submit with t2's uuid → 200, logged into t2.
-	resp2 := loginWithTenant(t, c, srv.URL, "dup@x.com", "password1", t2.UUID)
+	resp2 := loginWithTenant(t, c, srv.URL, "dup@x.com", "password1", t2.ID)
 	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("re-submit by uuid: want 200 got %d", resp2.StatusCode)
 	}
 	u := decodeUser(t, resp2)
-	if u.TenantUUID != t2.UUID {
-		t.Fatalf("logged into wrong tenant: want %s got %s", t2.UUID, u.TenantUUID)
+	if u.TenantID != t2.ID {
+		t.Fatalf("logged into wrong tenant: want %s got %s", t2.ID, u.TenantID)
 	}
 
 	// Step 3: a well-formed but unknown tenant uuid → 401 (no enumeration).

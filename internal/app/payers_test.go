@@ -5,7 +5,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
@@ -14,9 +13,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
-
-// itoa formats an int64 id for URL building.
-func itoa(id int64) string { return strconv.FormatInt(id, 10) }
 
 // delete_ issues a DELETE request with the given client.
 func delete_(t *testing.T, c *http.Client, url string) *http.Response {

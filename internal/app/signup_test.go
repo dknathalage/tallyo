@@ -21,7 +21,7 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 	users := auth.NewUsers(conn)
 	tenants := auth.NewTenants(conn)
 	sm := auth.NewSessionManager(conn, false)
-	signupH := NewSignupHandler(sm, tenants, users, func(ctx context.Context, tenantID int64, in auth.SignupInput) error {
+	signupH := NewSignupHandler(sm, tenants, users, func(ctx context.Context, tenantID string, in auth.SignupInput) error {
 		return auth.ProvisionBusinessProfile(ctx, conn, tenantID, in)
 	})
 	authH := NewAuthHandler(sm, users, tenants)
@@ -41,20 +41,19 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 	return srv, conn, users, tenants
 }
 
-// tenantForEmail looks up the tenant (internal numeric id + public uuid) that
-// owns the given user email. The signup response serializes the owner's user
-// uuid but not the tenant uuid, so the test resolves both from the DB to drive
-// tenant-scoped assertions and /api/t/<uuid>/... URLs.
-func tenantForEmail(t *testing.T, conn *sql.DB, email string) (int64, string) {
+// tenantForEmail looks up the tenant uuid that owns the given user email. The
+// signup response serializes the owner's user uuid but not the tenant uuid, so
+// the test resolves it from the DB to drive tenant-scoped assertions and
+// /api/t/<uuid>/... URLs. The tenant id IS its uuid, so both returns are equal.
+func tenantForEmail(t *testing.T, conn *sql.DB, email string) (string, string) {
 	t.Helper()
-	var id int64
-	var uuid string
+	var id string
 	if err := conn.QueryRowContext(t.Context(),
-		"SELECT t.id, t.uuid FROM tenants t JOIN users u ON u.tenant_id = t.id WHERE u.email = ?",
-		email).Scan(&id, &uuid); err != nil {
+		"SELECT t.id FROM tenants t JOIN users u ON u.tenant_id = t.id WHERE u.email = ?",
+		email).Scan(&id); err != nil {
 		t.Fatalf("tenant lookup for %q: %v", email, err)
 	}
-	return id, uuid
+	return id, id
 }
 
 func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
@@ -68,7 +67,7 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 		t.Fatalf("signup: want 201 got %d", resp.StatusCode)
 	}
 	u := decodeUser(t, resp)
-	if u.Role != "owner" || u.Email != "ada@example.com" || u.Name != "Ada" || u.UUID == "" {
+	if u.Role != "owner" || u.Email != "ada@example.com" || u.Name != "Ada" || u.ID == "" {
 		t.Fatalf("signup owner wrong: %+v", u)
 	}
 	tenantID, tenantUUID := tenantForEmail(t, conn, u.Email)
@@ -193,14 +192,14 @@ func TestLoginFailSafeAmbiguousEmail(t *testing.T) {
 	// Disambiguated login WITH the tenant uuid → 200 into the chosen tenant.
 	c2 := jarClient(t)
 	ok := postJSON(t, c2, srv.URL+"/api/auth/login",
-		`{"email":"shared@x.com","password":"password1","tenantId":"`+t2.UUID+`"}`)
+		`{"email":"shared@x.com","password":"password1","tenantId":"`+t2.ID+`"}`)
 	defer func() { _ = ok.Body.Close() }()
 	if ok.StatusCode != http.StatusOK {
 		t.Fatalf("disambiguated login: want 200 got %d", ok.StatusCode)
 	}
 	u := decodeUser(t, ok)
-	if u.TenantUUID != t2.UUID {
-		t.Fatalf("disambiguated login: want tenant %q got %q", t2.UUID, u.TenantUUID)
+	if u.TenantID != t2.ID {
+		t.Fatalf("disambiguated login: want tenant %q got %q", t2.ID, u.TenantID)
 	}
 }
 
@@ -275,7 +274,7 @@ func newRoleServer(t *testing.T) (*httptest.Server, string) {
 	})
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, tn.UUID
+	return srv, tn.ID
 }
 
 func TestRoleMemberBlockedFromSettings(t *testing.T) {

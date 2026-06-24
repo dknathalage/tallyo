@@ -17,7 +17,7 @@ import (
 
 // testTenant is the tenant the SSE test streams subscribe under (the real
 // handler reads it from reqctx, attached upstream by httpx.RequireAuth).
-const testTenant int64 = 1
+const testTenant string = "t-1"
 
 // withTenant injects a tenant into the request context, standing in for the
 // httpx.RequireAuth middleware that runs before Stream in production.

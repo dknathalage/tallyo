@@ -24,7 +24,7 @@ import (
 type sessionFixture struct {
 	srv            *httptest.Server
 	ctx            context.Context
-	tenantID       int64
+	tenantID       string
 	clientUUID     string
 	customItemUUID string
 }
@@ -44,7 +44,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	if err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
-	if part == nil || part.UUID == "" {
+	if part == nil || part.ID == "" {
 		t.Fatalf("seed client: want uuid got %+v", part)
 	}
 
@@ -53,7 +53,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	if err != nil {
 		t.Fatalf("seed custom item: %v", err)
 	}
-	if ci == nil || ci.UUID == "" {
+	if ci == nil || ci.ID == "" {
 		t.Fatalf("seed custom item: want uuid got %+v", ci)
 	}
 
@@ -73,8 +73,8 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		srv:            srv,
 		ctx:            ctx,
 		tenantID:       tenantID,
-		clientUUID:     part.UUID,
-		customItemUUID: ci.UUID,
+		clientUUID:     part.ID,
+		customItemUUID: ci.ID,
 	}
 }
 
@@ -127,8 +127,8 @@ func TestSessionCreateRoundTripsFields(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	s := f.createSession(t, string(body))
-	if s.UUID == "" {
-		t.Fatalf("create: want non-empty uuid got %q", s.UUID)
+	if s.ID == "" {
+		t.Fatalf("create: want non-empty uuid got %q", s.ID)
 	}
 	if s.ClientUUID != f.clientUUID {
 		t.Fatalf("clientId: want %q got %q", f.clientUUID, s.ClientUUID)
@@ -181,8 +181,8 @@ func TestSessionListForClientReturnsCreated(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
-	if len(out) != 1 || out[0].UUID != created.UUID {
-		t.Fatalf("list: want [%s] got %+v", created.UUID, out)
+	if len(out) != 1 || out[0].ID != created.ID {
+		t.Fatalf("list: want [%s] got %+v", created.ID, out)
 	}
 }
 
@@ -205,8 +205,8 @@ func TestSessionListForClientStatusFilter(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
-	if len(out) != 1 || out[0].UUID != rec.UUID {
-		t.Fatalf("status filter: want [%s] got %+v", rec.UUID, out)
+	if len(out) != 1 || out[0].ID != rec.ID {
+		t.Fatalf("status filter: want [%s] got %+v", rec.ID, out)
 	}
 }
 
@@ -260,7 +260,7 @@ func TestSessionStatusTransition(t *testing.T) {
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05", "status": "scheduled",
 	}))
 
-	resp := f.do(t, http.MethodPost, "/sessions/"+created.UUID+"/status",
+	resp := f.do(t, http.MethodPost, "/sessions/"+created.ID+"/status",
 		mustJSON(t, map[string]any{"status": "recorded"}))
 	if resp.StatusCode != http.StatusNoContent {
 		buf := new(bytes.Buffer)
@@ -270,7 +270,7 @@ func TestSessionStatusTransition(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	gr := f.do(t, http.MethodGet, "/sessions/"+created.UUID, "")
+	gr := f.do(t, http.MethodGet, "/sessions/"+created.ID, "")
 	defer func() { _ = gr.Body.Close() }()
 	if gr.StatusCode != http.StatusOK {
 		t.Fatalf("get after status: want 200 got %d", gr.StatusCode)
@@ -289,7 +289,7 @@ func TestSessionStatusEmpty400(t *testing.T) {
 	created := f.createSession(t, mustJSON(t, map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05",
 	}))
-	resp := f.do(t, http.MethodPost, "/sessions/"+created.UUID+"/status",
+	resp := f.do(t, http.MethodPost, "/sessions/"+created.ID+"/status",
 		mustJSON(t, map[string]any{"status": ""}))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -303,7 +303,7 @@ func TestSessionDelete204(t *testing.T) {
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05",
 	}))
 
-	resp := f.do(t, http.MethodDelete, "/sessions/"+created.UUID, "")
+	resp := f.do(t, http.MethodDelete, "/sessions/"+created.ID, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: want 204 got %d", resp.StatusCode)
@@ -364,7 +364,7 @@ func TestSessionItemCustomItemRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal item: %v", err)
 	}
-	resp := f.do(t, http.MethodPost, "/sessions/"+s.UUID+"/items", string(itemBody))
+	resp := f.do(t, http.MethodPost, "/sessions/"+s.ID+"/items", string(itemBody))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		buf := new(bytes.Buffer)
@@ -382,7 +382,7 @@ func TestSessionItemCustomItemRoundTrips(t *testing.T) {
 		t.Fatalf("add customItemId: want %q got %v", f.customItemUUID, item.CustomItemID)
 	}
 
-	listResp := f.do(t, http.MethodGet, "/sessions/"+s.UUID+"/items", "")
+	listResp := f.do(t, http.MethodGet, "/sessions/"+s.ID+"/items", "")
 	defer func() { _ = listResp.Body.Close() }()
 	if listResp.StatusCode != http.StatusOK {
 		t.Fatalf("list items: want 200 got %d", listResp.StatusCode)
@@ -416,7 +416,7 @@ func TestSessionItemUnknownCustomItem400(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal item: %v", err)
 	}
-	resp := f.do(t, http.MethodPost, "/sessions/"+s.UUID+"/items", string(itemBody))
+	resp := f.do(t, http.MethodPost, "/sessions/"+s.ID+"/items", string(itemBody))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown custom item: want 400 got %d", resp.StatusCode)
