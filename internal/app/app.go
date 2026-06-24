@@ -31,6 +31,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
+	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
@@ -162,6 +163,18 @@ func Run(cfg Config, version string) error {
 	paymentSvc := invoice.NewPaymentService(database, hub)
 	recurringSvc := recurring.NewService(database, hub)
 
+	// AI "Smarts" (optional): construct the service only when ANTHROPIC_API_KEY is
+	// set. The handler is always wired — when disabled it is a guard-only handler
+	// whose routes return 503 instead of falling through to the SPA catch-all.
+	var smartsHandler *smarts.Handler
+	if smartsEnabled {
+		llm := smarts.NewAnthropicClient(apiKey, EnvOr("ANTHROPIC_MODEL", ""), EnvOr("ANTHROPIC_EFFORT", ""))
+		smartsSvc := smarts.NewService(llm, sessionSvc, pricelist.NewItems(database), invoiceSvc, invoiceSvc, clientSvc)
+		smartsHandler = smarts.NewHandler(smartsSvc, true)
+	} else {
+		smartsHandler = smarts.NewHandler(nil, false)
+	}
+
 	assets, err := fs.Sub(tallyoweb.Build, "build")
 	if err != nil {
 		return fmt.Errorf("sub web build: %w", err)
@@ -191,6 +204,7 @@ func Run(cfg Config, version string) error {
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Recurring:       recurring.NewHandler(recurringSvc),
+		Smarts:          smartsHandler,
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{

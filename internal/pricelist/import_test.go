@@ -1,7 +1,6 @@
 package pricelist
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -64,14 +63,15 @@ func TestImportMappedCreatesVersionAndItems(t *testing.T) {
 	hub := realtime.NewHub()
 	svc := NewImportService(conn, hub)
 	read := NewService(conn)
+	tid := seedTenant(t, conn)
 
-	ch, unsub := hub.Subscribe(1)
+	ch, unsub := hub.Subscribe(tid)
 	defer unsub()
 
 	data := csvBytes("Product,SKU,Unit,Cat,Price", "Widget,W1,Each,Hardware,9.99", "Gadget,G1,Each,Hardware,4.50")
 	mapping := map[string]string{"Product": "name", "SKU": "code", "Unit": "unit", "Cat": "category", "Price": "unitPrice"}
 
-	summary, err := svc.ImportMapped(context.Background(), data, "csv", "", 1, mapping, "Q1 catalogue")
+	summary, err := svc.ImportMapped(tctx(tid), data, "csv", "", 1, mapping, "Q1 catalogue")
 	if err != nil {
 		t.Fatalf("ImportMapped: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestImportMappedCreatesVersionAndItems(t *testing.T) {
 		t.Fatal("no broadcast after import")
 	}
 
-	ctx := tctx(seedTenant(t, conn))
+	ctx := tctx(tid)
 	versions, err := read.ListVersions(ctx)
 	if err != nil {
 		t.Fatalf("ListVersions: %v", err)
@@ -128,13 +128,14 @@ func TestImportMappedMissingNameRejected(t *testing.T) {
 	conn := newTestDB(t)
 	svc := NewImportService(conn, realtime.NewHub())
 	read := NewService(conn)
+	tid := seedTenant(t, conn)
 
 	data := csvBytes("SKU,Price", "W1,9.99")
 	mapping := map[string]string{"SKU": "code", "Price": "unitPrice"} // no name
-	if _, err := svc.ImportMapped(context.Background(), data, "csv", "", 1, mapping, "bad"); err == nil {
+	if _, err := svc.ImportMapped(tctx(tid), data, "csv", "", 1, mapping, "bad"); err == nil {
 		t.Fatal("expected error when no column maps to name")
 	}
-	versions, err := read.ListVersions(tctx(seedTenant(t, conn)))
+	versions, err := read.ListVersions(tctx(tid))
 	if err != nil {
 		t.Fatalf("ListVersions: %v", err)
 	}
@@ -147,13 +148,14 @@ func TestImportMappedEmptyRowsRollback(t *testing.T) {
 	conn := newTestDB(t)
 	svc := NewImportService(conn, realtime.NewHub())
 	read := NewService(conn)
+	tid := seedTenant(t, conn)
 
 	data := csvBytes("Product,Price", ",1.00", "  ,2.00") // all rows blank name
 	mapping := map[string]string{"Product": "name", "Price": "unitPrice"}
-	if _, err := svc.ImportMapped(context.Background(), data, "csv", "", 1, mapping, "empty"); err == nil {
+	if _, err := svc.ImportMapped(tctx(tid), data, "csv", "", 1, mapping, "empty"); err == nil {
 		t.Fatal("expected error when no named rows parse")
 	}
-	versions, err := read.ListVersions(tctx(seedTenant(t, conn)))
+	versions, err := read.ListVersions(tctx(tid))
 	if err != nil {
 		t.Fatalf("ListVersions: %v", err)
 	}

@@ -13,11 +13,12 @@ import (
 // seedNamedItem inserts an item with an explicit name into the
 // given version. Used by the LIKE-escaping test where the name (not the code)
 // carries the metacharacter under test.
-func seedNamedItem(t *testing.T, conn *sql.DB, versionID int64, code, name string) {
+func seedNamedItem(t *testing.T, conn *sql.DB, tenantID, versionID int64, code, name string) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
+		TenantID:           tenantID,
 		Uuid:               uuid.NewString(),
 		PriceListVersionID: versionID,
 		Code:               code,
@@ -28,12 +29,12 @@ func seedNamedItem(t *testing.T, conn *sql.DB, versionID int64, code, name strin
 	}
 }
 
-func seedBareVersion(t *testing.T, conn *sql.DB) int64 {
+func seedBareVersion(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC().Format(time.RFC3339)
 	v, err := gen.New(conn).CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: uuid.NewString(), Label: "v", EffectiveFrom: "2025-07-01", CreatedAt: now,
+		TenantID: tenantID, Uuid: uuid.NewString(), Label: "v", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -49,12 +50,13 @@ func TestCatalogSearchEscapesLikeMetachars(t *testing.T) {
 	conn := newTestDB(t)
 	repo := NewItems(conn)
 	ctx := context.Background()
-	vID := seedBareVersion(t, conn)
+	tid := seedTenant(t, conn)
+	vID := seedBareVersion(t, conn, tid)
 
-	seedNamedItem(t, conn, vID, "CODE_LITERAL", "Self_Care")
-	seedNamedItem(t, conn, vID, "CODE_WILDCARD", "SelfXCare")
+	seedNamedItem(t, conn, tid, vID, "CODE_LITERAL", "Self_Care")
+	seedNamedItem(t, conn, tid, vID, "CODE_WILDCARD", "SelfXCare")
 
-	got, err := repo.SearchItems(ctx, vID, "Self_Care")
+	got, err := repo.SearchItems(ctx, tid, vID, "Self_Care")
 	if err != nil {
 		t.Fatalf("SearchItems: %v", err)
 	}
@@ -75,12 +77,13 @@ func TestCatalogSearchEscapesPercent(t *testing.T) {
 	conn := newTestDB(t)
 	repo := NewItems(conn)
 	ctx := context.Background()
-	vID := seedBareVersion(t, conn)
+	tid := seedTenant(t, conn)
+	vID := seedBareVersion(t, conn, tid)
 
-	seedNamedItem(t, conn, vID, "C1", "100% Cover")
-	seedNamedItem(t, conn, vID, "C2", "100 then Cover")
+	seedNamedItem(t, conn, tid, vID, "C1", "100% Cover")
+	seedNamedItem(t, conn, tid, vID, "C2", "100 then Cover")
 
-	got, err := repo.SearchItems(ctx, vID, "100% Cover")
+	got, err := repo.SearchItems(ctx, tid, vID, "100% Cover")
 	if err != nil {
 		t.Fatalf("SearchItems: %v", err)
 	}
@@ -95,16 +98,79 @@ func TestCatalogSearchStillMatchesSubstrings(t *testing.T) {
 	conn := newTestDB(t)
 	repo := NewItems(conn)
 	ctx := context.Background()
-	vID := seedBareVersion(t, conn)
+	tid := seedTenant(t, conn)
+	vID := seedBareVersion(t, conn, tid)
 
-	seedNamedItem(t, conn, vID, "C1", "Self_Care")
-	seedNamedItem(t, conn, vID, "C2", "SelfXCare")
+	seedNamedItem(t, conn, tid, vID, "C1", "Self_Care")
+	seedNamedItem(t, conn, tid, vID, "C2", "SelfXCare")
 
-	got, err := repo.SearchItems(ctx, vID, "Self")
+	got, err := repo.SearchItems(ctx, tid, vID, "Self")
 	if err != nil {
 		t.Fatalf("SearchItems: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("substring search %q matched %d items, want 2", "Self", len(got))
+	}
+}
+
+// TestSearchItemsAllFieldsTenantScoped proves the all-fields (code/name/category/
+// unit) search is tenant-scoped: two tenants each own a version with an item that
+// differs only by category + unit. A category-substring search for tenant A
+// returns ONLY tenant A's item (never tenant B's), and a unit-substring search
+// matches too.
+func TestSearchItemsAllFieldsTenantScoped(t *testing.T) {
+	conn := newTestDB(t)
+	repo := NewItems(conn)
+	ctx := context.Background()
+	q := gen.New(conn)
+
+	tidA := seedTenant(t, conn)
+	tidB := seedTenant(t, conn)
+	vA := seedBareVersion(t, conn, tidA)
+	vB := seedBareVersion(t, conn, tidB)
+
+	// Both items share code/name; they differ only by category + unit.
+	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
+		TenantID: tidA, Uuid: uuid.NewString(), PriceListVersionID: vA,
+		Code: "AAA", Name: "Shared Name", Taxable: 0,
+		Category: sql.NullString{String: "AlphaCat", Valid: true},
+		Unit:     sql.NullString{String: "HourA", Valid: true},
+	}); err != nil {
+		t.Fatalf("CreateItem A: %v", err)
+	}
+	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
+		TenantID: tidB, Uuid: uuid.NewString(), PriceListVersionID: vB,
+		Code: "BBB", Name: "Shared Name", Taxable: 0,
+		Category: sql.NullString{String: "BetaCat", Valid: true},
+		Unit:     sql.NullString{String: "HourB", Valid: true},
+	}); err != nil {
+		t.Fatalf("CreateItem B: %v", err)
+	}
+
+	// Category substring for tenant A: only A's item, never B's.
+	byCat, err := repo.SearchItems(ctx, tidA, vA, "AlphaCat")
+	if err != nil {
+		t.Fatalf("SearchItems category: %v", err)
+	}
+	if len(byCat) != 1 || byCat[0].Code != "AAA" {
+		t.Fatalf("category search = %+v, want exactly tenant A's AAA", byCat)
+	}
+
+	// Tenant A must not see B's category at all (proves scoping, not just the join).
+	leak, err := repo.SearchItems(ctx, tidA, vA, "BetaCat")
+	if err != nil {
+		t.Fatalf("SearchItems leak probe: %v", err)
+	}
+	if len(leak) != 0 {
+		t.Fatalf("tenant A leaked tenant B's item: %+v", leak)
+	}
+
+	// Unit substring also matches, scoped to tenant A.
+	byUnit, err := repo.SearchItems(ctx, tidA, vA, "HourA")
+	if err != nil {
+		t.Fatalf("SearchItems unit: %v", err)
+	}
+	if len(byUnit) != 1 || byUnit[0].Code != "AAA" {
+		t.Fatalf("unit search = %+v, want exactly tenant A's AAA", byUnit)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
+	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
 )
@@ -46,6 +47,7 @@ type Deps struct {
 	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert
 	Payments        *invoice.PaymentHandler  // per-invoice payment list/create + delete
 	Recurring       *recurring.Handler       // recurring-template CRUD + generate
+	Smarts          *smarts.Handler          // AI "Smarts" routes (503 when AI disabled)
 	Features        map[string]bool          // feature-gate state exposed at GET /api/features
 }
 
@@ -158,6 +160,9 @@ func NewServer(deps Deps) *Server {
 			}
 			if deps.Recurring != nil {
 				deps.Recurring.Routes(pr)
+			}
+			if deps.Smarts != nil {
+				deps.Smarts.Routes(pr)
 			}
 			if deps.Features != nil {
 				pr.Get("/features", func(w http.ResponseWriter, _ *http.Request) {

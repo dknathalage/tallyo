@@ -152,6 +152,7 @@ type Item struct {
 	UnitPrice          sql.NullFloat64 `json:"unit_price"`
 	Taxable            int64           `json:"taxable"`
 	Metadata           sql.NullString  `json:"metadata"`
+	TenantID           int64           `json:"tenant_id"`
 }
 
 type LineItem struct {
@@ -211,6 +212,7 @@ type PriceListVersion struct {
 	EffectiveTo    sql.NullString `json:"effective_to"`
 	SourceFilename sql.NullString `json:"source_filename"`
 	CreatedAt      string         `json:"created_at"`
+	TenantID       int64          `json:"tenant_id"`
 }
 
 type RecurringTemplate struct {

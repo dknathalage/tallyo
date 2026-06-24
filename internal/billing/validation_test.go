@@ -24,7 +24,7 @@ import (
 
 // seedUnitPricedItem inserts a catalog version with one support item that has a
 // generic unit_price set. Returns the version id.
-func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
+func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -34,7 +34,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -44,7 +44,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
+		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -54,7 +54,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 
 // addUnitPricedItemToVersion adds one more support item (with a generic
 // unit_price) to an existing version.
-func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, gstFree bool, unitPrice float64) {
+func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID int64, code string, gstFree bool, unitPrice float64) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -63,7 +63,7 @@ func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, versionID int64, cod
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
+		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true}, Taxable: tx,
 	}); err != nil {
 		t.Fatalf("CreateItem %s: %v", code, err)
@@ -93,7 +93,7 @@ func TestValidateUnknownCodeRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -109,7 +109,7 @@ func TestValidateNoVersionForDateRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	// Service date before any catalogue window.
@@ -127,8 +127,8 @@ func TestValidateVersionResolutionPicksRightVersion(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
 	// Two consecutive versions; the SAME code carries a different unit_price.
-	seedUnitPricedItem(t, conn, "2024-25", "2024-07-01", "2025-06-30", "01_011", true, 90)
-	seedUnitPricedItem(t, conn, "2025-26", "2025-07-01", "2026-06-30", "01_011", true, 110)
+	seedUnitPricedItem(t, conn, tid, "2024-25", "2024-07-01", "2025-06-30", "01_011", true, 90)
+	seedUnitPricedItem(t, conn, tid, "2025-26", "2025-07-01", "2026-06-30", "01_011", true, 110)
 	v := NewLineValidator(conn)
 	ctx := context.Background()
 
@@ -153,7 +153,7 @@ func TestValidateVersionBoundaryDatesInclusive(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 	ctx := context.Background()
 
@@ -174,7 +174,7 @@ func TestGenericCodedLinePricesFromItemUnitPrice(t *testing.T) {
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
 	// Item W1 has unit_price 9.99; taxable.
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
 	v := NewLineValidator(conn)
 	ctx := context.Background()
 
@@ -201,7 +201,7 @@ func TestGenericCodedLineKeepsCallerPriceOverUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "W1", false, 9.99)
 	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{supportLine("W1", "2026-01-15", 1, 25)})
@@ -219,7 +219,7 @@ func TestValidateTaxableDefaultedFromItem(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	// Line leaves taxable false; the item is GST-free so taxable stays false.
@@ -241,7 +241,7 @@ func TestValidateTaxableSetWhenItemTaxable(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "02_022", false, 100)
 	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -268,7 +268,7 @@ func TestValidateClientTaxableOverrideIgnoredForSupportItem(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
 	}
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, 1000)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "02_022", false, 1000)
 	v := NewLineValidator(conn)
 
 	// Client lies: taxable:false on a taxable catalogue item.
@@ -292,7 +292,7 @@ func TestValidateSupportItemNegativeRejected(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -366,8 +366,8 @@ func TestValidateComputesTaxFromTaxableLines(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	// One version carrying both a GST-free item (0 tax) and a taxable item.
-	verID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, 1000)
-	addUnitPricedItemToVersion(t, conn, verID, "TAX", false, 1000)
+	verID := seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "GF", true, 1000)
+	addUnitPricedItemToVersion(t, conn, tid, verID, "TAX", false, 1000)
 	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -396,8 +396,8 @@ func TestCharacterizeMixedTaxMath(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	// One version carrying a gst_free item (no tax) and a taxable item (taxed).
-	verID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "GF", true, 1000)
-	addUnitPricedItemToVersion(t, conn, verID, "TAX", false, 1000)
+	verID := seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "GF", true, 1000)
+	addUnitPricedItemToVersion(t, conn, tid, verID, "TAX", false, 1000)
 	v := NewLineValidator(conn)
 
 	const taxedQty, taxedPrice = 1.0, 200.0
@@ -424,7 +424,7 @@ func TestValidateTotalsRoundToCents(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed tax rate: %v", err)
 	}
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "DRIFT", false, 1)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "DRIFT", false, 1)
 	v := NewLineValidator(conn)
 
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -445,7 +445,7 @@ func TestValidateAccumulatesErrorsAcrossLines(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-01-01", "2026-12-31", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-01-01", "2026-12-31", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	_, err := v.Validate(context.Background(), tid, pid, []LineItemInput{
@@ -478,7 +478,7 @@ func TestLineValidatorReadsCatalogueFromTenant(t *testing.T) {
 	tenant := newTestDB(t)
 	tid := seedTenant(t, tenant)
 	pid := seedClient(t, tenant, tid)
-	seedUnitPricedItem(t, tenant, "v1", "2025-07-01", "2026-06-30", "PROD1", true, 49.95)
+	seedUnitPricedItem(t, tenant, tid, "v1", "2025-07-01", "2026-06-30", "PROD1", true, 49.95)
 
 	v := NewLineValidator(tenant)
 	res, err := v.Validate(context.Background(), tid, pid, []LineItemInput{

@@ -11,38 +11,47 @@ import (
 )
 
 const closeOpenPriceListVersions = `-- name: CloseOpenPriceListVersions :exec
-UPDATE price_list_versions SET effective_to = ? WHERE effective_to IS NULL
+UPDATE price_list_versions SET effective_to = ?1
+WHERE tenant_id = ?2 AND effective_to IS NULL
 `
 
-// Close every still-open (effective_to IS NULL) version. Called when a new
-// version is ingested so date-windows never overlap and historical service dates
-// resolve to the version that was effective then.
-func (q *Queries) CloseOpenPriceListVersions(ctx context.Context, effectiveTo sql.NullString) error {
-	_, err := q.db.ExecContext(ctx, closeOpenPriceListVersions, effectiveTo)
+type CloseOpenPriceListVersionsParams struct {
+	EffectiveTo sql.NullString `json:"effective_to"`
+	TenantID    int64          `json:"tenant_id"`
+}
+
+// Close every still-open (effective_to IS NULL) version for this tenant. Called
+// when a new version is ingested so date-windows never overlap and historical
+// service dates resolve to the version that was effective then.
+func (q *Queries) CloseOpenPriceListVersions(ctx context.Context, arg CloseOpenPriceListVersionsParams) error {
+	_, err := q.db.ExecContext(ctx, closeOpenPriceListVersions, arg.EffectiveTo, arg.TenantID)
 	return err
 }
 
 const closePriceListVersion = `-- name: ClosePriceListVersion :exec
-UPDATE price_list_versions SET effective_to = ? WHERE id = ?
+UPDATE price_list_versions SET effective_to = ?1
+WHERE tenant_id = ?2 AND id = ?3
 `
 
 type ClosePriceListVersionParams struct {
 	EffectiveTo sql.NullString `json:"effective_to"`
+	TenantID    int64          `json:"tenant_id"`
 	ID          int64          `json:"id"`
 }
 
 func (q *Queries) ClosePriceListVersion(ctx context.Context, arg ClosePriceListVersionParams) error {
-	_, err := q.db.ExecContext(ctx, closePriceListVersion, arg.EffectiveTo, arg.ID)
+	_, err := q.db.ExecContext(ctx, closePriceListVersion, arg.EffectiveTo, arg.TenantID, arg.ID)
 	return err
 }
 
 const createPriceListVersion = `-- name: CreatePriceListVersion :one
-INSERT INTO price_list_versions (uuid, label, effective_from, effective_to, source_filename, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, label, effective_from, effective_to, source_filename, created_at
+INSERT INTO price_list_versions (tenant_id, uuid, label, effective_from, effective_to, source_filename, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, uuid, label, effective_from, effective_to, source_filename, created_at, tenant_id
 `
 
 type CreatePriceListVersionParams struct {
+	TenantID       int64          `json:"tenant_id"`
 	Uuid           string         `json:"uuid"`
 	Label          string         `json:"label"`
 	EffectiveFrom  string         `json:"effective_from"`
@@ -53,6 +62,7 @@ type CreatePriceListVersionParams struct {
 
 func (q *Queries) CreatePriceListVersion(ctx context.Context, arg CreatePriceListVersionParams) (PriceListVersion, error) {
 	row := q.db.QueryRowContext(ctx, createPriceListVersion,
+		arg.TenantID,
 		arg.Uuid,
 		arg.Label,
 		arg.EffectiveFrom,
@@ -69,28 +79,34 @@ func (q *Queries) CreatePriceListVersion(ctx context.Context, arg CreatePriceLis
 		&i.EffectiveTo,
 		&i.SourceFilename,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const deletePriceListVersion = `-- name: DeletePriceListVersion :exec
-DELETE FROM price_list_versions WHERE id = ?
+DELETE FROM price_list_versions WHERE tenant_id = ?1 AND id = ?2
 `
 
-func (q *Queries) DeletePriceListVersion(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deletePriceListVersion, id)
+type DeletePriceListVersionParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) DeletePriceListVersion(ctx context.Context, arg DeletePriceListVersionParams) error {
+	_, err := q.db.ExecContext(ctx, deletePriceListVersion, arg.TenantID, arg.ID)
 	return err
 }
 
 const getCurrentPriceListVersion = `-- name: GetCurrentPriceListVersion :one
-SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at FROM price_list_versions
-WHERE effective_to IS NULL
+SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at, tenant_id FROM price_list_versions
+WHERE tenant_id = ?1 AND effective_to IS NULL
 ORDER BY effective_from DESC
 LIMIT 1
 `
 
-func (q *Queries) GetCurrentPriceListVersion(ctx context.Context) (PriceListVersion, error) {
-	row := q.db.QueryRowContext(ctx, getCurrentPriceListVersion)
+func (q *Queries) GetCurrentPriceListVersion(ctx context.Context, tenantID int64) (PriceListVersion, error) {
+	row := q.db.QueryRowContext(ctx, getCurrentPriceListVersion, tenantID)
 	var i PriceListVersion
 	err := row.Scan(
 		&i.ID,
@@ -100,16 +116,22 @@ func (q *Queries) GetCurrentPriceListVersion(ctx context.Context) (PriceListVers
 		&i.EffectiveTo,
 		&i.SourceFilename,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getPriceListVersion = `-- name: GetPriceListVersion :one
-SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at FROM price_list_versions WHERE id = ?
+SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at, tenant_id FROM price_list_versions WHERE tenant_id = ?1 AND id = ?2
 `
 
-func (q *Queries) GetPriceListVersion(ctx context.Context, id int64) (PriceListVersion, error) {
-	row := q.db.QueryRowContext(ctx, getPriceListVersion, id)
+type GetPriceListVersionParams struct {
+	TenantID int64 `json:"tenant_id"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) GetPriceListVersion(ctx context.Context, arg GetPriceListVersionParams) (PriceListVersion, error) {
+	row := q.db.QueryRowContext(ctx, getPriceListVersion, arg.TenantID, arg.ID)
 	var i PriceListVersion
 	err := row.Scan(
 		&i.ID,
@@ -119,16 +141,22 @@ func (q *Queries) GetPriceListVersion(ctx context.Context, id int64) (PriceListV
 		&i.EffectiveTo,
 		&i.SourceFilename,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getPriceListVersionByUUID = `-- name: GetPriceListVersionByUUID :one
-SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at FROM price_list_versions WHERE uuid = ?
+SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at, tenant_id FROM price_list_versions WHERE tenant_id = ?1 AND uuid = ?2
 `
 
-func (q *Queries) GetPriceListVersionByUUID(ctx context.Context, uuid string) (PriceListVersion, error) {
-	row := q.db.QueryRowContext(ctx, getPriceListVersionByUUID, uuid)
+type GetPriceListVersionByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) GetPriceListVersionByUUID(ctx context.Context, arg GetPriceListVersionByUUIDParams) (PriceListVersion, error) {
+	row := q.db.QueryRowContext(ctx, getPriceListVersionByUUID, arg.TenantID, arg.Uuid)
 	var i PriceListVersion
 	err := row.Scan(
 		&i.ID,
@@ -138,16 +166,22 @@ func (q *Queries) GetPriceListVersionByUUID(ctx context.Context, uuid string) (P
 		&i.EffectiveTo,
 		&i.SourceFilename,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getPriceListVersionIDByUUID = `-- name: GetPriceListVersionIDByUUID :one
-SELECT id FROM price_list_versions WHERE uuid = ?
+SELECT id FROM price_list_versions WHERE tenant_id = ?1 AND uuid = ?2
 `
 
-func (q *Queries) GetPriceListVersionIDByUUID(ctx context.Context, uuid string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getPriceListVersionIDByUUID, uuid)
+type GetPriceListVersionIDByUUIDParams struct {
+	TenantID int64  `json:"tenant_id"`
+	Uuid     string `json:"uuid"`
+}
+
+func (q *Queries) GetPriceListVersionIDByUUID(ctx context.Context, arg GetPriceListVersionIDByUUIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getPriceListVersionIDByUUID, arg.TenantID, arg.Uuid)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -155,12 +189,12 @@ func (q *Queries) GetPriceListVersionIDByUUID(ctx context.Context, uuid string) 
 
 const listPriceListVersions = `-- name: ListPriceListVersions :many
 
-SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at FROM price_list_versions ORDER BY effective_from DESC
+SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at, tenant_id FROM price_list_versions WHERE tenant_id = ?1 ORDER BY effective_from DESC
 `
 
-// Per-tenant price list (tenant-owned).
-func (q *Queries) ListPriceListVersions(ctx context.Context) ([]PriceListVersion, error) {
-	rows, err := q.db.QueryContext(ctx, listPriceListVersions)
+// Per-tenant price list (tenant-owned, scoped by tenant_id).
+func (q *Queries) ListPriceListVersions(ctx context.Context, tenantID int64) ([]PriceListVersion, error) {
+	rows, err := q.db.QueryContext(ctx, listPriceListVersions, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +210,7 @@ func (q *Queries) ListPriceListVersions(ctx context.Context) ([]PriceListVersion
 			&i.EffectiveTo,
 			&i.SourceFilename,
 			&i.CreatedAt,
+			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}
@@ -191,15 +226,21 @@ func (q *Queries) ListPriceListVersions(ctx context.Context) ([]PriceListVersion
 }
 
 const resolvePriceListVersionForDate = `-- name: ResolvePriceListVersionForDate :one
-SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at FROM price_list_versions
-WHERE effective_from <= ?1
-  AND (effective_to IS NULL OR effective_to >= ?1)
+SELECT id, uuid, label, effective_from, effective_to, source_filename, created_at, tenant_id FROM price_list_versions
+WHERE tenant_id = ?1
+  AND effective_from <= ?2
+  AND (effective_to IS NULL OR effective_to >= ?2)
 ORDER BY effective_from DESC
 LIMIT 1
 `
 
-func (q *Queries) ResolvePriceListVersionForDate(ctx context.Context, serviceDate string) (PriceListVersion, error) {
-	row := q.db.QueryRowContext(ctx, resolvePriceListVersionForDate, serviceDate)
+type ResolvePriceListVersionForDateParams struct {
+	TenantID    int64  `json:"tenant_id"`
+	ServiceDate string `json:"service_date"`
+}
+
+func (q *Queries) ResolvePriceListVersionForDate(ctx context.Context, arg ResolvePriceListVersionForDateParams) (PriceListVersion, error) {
+	row := q.db.QueryRowContext(ctx, resolvePriceListVersionForDate, arg.TenantID, arg.ServiceDate)
 	var i PriceListVersion
 	err := row.Scan(
 		&i.ID,
@@ -209,6 +250,7 @@ func (q *Queries) ResolvePriceListVersionForDate(ctx context.Context, serviceDat
 		&i.EffectiveTo,
 		&i.SourceFilename,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }

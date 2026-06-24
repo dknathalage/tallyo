@@ -21,7 +21,7 @@ func TestValidateFillingFillsFromItemUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
@@ -41,7 +41,7 @@ func TestValidateFillingKeepsPositiveCallerPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	v := NewLineValidator(conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
@@ -67,7 +67,7 @@ func TestValidateFillingComputesTaxOnFilledPrice(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	// Taxable item, unit_price 200; caller sends 0 → filled to 200.
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "02_022", false, 200)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "02_022", false, 200)
 	v := NewLineValidator(conn)
 
 	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{

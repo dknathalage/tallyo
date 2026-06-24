@@ -8,6 +8,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/importer"
 	"github.com/dknathalage/tallyo/internal/realtime"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
 // Service exposes read access to the tenant-owned price list
@@ -23,14 +24,14 @@ func NewService(db db.Executor) *Service {
 	return &Service{repo: NewItems(db)}
 }
 
-// ListVersions returns all price-list versions.
+// ListVersions returns the tenant's price-list versions.
 func (s *Service) ListVersions(ctx context.Context) ([]*PriceListVersion, error) {
-	return s.repo.ListVersions(ctx)
+	return s.repo.ListVersions(ctx, reqctx.MustTenant(ctx))
 }
 
 // GetVersion returns a price-list version by id, or (nil, nil) when absent.
 func (s *Service) GetVersion(ctx context.Context, id int64) (*PriceListVersion, error) {
-	return s.repo.GetVersion(ctx, id)
+	return s.repo.GetVersion(ctx, reqctx.MustTenant(ctx), id)
 }
 
 // ErrNotFound is returned when a version/item uuid resolves to no row. The
@@ -42,14 +43,15 @@ var ErrNotFound = fmt.Errorf("price-list resource not found")
 // returned item's PriceListVersionUID is set to versionUUID so the SPA can link
 // item→version by uuid.
 func (s *Service) ListItemsByVersionUUID(ctx context.Context, versionUUID string) ([]*Item, error) {
-	versionID, err := s.repo.ResolveVersionIDByUUID(ctx, versionUUID)
+	tenantID := reqctx.MustTenant(ctx)
+	versionID, err := s.repo.ResolveVersionIDByUUID(ctx, tenantID, versionUUID)
 	if err != nil {
 		return nil, err
 	}
 	if versionID == 0 {
 		return nil, ErrNotFound
 	}
-	items, err := s.repo.ListItems(ctx, versionID)
+	items, err := s.repo.ListItems(ctx, tenantID, versionID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +83,8 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate string, 
 	if limit <= 0 {
 		limit = 25
 	}
-	ver, err := s.repo.ResolveVersionForDate(ctx, serviceDate)
+	tenantID := reqctx.MustTenant(ctx)
+	ver, err := s.repo.ResolveVersionForDate(ctx, tenantID, serviceDate)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +92,7 @@ func (s *Service) SearchForDate(ctx context.Context, query, serviceDate string, 
 	if ver == nil {
 		return out, nil
 	}
-	items, err := s.repo.SearchItems(ctx, ver.ID, query)
+	items, err := s.repo.SearchItems(ctx, tenantID, ver.ID, query)
 	if err != nil {
 		return nil, err
 	}
@@ -207,15 +210,15 @@ func (s *ImportService) ImportMapped(ctx context.Context, data []byte, fileType,
 		})
 	}
 
+	tenantID := reqctx.MustTenant(ctx)
 	effectiveFrom := time.Now().UTC().Format("2006-01-02")
-	res, err := s.repo.Ingest(ctx, label, effectiveFrom, "", items)
+	res, err := s.repo.Ingest(ctx, tenantID, label, effectiveFrom, "", items)
 	if err != nil {
 		return nil, err
 	}
 
-	// Broadcast with the GlobalTenantID sentinel so the event reaches every open
-	// SSE stream (the import path has no request tenant in scope here).
-	s.hub.Broadcast(realtime.Event{TenantID: realtime.GlobalTenantID, Entity: "price_list_version", UUID: res.Version.UUID, Action: "import"})
+	// Broadcast to this tenant's SSE streams after the commit.
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "price_list_version", UUID: res.Version.UUID, Action: "import"})
 	return &ImportSummary{
 		VersionID:     res.Version.ID,
 		VersionUUID:   res.Version.UUID,

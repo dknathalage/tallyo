@@ -15,10 +15,20 @@ type ImportRow struct {
 	Taxable   bool
 }
 
-var validTargets = map[string]bool{
-	"name": true, "code": true, "unit": true,
-	"category": true, "unitPrice": true, "taxable": true,
+// TargetFields are the catalogue fields a source column can map to. "name" is
+// the only required target. Exported so callers (e.g. the map-import Smart) can
+// validate a proposed mapping against the same set ApplyMapping enforces.
+func TargetFields() []string {
+	return []string{"name", "code", "unit", "category", "unitPrice", "taxable"}
 }
+
+var validTargets = func() map[string]bool {
+	m := make(map[string]bool, 6)
+	for _, t := range TargetFields() {
+		m[t] = true
+	}
+	return m
+}()
 
 // ApplyMapping turns parsed rows into ImportRows using a sourceHeader→targetField
 // map. "name" is required; unmapped/empty cells are zero values. taxable defaults

@@ -44,6 +44,12 @@ func NewService(db db.Executor, hub *realtime.Hub, invoices InvoiceChecker) *Ser
 	return &Service{repo: NewSessions(db), invoices: invoices, validator: billing.NewLineValidator(db), hub: hub}
 }
 
+// ListUnbilledForClient returns a client's recorded-but-unbilled sessions for
+// the given tenant. Used by the draft-invoice Smart to gather billable work.
+func (s *Service) ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]*Session, error) {
+	return s.repo.ListRecordedUnbilled(ctx, tenantID, clientID)
+}
+
 // Suggestion is a billing prompt: a client's recorded-but-unbilled sessions
 // grouped together, ready to draft onto a single invoice.
 type Suggestion struct {

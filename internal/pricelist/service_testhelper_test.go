@@ -31,7 +31,7 @@ func tctx(tenantID int64) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
-func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
+func seedUnitPricedItem(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, code string, gstFree bool, unitPrice float64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -41,7 +41,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, Uuid: uuid.NewString(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -51,7 +51,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
+		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: tx,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true},
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -59,7 +59,7 @@ func seedUnitPricedItem(t *testing.T, conn *sql.DB, label, from, to, code string
 	return v.ID
 }
 
-func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, versionID int64, code string, gstFree bool, unitPrice float64) {
+func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, tenantID, versionID int64, code string, gstFree bool, unitPrice float64) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -68,7 +68,7 @@ func addUnitPricedItemToVersion(t *testing.T, conn *sql.DB, versionID int64, cod
 		tx = 0
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
+		TenantID: tenantID, Uuid: uuid.NewString(), PriceListVersionID: versionID, Code: code, Name: "Item " + code, Taxable: tx,
 		UnitPrice: sql.NullFloat64{Float64: unitPrice, Valid: true},
 	}); err != nil {
 		t.Fatalf("CreateItem %s: %v", code, err)

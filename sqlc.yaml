@@ -10,6 +10,7 @@ sql:
       - "internal/db/migrations/control"
       - "internal/db/migrations/tenant/00001_tenant.sql"
       - "internal/db/migrations/tenant/00003_catalogue.sql"
+      - "internal/db/migrations/tenant/00004_catalogue_tenant.sql"
     queries: "internal/db/queries"
     gen:
       go:

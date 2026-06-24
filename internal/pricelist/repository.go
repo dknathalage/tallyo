@@ -65,9 +65,10 @@ func NewItems(db db.Executor) *ItemsRepo {
 	return &ItemsRepo{db: db}
 }
 
-// ListVersions returns all price-list versions, newest effective_from first.
-func (r *ItemsRepo) ListVersions(ctx context.Context) ([]*PriceListVersion, error) {
-	rows, err := gen.New(r.db).ListPriceListVersions(ctx)
+// ListVersions returns all of the tenant's price-list versions, newest
+// effective_from first.
+func (r *ItemsRepo) ListVersions(ctx context.Context, tenantID int64) ([]*PriceListVersion, error) {
+	rows, err := gen.New(r.db).ListPriceListVersions(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list price-list versions: %w", err)
 	}
@@ -78,9 +79,9 @@ func (r *ItemsRepo) ListVersions(ctx context.Context) ([]*PriceListVersion, erro
 	return out, nil
 }
 
-// GetVersion returns the version by id, or (nil, nil) when absent.
-func (r *ItemsRepo) GetVersion(ctx context.Context, id int64) (*PriceListVersion, error) {
-	row, err := gen.New(r.db).GetPriceListVersion(ctx, id)
+// GetVersion returns the tenant's version by id, or (nil, nil) when absent.
+func (r *ItemsRepo) GetVersion(ctx context.Context, tenantID, id int64) (*PriceListVersion, error) {
+	row, err := gen.New(r.db).GetPriceListVersion(ctx, gen.GetPriceListVersionParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -92,8 +93,8 @@ func (r *ItemsRepo) GetVersion(ctx context.Context, id int64) (*PriceListVersion
 
 // GetVersionByUUID returns the version by its UUID, or (nil, nil) when absent.
 // Used to resolve a tenant line's pinned price_list_version_id (a tenant UUID).
-func (r *ItemsRepo) GetVersionByUUID(ctx context.Context, uuid string) (*PriceListVersion, error) {
-	row, err := gen.New(r.db).GetPriceListVersionByUUID(ctx, uuid)
+func (r *ItemsRepo) GetVersionByUUID(ctx context.Context, tenantID int64, uuid string) (*PriceListVersion, error) {
+	row, err := gen.New(r.db).GetPriceListVersionByUUID(ctx, gen.GetPriceListVersionByUUIDParams{TenantID: tenantID, Uuid: uuid})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -105,11 +106,11 @@ func (r *ItemsRepo) GetVersionByUUID(ctx context.Context, uuid string) (*PriceLi
 
 // ResolveVersionForDate returns the version whose [effective_from, effective_to]
 // window contains serviceDate, or (nil, nil) when none applies.
-func (r *ItemsRepo) ResolveVersionForDate(ctx context.Context, serviceDate string) (*PriceListVersion, error) {
+func (r *ItemsRepo) ResolveVersionForDate(ctx context.Context, tenantID int64, serviceDate string) (*PriceListVersion, error) {
 	if serviceDate == "" {
 		return nil, errors.New("resolve price-list version: service date required")
 	}
-	row, err := gen.New(r.db).ResolvePriceListVersionForDate(ctx, serviceDate)
+	row, err := gen.New(r.db).ResolvePriceListVersionForDate(ctx, gen.ResolvePriceListVersionForDateParams{TenantID: tenantID, ServiceDate: serviceDate})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -120,8 +121,8 @@ func (r *ItemsRepo) ResolveVersionForDate(ctx context.Context, serviceDate strin
 }
 
 // ListItems returns all items in a price-list version, by code.
-func (r *ItemsRepo) ListItems(ctx context.Context, versionID int64) ([]*Item, error) {
-	rows, err := gen.New(r.db).ListItems(ctx, versionID)
+func (r *ItemsRepo) ListItems(ctx context.Context, tenantID, versionID int64) ([]*Item, error) {
+	rows, err := gen.New(r.db).ListItems(ctx, gen.ListItemsParams{TenantID: tenantID, VersionID: versionID})
 	if err != nil {
 		return nil, fmt.Errorf("list items: %w", err)
 	}
@@ -135,11 +136,11 @@ func (r *ItemsRepo) ListItems(ctx context.Context, versionID int64) ([]*Item, er
 // ResolveVersionIDByUUID maps a price-list-version uuid to its int PK, returning
 // (0, nil) when no version carries that uuid. Used to translate a public version
 // uuid path param to the internal FK before filtering items.
-func (r *ItemsRepo) ResolveVersionIDByUUID(ctx context.Context, versionUUID string) (int64, error) {
+func (r *ItemsRepo) ResolveVersionIDByUUID(ctx context.Context, tenantID int64, versionUUID string) (int64, error) {
 	if versionUUID == "" {
 		return 0, errors.New("resolve version id: uuid required")
 	}
-	id, err := gen.New(r.db).GetPriceListVersionIDByUUID(ctx, versionUUID)
+	id, err := gen.New(r.db).GetPriceListVersionIDByUUID(ctx, gen.GetPriceListVersionIDByUUIDParams{TenantID: tenantID, Uuid: versionUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -152,12 +153,12 @@ func (r *ItemsRepo) ResolveVersionIDByUUID(ctx context.Context, versionUUID stri
 // SearchItems returns the items in a version whose code or name matches the query
 // (LIKE, case-insensitive on the SQLite default collation), by code. An empty
 // query matches everything in the version.
-func (r *ItemsRepo) SearchItems(ctx context.Context, versionID int64, query string) ([]*Item, error) {
+func (r *ItemsRepo) SearchItems(ctx context.Context, tenantID, versionID int64, query string) ([]*Item, error) {
 	like := "%" + escapeLike(query) + "%"
 	rows, err := gen.New(r.db).SearchItems(ctx, gen.SearchItemsParams{
-		PriceListVersionID: versionID,
-		Code:               like,
-		Name:               like,
+		TenantID:  tenantID,
+		VersionID: versionID,
+		Q:         like,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search items: %w", err)
@@ -184,13 +185,14 @@ func escapeLike(s string) string {
 
 // GetItemByCode finds an item by code within a version, or (nil, nil) when none
 // matches.
-func (r *ItemsRepo) GetItemByCode(ctx context.Context, versionID int64, code string) (*Item, error) {
+func (r *ItemsRepo) GetItemByCode(ctx context.Context, tenantID, versionID int64, code string) (*Item, error) {
 	if code == "" {
 		return nil, errors.New("get item by code: code required")
 	}
 	row, err := gen.New(r.db).GetItemByCode(ctx, gen.GetItemByCodeParams{
-		PriceListVersionID: versionID,
-		Code:               code,
+		TenantID:  tenantID,
+		VersionID: versionID,
+		Code:      code,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -222,7 +224,10 @@ type IngestResult struct {
 // audited transaction. Any error rolls the whole thing back (no partial-version
 // state). The version-create audit row is written inside the same tx. Returns
 // the created version and counts.
-func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFilename string, items []ImportItem) (*IngestResult, error) {
+func (r *ItemsRepo) Ingest(ctx context.Context, tenantID int64, label, effectiveFrom, sourceFilename string, items []ImportItem) (*IngestResult, error) {
+	if tenantID <= 0 {
+		return nil, errors.New("ingest price list: tenant required")
+	}
 	if label == "" {
 		return nil, errors.New("ingest price list: label required")
 	}
@@ -242,11 +247,15 @@ func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFile
 		// the version effective then, and only the new version stays open-ended.
 		// Existing invoices are unaffected — their prices are pinned per line.
 		if prevTo := dayBefore(effectiveFrom); prevTo != "" {
-			if e := q.CloseOpenPriceListVersions(ctx, sql.NullString{String: prevTo, Valid: true}); e != nil {
+			if e := q.CloseOpenPriceListVersions(ctx, gen.CloseOpenPriceListVersionsParams{
+				EffectiveTo: sql.NullString{String: prevTo, Valid: true},
+				TenantID:    tenantID,
+			}); e != nil {
 				return fmt.Errorf("close prior versions: %w", e)
 			}
 		}
 		ver, e := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
+			TenantID:       tenantID,
 			Uuid:           uuid.NewString(),
 			Label:          label,
 			EffectiveFrom:  effectiveFrom,
@@ -265,6 +274,7 @@ func (r *ItemsRepo) Ingest(ctx context.Context, label, effectiveFrom, sourceFile
 				unitPrice = sql.NullFloat64{Float64: *it.UnitPrice, Valid: true}
 			}
 			if _, e := q.UpsertItem(ctx, gen.UpsertItemParams{
+				TenantID:           tenantID,
 				Uuid:               uuid.NewString(),
 				PriceListVersionID: ver.ID,
 				Code:               it.Code,

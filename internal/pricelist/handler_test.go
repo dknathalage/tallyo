@@ -27,14 +27,14 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 	now := time.Now().UTC().Format(time.RFC3339)
 	vUUID := uuid.NewString()
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		Uuid: vUUID, Label: "2025-26", EffectiveFrom: "2025-07-01", CreatedAt: now,
+		TenantID: tenantID, Uuid: vUUID, Label: "2025-26", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	iUUID := uuid.NewString()
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		Uuid: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
+		TenantID: tenantID, Uuid: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
 		UnitPrice: sql.NullFloat64{Float64: 100, Valid: true},
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)

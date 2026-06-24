@@ -19,15 +19,15 @@ func TestValidatePinnedVersionNotRepriced(t *testing.T) {
 	pid := seedClient(t, conn, tid)
 
 	// v1: unit_price 100 for code 99_test. v2 (later effective, overlapping): 50.
-	v1 := seedUnitPricedItem(t, conn, "v1", "2025-01-01", "2025-12-31", "99_test", true, 100)
-	seedUnitPricedItem(t, conn, "v2", "2025-06-01", "2026-12-31", "99_test", true, 50)
+	v1 := seedUnitPricedItem(t, conn, tid, "v1", "2025-01-01", "2025-12-31", "99_test", true, 100)
+	seedUnitPricedItem(t, conn, tid, "v2", "2025-06-01", "2026-12-31", "99_test", true, 50)
 
 	val := NewLineValidator(conn)
 	ctx := context.Background()
 
 	// Lines pin the price-list version by its UUID (the tenant reference), not
 	// its integer id.
-	v1ver, err := gen.New(conn).GetPriceListVersion(ctx, v1)
+	v1ver, err := gen.New(conn).GetPriceListVersion(ctx, gen.GetPriceListVersionParams{TenantID: tid, ID: v1})
 	if err != nil {
 		t.Fatalf("get v1 uuid: %v", err)
 	}

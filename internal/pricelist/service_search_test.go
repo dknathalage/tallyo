@@ -1,7 +1,6 @@
 package pricelist
 
 import (
-	"context"
 	"testing"
 )
 
@@ -17,11 +16,12 @@ func findMatch(ms []*Match, code string) *Match {
 
 func TestSearchForDateByKeywordAttachesUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	tid := seedTenant(t, conn)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	svc := NewService(conn)
 
 	// Item names are "Item <code>", so the keyword matches by name.
-	ms, err := svc.SearchForDate(context.Background(), "01_011", "2026-01-15", 0)
+	ms, err := svc.SearchForDate(tctx(tid), "01_011", "2026-01-15", 0)
 	if err != nil {
 		t.Fatalf("SearchForDate: %v", err)
 	}
@@ -39,10 +39,11 @@ func TestSearchForDateByKeywordAttachesUnitPrice(t *testing.T) {
 
 func TestSearchForDatePartialCode(t *testing.T) {
 	conn := newTestDB(t)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011_0107_1_1", true, 60)
+	tid := seedTenant(t, conn)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011_0107_1_1", true, 60)
 	svc := NewService(conn)
 
-	ms, err := svc.SearchForDate(context.Background(), "01_011", "2026-01-15", 0)
+	ms, err := svc.SearchForDate(tctx(tid), "01_011", "2026-01-15", 0)
 	if err != nil {
 		t.Fatalf("SearchForDate: %v", err)
 	}
@@ -53,11 +54,12 @@ func TestSearchForDatePartialCode(t *testing.T) {
 
 func TestSearchForDateOutsideWindowEmpty(t *testing.T) {
 	conn := newTestDB(t)
-	seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	tid := seedTenant(t, conn)
+	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
 	svc := NewService(conn)
 
 	// Service date before any catalogue window.
-	ms, err := svc.SearchForDate(context.Background(), "01_011", "2020-01-01", 0)
+	ms, err := svc.SearchForDate(tctx(tid), "01_011", "2020-01-01", 0)
 	if err != nil {
 		t.Fatalf("SearchForDate: %v", err)
 	}
@@ -68,22 +70,24 @@ func TestSearchForDateOutsideWindowEmpty(t *testing.T) {
 
 func TestSearchForDateEmptyDateErrors(t *testing.T) {
 	conn := newTestDB(t)
+	tid := seedTenant(t, conn)
 	svc := NewService(conn)
 
-	if _, err := svc.SearchForDate(context.Background(), "01_011", "", 0); err == nil {
+	if _, err := svc.SearchForDate(tctx(tid), "01_011", "", 0); err == nil {
 		t.Fatal("empty service date must error")
 	}
 }
 
 func TestSearchForDateLimitCaps(t *testing.T) {
 	conn := newTestDB(t)
-	verID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "2026-06-30", "01_001", true, 10)
-	addUnitPricedItemToVersion(t, conn, verID, "01_002", true, 10)
-	addUnitPricedItemToVersion(t, conn, verID, "01_003", true, 10)
+	tid := seedTenant(t, conn)
+	verID := seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_001", true, 10)
+	addUnitPricedItemToVersion(t, conn, tid, verID, "01_002", true, 10)
+	addUnitPricedItemToVersion(t, conn, tid, verID, "01_003", true, 10)
 	svc := NewService(conn)
 
 	// Broad keyword "01_" matches all three; limit caps to 2.
-	ms, err := svc.SearchForDate(context.Background(), "01_", "2026-01-15", 2)
+	ms, err := svc.SearchForDate(tctx(tid), "01_", "2026-01-15", 2)
 	if err != nil {
 		t.Fatalf("SearchForDate: %v", err)
 	}

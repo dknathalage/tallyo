@@ -1,7 +1,6 @@
 package pricelist
 
 import (
-	"context"
 	"testing"
 )
 
@@ -10,9 +9,10 @@ import (
 func TestSupportCatalogGetVersionAndListItems(t *testing.T) {
 	conn := newTestDB(t)
 	read := NewService(conn)
-	ctx := context.Background()
+	tid := seedTenant(t, conn)
+	ctx := tctx(tid)
 
-	versionID := seedUnitPricedItem(t, conn, "v1", "2025-07-01", "", "01_011_0107_1_1", true, 67.56)
+	versionID := seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "", "01_011_0107_1_1", true, 67.56)
 
 	ver, err := read.GetVersion(ctx, versionID)
 	if err != nil {
@@ -42,8 +42,9 @@ func TestSupportCatalogGetVersionAndListItems(t *testing.T) {
 func TestSupportCatalogGetVersionMissingReturnsNil(t *testing.T) {
 	conn := newTestDB(t)
 	read := NewService(conn)
+	tid := seedTenant(t, conn)
 
-	ver, err := read.GetVersion(context.Background(), 999999)
+	ver, err := read.GetVersion(tctx(tid), 999999)
 	if err != nil {
 		t.Fatalf("GetVersion missing: unexpected err %v", err)
 	}

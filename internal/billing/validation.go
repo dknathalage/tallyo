@@ -158,7 +158,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 	copy(out, items)
 	var ve ValidationError
 	for i := range out { // bounded by len(out)
-		v.validateLine(ctx, i, &out[i], &ve)
+		v.validateLine(ctx, tenantID, i, &out[i], &ve)
 	}
 	if len(ve.Errors) > 0 {
 		return nil, &ve
@@ -172,7 +172,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 // failures to ve. Support-item lines run the full catalogue flow; custom-item
 // lines run only the non-negativity checks. Errors are accumulated, not thrown,
 // so the caller collects every problem in one pass.
-func (v *LineValidator) validateLine(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) {
+func (v *LineValidator) validateLine(ctx context.Context, tenantID int64, idx int, line *LineItemInput, ve *ValidationError) {
 	if line == nil {
 		return
 	}
@@ -189,13 +189,13 @@ func (v *LineValidator) validateLine(ctx context.Context, idx int, line *LineIte
 		return
 	}
 
-	v.validateSupportLine(ctx, idx, line, ve)
+	v.validateSupportLine(ctx, tenantID, idx, line, ve)
 }
 
 // validateSupportLine runs the catalogue steps for a support-item line, mutating
 // the line (snapshots, pinned version, filled price, set taxable) and appending
 // failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) {
+func (v *LineValidator) validateSupportLine(ctx context.Context, tenantID int64, idx int, line *LineItemInput, ve *ValidationError) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for a catalogue item"})
 		return
@@ -206,13 +206,13 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, line *
 	// re-validating an already-priced invoice/estimate never re-prices it against a
 	// newer catalogue version (prices are frozen at create time). Only a NEW line
 	// (no pinned version) resolves by service date and gets pinned.
-	versionID, versionUUID, versionLabel, ok := v.resolveVersion(ctx, idx, line, ve)
+	versionID, versionUUID, versionLabel, ok := v.resolveVersion(ctx, tenantID, idx, line, ve)
 	if !ok {
 		return
 	}
 
 	// Step 2: find the item by code within that version; snapshot.
-	item, err := v.cat.GetItemByCode(ctx, versionID, line.Code)
+	item, err := v.cat.GetItemByCode(ctx, tenantID, versionID, line.Code)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "could not look up that support item code"})
 		return
@@ -236,16 +236,16 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, idx int, line *
 // has already appended the field error.
 // Returns (versionID for downstream control-DB lookups, versionUUID to pin onto
 // the tenant line, label, ok).
-func (v *LineValidator) resolveVersion(ctx context.Context, idx int, line *LineItemInput, ve *ValidationError) (int64, string, string, bool) {
+func (v *LineValidator) resolveVersion(ctx context.Context, tenantID int64, idx int, line *LineItemInput, ve *ValidationError) (int64, string, string, bool) {
 	if line.PriceListVersionID != nil && *line.PriceListVersionID != "" {
-		ver, err := v.cat.GetVersionByUUID(ctx, *line.PriceListVersionID)
+		ver, err := v.cat.GetVersionByUUID(ctx, tenantID, *line.PriceListVersionID)
 		if err != nil || ver == nil {
 			ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "the price-catalogue version pinned to this line could not be found"})
 			return 0, "", "", false
 		}
 		return ver.ID, ver.UUID, ver.Label, true
 	}
-	ver, err := v.cat.ResolveVersionForDate(ctx, line.ServiceDate)
+	ver, err := v.cat.ResolveVersionForDate(ctx, tenantID, line.ServiceDate)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "could not resolve a price catalogue for that service date"})
 		return 0, "", "", false
