@@ -42,20 +42,20 @@ type paymentRequest struct {
 
 // resolveInvoice translates the {invoiceUUID} path param into the invoice int
 // PK. Writes a 400 (bad uuid) or 404 (unknown) and returns ok=false on failure.
-func (h *PaymentHandler) resolveInvoice(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func (h *PaymentHandler) resolveInvoice(w http.ResponseWriter, r *http.Request) (string, bool) {
 	invoiceUUID, ok := httpx.ParseUUID(r, "invoiceUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
-		return 0, false
+		return "", false
 	}
 	invoiceID, err := h.svc.ResolveInvoiceID(r.Context(), invoiceUUID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return 0, false
+		return "", false
 	}
-	if invoiceID == 0 {
+	if invoiceID == "" {
 		httpx.WriteError(w, http.StatusNotFound, "not found")
-		return 0, false
+		return "", false
 	}
 	return invoiceID, true
 }

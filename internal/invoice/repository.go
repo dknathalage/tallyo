@@ -36,7 +36,7 @@ import (
 // invoiceListSelect mirrors the ListInvoices sqlc query body up to the WHERE.
 // Keep in sync with internal/db/queries/invoices.sql. The tenant filter is the
 // FIRST and ONLY ? in the base; listquery's c.Where is appended as " AND ...".
-const invoiceListSelect = `SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+const invoiceListSelect = `SELECT i.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
@@ -56,10 +56,9 @@ var InvoiceCols = listquery.Spec{
 // Invoice is the domain view of an invoice with its resolved client name
 // and embedded line items.
 type Invoice struct {
-	ID               int64               `json:"-"`  // internal PK; the public identifier is the uuid
-	UUID             string              `json:"id"` // public identifier (invoice uuid)
+	ID               string              `json:"id"` // public identifier (invoice uuid)
 	Number           string              `json:"number"`
-	ClientID         int64               `json:"-"`        // internal FK; the public ref is clientId (uuid)
+	ClientID         string              `json:"-"`        // internal FK; the public ref is clientId (uuid)
 	ClientUUID       string              `json:"clientId"` // client uuid
 	ClientName       string              `json:"clientName"`
 	PayerUUID        *string             `json:"payerId"` // payer uuid (nil when none)
@@ -84,8 +83,8 @@ type Invoice struct {
 // when non-empty, are stored verbatim; when empty, defaults are built from the
 // business profile, client and payer.
 type InvoiceInput struct {
-	ClientID         int64   `json:"clientId"`
-	PayerID          *int64  `json:"payerId"`
+	ClientID         string  `json:"clientId"`
+	PayerID          *string `json:"payerId"`
 	Status           string  `json:"status"`
 	IssueDate        string  `json:"issueDate"`
 	DueDate          string  `json:"dueDate"`
@@ -98,8 +97,8 @@ type InvoiceInput struct {
 
 // OverdueInvoice identifies an invoice flipped to overdue by MarkOverdue.
 type OverdueInvoice struct {
-	ID       int64  `json:"id"`
-	TenantID int64  `json:"tenantId"`
+	ID       string `json:"id"`
+	TenantID string `json:"tenantId"`
 	Number   string `json:"number"`
 }
 
@@ -126,7 +125,7 @@ func NewInvoices(db db.Executor) *InvoicesRepo {
 
 // fillSnapshots fills any empty snapshot field on in with a default built from
 // the business profile, client and payer.
-func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *InvoiceInput) {
+func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID string, in *InvoiceInput) {
 	if in.BusinessSnapshot == "" {
 		in.BusinessSnapshot = r.snap.Business(ctx, tenantID)
 	}
@@ -141,11 +140,11 @@ func (r *InvoicesRepo) fillSnapshots(ctx context.Context, tenantID int64, in *In
 // Create inserts an invoice plus its line items inside one numbering-retried
 // transaction, audits the create, and re-reads the row. ClientID and at
 // least one line item are required.
-func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
-	if tenantID == 0 {
+func (r *InvoicesRepo) Create(ctx context.Context, tenantID string, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
+	if tenantID == "" {
 		return nil, errors.New("create invoice: tenant id required")
 	}
-	if in.ClientID == 0 {
+	if in.ClientID == "" {
 		return nil, errors.New("create invoice: client is required")
 	}
 	if len(items) == 0 {
@@ -153,7 +152,7 @@ func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInp
 	}
 	r.fillSnapshots(ctx, tenantID, &in)
 
-	var newID int64
+	var newID string
 	err := numbering.WithRetry(ctx, 10, func() error {
 		return r.createTx(ctx, tenantID, in, items, &newID)
 	})
@@ -165,7 +164,7 @@ func (r *InvoicesRepo) Create(ctx context.Context, tenantID int64, in InvoiceInp
 
 // createTx runs a single create attempt: it allocates the per-tenant number,
 // inserts the header + items, and logs the audit row, all in one transaction.
-func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceInput, items []billing.LineItemInput, newID *int64) error {
+func (r *InvoicesRepo) createTx(ctx context.Context, tenantID string, in InvoiceInput, items []billing.LineItemInput, newID *string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -200,8 +199,8 @@ func (r *InvoicesRepo) createTx(ctx context.Context, tenantID int64, in InvoiceI
 // draftSessionItem holds the validated facts about one session that DraftFromSessions
 // needs: its client and the number of unbilled items it carries.
 type draftSessionItem struct {
-	sessionID int64
-	clientID  int64
+	sessionID string
+	clientID  string
 	itemCount int64
 }
 
@@ -209,35 +208,35 @@ type draftSessionItem struct {
 // preconditions: the session exists for the tenant, is status 'recorded' with no
 // invoice yet, carries at least one unbilled item (G5), and every session shares
 // one client. Returns the shared client id and the per-session facts.
-func (r *InvoicesRepo) validateDraftSessions(ctx context.Context, tenantID int64, sessionIDs []int64) (int64, []draftSessionItem, error) {
+func (r *InvoicesRepo) validateDraftSessions(ctx context.Context, tenantID string, sessionIDs []string) (string, []draftSessionItem, error) {
 	if len(sessionIDs) == 0 {
-		return 0, nil, errors.New("draft from sessions: at least one session is required")
+		return "", nil, errors.New("draft from sessions: at least one session is required")
 	}
 	q := gen.New(r.db)
-	var clientID int64
+	var clientID string
 	facts := make([]draftSessionItem, 0, len(sessionIDs))
 	for i := range sessionIDs { // bounded by len(sessionIDs)
 		sh, err := q.GetSessionByID(ctx, gen.GetSessionByIDParams{TenantID: tenantID, ID: sessionIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil, fmt.Errorf("draft from sessions: session %d not found", sessionIDs[i])
+			return "", nil, fmt.Errorf("draft from sessions: session %s not found", sessionIDs[i])
 		}
 		if err != nil {
-			return 0, nil, fmt.Errorf("draft from sessions: load session %d: %w", sessionIDs[i], err)
+			return "", nil, fmt.Errorf("draft from sessions: load session %s: %w", sessionIDs[i], err)
 		}
 		if sh.Status != "recorded" || sh.InvoiceID.Valid {
-			return 0, nil, fmt.Errorf("draft from sessions: session %d is not recorded+unbilled", sessionIDs[i])
+			return "", nil, fmt.Errorf("draft from sessions: session %s is not recorded+unbilled", sessionIDs[i])
 		}
 		if i == 0 {
 			clientID = sh.ClientID
 		} else if sh.ClientID != clientID {
-			return 0, nil, errors.New("draft from sessions: all sessions must share one client")
+			return "", nil, errors.New("draft from sessions: all sessions must share one client")
 		}
-		n, err := q.CountSessionItems(ctx, gen.CountSessionItemsParams{TenantID: tenantID, SessionID: sql.NullInt64{Int64: sessionIDs[i], Valid: true}})
+		n, err := q.CountSessionItems(ctx, gen.CountSessionItemsParams{TenantID: tenantID, SessionID: sql.NullString{String: sessionIDs[i], Valid: true}})
 		if err != nil {
-			return 0, nil, fmt.Errorf("draft from sessions: count items %d: %w", sessionIDs[i], err)
+			return "", nil, fmt.Errorf("draft from sessions: count items %s: %w", sessionIDs[i], err)
 		}
 		if n == 0 {
-			return 0, nil, fmt.Errorf("draft from sessions: session %d has no items", sessionIDs[i])
+			return "", nil, fmt.Errorf("draft from sessions: session %s has no items", sessionIDs[i])
 		}
 		facts = append(facts, draftSessionItem{sessionID: sessionIDs[i], clientID: sh.ClientID, itemCount: n})
 	}
@@ -249,8 +248,8 @@ func (r *InvoicesRepo) validateDraftSessions(ctx context.Context, tenantID int64
 // the now-linked lines — all in ONE numbering-retried transaction. The sessions
 // table is NOT written here; the caller advances the sessions to 'drafted'
 // afterwards (a separate, post-commit step), mirroring Delete↔ClearForInvoice.
-func (r *InvoicesRepo) DraftFromSessions(ctx context.Context, tenantID, clientID int64, facts []draftSessionItem) (*Invoice, error) {
-	if tenantID == 0 || clientID == 0 {
+func (r *InvoicesRepo) DraftFromSessions(ctx context.Context, tenantID, clientID string, facts []draftSessionItem) (*Invoice, error) {
+	if tenantID == "" || clientID == "" {
 		return nil, errors.New("draft from sessions: tenant and client id required")
 	}
 	in := InvoiceInput{ClientID: clientID, Status: "draft"}
@@ -259,7 +258,7 @@ func (r *InvoicesRepo) DraftFromSessions(ctx context.Context, tenantID, clientID
 	in.DueDate = now
 	r.fillSnapshots(ctx, tenantID, &in)
 
-	var newID int64
+	var newID string
 	err := numbering.WithRetry(ctx, 10, func() error {
 		return r.draftTx(ctx, tenantID, in, facts, &newID)
 	})
@@ -272,7 +271,7 @@ func (r *InvoicesRepo) DraftFromSessions(ctx context.Context, tenantID, clientID
 // draftTx runs one draft attempt: allocate the number, insert a zero-total
 // header, link each session's items (assigning a sort_order base), recompute
 // totals from the linked lines, persist them, and audit — all in one tx.
-func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceInput, facts []draftSessionItem, newID *int64) error {
+func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID string, in InvoiceInput, facts []draftSessionItem, newID *string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -291,17 +290,17 @@ func (r *InvoicesRepo) draftTx(ctx context.Context, tenantID int64, in InvoiceIn
 	var sortBase int64
 	for i := range facts { // bounded by len(facts)
 		if e := q.LinkSessionItemsToInvoice(ctx, gen.LinkSessionItemsToInvoiceParams{
-			InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true},
+			InvoiceID: sql.NullString{String: inv.ID, Valid: true},
 			SortOrder: sql.NullInt64{Int64: sortBase, Valid: true},
 			TenantID:  tenantID,
-			SessionID: sql.NullInt64{Int64: facts[i].sessionID, Valid: true},
+			SessionID: sql.NullString{String: facts[i].sessionID, Valid: true},
 		}); e != nil {
-			return fmt.Errorf("link session %d: %w", facts[i].sessionID, e)
+			return fmt.Errorf("link session %s: %w", facts[i].sessionID, e)
 		}
 		sortBase += facts[i].itemCount
 	}
 	lines, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{
-		TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true},
+		TenantID: tenantID, InvoiceID: sql.NullString{String: inv.ID, Valid: true},
 	})
 	if err != nil {
 		return fmt.Errorf("list linked lines: %w", err)
@@ -340,7 +339,7 @@ func totalsFromRows(rows []gen.ListLineItemsForInvoiceRow) billing.Totals {
 
 // NextInvoiceNumber allocates the next per-tenant invoice number ("INV-NNNN").
 // Exported so that estimate and recurring repositories can reuse it.
-func NextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (string, error) {
+func NextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID string) (string, error) {
 	const prefix = "INV-"
 	max, err := q.MaxInvoiceNumberLike(ctx, gen.MaxInvoiceNumberLikeParams{
 		PrefixLen: int64(len(prefix)),
@@ -355,15 +354,15 @@ func NextInvoiceNumber(ctx context.Context, q *gen.Queries, tenantID int64) (str
 
 // createInvoiceParams builds the insert params, applying defaults (draft) and
 // computing totals from the line items.
-func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineItemInput, num string) gen.CreateInvoiceParams {
+func createInvoiceParams(tenantID string, in InvoiceInput, items []billing.LineItemInput, num string) gen.CreateInvoiceParams {
 	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateInvoiceParams{
-		Uuid:             ids.New(),
+		ID:               ids.New(),
 		TenantID:         tenantID,
 		Number:           num,
 		ClientID:         in.ClientID,
-		PayerID:          db.NullID(in.PayerID),
+		PayerID:          db.NullStr(in.PayerID),
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
 		DueDate:          in.DueDate,
@@ -381,7 +380,7 @@ func createInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 
 // InsertLineItems writes each line item with its computed total. Bounded by len.
 // Exported so that recurring repository can reuse it.
-func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID int64, items []billing.LineItemInput) error {
+func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID string, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		customItemID, err := billing.ResolveCustomItemID(ctx, q, tenantID, it.CustomItemID)
@@ -389,10 +388,10 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 			return fmt.Errorf("insert line item %d: %w", i, err)
 		}
 		_, err = q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			Uuid:               ids.New(),
+			ID:                 ids.New(),
 			TenantID:           tenantID,
-			SessionID:          sql.NullInt64{}, // invoice lines from this path are not session items
-			InvoiceID:          sql.NullInt64{Int64: invoiceID, Valid: true},
+			SessionID:          sql.NullString{}, // invoice lines from this path are not session items
+			InvoiceID:          sql.NullString{String: invoiceID, Valid: true},
 			ItemID:             db.NullStr(it.ItemID),
 			CustomItemID:       customItemID,
 			PriceListVersionID: db.NullStr(it.PriceListVersionID),
@@ -417,7 +416,7 @@ func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID in
 
 // Get returns the invoice (with client name and line items), or (nil, nil)
 // when absent.
-func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, error) {
+func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id string) (*Invoice, error) {
 	q := gen.New(r.db)
 	row, err := q.GetInvoiceByID(ctx, gen.GetInvoiceByIDParams{TenantID: tenantID, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -432,9 +431,9 @@ func (r *InvoicesRepo) Get(ctx context.Context, tenantID, id int64) (*Invoice, e
 
 // GetByUUID returns the invoice (with line items) addressed by its uuid, or
 // (nil, nil) when no invoice matches the uuid for the tenant. Public HTTP read.
-func (r *InvoicesRepo) GetByUUID(ctx context.Context, tenantID int64, invoiceUUID string) (*Invoice, error) {
+func (r *InvoicesRepo) GetByUUID(ctx context.Context, tenantID string, invoiceUUID string) (*Invoice, error) {
 	q := gen.New(r.db)
-	row, err := q.GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, Uuid: invoiceUUID})
+	row, err := q.GetInvoice(ctx, gen.GetInvoiceParams{TenantID: tenantID, ID: invoiceUUID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -447,8 +446,8 @@ func (r *InvoicesRepo) GetByUUID(ctx context.Context, tenantID int64, invoiceUUI
 
 // enrichInvoice loads an invoice's line items and total-paid/balance. The
 // invoice's int PK (inv.ID) keys the lookups.
-func (r *InvoicesRepo) enrichInvoice(ctx context.Context, q *gen.Queries, tenantID int64, inv *Invoice) (*Invoice, error) {
-	rows, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: inv.ID, Valid: true}})
+func (r *InvoicesRepo) enrichInvoice(ctx context.Context, q *gen.Queries, tenantID string, inv *Invoice) (*Invoice, error) {
+	rows, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullString{String: inv.ID, Valid: true}})
 	if err != nil {
 		return nil, fmt.Errorf("list line items: %w", err)
 	}
@@ -464,19 +463,19 @@ func (r *InvoicesRepo) enrichInvoice(ctx context.Context, q *gen.Queries, tenant
 
 // ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
 // tenant. Returns (0, nil) when no invoice matches the uuid (caller 404s).
-func (r *InvoicesRepo) ResolveInvoiceID(ctx context.Context, tenantID int64, invoiceUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, Uuid: invoiceUUID})
+func (r *InvoicesRepo) ResolveInvoiceID(ctx context.Context, tenantID string, invoiceUUID string) (string, error) {
+	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, ID: invoiceUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return "", nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve invoice uuid: %w", err)
+		return "", fmt.Errorf("resolve invoice uuid: %w", err)
 	}
 	return id, nil
 }
 
 // List returns every invoice for the tenant (header only), newest first.
-func (r *InvoicesRepo) List(ctx context.Context, tenantID int64) ([]*Invoice, error) {
+func (r *InvoicesRepo) List(ctx context.Context, tenantID string) ([]*Invoice, error) {
 	rows, err := gen.New(r.db).ListInvoices(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list invoices: %w", err)
@@ -492,8 +491,8 @@ func (r *InvoicesRepo) List(ctx context.Context, tenantID int64) ([]*Invoice, er
 // the filter (ignoring pagination). The clause is built by listquery from an
 // allowlisted spec, so its Where/Order fragments are injection-safe. Default
 // order (no sort requested) is newest first, matching ListInvoices.
-func (r *InvoicesRepo) Query(ctx context.Context, tenantID int64, c listquery.Clause) ([]*Invoice, int64, error) {
-	if tenantID == 0 {
+func (r *InvoicesRepo) Query(ctx context.Context, tenantID string, c listquery.Clause) ([]*Invoice, int64, error) {
+	if tenantID == "" {
 		return nil, 0, errors.New("query invoices: tenant id required")
 	}
 	var total int64
@@ -516,8 +515,8 @@ func (r *InvoicesRepo) Query(ctx context.Context, tenantID int64, c listquery.Cl
 	out := make([]*Invoice, 0, 50)
 	for rows.Next() { // bounded by LIMIT in the query
 		var f invoiceFields
-		var tenant int64
-		if err := rows.Scan(&f.id, &f.uuid, &tenant, &f.number, &f.clientID,
+		var tenant string
+		if err := rows.Scan(&f.id, &tenant, &f.number, &f.clientID,
 			&f.payerID, &f.status, &f.issueDate, &f.dueDate, &f.subtotal,
 			&f.tax, &f.total, &f.notes, &f.businessSnap, &f.clientSnap, &f.payerSnap,
 			&f.createdAt, &f.updatedAt, &f.clientName, &f.clientUUID, &f.payerUUID); err != nil {
@@ -532,7 +531,7 @@ func (r *InvoicesRepo) Query(ctx context.Context, tenantID int64, c listquery.Cl
 }
 
 // ListByStatus returns the tenant's invoices with the given status.
-func (r *InvoicesRepo) ListByStatus(ctx context.Context, tenantID int64, status string) ([]*Invoice, error) {
+func (r *InvoicesRepo) ListByStatus(ctx context.Context, tenantID string, status string) ([]*Invoice, error) {
 	rows, err := gen.New(r.db).ListInvoicesByStatus(ctx, gen.ListInvoicesByStatusParams{
 		TenantID: tenantID,
 		Status:   status,
@@ -548,7 +547,7 @@ func (r *InvoicesRepo) ListByStatus(ctx context.Context, tenantID int64, status 
 }
 
 // ListClientInvoices returns one client's invoices (header only).
-func (r *InvoicesRepo) ListClientInvoices(ctx context.Context, tenantID, clientID int64) ([]*Invoice, error) {
+func (r *InvoicesRepo) ListClientInvoices(ctx context.Context, tenantID, clientID string) ([]*Invoice, error) {
 	rows, err := gen.New(r.db).ListClientInvoices(ctx, gen.ListClientInvoicesParams{
 		TenantID: tenantID,
 		ClientID: clientID,
@@ -566,8 +565,8 @@ func (r *InvoicesRepo) ListClientInvoices(ctx context.Context, tenantID, clientI
 // Update rewrites the header (recomputing totals) and replaces all line items,
 // atomically with one audit row. Empty snapshot inputs keep the existing stored
 // snapshots. Returns (nil, nil) when the invoice does not exist.
-func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
-	if in.ClientID == 0 {
+func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id string, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
+	if in.ClientID == "" {
 		return nil, errors.New("update invoice: client is required")
 	}
 	if len(items) == 0 {
@@ -589,7 +588,7 @@ func (r *InvoicesRepo) Update(ctx context.Context, tenantID, id int64, in Invoic
 		if _, e := q.UpdateInvoice(ctx, updateInvoiceParams(tenantID, in, items, existing.Number, id)); e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		if e := q.DeleteLineItemsForInvoice(ctx, gen.DeleteLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true}}); e != nil {
+		if e := q.DeleteLineItemsForInvoice(ctx, gen.DeleteLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullString{String: id, Valid: true}}); e != nil {
 			return fmt.Errorf("clear items: %w", e)
 		}
 		return InsertLineItems(ctx, q, tenantID, id, items)
@@ -615,13 +614,13 @@ func keepSnapshots(in *InvoiceInput, existing gen.GetInvoiceByIDRow) {
 
 // updateInvoiceParams builds the update params, recomputing totals from items.
 // The document number is immutable, so the existing number is preserved.
-func updateInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineItemInput, number string, id int64) gen.UpdateInvoiceParams {
+func updateInvoiceParams(tenantID string, in InvoiceInput, items []billing.LineItemInput, number string, id string) gen.UpdateInvoiceParams {
 	t := billing.ComputeTotals(items, in.Tax)
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateInvoiceParams{
 		Number:           number,
 		ClientID:         in.ClientID,
-		PayerID:          db.NullID(in.PayerID),
+		PayerID:          db.NullStr(in.PayerID),
 		Status:           orDefault(in.Status, "draft"),
 		IssueDate:        in.IssueDate,
 		DueDate:          in.DueDate,
@@ -639,7 +638,7 @@ func updateInvoiceParams(tenantID int64, in InvoiceInput, items []billing.LineIt
 }
 
 // UpdateStatus sets just the status column, atomically with one audit row.
-func (r *InvoicesRepo) UpdateStatus(ctx context.Context, tenantID, id int64, status string) error {
+func (r *InvoicesRepo) UpdateStatus(ctx context.Context, tenantID, id string, status string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "status",
 		Changes: audit.Changes(map[string]any{"status": status}),
@@ -658,13 +657,13 @@ func (r *InvoicesRepo) UpdateStatus(ctx context.Context, tenantID, id int64, sta
 // (invoice_id→NULL) BEFORE the delete so the line_items.invoice_id ON DELETE
 // CASCADE removes only session-less manual lines; session items survive (session_id
 // intact) and return to their session. Unlink + cascade are atomic in one tx.
-func (r *InvoicesRepo) Delete(ctx context.Context, tenantID, id int64) error {
+func (r *InvoicesRepo) Delete(ctx context.Context, tenantID, id string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{
 		EntityType: "invoice", EntityID: id, Action: "delete",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		if e := q.UnlinkSessionItemsFromInvoice(ctx, gen.UnlinkSessionItemsFromInvoiceParams{
-			TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true},
+			TenantID: tenantID, InvoiceID: sql.NullString{String: id, Valid: true},
 		}); e != nil {
 			return fmt.Errorf("unlink session items: %w", e)
 		}
@@ -676,7 +675,7 @@ func (r *InvoicesRepo) Delete(ctx context.Context, tenantID, id int64) error {
 }
 
 // BulkDelete removes several invoices and writes one audit row. Empty is a no-op.
-func (r *InvoicesRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int64) error {
+func (r *InvoicesRepo) BulkDelete(ctx context.Context, tenantID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -684,23 +683,23 @@ func (r *InvoicesRepo) BulkDelete(ctx context.Context, tenantID int64, ids []int
 		q := gen.New(tx)
 		for _, id := range ids { // bounded by len(ids)
 			if e := q.UnlinkSessionItemsFromInvoice(ctx, gen.UnlinkSessionItemsFromInvoiceParams{
-				TenantID: tenantID, InvoiceID: sql.NullInt64{Int64: id, Valid: true},
+				TenantID: tenantID, InvoiceID: sql.NullString{String: id, Valid: true},
 			}); e != nil {
-				return fmt.Errorf("unlink session items %d: %w", id, e)
+				return fmt.Errorf("unlink session items %s: %w", id, e)
 			}
 			if e := q.DeleteInvoice(ctx, gen.DeleteInvoiceParams{TenantID: tenantID, ID: id}); e != nil {
-				return fmt.Errorf("delete %d: %w", id, e)
+				return fmt.Errorf("delete %s: %w", id, e)
 			}
 		}
 		return audit.Log(ctx, tx, audit.Entry{
-			EntityType: "invoice", EntityID: 0, Action: "bulk_delete",
+			EntityType: "invoice", EntityID: "", Action: "bulk_delete",
 			Changes: audit.Changes(map[string]any{"ids": ids}),
 		})
 	})
 }
 
 // BulkUpdateStatus sets the status of several invoices and writes one audit row.
-func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, ids []int64, status string) error {
+func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID string, ids []string, status string) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -711,11 +710,11 @@ func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, ids
 			if e := q.UpdateInvoiceStatus(ctx, gen.UpdateInvoiceStatusParams{
 				Status: status, UpdatedAt: now, TenantID: tenantID, ID: id,
 			}); e != nil {
-				return fmt.Errorf("status %d: %w", id, e)
+				return fmt.Errorf("status %s: %w", id, e)
 			}
 		}
 		return audit.Log(ctx, tx, audit.Entry{
-			EntityType: "invoice", EntityID: 0, Action: "bulk_status",
+			EntityType: "invoice", EntityID: "", Action: "bulk_status",
 			Changes: audit.Changes(map[string]any{"ids": ids, "status": status}),
 		})
 	})
@@ -725,8 +724,8 @@ func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID int64, ids
 // has passed to 'overdue', auditing each, atomically. Returns the affected
 // invoices. This is the per-tenant sweep path (spec §8): the caller iterates
 // active tenants and skips suspended ones.
-func (r *InvoicesRepo) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]OverdueInvoice, error) {
-	if tenantID == 0 {
+func (r *InvoicesRepo) MarkOverdueForTenant(ctx context.Context, tenantID string) ([]OverdueInvoice, error) {
+	if tenantID == "" {
 		return nil, errors.New("mark overdue: tenant id required")
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -756,7 +755,7 @@ func (r *InvoicesRepo) MarkOverdueForTenant(ctx context.Context, tenantID int64)
 
 // ActiveTenantIDs returns the ids of tenants whose status is 'active' (suspended
 // tenants are excluded), used by the per-tenant sweeps.
-func (r *InvoicesRepo) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+func (r *InvoicesRepo) ActiveTenantIDs(ctx context.Context) ([]string, error) {
 	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("active tenant ids: %w", err)
@@ -765,7 +764,7 @@ func (r *InvoicesRepo) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
 }
 
 // flipOverdue sets one invoice to overdue and logs the transition.
-func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, tenantID, id int64, now string) error {
+func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, tenantID, id string, now string) error {
 	if e := q.UpdateInvoiceStatus(ctx, gen.UpdateInvoiceStatusParams{
 		Status: "overdue", UpdatedAt: now, TenantID: tenantID, ID: id,
 	}); e != nil {
@@ -780,7 +779,7 @@ func flipOverdue(ctx context.Context, tx *sql.Tx, q *gen.Queries, tenantID, id i
 // Exists reports whether the tenant has an invoice with the given id.
 // It satisfies the session.InvoiceChecker interface so the session service can
 // verify invoice ownership without importing the invoice package.
-func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID int64) (bool, error) {
+func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID string) (bool, error) {
 	inv, err := r.Get(ctx, tenantID, invoiceID)
 	if err != nil {
 		return false, err
@@ -790,37 +789,37 @@ func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID int64) (b
 
 // ResolveClientID translates a client uuid into its int PK, scoped to
 // the tenant. Returns (0, nil) when no client matches (caller 404s).
-func (r *InvoicesRepo) ResolveClientID(ctx context.Context, tenantID int64, clientUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: clientUUID})
+func (r *InvoicesRepo) ResolveClientID(ctx context.Context, tenantID string, clientUUID string) (string, error) {
+	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, ID: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return "", nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve client uuid: %w", err)
+		return "", fmt.Errorf("resolve client uuid: %w", err)
 	}
 	return id, nil
 }
 
 // ResolvePayerID translates a payer uuid into its int PK, scoped to
 // the tenant. Returns (0, nil) when no payer matches (caller 400s).
-func (r *InvoicesRepo) ResolvePayerID(ctx context.Context, tenantID int64, payerUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, Uuid: payerUUID})
+func (r *InvoicesRepo) ResolvePayerID(ctx context.Context, tenantID string, payerUUID string) (string, error) {
+	id, err := gen.New(r.db).GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, ID: payerUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return "", nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve payer uuid: %w", err)
+		return "", fmt.Errorf("resolve payer uuid: %w", err)
 	}
 	return id, nil
 }
 
 // ResolveSessionIDs translates session uuids into their int PKs (preserving order),
 // tenant-scoped. An unknown uuid is an error so draft-from-sessions can 400.
-func (r *InvoicesRepo) ResolveSessionIDs(ctx context.Context, tenantID int64, sessionUUIDs []string) ([]int64, error) {
+func (r *InvoicesRepo) ResolveSessionIDs(ctx context.Context, tenantID string, sessionUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)
-	out := make([]int64, 0, len(sessionUUIDs))
+	out := make([]string, 0, len(sessionUUIDs))
 	for i := range sessionUUIDs { // bounded by len(sessionUUIDs)
-		id, err := q.GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, Uuid: sessionUUIDs[i]})
+		id, err := q.GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, ID: sessionUUIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("unknown session %q", sessionUUIDs[i])
 		}
@@ -834,11 +833,11 @@ func (r *InvoicesRepo) ResolveSessionIDs(ctx context.Context, tenantID int64, se
 
 // ResolveInvoiceIDs translates invoice uuids into their int PKs (preserving
 // order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
-func (r *InvoicesRepo) ResolveInvoiceIDs(ctx context.Context, tenantID int64, invoiceUUIDs []string) ([]int64, error) {
+func (r *InvoicesRepo) ResolveInvoiceIDs(ctx context.Context, tenantID string, invoiceUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)
-	out := make([]int64, 0, len(invoiceUUIDs))
+	out := make([]string, 0, len(invoiceUUIDs))
 	for i := range invoiceUUIDs { // bounded by len(invoiceUUIDs)
-		id, err := q.GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, Uuid: invoiceUUIDs[i]})
+		id, err := q.GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, ID: invoiceUUIDs[i]})
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("unknown invoice %q", invoiceUUIDs[i])
 		}
@@ -852,7 +851,7 @@ func (r *InvoicesRepo) ResolveInvoiceIDs(ctx context.Context, tenantID int64, in
 
 // ClientStats returns the count and summed totals of a client's
 // invoices.
-func (r *InvoicesRepo) ClientStats(ctx context.Context, tenantID, clientID int64) (*ClientStats, error) {
+func (r *InvoicesRepo) ClientStats(ctx context.Context, tenantID, clientID string) (*ClientStats, error) {
 	row, err := gen.New(r.db).ClientInvoiceStats(ctx, gen.ClientInvoiceStatsParams{
 		TenantID: tenantID,
 		ClientID: clientID,
@@ -867,10 +866,10 @@ func (r *InvoicesRepo) ClientStats(ctx context.Context, tenantID, clientID int64
 // ListByStatus, ListClientInvoices and Get all produce identical structs
 // under distinct gen type names, each adding ClientName).
 type invoiceFields struct {
-	id                                  int64
-	uuid, number                        string
-	clientID                            int64
-	payerID                             sql.NullInt64
+	id                                  string
+	number                              string
+	clientID                            string
+	payerID                             sql.NullString
 	status, issueDate, dueDate          string
 	subtotal, tax, total                float64
 	notes                               sql.NullString
@@ -886,7 +885,6 @@ type invoiceFields struct {
 func toInvoiceFromRow(f invoiceFields) *Invoice {
 	return &Invoice{
 		ID:               f.id,
-		UUID:             f.uuid,
 		Number:           f.number,
 		ClientID:         f.clientID,
 		ClientUUID:       f.clientUUID.String,
@@ -910,7 +908,7 @@ func toInvoiceFromRow(f invoiceFields) *Invoice {
 
 func invoiceFieldsFromGet(r gen.GetInvoiceRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		id: r.ID, number: r.Number, clientID: r.ClientID,
 		payerID: r.PayerID,
 		status:  r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
@@ -922,7 +920,7 @@ func invoiceFieldsFromGet(r gen.GetInvoiceRow) invoiceFields {
 
 func invoiceFieldsFromGetByID(r gen.GetInvoiceByIDRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		id: r.ID, number: r.Number, clientID: r.ClientID,
 		payerID: r.PayerID,
 		status:  r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
@@ -934,7 +932,7 @@ func invoiceFieldsFromGetByID(r gen.GetInvoiceByIDRow) invoiceFields {
 
 func invoiceFieldsFromList(r gen.ListInvoicesRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		id: r.ID, number: r.Number, clientID: r.ClientID,
 		payerID: r.PayerID,
 		status:  r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
@@ -946,7 +944,7 @@ func invoiceFieldsFromList(r gen.ListInvoicesRow) invoiceFields {
 
 func invoiceFieldsFromStatus(r gen.ListInvoicesByStatusRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		id: r.ID, number: r.Number, clientID: r.ClientID,
 		payerID: r.PayerID,
 		status:  r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,
@@ -958,7 +956,7 @@ func invoiceFieldsFromStatus(r gen.ListInvoicesByStatusRow) invoiceFields {
 
 func invoiceFieldsFromClient(r gen.ListClientInvoicesRow) invoiceFields {
 	return invoiceFields{
-		id: r.ID, uuid: r.Uuid, number: r.Number, clientID: r.ClientID,
+		id: r.ID, number: r.Number, clientID: r.ClientID,
 		payerID: r.PayerID,
 		status:  r.Status, issueDate: r.IssueDate, dueDate: r.DueDate,
 		subtotal: r.Subtotal, tax: r.Tax, total: r.Total, notes: r.Notes,

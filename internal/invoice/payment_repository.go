@@ -16,9 +16,8 @@ import (
 // Payment is the domain view of a row in the payments table. Nullable columns
 // are unwrapped to plain strings.
 type Payment struct {
-	ID        int64   `json:"-"`  // internal PK; the public identifier is the uuid
-	UUID      string  `json:"id"` // public identifier (payment uuid)
-	InvoiceID int64   `json:"-"`  // internal FK (the payment hangs under its invoice's uuid path)
+	ID        string  `json:"id"` // public identifier (payment uuid)
+	InvoiceID string  `json:"-"`  // internal FK (the payment hangs under its invoice's uuid path)
 	Amount    float64 `json:"amount"`
 	PaidAt    string  `json:"paidAt"`
 	Method    string  `json:"method"`
@@ -30,7 +29,7 @@ type Payment struct {
 
 // PaymentInput is the writable subset of a payment.
 type PaymentInput struct {
-	InvoiceID int64   `json:"invoiceId"`
+	InvoiceID string  `json:"invoiceId"`
 	Amount    float64 `json:"amount"`
 	PaidAt    string  `json:"paidAt"`
 	Method    string  `json:"method"`
@@ -54,11 +53,11 @@ func NewPayments(db db.Executor) *PaymentsRepo {
 
 // Create inserts a payment and writes one audit row, atomically. The invoice id
 // is required and the amount must be positive.
-func (r *PaymentsRepo) Create(ctx context.Context, tenantID int64, in PaymentInput) (*Payment, error) {
-	if tenantID == 0 {
+func (r *PaymentsRepo) Create(ctx context.Context, tenantID string, in PaymentInput) (*Payment, error) {
+	if tenantID == "" {
 		return nil, errors.New("create payment: tenant id required")
 	}
-	if in.InvoiceID == 0 {
+	if in.InvoiceID == "" {
 		return nil, errors.New("create payment: invoice id required")
 	}
 	if in.Amount <= 0 {
@@ -69,7 +68,7 @@ func (r *PaymentsRepo) Create(ctx context.Context, tenantID int64, in PaymentInp
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		p, e := gen.New(tx).CreatePayment(ctx, gen.CreatePaymentParams{
-			Uuid:      ids.New(),
+			ID:        ids.New(),
 			TenantID:  tenantID,
 			InvoiceID: in.InvoiceID,
 			Amount:    in.Amount,
@@ -98,7 +97,7 @@ func (r *PaymentsRepo) Create(ctx context.Context, tenantID int64, in PaymentInp
 }
 
 // ListForInvoice returns one invoice's payments ordered by paid date.
-func (r *PaymentsRepo) ListForInvoice(ctx context.Context, tenantID, invoiceID int64) ([]*Payment, error) {
+func (r *PaymentsRepo) ListForInvoice(ctx context.Context, tenantID, invoiceID string) ([]*Payment, error) {
 	rows, err := gen.New(r.db).ListInvoicePayments(ctx, gen.ListInvoicePaymentsParams{
 		TenantID:  tenantID,
 		InvoiceID: invoiceID,
@@ -114,7 +113,7 @@ func (r *PaymentsRepo) ListForInvoice(ctx context.Context, tenantID, invoiceID i
 }
 
 // TotalPaid returns the summed amount of an invoice's payments.
-func (r *PaymentsRepo) TotalPaid(ctx context.Context, tenantID, invoiceID int64) (float64, error) {
+func (r *PaymentsRepo) TotalPaid(ctx context.Context, tenantID, invoiceID string) (float64, error) {
 	total, err := gen.New(r.db).InvoiceTotalPaid(ctx, gen.InvoiceTotalPaidParams{
 		TenantID:  tenantID,
 		InvoiceID: invoiceID,
@@ -128,7 +127,7 @@ func (r *PaymentsRepo) TotalPaid(ctx context.Context, tenantID, invoiceID int64)
 // Delete removes a payment and writes one audit row, atomically. It returns the
 // deleted payment's invoice id so the caller can broadcast an invoice update.
 // A missing payment surfaces sql.ErrNoRows so the caller can 404.
-func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (paymentUUID string, invoiceID int64, err error) {
+func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id string) (paymentUUID string, invoiceID string, err error) {
 	err = audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		p, e := q.GetPayment(ctx, gen.GetPaymentParams{TenantID: tenantID, ID: id})
@@ -138,7 +137,7 @@ func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (paymentU
 		if e := q.DeletePayment(ctx, gen.DeletePaymentParams{TenantID: tenantID, ID: id}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
-		paymentUUID = p.Uuid
+		paymentUUID = p.ID
 		invoiceID = p.InvoiceID
 		return audit.Log(ctx, tx, audit.Entry{
 			EntityType: "payment",
@@ -148,23 +147,23 @@ func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id int64) (paymentU
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", 0, sql.ErrNoRows
+		return "", "", sql.ErrNoRows
 	}
 	if err != nil {
-		return "", 0, fmt.Errorf("delete payment: %w", err)
+		return "", "", fmt.Errorf("delete payment: %w", err)
 	}
 	return paymentUUID, invoiceID, nil
 }
 
 // ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
 // tenant. Returns (0, nil) when no invoice matches (caller 404s).
-func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID int64, invoiceUUID string) (int64, error) {
-	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, Uuid: invoiceUUID})
+func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID string, invoiceUUID string) (string, error) {
+	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, ID: invoiceUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return "", nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("resolve invoice uuid: %w", err)
+		return "", fmt.Errorf("resolve invoice uuid: %w", err)
 	}
 	return id, nil
 }
@@ -172,7 +171,7 @@ func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID int64, inv
 // InvoiceUUID returns the public uuid of an invoice by its int PK (tenant-scoped),
 // or "" when no invoice matches. Used to broadcast the invoice-update SSE event
 // after a payment mutation without leaking the int PK.
-func (r *PaymentsRepo) InvoiceUUID(ctx context.Context, tenantID, invoiceID int64) (string, error) {
+func (r *PaymentsRepo) InvoiceUUID(ctx context.Context, tenantID, invoiceID string) (string, error) {
 	row, err := gen.New(r.db).GetInvoiceByID(ctx, gen.GetInvoiceByIDParams{TenantID: tenantID, ID: invoiceID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
@@ -180,22 +179,22 @@ func (r *PaymentsRepo) InvoiceUUID(ctx context.Context, tenantID, invoiceID int6
 	if err != nil {
 		return "", fmt.Errorf("resolve invoice uuid: %w", err)
 	}
-	return row.Uuid, nil
+	return row.ID, nil
 }
 
 // DeleteByUUID removes a payment addressed by its uuid, scoped to the owning
 // invoice's int id (so a payment uuid from another invoice 404s), writing one
 // audit row. Returns the invoice id so the caller can broadcast an invoice
 // update. A missing payment surfaces sql.ErrNoRows so the caller can 404.
-func (r *PaymentsRepo) DeleteByUUID(ctx context.Context, tenantID, invoiceID int64, paymentUUID string) (int64, error) {
-	var deletedInvoiceID int64
+func (r *PaymentsRepo) DeleteByUUID(ctx context.Context, tenantID, invoiceID string, paymentUUID string) (string, error) {
+	var deletedInvoiceID string
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		p, e := q.GetPaymentByUUID(ctx, gen.GetPaymentByUUIDParams{TenantID: tenantID, InvoiceID: invoiceID, Uuid: paymentUUID})
+		p, e := q.GetPaymentByUUID(ctx, gen.GetPaymentByUUIDParams{TenantID: tenantID, InvoiceID: invoiceID, ID: paymentUUID})
 		if e != nil {
 			return e // sql.ErrNoRows surfaces unwrapped for errors.Is
 		}
-		if e := q.DeletePaymentByUUID(ctx, gen.DeletePaymentByUUIDParams{TenantID: tenantID, InvoiceID: invoiceID, Uuid: paymentUUID}); e != nil {
+		if e := q.DeletePaymentByUUID(ctx, gen.DeletePaymentByUUIDParams{TenantID: tenantID, InvoiceID: invoiceID, ID: paymentUUID}); e != nil {
 			return fmt.Errorf("delete: %w", e)
 		}
 		deletedInvoiceID = p.InvoiceID
@@ -207,10 +206,10 @@ func (r *PaymentsRepo) DeleteByUUID(ctx context.Context, tenantID, invoiceID int
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, sql.ErrNoRows
+		return "", sql.ErrNoRows
 	}
 	if err != nil {
-		return 0, fmt.Errorf("delete payment: %w", err)
+		return "", fmt.Errorf("delete payment: %w", err)
 	}
 	return deletedInvoiceID, nil
 }
@@ -219,7 +218,6 @@ func (r *PaymentsRepo) DeleteByUUID(ctx context.Context, tenantID, invoiceID int
 func toPayment(row gen.Payment) *Payment {
 	return &Payment{
 		ID:        row.ID,
-		UUID:      row.Uuid,
 		InvoiceID: row.InvoiceID,
 		Amount:    row.Amount,
 		PaidAt:    row.PaidAt,

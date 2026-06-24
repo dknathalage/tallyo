@@ -437,7 +437,7 @@ func (r *EstimatesRepo) ListByStatus(ctx context.Context, tenantID string, statu
 func (r *EstimatesRepo) ListClientEstimates(ctx context.Context, tenantID, clientID string) ([]*Estimate, error) {
 	rows, err := gen.New(r.db).ListClientEstimates(ctx, gen.ListClientEstimatesParams{
 		TenantID: tenantID,
-		ClientID: sql.NullStr(&clientID),
+		ClientID: db.NullStr(&clientID),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list client estimates: %w", err)

@@ -27,14 +27,14 @@ func NewPaymentService(db db.Executor, hub *realtime.Hub) *PaymentService {
 }
 
 // ListForInvoice returns one invoice's payments.
-func (s *PaymentService) ListForInvoice(ctx context.Context, invoiceID int64) ([]*Payment, error) {
+func (s *PaymentService) ListForInvoice(ctx context.Context, invoiceID string) ([]*Payment, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListForInvoice(ctx, tenantID, invoiceID)
 }
 
 // ResolveInvoiceID translates an invoice uuid into its int PK for the tenant.
 // Returns (0, nil) when no invoice matches (caller 404s).
-func (s *PaymentService) ResolveInvoiceID(ctx context.Context, invoiceUUID string) (int64, error) {
+func (s *PaymentService) ResolveInvoiceID(ctx context.Context, invoiceUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
 }
@@ -51,7 +51,7 @@ func (s *PaymentService) Create(ctx context.Context, in PaymentInput) (*Payment,
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", UUID: p.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payment", UUID: p.ID, Action: "create"})
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: invoiceUUID, Action: "update"})
 	return p, nil
 }
@@ -59,7 +59,7 @@ func (s *PaymentService) Create(ctx context.Context, in PaymentInput) (*Payment,
 // Delete removes a payment. A missing payment surfaces sql.ErrNoRows so the
 // handler can 404; on success it broadcasts a payment delete plus an invoice
 // update so the balance refreshes.
-func (s *PaymentService) Delete(ctx context.Context, id int64) error {
+func (s *PaymentService) Delete(ctx context.Context, id string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	paymentUUID, invoiceID, err := s.repo.Delete(ctx, tenantID, id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -82,7 +82,7 @@ func (s *PaymentService) Delete(ctx context.Context, id int64) error {
 // sql.ErrNoRows so the handler can 404; on success it broadcasts a payment
 // delete plus an invoice update so the balance refreshes. The SSE events carry
 // the payment uuid and the invoice uuid — no int PK crosses the API.
-func (s *PaymentService) DeleteByUUID(ctx context.Context, invoiceID int64, paymentUUID string) error {
+func (s *PaymentService) DeleteByUUID(ctx context.Context, invoiceID string, paymentUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	deletedInvoiceID, err := s.repo.DeleteByUUID(ctx, tenantID, invoiceID, paymentUUID)
 	if errors.Is(err, sql.ErrNoRows) {

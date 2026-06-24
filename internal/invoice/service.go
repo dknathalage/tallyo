@@ -15,12 +15,12 @@ import (
 // the invoice package declares this interface; the caller (main.go) injects a
 // concrete *repository.SessionsRepo which satisfies it.
 type SessionLinker interface {
-	SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error
-	ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error
+	SetStatusForInvoice(ctx context.Context, tenantID, invoiceID string, status string) error
+	ClearForInvoice(ctx context.Context, tenantID, invoiceID string) error
 	// MarkDrafted links the given recorded sessions to invoiceID and advances them
 	// to status 'drafted'. Called by DraftFromSessions AFTER the invoice + its
 	// linked lines are committed, so the session→invoice reference is satisfiable.
-	MarkDrafted(ctx context.Context, invoiceID int64, sessionIDs []int64) error
+	MarkDrafted(ctx context.Context, invoiceID string, sessionIDs []string) error
 }
 
 // Service orchestrates invoice reads/writes and publishes change events
@@ -71,12 +71,12 @@ func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Invoice, 
 	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *Service) ListClientInvoices(ctx context.Context, clientID int64) ([]*Invoice, error) {
+func (s *Service) ListClientInvoices(ctx context.Context, clientID string) ([]*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListClientInvoices(ctx, tenantID, clientID)
 }
 
-func (s *Service) Get(ctx context.Context, id int64) (*Invoice, error) {
+func (s *Service) Get(ctx context.Context, id string) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
@@ -89,14 +89,14 @@ func (s *Service) GetByUUID(ctx context.Context, invoiceUUID string) (*Invoice, 
 
 // ResolveClient translates a client uuid into its int FK for the
 // tenant. Returns (0, nil) when no client matches (caller 400s).
-func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, error) {
+func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
 // ResolvePayer translates a payer uuid into its int FK for the
 // tenant. Returns (0, nil) when no payer matches (caller 400s).
-func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (int64, error) {
+func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolvePayerID(ctx, tenantID, payerUUID)
 }
@@ -104,7 +104,7 @@ func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (int64, er
 // ResolveSessionIDs translates a list of session uuids into their int PKs for the
 // tenant (preserving order). An unknown uuid surfaces as an error so the caller
 // can 400 — draft-from-sessions must not silently drop a session.
-func (s *Service) ResolveSessionIDs(ctx context.Context, sessionUUIDs []string) ([]int64, error) {
+func (s *Service) ResolveSessionIDs(ctx context.Context, sessionUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveSessionIDs(ctx, tenantID, sessionUUIDs)
 }
@@ -112,7 +112,7 @@ func (s *Service) ResolveSessionIDs(ctx context.Context, sessionUUIDs []string) 
 // ResolveInvoiceIDs translates a list of invoice uuids into their int PKs for
 // the tenant (preserving order). An unknown uuid surfaces as an error so the
 // caller can 400 — bulk operations must not silently drop a member.
-func (s *Service) ResolveInvoiceIDs(ctx context.Context, invoiceUUIDs []string) ([]int64, error) {
+func (s *Service) ResolveInvoiceIDs(ctx context.Context, invoiceUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveInvoiceIDs(ctx, tenantID, invoiceUUIDs)
 }
@@ -126,7 +126,7 @@ func (s *Service) ClientStats(ctx context.Context, clientUUID string) (*ClientSt
 	if err != nil {
 		return nil, err
 	}
-	if clientID == 0 {
+	if clientID == "" {
 		return nil, nil
 	}
 	return s.repo.ClientStats(ctx, tenantID, clientID)
@@ -149,7 +149,7 @@ func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.L
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
 	return inv, nil
 }
 
@@ -169,7 +169,7 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
 	return inv, nil
 }
 
@@ -179,7 +179,7 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 // item (G5). The invoice and its linked lines commit atomically; only AFTER that
 // commit are the sessions advanced to 'drafted' (via the SessionLinker, a separate
 // tx), so the session→invoice reference and MarkDrafted's existence check hold.
-func (s *Service) DraftFromSessions(ctx context.Context, sessionIDs []int64) (*Invoice, error) {
+func (s *Service) DraftFromSessions(ctx context.Context, sessionIDs []string) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	clientID, facts, err := s.repo.validateDraftSessions(ctx, tenantID, sessionIDs)
 	if err != nil {
@@ -194,14 +194,14 @@ func (s *Service) DraftFromSessions(ctx context.Context, sessionIDs []int64) (*I
 			return nil, err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "bill"})
 	return inv, nil
 }
 
 // Update rewrites an invoice. A nil result means the row was not found, in which
 // case no event is published.
-func (s *Service) Update(ctx context.Context, id int64, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
+func (s *Service) Update(ctx context.Context, id string, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
 	if err != nil {
@@ -215,7 +215,7 @@ func (s *Service) Update(ctx context.Context, id int64, in InvoiceInput, items [
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "update"})
 	return inv, nil
 }
 
@@ -227,7 +227,7 @@ func (s *Service) UpdateByUUID(ctx context.Context, invoiceUUID string, in Invoi
 	if err != nil {
 		return nil, err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil, nil
 	}
 	return s.Update(ctx, id, in, items)
@@ -241,7 +241,7 @@ func (s *Service) DeleteByUUID(ctx context.Context, invoiceUUID string) error {
 	if err != nil {
 		return err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil
 	}
 	return s.Delete(ctx, id)
@@ -255,7 +255,7 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status st
 	if err != nil {
 		return err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil
 	}
 	return s.UpdateStatus(ctx, id, status)
@@ -264,7 +264,7 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status st
 // UpdateStatus sets the invoice status, then broadcasts on success. When the
 // invoice advances to a terminal billing status ('sent'/'paid'), the sessions
 // attached to it advance in lockstep (recorded→drafted→sent→paid lifecycle).
-func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *Service) UpdateStatus(ctx context.Context, id string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	inv, err := s.repo.Get(ctx, tenantID, id)
 	if err != nil {
@@ -282,7 +282,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 			return err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "status"})
 	if cascade {
 		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "status"})
 	}
@@ -293,7 +293,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 // sessions attached to the invoice are reverted to 'recorded' with a NULL
 // invoice_id, so the work returns to the unbilled pool rather than being orphaned
 // at status 'drafted' by the FK's ON DELETE SET NULL.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	inv, err := s.repo.Get(ctx, tenantID, id)
 	if err != nil {
@@ -310,7 +310,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "delete"})
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "status"})
 	return nil
 }
@@ -319,7 +319,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 // Like Delete, each invoice's sessions are first reverted to 'recorded' (NULL
 // invoice_id) so bulk-deleted work returns to the unbilled pool rather than
 // being orphaned at status 'drafted'.
-func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if s.sessions != nil {
 		for i := range ids { // bounded by len(ids)
@@ -336,7 +336,7 @@ func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 // BulkUpdateStatus sets several invoices' status, then broadcasts a bulk event.
-func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+func (s *Service) BulkUpdateStatus(ctx context.Context, ids []string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
@@ -347,7 +347,7 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status stri
 
 // ActiveTenantIDs returns the ids of active (non-suspended) tenants. The sweep
 // driver uses it to iterate tenants and skip suspended ones (spec §8).
-func (s *Service) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
+func (s *Service) ActiveTenantIDs(ctx context.Context) ([]string, error) {
 	return s.repo.ActiveTenantIDs(ctx)
 }
 
@@ -355,7 +355,7 @@ func (s *Service) ActiveTenantIDs(ctx context.Context) ([]int64, error) {
 // sweep path) and, when any flipped, broadcasts a sweep event scoped to that
 // tenant so only its subscribers resync. ctx must carry the tenant (the sweep
 // driver attaches it via reqctx.WithTenant).
-func (s *Service) MarkOverdueForTenant(ctx context.Context, tenantID int64) ([]OverdueInvoice, error) {
+func (s *Service) MarkOverdueForTenant(ctx context.Context, tenantID string) ([]OverdueInvoice, error) {
 	rows, err := s.repo.MarkOverdueForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
