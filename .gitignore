@@ -32,3 +32,6 @@ web/build/*
 
 # Taskfile checksum cache
 .task/
+
+# Session scratchpad (temp test artifacts, not for commit)
+scratchpad/
