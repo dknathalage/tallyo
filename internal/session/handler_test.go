@@ -15,21 +15,22 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// seedClientUUID inserts a client and returns its (int id, uuid).
-func seedClientUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (int64, string) {
+// seedClientUUID inserts a client and returns its (id, uuid). With uuid ids the
+// row id IS the public uuid, so both returns are the same value.
+func seedClientUUID(t *testing.T, conn *sql.DB, tenantID string, name string) (string, string) {
 	t.Helper()
 	id := seedClient(t, conn, tenantID, name)
 	row, err := gen.New(conn).GetClientByID(context.Background(), gen.GetClientByIDParams{TenantID: tenantID, ID: id})
 	if err != nil {
 		t.Fatalf("read client uuid: %v", err)
 	}
-	return id, row.Uuid
+	return id, row.ID
 }
 
 // newSessionHandler builds a handler over a fresh DB, seeds a client + one
 // recorded session, and returns the handler, tenant id, client uuid, and the
 // seeded session.
-func newSessionHandler(t *testing.T) (*Handler, int64, string, *Session) {
+func newSessionHandler(t *testing.T) (*Handler, string, string, *Session) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -43,16 +44,16 @@ func newSessionHandler(t *testing.T) (*Handler, int64, string, *Session) {
 	return NewHandler(svc), tenantID, pUUID, sh
 }
 
-func clientIDFor(t *testing.T, conn *sql.DB, tenantID int64, pUUID string) int64 {
+func clientIDFor(t *testing.T, conn *sql.DB, tenantID string, pUUID string) string {
 	t.Helper()
-	id, err := gen.New(conn).GetClientIDByUUID(context.Background(), gen.GetClientIDByUUIDParams{TenantID: tenantID, Uuid: pUUID})
+	id, err := gen.New(conn).GetClientIDByUUID(context.Background(), gen.GetClientIDByUUIDParams{TenantID: tenantID, ID: pUUID})
 	if err != nil {
 		t.Fatalf("resolve client uuid: %v", err)
 	}
 	return id
 }
 
-func mountSession(h *Handler, tenantID int64) chi.Router {
+func mountSession(h *Handler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -68,7 +69,7 @@ func TestSessionGetByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountSession(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/sessions/" + sh.UUID)
+	res, err := http.Get(srv.URL + "/sessions/" + sh.ID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -80,8 +81,8 @@ func TestSessionGetByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got["id"] != sh.UUID {
-		t.Fatalf("json id=%v want session uuid %q", got["id"], sh.UUID)
+	if got["id"] != sh.ID {
+		t.Fatalf("json id=%v want session uuid %q", got["id"], sh.ID)
 	}
 	if got["clientId"] != pUUID {
 		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
@@ -127,7 +128,7 @@ func TestSessionItemLifecycleByUUID(t *testing.T) {
 
 	// POST a custom (non-catalogue) line.
 	body, _ := json.Marshal(map[string]any{"description": "travel", "unit": "EA", "quantity": 2, "unitPrice": 1.5})
-	res, err := http.Post(srv.URL+"/sessions/"+sh.UUID+"/items", "application/json", bytes.NewReader(body))
+	res, err := http.Post(srv.URL+"/sessions/"+sh.ID+"/items", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST item: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestSessionItemLifecycleByUUID(t *testing.T) {
 	}
 
 	// GET the items list — must contain the item with id == item uuid.
-	listRes, err := http.Get(srv.URL + "/sessions/" + sh.UUID + "/items")
+	listRes, err := http.Get(srv.URL + "/sessions/" + sh.ID + "/items")
 	if err != nil {
 		t.Fatalf("GET items: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestSessionItemLifecycleByUUID(t *testing.T) {
 
 	// PATCH the item by uuid.
 	upBody, _ := json.Marshal(map[string]any{"description": "travel", "unit": "EA", "quantity": 3, "unitPrice": 1.5})
-	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/sessions/"+sh.UUID+"/items/"+itemUUID, bytes.NewReader(upBody))
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/sessions/"+sh.ID+"/items/"+itemUUID, bytes.NewReader(upBody))
 	req.Header.Set("Content-Type", "application/json")
 	upRes, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -182,7 +183,7 @@ func TestSessionItemLifecycleByUUID(t *testing.T) {
 	}
 
 	// DELETE the item by uuid.
-	delReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/sessions/"+sh.UUID+"/items/"+itemUUID, nil)
+	delReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/sessions/"+sh.ID+"/items/"+itemUUID, nil)
 	delRes, err := http.DefaultClient.Do(delReq)
 	if err != nil {
 		t.Fatalf("DELETE item: %v", err)
@@ -193,7 +194,7 @@ func TestSessionItemLifecycleByUUID(t *testing.T) {
 	}
 
 	// List is now empty.
-	finalRes, err := http.Get(srv.URL + "/sessions/" + sh.UUID + "/items")
+	finalRes, err := http.Get(srv.URL + "/sessions/" + sh.ID + "/items")
 	if err != nil {
 		t.Fatalf("GET items after delete: %v", err)
 	}

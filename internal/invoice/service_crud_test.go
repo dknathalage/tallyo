@@ -23,7 +23,7 @@ func TestInvoiceListAndGet(t *testing.T) {
 		t.Fatalf("List len = %d, want 1", len(list))
 	}
 	if list[0].ID != inv.ID {
-		t.Fatalf("List[0].ID = %d, want %d", list[0].ID, inv.ID)
+		t.Fatalf("List[0].ID = %s, want %s", list[0].ID, inv.ID)
 	}
 
 	got, err := svc.Get(ctx, inv.ID)
@@ -31,14 +31,14 @@ func TestInvoiceListAndGet(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	if got == nil || got.ID != inv.ID {
-		t.Fatalf("Get = %+v, want id %d", got, inv.ID)
+		t.Fatalf("Get = %+v, want id %s", got, inv.ID)
 	}
 }
 
 func TestInvoiceGetNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, _ := newInvoiceSvc(t)
 
-	got, err := svc.Get(tctx(tenantID), 999999)
+	got, err := svc.Get(tctx(tenantID), "nonexistent-uuid")
 	if err != nil {
 		t.Fatalf("Get missing: unexpected err %v", err)
 	}
@@ -61,7 +61,7 @@ func TestInvoiceListByStatusSvc(t *testing.T) {
 		t.Fatalf("ListByStatus sent: %v", err)
 	}
 	if len(sent) != 1 || sent[0].ID != inv.ID {
-		t.Fatalf("ListByStatus sent = %+v, want one id %d", sent, inv.ID)
+		t.Fatalf("ListByStatus sent = %+v, want one id %s", sent, inv.ID)
 	}
 
 	draft, err := svc.ListByStatus(ctx, "draft")
@@ -88,7 +88,7 @@ func TestInvoiceListClientInvoicesAndStats(t *testing.T) {
 		t.Fatalf("ListClientInvoices: %v", err)
 	}
 	if len(rows) != 1 || rows[0].ID != inv.ID {
-		t.Fatalf("ListClientInvoices = %+v, want one id %d", rows, inv.ID)
+		t.Fatalf("ListClientInvoices = %+v, want one id %s", rows, inv.ID)
 	}
 
 	// ClientStats now resolves the client uuid → int PK.
@@ -133,7 +133,7 @@ func TestInvoiceUpdate(t *testing.T) {
 func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, clientID := newInvoiceSvc(t)
 
-	got, err := svc.Update(tctx(tenantID), 999999, InvoiceInput{
+	got, err := svc.Update(tctx(tenantID), "nonexistent-uuid", InvoiceInput{
 		ClientID: clientID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
@@ -158,8 +158,8 @@ func TestInvoiceDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.UUID != inv.UUID || e.Action != "delete" {
-			t.Fatalf("event=%+v want invoice/%d/delete", e, inv.ID)
+		if e.Entity != "invoice" || e.UUID != inv.ID || e.Action != "delete" {
+			t.Fatalf("event=%+v want invoice/%s/delete", e, inv.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Delete")
@@ -170,7 +170,7 @@ func TestInvoiceDeleteBroadcasts(t *testing.T) {
 		t.Fatalf("Get after delete: %v", err)
 	}
 	if got != nil {
-		t.Fatalf("invoice %d still present after delete", inv.ID)
+		t.Fatalf("invoice %s still present after delete", inv.ID)
 	}
 }
 
@@ -184,7 +184,7 @@ func TestInvoiceBulkDeleteBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.BulkDelete(ctx, []int64{a.ID, b.ID}); err != nil {
+	if err := svc.BulkDelete(ctx, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	select {
@@ -215,7 +215,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.BulkUpdateStatus(ctx, []int64{a.ID, b.ID}, "sent"); err != nil {
+	if err := svc.BulkUpdateStatus(ctx, []string{a.ID, b.ID}, "sent"); err != nil {
 		t.Fatalf("BulkUpdateStatus: %v", err)
 	}
 	select {
@@ -262,6 +262,6 @@ func TestInvoiceTenantScoping(t *testing.T) {
 		t.Fatalf("Get B: %v", err)
 	}
 	if gotB != nil {
-		t.Fatalf("tenant B fetched tenant A invoice %d", inv.ID)
+		t.Fatalf("tenant B fetched tenant A invoice %s", inv.ID)
 	}
 }

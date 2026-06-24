@@ -30,11 +30,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -47,24 +47,24 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 }
 
 // tctx returns a context carrying the given tenant id.
-func tctx(tenantID int64) context.Context {
+func tctx(tenantID string) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
 // seedClient inserts a minimal client for a tenant and returns its uuid
 // (the public identifier; recurring templates reference clients by uuid).
-func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) string {
+func seedClient(t *testing.T, conn *sql.DB, tenantID string, name string) string {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(context.Background(), tenantID, client.ClientInput{Name: name})
 	if err != nil {
 		t.Fatalf("seedClient %q: %v", name, err)
 	}
-	return p.UUID
+	return p.ID
 }
 
 // newRecurringSvc creates a migrated DB, seeds a tenant+client, and returns
 // the recurring Service, Hub, tenantID, client uuid.
-func newRecurringSvc(t *testing.T) (*Service, *realtime.Hub, int64, string) {
+func newRecurringSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -75,7 +75,7 @@ func newRecurringSvc(t *testing.T) (*Service, *realtime.Hub, int64, string) {
 
 // mkTemplate creates a recurring template via the repo, referencing the
 // client by uuid.
-func mkTemplate(t *testing.T, repo *Repo, tid int64, pUUID, nextDue string) *RecurringTemplate {
+func mkTemplate(t *testing.T, repo *Repo, tid string, pUUID, nextDue string) *RecurringTemplate {
 	t.Helper()
 	pid := pUUID
 	tpl, err := repo.Create(context.Background(), tid, RecurringInput{

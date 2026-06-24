@@ -12,7 +12,7 @@ import (
 // pre-priced custom line items (qty 1, the given unit price each) and returns
 // its id. Items are created through the session repo so no catalogue seeding is
 // needed (custom lines keep their supplied price).
-func recordedSessionWithItems(t *testing.T, sessionSvc *session.Service, repo *session.SessionsRepo, tenantID, clientID int64, date string, prices ...float64) int64 {
+func recordedSessionWithItems(t *testing.T, sessionSvc *session.Service, repo *session.SessionsRepo, tenantID, clientID string, date string, prices ...float64) string {
 	t.Helper()
 	ctx := tctx(tenantID)
 	sh, err := sessionSvc.Create(ctx, session.SessionInput{ClientID: clientID, ServiceDate: date, Status: "recorded"})
@@ -30,7 +30,7 @@ func recordedSessionWithItems(t *testing.T, sessionSvc *session.Service, repo *s
 
 // newDraftHarness builds an invoice service wired to a real *session.Service over
 // one shared connection, plus the session repo for seeding.
-func newDraftHarness(t *testing.T) (*Service, *session.Service, *session.SessionsRepo, int64, int64) {
+func newDraftHarness(t *testing.T) (*Service, *session.Service, *session.SessionsRepo, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -48,7 +48,7 @@ func TestDraftFromSessionsLinksItemsAndTotals(t *testing.T) {
 	s1 := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-10", 10, 20)
 	s2 := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-11", 30, 40)
 
-	inv, err := invSvc.DraftFromSessions(ctx, []int64{s1, s2})
+	inv, err := invSvc.DraftFromSessions(ctx, []string{s1, s2})
 	if err != nil {
 		t.Fatalf("DraftFromSessions: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestDraftFromSessionsLinksItemsAndTotals(t *testing.T) {
 		t.Fatal("DraftFromSessions returned nil invoice")
 	}
 	if inv.ClientID != clientID {
-		t.Fatalf("invoice client = %d, want %d", inv.ClientID, clientID)
+		t.Fatalf("invoice client = %s, want %s", inv.ClientID, clientID)
 	}
 	if len(inv.LineItems) != 4 {
 		t.Fatalf("invoice line items = %d, want 4", len(inv.LineItems))
@@ -73,10 +73,10 @@ func TestDraftFromSessionsLinksItemsAndTotals(t *testing.T) {
 		t.Fatalf("invoice subtotal=%v total=%v, want 100/100", inv.Subtotal, inv.Total)
 	}
 
-	for _, sid := range []int64{s1, s2} {
+	for _, sid := range []string{s1, s2} {
 		sh, _ := sessionSvc.Get(ctx, sid)
 		if sh == nil || sh.Status != "drafted" || sh.InvoiceID == nil || *sh.InvoiceID != inv.ID {
-			t.Fatalf("session %d after draft = %+v, want drafted + invoice %d", sid, sh, inv.ID)
+			t.Fatalf("session %s after draft = %+v, want drafted + invoice %s", sid, sh, inv.ID)
 		}
 	}
 }
@@ -92,7 +92,7 @@ func TestDraftFromSessionsEmptySessionErrors(t *testing.T) {
 		t.Fatalf("create empty session: %v", err)
 	}
 
-	if _, err := invSvc.DraftFromSessions(ctx, []int64{withItems, empty.ID}); err == nil {
+	if _, err := invSvc.DraftFromSessions(ctx, []string{withItems, empty.ID}); err == nil {
 		t.Fatal("DraftFromSessions with an empty session must error (G5)")
 	}
 	// Nothing should have been linked: the non-empty session stays recorded.
@@ -115,13 +115,13 @@ func TestDraftFromSessionsSingleClientGuard(t *testing.T) {
 	a := recordedSessionWithItems(t, shSvc, r, tid, p1, "2026-01-10", 10)
 	b := recordedSessionWithItems(t, shSvc, r, tid, p2, "2026-01-11", 20)
 
-	if _, err := iSvc.DraftFromSessions(tctx(tid), []int64{a, b}); err == nil {
+	if _, err := iSvc.DraftFromSessions(tctx(tid), []string{a, b}); err == nil {
 		t.Fatal("DraftFromSessions across two clients must error")
 	}
 
 	// And a clean single-client pair still drafts.
 	c := recordedSessionWithItems(t, shSvc, r, tid, p1, "2026-01-12", 5)
-	if _, err := iSvc.DraftFromSessions(tctx(tid), []int64{c}); err != nil {
+	if _, err := iSvc.DraftFromSessions(tctx(tid), []string{c}); err != nil {
 		t.Fatalf("single-client DraftFromSessions: %v", err)
 	}
 }

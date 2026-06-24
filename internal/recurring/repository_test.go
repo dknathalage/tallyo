@@ -14,10 +14,10 @@ func TestRecurringCRUD(t *testing.T) {
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, tid, pid, "2026-01-01")
-	if tpl.ID == 0 || len(tpl.LineItems) != 1 || tpl.ClientName != "Jane" {
+	if tpl.ID == "" || len(tpl.LineItems) != 1 || tpl.ClientName != "Jane" {
 		t.Fatalf("Create = %+v", tpl)
 	}
-	up, err := repo.Update(ctx, tid, tpl.UUID, RecurringInput{
+	up, err := repo.Update(ctx, tid, tpl.ID, RecurringInput{
 		ClientUUID: &pid, Name: "Monthly", Frequency: "monthly", NextDue: "2026-02-01",
 		TaxRate: 0, LineItems: []RecurringLine{{Description: "X", Quantity: 1, UnitPrice: 10}}, IsActive: true,
 	})
@@ -27,10 +27,10 @@ func TestRecurringCRUD(t *testing.T) {
 	if list, _ := repo.List(ctx, tid, false); len(list) != 1 {
 		t.Fatalf("List len=%d, want 1", len(list))
 	}
-	if err := repo.Delete(ctx, tid, tpl.UUID); err != nil {
+	if err := repo.Delete(ctx, tid, tpl.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, tpl.UUID); got != nil {
+	if got, _ := repo.Get(ctx, tid, tpl.ID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -57,7 +57,7 @@ func TestRecurringGenerateOneAdvancesNextDue(t *testing.T) {
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, tid, pid, "2026-01-01")
-	inv, err := repo.GenerateOne(ctx, tid, tpl.UUID)
+	inv, err := repo.GenerateOne(ctx, tid, tpl.ID)
 	if err != nil {
 		t.Fatalf("GenerateOne: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestRecurringGenerateOneAdvancesNextDue(t *testing.T) {
 	if inv.Subtotal != 100 || inv.Tax != 10 || inv.Total != 110 {
 		t.Fatalf("totals = %.2f/%.2f/%.2f, want 100/10/110", inv.Subtotal, inv.Tax, inv.Total)
 	}
-	got, _ := repo.Get(ctx, tid, tpl.UUID)
+	got, _ := repo.Get(ctx, tid, tpl.ID)
 	if got.NextDue != "2026-01-08" {
 		t.Fatalf("NextDue = %q, want 2026-01-08 (advanced one week)", got.NextDue)
 	}
@@ -111,7 +111,7 @@ func TestRecurringTenantIsolation(t *testing.T) {
 	ctx := context.Background()
 
 	tpl := mkTemplate(t, repo, a, pidA, "2026-01-01")
-	if got, _ := repo.Get(ctx, b, tpl.UUID); got != nil {
+	if got, _ := repo.Get(ctx, b, tpl.ID); got != nil {
 		t.Fatalf("tenant B read tenant A's template: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, false); len(list) != 0 {

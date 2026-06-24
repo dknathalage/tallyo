@@ -19,18 +19,18 @@ func TestSupportCatalogGetVersionAndListItems(t *testing.T) {
 		t.Fatalf("GetVersion: %v", err)
 	}
 	if ver == nil || ver.ID != versionID {
-		t.Fatalf("GetVersion = %+v, want id %d", ver, versionID)
+		t.Fatalf("GetVersion = %+v, want id %s", ver, versionID)
 	}
 
-	items, err := read.ListItemsByVersionUUID(ctx, ver.UUID)
+	items, err := read.ListItemsByVersionUUID(ctx, ver.ID)
 	if err != nil {
 		t.Fatalf("ListItemsByVersionUUID: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("items = %d, want 1", len(items))
 	}
-	if items[0].PriceListVersionUID != ver.UUID {
-		t.Fatalf("item PriceListVersionUID = %q, want %q", items[0].PriceListVersionUID, ver.UUID)
+	if items[0].PriceListVersionUID != ver.ID {
+		t.Fatalf("item PriceListVersionUID = %q, want %q", items[0].PriceListVersionUID, ver.ID)
 	}
 	if items[0].UnitPrice == nil || *items[0].UnitPrice != 67.56 {
 		t.Fatalf("item UnitPrice = %v, want 67.56", items[0].UnitPrice)
@@ -44,7 +44,7 @@ func TestSupportCatalogGetVersionMissingReturnsNil(t *testing.T) {
 	read := NewService(conn)
 	tid := seedTenant(t, conn)
 
-	ver, err := read.GetVersion(tctx(tid), 999999)
+	ver, err := read.GetVersion(tctx(tid), "no-such-version")
 	if err != nil {
 		t.Fatalf("GetVersion missing: unexpected err %v", err)
 	}

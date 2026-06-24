@@ -32,11 +32,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -49,7 +49,7 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 }
 
 // seedSuspendedTenant creates a tenant and marks it suspended.
-func seedSuspendedTenant(t *testing.T, conn *sql.DB) int64 {
+func seedSuspendedTenant(t *testing.T, conn *sql.DB) string {
 	t.Helper()
 	id := seedTenant(t, conn, "Suspended Tenant")
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -62,34 +62,34 @@ func seedSuspendedTenant(t *testing.T, conn *sql.DB) int64 {
 }
 
 // tctx returns a context carrying the given tenant id.
-func tctx(tenantID int64) context.Context {
+func tctx(tenantID string) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
 // seedClient inserts a minimal client for a tenant and returns its id.
-func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
+func seedClient(t *testing.T, conn *sql.DB, tenantID string, name string) string {
 	t.Helper()
 	id, _ := seedClientUUID(t, conn, tenantID, name)
 	return id
 }
 
-// seedClientUUID seeds a client and returns both its int PK and uuid.
-// The uuid is the public identifier the client-stats route now resolves.
-func seedClientUUID(t *testing.T, conn *sql.DB, tenantID int64, name string) (int64, string) {
+// seedClientUUID seeds a client and returns its (id, uuid). With uuid ids the
+// row id IS the public uuid, so both returns are the same value.
+func seedClientUUID(t *testing.T, conn *sql.DB, tenantID string, name string) (string, string) {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(context.Background(), tenantID, client.ClientInput{Name: name})
 	if err != nil {
 		t.Fatalf("seedClient %q: %v", name, err)
 	}
-	return p.ID, p.UUID
+	return p.ID, p.ID
 }
 
 // seedDraftInvoice inserts a minimal draft invoice and returns its id.
-func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64) int64 {
+func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	inv, err := gen.New(conn).CreateInvoice(context.Background(), gen.CreateInvoiceParams{
-		Uuid: ids.New(), TenantID: tenantID, Number: ids.New(), ClientID: clientID,
+		ID: ids.New(), TenantID: tenantID, Number: ids.New(), ClientID: clientID,
 		Status: "draft", IssueDate: "2026-01-01", DueDate: "2026-02-01", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64) int6
 
 // seedSentPastDue creates an invoice, flips it to 'sent', and back-dates its
 // due_date into the past so the overdue sweep selects it. Returns the invoice.
-func seedSentPastDue(t *testing.T, conn *sql.DB, svc *Service, tenantID, clientID int64) *Invoice {
+func seedSentPastDue(t *testing.T, conn *sql.DB, svc *Service, tenantID, clientID string) *Invoice {
 	t.Helper()
 	ctx := tctx(tenantID)
 	inv, err := svc.Create(ctx, InvoiceInput{
@@ -119,7 +119,7 @@ func seedSentPastDue(t *testing.T, conn *sql.DB, svc *Service, tenantID, clientI
 }
 
 // containsID reports whether ids contains target.
-func containsID(ids []int64, target int64) bool {
+func containsID(ids []string, target string) bool {
 	for i := range ids { // bounded by len(ids)
 		if ids[i] == target {
 			return true
@@ -130,7 +130,7 @@ func containsID(ids []int64, target int64) bool {
 
 // newInvoiceSvc creates a migrated DB, seeds a tenant+client, and returns
 // the invoice Service, Hub, tenantID, clientID.
-func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
+func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -140,7 +140,7 @@ func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 }
 
 // makeInvoice creates a single invoice for the tenant/client and returns it.
-func makeInvoice(t *testing.T, svc *Service, tenantID, clientID int64) *Invoice {
+func makeInvoice(t *testing.T, svc *Service, tenantID, clientID string) *Invoice {
 	t.Helper()
 	inv, err := svc.Create(tctx(tenantID), InvoiceInput{
 		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-02-01",
@@ -155,7 +155,7 @@ func makeInvoice(t *testing.T, svc *Service, tenantID, clientID int64) *Invoice 
 }
 
 // mkInvoiceRepo creates a single-line invoice for repository tests.
-func mkInvoiceRepo(t *testing.T, repo *InvoicesRepo, tid, pid int64, due string) *Invoice {
+func mkInvoiceRepo(t *testing.T, repo *InvoicesRepo, tid, pid string, due string) *Invoice {
 	t.Helper()
 	inv, err := repo.Create(context.Background(), tid, InvoiceInput{
 		ClientID: pid, IssueDate: "2026-01-01", DueDate: due,
@@ -167,7 +167,7 @@ func mkInvoiceRepo(t *testing.T, repo *InvoicesRepo, tid, pid int64, due string)
 }
 
 // seedInvoiceRepo creates a minimal one-line invoice and returns its id (used by payment tests).
-func seedInvoiceRepo(t *testing.T, conn *sql.DB, tenantID, clientID int64, unitPrice float64) int64 {
+func seedInvoiceRepo(t *testing.T, conn *sql.DB, tenantID, clientID string, unitPrice float64) string {
 	t.Helper()
 	inv, err := NewInvoices(conn).Create(context.Background(), tenantID, InvoiceInput{
 		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
@@ -179,7 +179,7 @@ func seedInvoiceRepo(t *testing.T, conn *sql.DB, tenantID, clientID int64, unitP
 }
 
 // seedInvoiceSvc creates a single-line invoice (unit price 25, qty 1) for service payment tests.
-func seedInvoiceSvc(t *testing.T, invoices *InvoicesRepo, tenantID, clientID int64) *Invoice {
+func seedInvoiceSvc(t *testing.T, invoices *InvoicesRepo, tenantID, clientID string) *Invoice {
 	t.Helper()
 	inv, err := invoices.Create(tctx(tenantID), tenantID, InvoiceInput{
 		ClientID: clientID, IssueDate: "2026-06-01", DueDate: "2026-07-01",

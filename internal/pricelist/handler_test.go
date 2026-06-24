@@ -18,7 +18,7 @@ import (
 // newCatalogHandler builds a handler over a fresh DB and seeds one version with
 // one priced item. Returns the handler, tenant id, and the seeded version + item
 // UUIDs.
-func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, itemUUID string) {
+func newCatalogHandler(t *testing.T) (h *Handler, tenantID string, versionUUID, itemUUID string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID = seedTenant(t, conn)
@@ -27,14 +27,14 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 	now := time.Now().UTC().Format(time.RFC3339)
 	vUUID := ids.New()
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: vUUID, Label: "2025-26", EffectiveFrom: "2025-07-01", CreatedAt: now,
+		TenantID: tenantID, ID: vUUID, Label: "2025-26", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
 	}
 	iUUID := ids.New()
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
+		TenantID: tenantID, ID: iUUID, PriceListVersionID: v.ID, Code: "01_011_0107_1_1", Name: "Item", Taxable: 0,
 		UnitPrice: sql.NullFloat64{Float64: 100, Valid: true},
 	}); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -45,7 +45,7 @@ func newCatalogHandler(t *testing.T) (h *Handler, tenantID int64, versionUUID, i
 
 // mountCatalog returns a router with the slice routes mounted and a middleware
 // that attaches the tenant id to every request context (standing in for auth).
-func mountCatalog(h *Handler, tenantID int64) chi.Router {
+func mountCatalog(h *Handler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

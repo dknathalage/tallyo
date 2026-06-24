@@ -13,7 +13,7 @@ import (
 // --- ItemsRepo (tenant-owned price list) ---
 
 // seedCatalog inserts a version with one item (optionally priced) and returns ids.
-func seedCatalog(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, code string, unitPrice *float64) (versionID, itemID int64) {
+func seedCatalog(t *testing.T, conn *sql.DB, tenantID, label, from, to, code string, unitPrice *float64) (versionID, itemID string) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
@@ -23,7 +23,7 @@ func seedCatalog(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, co
 		et = sql.NullString{String: to, Valid: true}
 	}
 	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
+		TenantID: tenantID, ID: ids.New(), Label: label, EffectiveFrom: from, EffectiveTo: et, CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -33,7 +33,7 @@ func seedCatalog(t *testing.T, conn *sql.DB, tenantID int64, label, from, to, co
 		up = sql.NullFloat64{Float64: *unitPrice, Valid: true}
 	}
 	si, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, Uuid: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
+		TenantID: tenantID, ID: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
 		UnitPrice: up,
 	})
 	if err != nil {

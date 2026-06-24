@@ -20,8 +20,8 @@ func TestRecurringCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "recurring_template" || e.UUID != tpl.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want recurring_template/%d/create", e, tpl.ID)
+		if e.Entity != "recurring_template" || e.UUID != tpl.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want recurring_template/%s/create", e, tpl.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
@@ -40,7 +40,7 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	inv, err := svc.GenerateOne(ctx, tpl.UUID)
+	inv, err := svc.GenerateOne(ctx, tpl.ID)
 	if err != nil {
 		t.Fatalf("GenerateOne: %v", err)
 	}
@@ -54,9 +54,9 @@ func TestRecurringGenerateOneBroadcasts(t *testing.T) {
 		select {
 		case e := <-ch:
 			switch {
-			case e.Entity == "recurring_template" && e.UUID == tpl.UUID && e.Action == "generate":
+			case e.Entity == "recurring_template" && e.UUID == tpl.ID && e.Action == "generate":
 				gotGenerate = true
-			case e.Entity == "invoice" && e.UUID == inv.UUID && e.Action == "create":
+			case e.Entity == "invoice" && e.UUID == inv.ID && e.Action == "create":
 				gotCreate = true
 			default:
 				t.Fatalf("unexpected event=%+v", e)

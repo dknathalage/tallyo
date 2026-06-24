@@ -20,7 +20,7 @@ import (
 
 // mountInvoice mounts the invoice + payment routes on a fresh router with a
 // one-line middleware injecting the tenant (stands in for auth).
-func mountInvoice(inv *Handler, pay *PaymentHandler, tenantID int64) chi.Router {
+func mountInvoice(inv *Handler, pay *PaymentHandler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -34,7 +34,7 @@ func mountInvoice(inv *Handler, pay *PaymentHandler, tenantID int64) chi.Router 
 
 // newInvoiceHandler builds a fresh DB, seeds a tenant + client + a single
 // invoice, and returns the handlers, tenant id, client uuid, and invoice.
-func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, int64, string, *Invoice) {
+func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, string, string, *Invoice) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -50,7 +50,7 @@ func TestInvoiceGetByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountInvoice(ih, ph, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/invoices/" + inv.UUID)
+	res, err := http.Get(srv.URL + "/invoices/" + inv.ID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -62,8 +62,8 @@ func TestInvoiceGetByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got["id"] != inv.UUID {
-		t.Fatalf("json id=%v want invoice uuid %q", got["id"], inv.UUID)
+	if got["id"] != inv.ID {
+		t.Fatalf("json id=%v want invoice uuid %q", got["id"], inv.ID)
 	}
 	if got["clientId"] != pUUID {
 		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
@@ -115,7 +115,7 @@ func TestInvoicePaymentLifecycleByUUID(t *testing.T) {
 
 	// POST a payment under the invoice uuid.
 	body, _ := json.Marshal(map[string]any{"amount": 5, "paymentDate": "2026-01-05"})
-	res, err := http.Post(srv.URL+"/invoices/"+inv.UUID+"/payments", "application/json", bytes.NewReader(body))
+	res, err := http.Post(srv.URL+"/invoices/"+inv.ID+"/payments", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST payment: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestInvoicePaymentLifecycleByUUID(t *testing.T) {
 	}
 
 	// GET the payment list under the invoice uuid.
-	lres, err := http.Get(srv.URL + "/invoices/" + inv.UUID + "/payments")
+	lres, err := http.Get(srv.URL + "/invoices/" + inv.ID + "/payments")
 	if err != nil {
 		t.Fatalf("GET payments: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestInvoicePaymentLifecycleByUUID(t *testing.T) {
 	}
 
 	// DELETE by payment uuid under the invoice uuid.
-	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/invoices/"+inv.UUID+"/payments/"+payUUID, nil)
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/invoices/"+inv.ID+"/payments/"+payUUID, nil)
 	dres, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("DELETE payment: %v", err)
@@ -180,7 +180,7 @@ func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 		t.Fatalf("seed session: %v", err)
 	}
 	if _, err := gen.New(conn).CreateLineItem(context.Background(), gen.CreateLineItemParams{
-		Uuid: ids.New(), TenantID: tenantID, SessionID: sql.NullInt64{Int64: sh.ID, Valid: true},
+		ID: ids.New(), TenantID: tenantID, SessionID: sql.NullString{String: sh.ID, Valid: true},
 		Description: "Work", Quantity: 1, UnitPrice: 10, LineTotal: 10,
 	}); err != nil {
 		t.Fatalf("seed item: %v", err)
@@ -189,7 +189,7 @@ func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountInvoice(ih, ph, tenantID))
 	defer srv.Close()
 
-	body, _ := json.Marshal(map[string]any{"sessionIds": []string{sh.UUID}})
+	body, _ := json.Marshal(map[string]any{"sessionIds": []string{sh.ID}})
 	res, err := http.Post(srv.URL+"/invoices/draft-from-sessions", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST draft-from-sessions: %v", err)
@@ -224,7 +224,7 @@ func TestInvoiceClientFilterByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(list) != 1 || list[0]["id"] != inv.UUID {
-		t.Fatalf("client filter list=%v want one id %q", list, inv.UUID)
+	if len(list) != 1 || list[0]["id"] != inv.ID {
+		t.Fatalf("client filter list=%v want one id %q", list, inv.ID)
 	}
 }

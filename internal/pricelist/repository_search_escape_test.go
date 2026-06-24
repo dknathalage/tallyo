@@ -13,13 +13,13 @@ import (
 // seedNamedItem inserts an item with an explicit name into the
 // given version. Used by the LIKE-escaping test where the name (not the code)
 // carries the metacharacter under test.
-func seedNamedItem(t *testing.T, conn *sql.DB, tenantID, versionID int64, code, name string) {
+func seedNamedItem(t *testing.T, conn *sql.DB, tenantID, versionID, code, name string) {
 	t.Helper()
 	ctx := context.Background()
 	q := gen.New(conn)
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
 		TenantID:           tenantID,
-		Uuid:               ids.New(),
+		ID:                 ids.New(),
 		PriceListVersionID: versionID,
 		Code:               code,
 		Name:               name,
@@ -29,12 +29,12 @@ func seedNamedItem(t *testing.T, conn *sql.DB, tenantID, versionID int64, code, 
 	}
 }
 
-func seedBareVersion(t *testing.T, conn *sql.DB, tenantID int64) int64 {
+func seedBareVersion(t *testing.T, conn *sql.DB, tenantID string) string {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC().Format(time.RFC3339)
 	v, err := gen.New(conn).CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, Uuid: ids.New(), Label: "v", EffectiveFrom: "2025-07-01", CreatedAt: now,
+		TenantID: tenantID, ID: ids.New(), Label: "v", EffectiveFrom: "2025-07-01", CreatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("CreatePriceListVersion: %v", err)
@@ -131,7 +131,7 @@ func TestSearchItemsAllFieldsTenantScoped(t *testing.T) {
 
 	// Both items share code/name; they differ only by category + unit.
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tidA, Uuid: ids.New(), PriceListVersionID: vA,
+		TenantID: tidA, ID: ids.New(), PriceListVersionID: vA,
 		Code: "AAA", Name: "Shared Name", Taxable: 0,
 		Category: sql.NullString{String: "AlphaCat", Valid: true},
 		Unit:     sql.NullString{String: "HourA", Valid: true},
@@ -139,7 +139,7 @@ func TestSearchItemsAllFieldsTenantScoped(t *testing.T) {
 		t.Fatalf("CreateItem A: %v", err)
 	}
 	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tidB, Uuid: ids.New(), PriceListVersionID: vB,
+		TenantID: tidB, ID: ids.New(), PriceListVersionID: vB,
 		Code: "BBB", Name: "Shared Name", Taxable: 0,
 		Category: sql.NullString{String: "BetaCat", Valid: true},
 		Unit:     sql.NullString{String: "HourB", Valid: true},

@@ -14,7 +14,7 @@ import (
 
 // mountRecurring returns a router with the slice routes mounted and a middleware
 // that attaches the tenant id to every request (standing in for auth).
-func mountRecurring(h *Handler, tenantID int64) chi.Router {
+func mountRecurring(h *Handler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -28,7 +28,7 @@ func mountRecurring(h *Handler, tenantID int64) chi.Router {
 // newRecurringHandler builds a handler over a fresh DB with a seeded
 // tenant+client+template, returning the handler, tenant id, client
 // uuid, and the seeded template.
-func newRecurringHandler(t *testing.T) (*Handler, int64, string, *RecurringTemplate) {
+func newRecurringHandler(t *testing.T) (*Handler, string, string, *RecurringTemplate) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -44,7 +44,7 @@ func TestRecurringGetByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountRecurring(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/recurring/" + tpl.UUID)
+	res, err := http.Get(srv.URL + "/recurring/" + tpl.ID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -56,8 +56,8 @@ func TestRecurringGetByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got["id"] != tpl.UUID {
-		t.Fatalf("json id=%v want uuid %q", got["id"], tpl.UUID)
+	if got["id"] != tpl.ID {
+		t.Fatalf("json id=%v want uuid %q", got["id"], tpl.ID)
 	}
 	if got["clientId"] != clientUUID {
 		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], clientUUID)
@@ -153,7 +153,7 @@ func TestRecurringGenerateByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountRecurring(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Post(srv.URL+"/recurring/"+tpl.UUID+"/generate", "application/json", nil)
+	res, err := http.Post(srv.URL+"/recurring/"+tpl.ID+"/generate", "application/json", nil)
 	if err != nil {
 		t.Fatalf("POST generate: %v", err)
 	}

@@ -24,7 +24,7 @@ func TestInvoiceListByStatus(t *testing.T) {
 		t.Fatalf("ListByStatus sent: %v", err)
 	}
 	if len(sent) != 1 || sent[0].ID != a.ID {
-		t.Fatalf("sent = %+v, want one (id=%d)", sent, a.ID)
+		t.Fatalf("sent = %+v, want one (id=%s)", sent, a.ID)
 	}
 	draft, err := repo.ListByStatus(ctx, tid, "draft")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestInvoiceListClientInvoices(t *testing.T) {
 	}
 	for i := range janeInvs {
 		if janeInvs[i].ClientID != jane {
-			t.Fatalf("invoice %d client = %d, want %d", i, janeInvs[i].ClientID, jane)
+			t.Fatalf("invoice %d client = %s, want %s", i, janeInvs[i].ClientID, jane)
 		}
 	}
 }
@@ -81,7 +81,7 @@ func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 	}
 
 	// Flip a+b to sent in bulk.
-	if err := repo.BulkUpdateStatus(ctx, tid, []int64{a.ID, b.ID}, "sent"); err != nil {
+	if err := repo.BulkUpdateStatus(ctx, tid, []string{a.ID, b.ID}, "sent"); err != nil {
 		t.Fatalf("BulkUpdateStatus: %v", err)
 	}
 	sent, _ := repo.ListByStatus(ctx, tid, "sent")
@@ -90,12 +90,12 @@ func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 	}
 
 	// Delete a+b in bulk; c remains.
-	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
+	if err := repo.BulkDelete(ctx, tid, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	list, _ := repo.List(ctx, tid)
 	if len(list) != 1 || list[0].ID != c.ID {
-		t.Fatalf("after bulk delete list = %+v, want only c (id=%d)", list, c.ID)
+		t.Fatalf("after bulk delete list = %+v, want only c (id=%s)", list, c.ID)
 	}
 }
 
@@ -126,7 +126,7 @@ func TestInvoiceMarkOverdueForTenant(t *testing.T) {
 		t.Fatalf("MarkOverdueForTenant: %v", err)
 	}
 	if len(flipped) != 1 || flipped[0].ID != overdueInv.ID {
-		t.Fatalf("flipped = %+v, want only overdueInv (id=%d)", flipped, overdueInv.ID)
+		t.Fatalf("flipped = %+v, want only overdueInv (id=%s)", flipped, overdueInv.ID)
 	}
 
 	got, _ := repo.Get(ctx, tid, overdueInv.ID)
@@ -145,8 +145,8 @@ func TestInvoiceMarkOverdueForTenant(t *testing.T) {
 func TestInvoiceMarkOverdueRequiresTenant(t *testing.T) {
 	conn := newTestDB(t)
 	repo := NewInvoices(conn)
-	if _, err := repo.MarkOverdueForTenant(context.Background(), 0); err == nil {
-		t.Fatal("MarkOverdueForTenant(0): want error")
+	if _, err := repo.MarkOverdueForTenant(context.Background(), ""); err == nil {
+		t.Fatal("MarkOverdueForTenant with empty tenant: want error")
 	}
 }
 
@@ -161,11 +161,11 @@ func TestInvoiceActiveTenantIDs(t *testing.T) {
 		t.Fatalf("ActiveTenantIDs: %v", err)
 	}
 	// Both seeded tenants are 'active'.
-	seen := map[int64]bool{}
+	seen := map[string]bool{}
 	for _, id := range ids {
 		seen[id] = true
 	}
 	if !seen[a] || !seen[b] {
-		t.Fatalf("ActiveTenantIDs = %v, want to include %d and %d", ids, a, b)
+		t.Fatalf("ActiveTenantIDs = %v, want to include %s and %s", ids, a, b)
 	}
 }

@@ -17,7 +17,7 @@ func TestEstimateUpdate(t *testing.T) {
 	est := mkEstimate(t, repo, tid, pid)
 
 	// Missing client and empty items are rejected.
-	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ClientID: 0}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}}); err == nil {
+	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ClientID: ""}, []billing.LineItemInput{{Description: "X", Quantity: 1, UnitPrice: 1}}); err == nil {
 		t.Fatal("Update with no client: want error")
 	}
 	if _, err := repo.Update(ctx, tid, est.ID, EstimateInput{ClientID: pid}, nil); err == nil {
@@ -36,7 +36,7 @@ func TestEstimateUpdate(t *testing.T) {
 	}
 
 	// Updating a non-existent estimate returns (nil, nil).
-	missing, err := repo.Update(ctx, tid, 999999, EstimateInput{ClientID: pid},
+	missing, err := repo.Update(ctx, tid, "nonexistent-uuid", EstimateInput{ClientID: pid},
 		[]billing.LineItemInput{{Description: "Z", Quantity: 1, UnitPrice: 1}})
 	if err != nil || missing != nil {
 		t.Fatalf("Update missing = %+v err=%v, want nil/nil", missing, err)
@@ -62,7 +62,7 @@ func TestEstimateListByStatusAndClient(t *testing.T) {
 		t.Fatalf("ListByStatus: %v", err)
 	}
 	if len(sent) != 1 || sent[0].ID != a.ID {
-		t.Fatalf("sent = %+v, want only a (id=%d)", sent, a.ID)
+		t.Fatalf("sent = %+v, want only a (id=%s)", sent, a.ID)
 	}
 
 	janeEsts, err := repo.ListClientEstimates(ctx, tid, jane)
@@ -93,18 +93,18 @@ func TestEstimateBulkDeleteAndBulkStatus(t *testing.T) {
 		t.Fatalf("BulkUpdateStatus empty: %v", err)
 	}
 
-	if err := repo.BulkUpdateStatus(ctx, tid, []int64{a.ID, b.ID}, "sent"); err != nil {
+	if err := repo.BulkUpdateStatus(ctx, tid, []string{a.ID, b.ID}, "sent"); err != nil {
 		t.Fatalf("BulkUpdateStatus: %v", err)
 	}
 	if sent, _ := repo.ListByStatus(ctx, tid, "sent"); len(sent) != 2 {
 		t.Fatalf("sent after bulk = %d, want 2", len(sent))
 	}
 
-	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
+	if err := repo.BulkDelete(ctx, tid, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	list, _ := repo.List(ctx, tid)
 	if len(list) != 1 || list[0].ID != c.ID {
-		t.Fatalf("after bulk delete = %+v, want only c (id=%d)", list, c.ID)
+		t.Fatalf("after bulk delete = %+v, want only c (id=%s)", list, c.ID)
 	}
 }

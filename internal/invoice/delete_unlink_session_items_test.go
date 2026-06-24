@@ -13,12 +13,12 @@ import (
 
 // addManualLine inserts a manual (session-less) line onto an invoice — a line that
 // SHOULD vanish when the invoice is deleted (it has no session to return to).
-func addManualLine(t *testing.T, conn *sql.DB, tenantID, invoiceID int64, price float64) {
+func addManualLine(t *testing.T, conn *sql.DB, tenantID, invoiceID string, price float64) {
 	t.Helper()
 	_, err := gen.New(conn).CreateLineItem(context.Background(), gen.CreateLineItemParams{
-		Uuid:        ids.New(),
+		ID:          ids.New(),
 		TenantID:    tenantID,
-		InvoiceID:   sql.NullInt64{Int64: invoiceID, Valid: true},
+		InvoiceID:   sql.NullString{String: invoiceID, Valid: true},
 		Description: "manual",
 		Quantity:    1,
 		UnitPrice:   price,
@@ -32,7 +32,7 @@ func addManualLine(t *testing.T, conn *sql.DB, tenantID, invoiceID int64, price 
 
 // sessionItemSurvival reports (unbilled session items for session, total line items for
 // the (now possibly gone) invoice id).
-func countSessionItems(t *testing.T, conn *sql.DB, tenantID, sessionID int64) int {
+func countSessionItems(t *testing.T, conn *sql.DB, tenantID, sessionID string) int {
 	t.Helper()
 	var n int
 	if err := conn.QueryRow(
@@ -43,7 +43,7 @@ func countSessionItems(t *testing.T, conn *sql.DB, tenantID, sessionID int64) in
 	return n
 }
 
-func countInvoiceLines(t *testing.T, conn *sql.DB, tenantID, invoiceID int64) int {
+func countInvoiceLines(t *testing.T, conn *sql.DB, tenantID, invoiceID string) int {
 	t.Helper()
 	var n int
 	if err := conn.QueryRow(
@@ -65,7 +65,7 @@ func TestDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	ctx := tctx(tenantID)
 
 	sid := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-10", 10, 20)
-	inv, err := invSvc.DraftFromSessions(ctx, []int64{sid})
+	inv, err := invSvc.DraftFromSessions(ctx, []string{sid})
 	if err != nil {
 		t.Fatalf("DraftFromSessions: %v", err)
 	}
@@ -103,28 +103,28 @@ func TestBulkDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 
 	s1 := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-10", 10)
 	s2 := recordedSessionWithItems(t, sessionSvc, repo, tenantID, clientID, "2026-01-11", 20)
-	inv1, err := invSvc.DraftFromSessions(ctx, []int64{s1})
+	inv1, err := invSvc.DraftFromSessions(ctx, []string{s1})
 	if err != nil {
 		t.Fatalf("draft inv1: %v", err)
 	}
-	inv2, err := invSvc.DraftFromSessions(ctx, []int64{s2})
+	inv2, err := invSvc.DraftFromSessions(ctx, []string{s2})
 	if err != nil {
 		t.Fatalf("draft inv2: %v", err)
 	}
 	addManualLine(t, conn, tenantID, inv1.ID, 5)
 	addManualLine(t, conn, tenantID, inv2.ID, 7)
 
-	if err := invSvc.BulkDelete(ctx, []int64{inv1.ID, inv2.ID}); err != nil {
+	if err := invSvc.BulkDelete(ctx, []string{inv1.ID, inv2.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 
-	for _, sid := range []int64{s1, s2} {
+	for _, sid := range []string{s1, s2} {
 		if got := countSessionItems(t, conn, tenantID, sid); got != 1 {
-			t.Fatalf("session %d items after bulk delete = %d, want 1", sid, got)
+			t.Fatalf("session %s items after bulk delete = %d, want 1", sid, got)
 		}
 		sh, _ := sessionSvc.Get(ctx, sid)
 		if sh == nil || sh.Status != "recorded" || sh.InvoiceID != nil {
-			t.Fatalf("session %d after bulk delete = %+v, want recorded + nil invoice", sid, sh)
+			t.Fatalf("session %s after bulk delete = %+v, want recorded + nil invoice", sid, sh)
 		}
 	}
 	if got := countInvoiceLines(t, conn, tenantID, inv1.ID) + countInvoiceLines(t, conn, tenantID, inv2.ID); got != 0 {

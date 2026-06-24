@@ -9,7 +9,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
+func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -18,7 +18,7 @@ func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 	return NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
 }
 
-func sessionInput(pid int64, date string) SessionInput {
+func sessionInput(pid string, date string) SessionInput {
 	return SessionInput{
 		ClientID: pid, ServiceDate: date,
 		Note: "supported community access",
@@ -41,8 +41,8 @@ func TestSessionCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "session" || e.UUID != sh.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want session/%d/create", e, sh.ID)
+		if e.Entity != "session" || e.UUID != sh.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want session/%s/create", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
@@ -62,7 +62,7 @@ func TestSessionCreateAttributesAuthor(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	if sh.AuthorUserID == nil || *sh.AuthorUserID != uid {
-		t.Fatalf("author not attributed: %+v want %d", sh.AuthorUserID, uid)
+		t.Fatalf("author not attributed: %+v want %s", sh.AuthorUserID, uid)
 	}
 }
 
@@ -97,13 +97,13 @@ func TestSessionUpdateStatusBroadcasts(t *testing.T) {
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.UpdateStatus(ctx, sh.UUID, "recorded"); err != nil {
+	if err := svc.UpdateStatus(ctx, sh.ID, "recorded"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "session" || e.UUID != sh.UUID || e.Action != "update" {
-			t.Fatalf("event=%+v want session/%d/update", e, sh.ID)
+		if e.Entity != "session" || e.UUID != sh.ID || e.Action != "update" {
+			t.Fatalf("event=%+v want session/%s/update", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after UpdateStatus")
@@ -124,13 +124,13 @@ func TestSessionDeleteSvc(t *testing.T) {
 	}
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.Delete(ctx, sh.UUID); err != nil {
+	if err := svc.Delete(ctx, sh.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "session" || e.UUID != sh.UUID || e.Action != "delete" {
-			t.Fatalf("event=%+v want session/%d/delete", e, sh.ID)
+		if e.Entity != "session" || e.UUID != sh.ID || e.Action != "delete" {
+			t.Fatalf("event=%+v want session/%s/delete", e, sh.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Delete")
@@ -170,7 +170,7 @@ func TestSessionSuggestions(t *testing.T) {
 	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
-	var p1ids []int64
+	var p1ids []string
 	for _, d := range []string{"2026-01-10", "2026-01-20"} {
 		sh, err := svc.Create(ctx, sessionInput(p1, d))
 		if err != nil {
@@ -189,7 +189,7 @@ func TestSessionSuggestions(t *testing.T) {
 	if len(sugs) != 2 {
 		t.Fatalf("suggestions = %d, want 2: %+v", len(sugs), sugs)
 	}
-	byPID := map[int64]Suggestion{}
+	byPID := map[string]Suggestion{}
 	for _, s := range sugs {
 		byPID[s.ClientID] = s
 	}
@@ -218,7 +218,7 @@ func TestSessionMarkDrafted(t *testing.T) {
 
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
-	if err := svc.MarkDrafted(ctx, invID, []int64{sh.ID}); err != nil {
+	if err := svc.MarkDrafted(ctx, invID, []string{sh.ID}); err != nil {
 		t.Fatalf("MarkDrafted: %v", err)
 	}
 	select {
@@ -231,7 +231,7 @@ func TestSessionMarkDrafted(t *testing.T) {
 	}
 	got, _ := svc.Get(ctx, sh.ID)
 	if got == nil || got.Status != "drafted" || got.InvoiceID == nil || *got.InvoiceID != invID {
-		t.Fatalf("after MarkDrafted = %+v, want drafted+invoice %d", got, invID)
+		t.Fatalf("after MarkDrafted = %+v, want drafted+invoice %s", got, invID)
 	}
 }
 
@@ -255,7 +255,7 @@ func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 
 	ch, unsub := hub.Subscribe(tenantB)
 	defer unsub()
-	if err := svc.MarkDrafted(ctxB, invA, []int64{sh.ID}); err == nil {
+	if err := svc.MarkDrafted(ctxB, invA, []string{sh.ID}); err == nil {
 		t.Fatal("MarkDrafted cross-tenant invoice: want error, got nil")
 	}
 	select {
@@ -275,7 +275,7 @@ func TestSessionMarkDraftedEmptyNoEvent(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.MarkDrafted(tctx(tenantID), 55, nil); err != nil {
+	if err := svc.MarkDrafted(tctx(tenantID), "some-invoice-uuid", nil); err != nil {
 		t.Fatalf("MarkDrafted empty: %v", err)
 	}
 	select {

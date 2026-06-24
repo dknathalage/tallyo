@@ -57,9 +57,9 @@ func TestSessionItemCRUDAndUnbilledGuards(t *testing.T) {
 	// Link the item to an invoice → it becomes billed.
 	invID := seedInvoice(t, conn, tid, pid, 100)
 	if err := gen.New(conn).LinkSessionItemsToInvoice(ctx, gen.LinkSessionItemsToInvoiceParams{
-		InvoiceID: sql.NullInt64{Int64: invID, Valid: true},
+		InvoiceID: sql.NullString{String: invID, Valid: true},
 		SortOrder: sql.NullInt64{Int64: 0, Valid: true},
-		TenantID:  tid, SessionID: sql.NullInt64{Int64: sh.ID, Valid: true},
+		TenantID:  tid, SessionID: sql.NullString{String: sh.ID, Valid: true},
 	}); err != nil {
 		t.Fatalf("link item: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSessionDeleteBilledGuard(t *testing.T) {
 	}
 	// Recorded session deletes fine.
 	other, _ := repo.Create(ctx, tid, nil, sampleSessionInput(pid))
-	if err := svc.Delete(ctx, other.UUID); err != nil {
+	if err := svc.Delete(ctx, other.ID); err != nil {
 		t.Fatalf("Delete recorded session: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestSessionDeleteBilledGuard(t *testing.T) {
 	if err := repo.SetInvoice(ctx, tid, sh.ID, invID, "drafted"); err != nil {
 		t.Fatalf("SetInvoice: %v", err)
 	}
-	if err := svc.Delete(ctx, sh.UUID); !errors.Is(err, ErrSessionBilled) {
+	if err := svc.Delete(ctx, sh.ID); !errors.Is(err, ErrSessionBilled) {
 		t.Fatalf("Delete billed session err = %v, want ErrSessionBilled", err)
 	}
 	if got, _ := repo.Get(ctx, tid, sh.ID); got == nil {

@@ -27,8 +27,8 @@ func TestInvoiceCreateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.UUID != inv.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want invoice/%d/create", e, inv.ID)
+		if e.Entity != "invoice" || e.UUID != inv.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want invoice/%s/create", e, inv.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
@@ -54,8 +54,8 @@ func TestInvoiceUpdateStatusBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "invoice" || e.UUID != inv.UUID || e.Action != "status" {
-			t.Fatalf("event=%+v want invoice/%d/status", e, inv.ID)
+		if e.Entity != "invoice" || e.UUID != inv.ID || e.Action != "status" {
+			t.Fatalf("event=%+v want invoice/%s/status", e, inv.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after UpdateStatus")
@@ -86,10 +86,10 @@ func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 		t.Fatalf("ActiveTenantIDs: %v", err)
 	}
 	if containsID(ids, tenantB) {
-		t.Fatalf("suspended tenant %d must not appear in active ids %v", tenantB, ids)
+		t.Fatalf("suspended tenant %s must not appear in active ids %v", tenantB, ids)
 	}
 	if !containsID(ids, tenantA) {
-		t.Fatalf("active tenant %d missing from active ids %v", tenantA, ids)
+		t.Fatalf("active tenant %s missing from active ids %v", tenantA, ids)
 	}
 
 	// Subscribe both tenants; only A should receive the overdue sweep event.
@@ -103,13 +103,13 @@ func TestSweepSkipsSuspendedAndScopesBroadcast(t *testing.T) {
 		t.Fatalf("MarkOverdueForTenant: %v", err)
 	}
 	if len(rows) != 1 || rows[0].ID != overdueA.ID {
-		t.Fatalf("swept rows = %+v, want the one tenant-A invoice %d", rows, overdueA.ID)
+		t.Fatalf("swept rows = %+v, want the one tenant-A invoice %s", rows, overdueA.ID)
 	}
 
 	select {
 	case e := <-chA:
 		if e.Action != "overdue_sweep" || e.TenantID != tenantA {
-			t.Fatalf("tenant A event = %+v, want overdue_sweep for tenant %d", e, tenantA)
+			t.Fatalf("tenant A event = %+v, want overdue_sweep for tenant %s", e, tenantA)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("tenant A did not receive overdue_sweep")

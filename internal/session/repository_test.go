@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/ids"
 )
 
-func sampleSessionInput(pid int64) SessionInput {
+func sampleSessionInput(pid string) SessionInput {
 	return SessionInput{
 		ClientID:    pid,
 		ServiceDate: "2026-01-15",
@@ -28,7 +28,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if s == nil || s.ID == 0 || s.ClientID != pid || s.ServiceDate != "2026-01-15" {
+	if s == nil || s.ID == "" || s.ClientID != pid || s.ServiceDate != "2026-01-15" {
 		t.Fatalf("Create = %+v", s)
 	}
 	if s.Note != "Supported community access" {
@@ -38,7 +38,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		t.Fatalf("tags not round-tripped: %+v", s.Tags)
 	}
 	if s.AuthorUserID == nil || *s.AuthorUserID != uid {
-		t.Fatalf("author not round-tripped: %+v want %d", s.AuthorUserID, uid)
+		t.Fatalf("author not round-tripped: %+v want %s", s.AuthorUserID, uid)
 	}
 	if s.InvoiceID != nil {
 		t.Fatalf("InvoiceID should be nil on a fresh session: %+v", s.InvoiceID)
@@ -95,7 +95,7 @@ func TestSessionCreateRejectsInvalid(t *testing.T) {
 	}{
 		{"empty serviceDate", SessionInput{ClientID: pid, ServiceDate: ""}},
 		{"malformed serviceDate", SessionInput{ClientID: pid, ServiceDate: "2026-6-9"}},
-		{"zero client", SessionInput{ClientID: 0, ServiceDate: "2026-01-15"}},
+		{"zero client", SessionInput{ClientID: "", ServiceDate: "2026-01-15"}},
 	}
 	for _, c := range cases {
 		if s, err := repo.Create(ctx, tid, nil, c.in); err == nil {
@@ -120,7 +120,7 @@ func TestSessionGetFoundAbsentAndIsolation(t *testing.T) {
 	if err != nil || got == nil || got.ID != s.ID {
 		t.Fatalf("Get found = %+v err=%v", got, err)
 	}
-	if miss, err := repo.Get(ctx, a, s.ID+999); err != nil || miss != nil {
+	if miss, err := repo.Get(ctx, a, ids.New()); err != nil || miss != nil {
 		t.Fatalf("Get absent = %+v err=%v", miss, err)
 	}
 	if leak, _ := repo.Get(ctx, b, s.ID); leak != nil {
@@ -179,7 +179,7 @@ func TestSessionUpdateStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.UpdateStatus(ctx, tid, s.UUID, "recorded"); err != nil {
+	if err := repo.UpdateStatus(ctx, tid, s.ID, "recorded"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, _ := repo.Get(ctx, tid, s.ID)
@@ -214,7 +214,7 @@ func TestSessionSetInvoiceAndClear(t *testing.T) {
 	}
 	got, _ := repo.Get(ctx, tid, s.ID)
 	if got == nil || got.Status != "drafted" || got.InvoiceID == nil || *got.InvoiceID != invID {
-		t.Fatalf("after SetInvoice = %+v, want drafted+invoice %d", got, invID)
+		t.Fatalf("after SetInvoice = %+v, want drafted+invoice %s", got, invID)
 	}
 
 	if err := repo.ClearForInvoice(ctx, tid, invID); err != nil {
@@ -281,9 +281,9 @@ func TestSessionListRecordedUnbilled(t *testing.T) {
 	if len(unbilled) != 2 {
 		t.Fatalf("ListRecordedUnbilled = %d, want 2: %+v", len(unbilled), unbilled)
 	}
-	ids := map[int64]bool{unbilled[0].ID: true, unbilled[1].ID: true}
+	ids := map[string]bool{unbilled[0].ID: true, unbilled[1].ID: true}
 	if !ids[r1.ID] || !ids[r2.ID] {
-		t.Fatalf("unbilled ids = %+v, want %d and %d", ids, r1.ID, r2.ID)
+		t.Fatalf("unbilled ids = %+v, want %s and %s", ids, r1.ID, r2.ID)
 	}
 }
 
@@ -315,7 +315,7 @@ func TestSessionUnbilledByClient(t *testing.T) {
 	if len(aggs) != 2 {
 		t.Fatalf("aggs = %d, want 2: %+v", len(aggs), aggs)
 	}
-	byPID := map[int64]UnbilledAgg{}
+	byPID := map[string]UnbilledAgg{}
 	for _, a := range aggs {
 		byPID[a.ClientID] = a
 	}
@@ -342,7 +342,7 @@ func TestSessionUpdateRepo(t *testing.T) {
 	in.ServiceDate = "2026-01-18"
 	in.Note = "updated note"
 	in.Tags = []string{"updated"}
-	up, err := repo.Update(ctx, tid, s.UUID, in)
+	up, err := repo.Update(ctx, tid, s.ID, in)
 	if err != nil || up == nil || up.ServiceDate != "2026-01-18" || up.Note != "updated note" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
@@ -366,7 +366,7 @@ func TestSessionDeleteRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.Delete(ctx, tid, s.UUID); err != nil {
+	if err := repo.Delete(ctx, tid, s.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if got, _ := repo.Get(ctx, tid, s.ID); got != nil {

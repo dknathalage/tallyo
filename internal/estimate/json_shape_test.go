@@ -9,11 +9,10 @@ import (
 // convertedInvoiceId as the produced invoice's uuid (so the SPA can link to it),
 // never the internal int FK.
 func TestEstimateJSONConvertedInvoiceIsUUID(t *testing.T) {
-	convertedID := int64(11)
+	convertedID := "invoice-int-fk"
 	convertedUUID := "invoice-uuid"
 	e := Estimate{
-		ID:                   1,
-		UUID:                 "estimate-uuid",
+		ID:                   "estimate-uuid",
 		ConvertedInvoiceID:   &convertedID,
 		ConvertedInvoiceUUID: &convertedUUID,
 	}

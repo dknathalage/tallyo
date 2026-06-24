@@ -38,7 +38,7 @@ func TestRecurringListActiveOnly(t *testing.T) {
 		t.Fatalf("List active: %v", err)
 	}
 	if len(activeList) != 1 || activeList[0].ID != active.ID {
-		t.Fatalf("active list = %+v, want only active (id=%d, not %d)", activeList, active.ID, inactive.ID)
+		t.Fatalf("active list = %+v, want only active (id=%s, not %s)", activeList, active.ID, inactive.ID)
 	}
 	// The active row carries the resolved client name and parsed line items.
 	if activeList[0].ClientName != "Jane" || len(activeList[0].LineItems) != 1 {

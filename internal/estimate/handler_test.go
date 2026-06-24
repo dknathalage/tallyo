@@ -17,7 +17,7 @@ import (
 
 // mountEstimate mounts the estimate routes on a fresh router with a one-line
 // middleware injecting the tenant (stands in for auth).
-func mountEstimate(h *Handler, tenantID int64) chi.Router {
+func mountEstimate(h *Handler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -30,7 +30,7 @@ func mountEstimate(h *Handler, tenantID int64) chi.Router {
 
 // newEstimateHandler builds a fresh DB, seeds a tenant + client + a single
 // estimate, and returns the handler, tenant id, client uuid, and estimate.
-func newEstimateHandler(t *testing.T) (*Handler, int64, string, *Estimate) {
+func newEstimateHandler(t *testing.T) (*Handler, string, string, *Estimate) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -41,7 +41,7 @@ func newEstimateHandler(t *testing.T) (*Handler, int64, string, *Estimate) {
 	hub := realtime.NewHub()
 	svc := NewService(conn, hub)
 	est := makeEstimate(t, svc, tenantID, p.ID)
-	return NewHandler(svc), tenantID, p.UUID, est
+	return NewHandler(svc), tenantID, p.ID, est
 }
 
 func TestEstimateGetByUUID(t *testing.T) {
@@ -49,7 +49,7 @@ func TestEstimateGetByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountEstimate(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/estimates/" + est.UUID)
+	res, err := http.Get(srv.URL + "/estimates/" + est.ID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -61,8 +61,8 @@ func TestEstimateGetByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got["id"] != est.UUID {
-		t.Fatalf("json id=%v want estimate uuid %q", got["id"], est.UUID)
+	if got["id"] != est.ID {
+		t.Fatalf("json id=%v want estimate uuid %q", got["id"], est.ID)
 	}
 	if got["clientId"] != pUUID {
 		t.Fatalf("json clientId=%v want client uuid %q", got["clientId"], pUUID)
@@ -112,7 +112,7 @@ func TestEstimateDuplicateByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountEstimate(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Post(srv.URL+"/estimates/"+est.UUID+"/duplicate", "application/json", nil)
+	res, err := http.Post(srv.URL+"/estimates/"+est.ID+"/duplicate", "application/json", nil)
 	if err != nil {
 		t.Fatalf("POST duplicate: %v", err)
 	}
@@ -131,8 +131,8 @@ func TestEstimateDuplicateByUUID(t *testing.T) {
 	if _, err := uuid.Parse(dupID); err != nil {
 		t.Fatalf("duplicate id=%v not a uuid", dupID)
 	}
-	if dupID == est.UUID {
-		t.Fatalf("duplicate reused source uuid %q", est.UUID)
+	if dupID == est.ID {
+		t.Fatalf("duplicate reused source uuid %q", est.ID)
 	}
 }
 
@@ -143,7 +143,7 @@ func TestEstimateConvertReturnsInvoiceUUID(t *testing.T) {
 
 	// Estimates can only be converted from 'accepted'. Flip the status first.
 	body := []byte(`{"status":"accepted"}`)
-	sres, err := http.Post(srv.URL+"/estimates/"+est.UUID+"/status", "application/json", bytes.NewReader(body))
+	sres, err := http.Post(srv.URL+"/estimates/"+est.ID+"/status", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST status: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestEstimateConvertReturnsInvoiceUUID(t *testing.T) {
 		t.Fatalf("status update=%d want 200", sres.StatusCode)
 	}
 
-	res, err := http.Post(srv.URL+"/estimates/"+est.UUID+"/convert", "application/json", nil)
+	res, err := http.Post(srv.URL+"/estimates/"+est.ID+"/convert", "application/json", nil)
 	if err != nil {
 		t.Fatalf("POST convert: %v", err)
 	}

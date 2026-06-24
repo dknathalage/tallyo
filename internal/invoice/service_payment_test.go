@@ -9,7 +9,7 @@ import (
 
 // newPaymentSvc wires a migrated DB with a payment service, the hub, an invoices
 // repo, and a seeded tenant + client so a seeded invoice can be paid.
-func newPaymentSvc(t *testing.T) (*PaymentService, *realtime.Hub, *InvoicesRepo, int64, int64) {
+func newPaymentSvc(t *testing.T) (*PaymentService, *realtime.Hub, *InvoicesRepo, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -31,7 +31,7 @@ func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p == nil || p.ID <= 0 {
+	if p == nil || p.ID == "" {
 		t.Fatalf("Create returned %+v", p)
 	}
 
@@ -40,9 +40,9 @@ func TestPaymentCreateBroadcastsPaymentAndInvoice(t *testing.T) {
 	for i := 0; i < 2; i++ { // exactly two events expected
 		select {
 		case e := <-ch:
-			if e.Entity == "payment" && e.UUID == p.UUID && e.Action == "create" {
+			if e.Entity == "payment" && e.UUID == p.ID && e.Action == "create" {
 				gotPayment = true
-			} else if e.Entity == "invoice" && e.UUID == inv.UUID && e.Action == "update" {
+			} else if e.Entity == "invoice" && e.UUID == inv.ID && e.Action == "update" {
 				gotInvoice = true
 			} else {
 				t.Fatalf("unexpected event %+v", e)
@@ -114,9 +114,9 @@ func TestPaymentDeleteBroadcastsPaymentAndInvoice(t *testing.T) {
 	for i := 0; i < 2; i++ { // exactly two events expected
 		select {
 		case e := <-ch:
-			if e.Entity == "payment" && e.UUID == p.UUID && e.Action == "delete" {
+			if e.Entity == "payment" && e.UUID == p.ID && e.Action == "delete" {
 				gotPayment = true
-			} else if e.Entity == "invoice" && e.UUID == inv.UUID && e.Action == "update" {
+			} else if e.Entity == "invoice" && e.UUID == inv.ID && e.Action == "update" {
 				gotInvoice = true
 			} else {
 				t.Fatalf("unexpected event %+v", e)
@@ -135,7 +135,7 @@ func TestPaymentDeleteMissingReturnsErr(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.Delete(tctx(tenantID), 99999); err == nil {
+	if err := svc.Delete(tctx(tenantID), "nonexistent-uuid"); err == nil {
 		t.Fatal("delete missing must error")
 	}
 	select {

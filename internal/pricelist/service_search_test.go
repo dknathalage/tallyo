@@ -32,7 +32,7 @@ func TestSearchForDateByKeywordAttachesUnitPrice(t *testing.T) {
 	if m.UnitPrice == nil || *m.UnitPrice != 100 {
 		t.Fatalf("unit price not attached: %+v", m.UnitPrice)
 	}
-	if m.VersionID == 0 {
+	if m.VersionID == "" {
 		t.Fatalf("match meta = %+v", m)
 	}
 }

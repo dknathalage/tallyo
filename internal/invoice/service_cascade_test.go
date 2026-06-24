@@ -10,14 +10,14 @@ import (
 
 // seedDraftedSession creates a recorded session and drafts it onto inv via the
 // session.Service, returning the session id.
-func seedDraftedSession(t *testing.T, sessionSvc *session.Service, tenantID, clientID, invoiceID int64) int64 {
+func seedDraftedSession(t *testing.T, sessionSvc *session.Service, tenantID, clientID, invoiceID string) string {
 	t.Helper()
 	ctx := tctx(tenantID)
 	sh, err := sessionSvc.Create(ctx, session.SessionInput{ClientID: clientID, ServiceDate: "2026-01-15"})
 	if err != nil {
 		t.Fatalf("seedDraftedSession create: %v", err)
 	}
-	if err := sessionSvc.MarkDrafted(ctx, invoiceID, []int64{sh.ID}); err != nil {
+	if err := sessionSvc.MarkDrafted(ctx, invoiceID, []string{sh.ID}); err != nil {
 		t.Fatalf("seedDraftedSession MarkDrafted: %v", err)
 	}
 	return sh.ID

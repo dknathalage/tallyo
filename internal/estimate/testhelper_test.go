@@ -31,11 +31,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -48,12 +48,12 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 }
 
 // tctx returns a context carrying the given tenant id.
-func tctx(tenantID int64) context.Context {
+func tctx(tenantID string) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
 // seedClient inserts a minimal client for a tenant and returns its id.
-func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
+func seedClient(t *testing.T, conn *sql.DB, tenantID string, name string) string {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(context.Background(), tenantID, client.ClientInput{Name: name})
 	if err != nil {
@@ -64,7 +64,7 @@ func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
 
 // newEstimateSvc creates a migrated DB, seeds a tenant+client, and returns
 // the estimate Service, Hub, tenantID, clientID.
-func newEstimateSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
+func newEstimateSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -74,7 +74,7 @@ func newEstimateSvc(t *testing.T) (*Service, *realtime.Hub, int64, int64) {
 }
 
 // makeEstimate creates a single estimate for the tenant/client.
-func makeEstimate(t *testing.T, svc *Service, tenantID, clientID int64) *Estimate {
+func makeEstimate(t *testing.T, svc *Service, tenantID, clientID string) *Estimate {
 	t.Helper()
 	est, err := svc.Create(tctx(tenantID), EstimateInput{
 		ClientID: clientID, IssueDate: "2026-01-01", ValidUntil: "2026-02-01",
@@ -89,7 +89,7 @@ func makeEstimate(t *testing.T, svc *Service, tenantID, clientID int64) *Estimat
 }
 
 // mkEstimate creates an estimate via repo directly.
-func mkEstimate(t *testing.T, repo *EstimatesRepo, tid, pid int64) *Estimate {
+func mkEstimate(t *testing.T, repo *EstimatesRepo, tid, pid string) *Estimate {
 	t.Helper()
 	est, err := repo.Create(context.Background(), tid, EstimateInput{
 		ClientID: pid, IssueDate: "2026-01-01", ValidUntil: "2026-02-01", Tax: 10,

@@ -19,7 +19,7 @@ func TestPaymentCreateAndTotals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p.ID == 0 || p.Amount != 40 || p.Method != "bank" {
+	if p.ID == "" || p.Amount != 40 || p.Method != "bank" {
 		t.Fatalf("Create = %+v", p)
 	}
 	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: invID, Amount: 25, PaidAt: "2026-01-06"}); err != nil {
@@ -40,10 +40,10 @@ func TestPaymentRejectsBadInput(t *testing.T) {
 	tid := seedTenant(t, conn, "T")
 	repo := NewPayments(conn)
 	ctx := context.Background()
-	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: 0, Amount: 1}); err == nil {
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: "", Amount: 1}); err == nil {
 		t.Fatal("missing invoice: want error")
 	}
-	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: 1, Amount: 0}); err == nil {
+	if _, err := repo.Create(ctx, tid, PaymentInput{InvoiceID: "nonexistent-uuid", Amount: 0}); err == nil {
 		t.Fatal("non-positive amount: want error")
 	}
 }
@@ -61,10 +61,10 @@ func TestPaymentDeleteReturnsInvoiceID(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	gotUUID, gotInv, err := repo.Delete(ctx, tid, p.ID)
-	if err != nil || gotInv != invID || gotUUID != p.UUID {
-		t.Fatalf("Delete = (%q,%d) err=%v, want (%q,%d)", gotUUID, gotInv, err, p.UUID, invID)
+	if err != nil || gotInv != invID || gotUUID != p.ID {
+		t.Fatalf("Delete = (%q,%q) err=%v, want (%q,%q)", gotUUID, gotInv, err, p.ID, invID)
 	}
-	if _, _, err := repo.Delete(ctx, tid, 99999); !errors.Is(err, sql.ErrNoRows) {
+	if _, _, err := repo.Delete(ctx, tid, "nonexistent-uuid"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("Delete missing err = %v, want sql.ErrNoRows", err)
 	}
 }

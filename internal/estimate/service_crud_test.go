@@ -20,7 +20,7 @@ func TestEstimateListAndGet(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	if len(list) != 1 || list[0].ID != est.ID {
-		t.Fatalf("List = %+v, want one id %d", list, est.ID)
+		t.Fatalf("List = %+v, want one id %s", list, est.ID)
 	}
 
 	got, err := svc.Get(ctx, est.ID)
@@ -28,14 +28,14 @@ func TestEstimateListAndGet(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	if got == nil || got.ID != est.ID {
-		t.Fatalf("Get = %+v, want id %d", got, est.ID)
+		t.Fatalf("Get = %+v, want id %s", got, est.ID)
 	}
 }
 
 func TestEstimateGetNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, _ := newEstimateSvc(t)
 
-	got, err := svc.Get(tctx(tenantID), 999999)
+	got, err := svc.Get(tctx(tenantID), "nonexistent-uuid")
 	if err != nil {
 		t.Fatalf("Get missing: unexpected err %v", err)
 	}
@@ -58,7 +58,7 @@ func TestEstimateListByStatusAndClientSvc(t *testing.T) {
 		t.Fatalf("ListByStatus: %v", err)
 	}
 	if len(accepted) != 1 || accepted[0].ID != est.ID {
-		t.Fatalf("ListByStatus accepted = %+v, want one id %d", accepted, est.ID)
+		t.Fatalf("ListByStatus accepted = %+v, want one id %s", accepted, est.ID)
 	}
 
 	byPart, err := svc.ListClientEstimates(ctx, clientID)
@@ -66,7 +66,7 @@ func TestEstimateListByStatusAndClientSvc(t *testing.T) {
 		t.Fatalf("ListClientEstimates: %v", err)
 	}
 	if len(byPart) != 1 || byPart[0].ID != est.ID {
-		t.Fatalf("ListClientEstimates = %+v, want one id %d", byPart, est.ID)
+		t.Fatalf("ListClientEstimates = %+v, want one id %s", byPart, est.ID)
 	}
 }
 
@@ -93,7 +93,7 @@ func TestEstimateUpdateSvc(t *testing.T) {
 func TestEstimateUpdateSvcNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID, clientID := newEstimateSvc(t)
 
-	got, err := svc.Update(tctx(tenantID), 999999, EstimateInput{
+	got, err := svc.Update(tctx(tenantID), "nonexistent-uuid", EstimateInput{
 		ClientID: clientID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
 	}, []billing.LineItemInput{{Description: "B", Quantity: 1, UnitPrice: 1}})
 	if err != nil {
@@ -118,8 +118,8 @@ func TestEstimateDeleteBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "estimate" || e.UUID != est.UUID || e.Action != "delete" {
-			t.Fatalf("event=%+v want estimate/%d/delete", e, est.ID)
+		if e.Entity != "estimate" || e.UUID != est.ID || e.Action != "delete" {
+			t.Fatalf("event=%+v want estimate/%s/delete", e, est.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Delete")
@@ -130,7 +130,7 @@ func TestEstimateDeleteBroadcasts(t *testing.T) {
 		t.Fatalf("Get after delete: %v", err)
 	}
 	if got != nil {
-		t.Fatalf("estimate %d still present after delete", est.ID)
+		t.Fatalf("estimate %s still present after delete", est.ID)
 	}
 }
 
@@ -144,7 +144,7 @@ func TestEstimateBulkDeleteBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.BulkDelete(ctx, []int64{a.ID, b.ID}); err != nil {
+	if err := svc.BulkDelete(ctx, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	select {
@@ -175,7 +175,7 @@ func TestEstimateBulkUpdateStatusBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.BulkUpdateStatus(ctx, []int64{a.ID, b.ID}, "sent"); err != nil {
+	if err := svc.BulkUpdateStatus(ctx, []string{a.ID, b.ID}, "sent"); err != nil {
 		t.Fatalf("BulkUpdateStatus: %v", err)
 	}
 	select {
@@ -261,6 +261,6 @@ func TestEstimateTenantScoping(t *testing.T) {
 		t.Fatalf("Get B: %v", err)
 	}
 	if gotB != nil {
-		t.Fatalf("tenant B fetched tenant A estimate %d", est.ID)
+		t.Fatalf("tenant B fetched tenant A estimate %s", est.ID)
 	}
 }

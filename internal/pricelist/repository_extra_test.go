@@ -18,7 +18,7 @@ func TestCatalogGetVersion(t *testing.T) {
 		t.Fatalf("GetVersion = %+v err=%v", got, err)
 	}
 	// Absent id returns (nil, nil).
-	missing, err := repo.GetVersion(ctx, tid, 999999)
+	missing, err := repo.GetVersion(ctx, tid, "no-such-version")
 	if err != nil || missing != nil {
 		t.Fatalf("GetVersion missing = %+v err=%v, want nil/nil", missing, err)
 	}

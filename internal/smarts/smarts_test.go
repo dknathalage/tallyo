@@ -32,7 +32,7 @@ func (f *fakeProposer) ProposeGrounded(_ context.Context, r GroundedRequest) (js
 
 type fakeSessions struct{ rows []*session.Session }
 
-func (f *fakeSessions) ListUnbilledForClient(_ context.Context, _, _ int64) ([]*session.Session, error) {
+func (f *fakeSessions) ListUnbilledForClient(_ context.Context, _, _ string) ([]*session.Session, error) {
 	return f.rows, nil
 }
 
@@ -41,17 +41,17 @@ type fakeCat struct {
 	items map[string]*pricelist.Item // by code
 }
 
-func (f *fakeCat) ResolveVersionForDate(_ context.Context, _ int64, _ string) (*pricelist.PriceListVersion, error) {
+func (f *fakeCat) ResolveVersionForDate(_ context.Context, _ string, _ string) (*pricelist.PriceListVersion, error) {
 	return f.ver, nil
 }
-func (f *fakeCat) SearchItems(_ context.Context, _, _ int64, _ string) ([]*pricelist.Item, error) {
+func (f *fakeCat) SearchItems(_ context.Context, _, _ string, _ string) ([]*pricelist.Item, error) {
 	out := make([]*pricelist.Item, 0, len(f.items))
 	for _, it := range f.items {
 		out = append(out, it)
 	}
 	return out, nil
 }
-func (f *fakeCat) GetItemByCode(_ context.Context, _, _ int64, code string) (*pricelist.Item, error) {
+func (f *fakeCat) GetItemByCode(_ context.Context, _, _ string, code string) (*pricelist.Item, error) {
 	return f.items[code], nil
 }
 
@@ -63,7 +63,7 @@ type fakeInvoices struct {
 func (f *fakeInvoices) Create(_ context.Context, in invoice.InvoiceInput, items []billing.LineItemInput) (*invoice.Invoice, error) {
 	f.gotInput = in
 	f.gotItems = items
-	return &invoice.Invoice{UUID: "inv-uuid"}, nil
+	return &invoice.Invoice{ID: "inv-uuid"}, nil
 }
 func (f *fakeInvoices) GetByUUID(_ context.Context, _ string) (*invoice.Invoice, error) {
 	return &invoice.Invoice{Number: "INV-1", ClientName: "Acme", Total: 250, DueDate: "2026-06-01"}, nil
@@ -73,7 +73,7 @@ type fakeClients struct{ c *client.Client }
 
 func (f *fakeClients) Get(_ context.Context, _ string) (*client.Client, error) { return f.c, nil }
 
-func tctx() context.Context { return reqctx.WithTenant(context.Background(), 1) }
+func tctx() context.Context { return reqctx.WithTenant(context.Background(), "t-1") }
 
 func price(p float64) *float64 { return &p }
 
@@ -84,14 +84,14 @@ func price(p float64) *float64 { return &p }
 // proposal — so the invoice line is always priced from the catalogue.
 func TestDraftInvoicePricesFromCatalogue(t *testing.T) {
 	cat := &fakeCat{
-		ver:   &pricelist.PriceListVersion{ID: 7, UUID: "ver-uuid"},
-		items: map[string]*pricelist.Item{"CONSULT": {UUID: "item-uuid", Code: "CONSULT", Unit: "hour", UnitPrice: price(100), Taxable: true}},
+		ver:   &pricelist.PriceListVersion{ID: "ver-uuid"},
+		items: map[string]*pricelist.Item{"CONSULT": {ID: "item-uuid", Code: "CONSULT", Unit: "hour", UnitPrice: price(100), Taxable: true}},
 	}
 	inv := &fakeInvoices{}
 	svc := NewService(
 		&fakeProposer{grounded: json.RawMessage(`{"items":[{"code":"CONSULT","description":"Consulting","quantity":2,"serviceDate":"2026-06-01"}]}`)},
-		&fakeSessions{rows: []*session.Session{{UUID: "s1", ServiceDate: "2026-06-01", Note: "2h consulting"}}},
-		cat, inv, inv, &fakeClients{c: &client.Client{ID: 42, UUID: "c1"}},
+		&fakeSessions{rows: []*session.Session{{ID: "s1", ServiceDate: "2026-06-01", Note: "2h consulting"}}},
+		cat, inv, inv, &fakeClients{c: &client.Client{ID: "c1"}},
 	)
 
 	uuid, err := svc.DraftInvoiceFromSessions(tctx(), "c1")
@@ -104,8 +104,8 @@ func TestDraftInvoicePricesFromCatalogue(t *testing.T) {
 	if inv.gotInput.Status != "draft" {
 		t.Fatalf("status = %q, want draft", inv.gotInput.Status)
 	}
-	if inv.gotInput.ClientID != 42 {
-		t.Fatalf("clientID = %d, want 42", inv.gotInput.ClientID)
+	if inv.gotInput.ClientID != "c1" {
+		t.Fatalf("clientID = %q, want c1", inv.gotInput.ClientID)
 	}
 	if len(inv.gotItems) != 1 {
 		t.Fatalf("items = %d, want 1", len(inv.gotItems))
@@ -124,12 +124,12 @@ func TestDraftInvoicePricesFromCatalogue(t *testing.T) {
 
 // A proposed code that is not in the catalogue is dropped, not guessed.
 func TestDraftInvoiceDropsUnknownCodes(t *testing.T) {
-	cat := &fakeCat{ver: &pricelist.PriceListVersion{ID: 1, UUID: "v"}, items: map[string]*pricelist.Item{}}
+	cat := &fakeCat{ver: &pricelist.PriceListVersion{ID: "v"}, items: map[string]*pricelist.Item{}}
 	inv := &fakeInvoices{}
 	svc := NewService(
 		&fakeProposer{grounded: json.RawMessage(`{"items":[{"code":"NOPE","quantity":1}]}`)},
 		&fakeSessions{rows: []*session.Session{{ServiceDate: "2026-06-01", Note: "x"}}},
-		cat, inv, inv, &fakeClients{c: &client.Client{ID: 1, UUID: "c1"}},
+		cat, inv, inv, &fakeClients{c: &client.Client{ID: "c1"}},
 	)
 	_, err := svc.DraftInvoiceFromSessions(tctx(), "c1")
 	if err == nil {
@@ -142,7 +142,7 @@ func TestDraftInvoiceNoSessions(t *testing.T) {
 	svc := NewService(
 		&fakeProposer{},
 		&fakeSessions{rows: nil},
-		&fakeCat{}, &fakeInvoices{}, &fakeInvoices{}, &fakeClients{c: &client.Client{ID: 1, UUID: "c1"}},
+		&fakeCat{}, &fakeInvoices{}, &fakeInvoices{}, &fakeClients{c: &client.Client{ID: "c1"}},
 	)
 	if _, err := svc.DraftInvoiceFromSessions(tctx(), "c1"); err == nil {
 		t.Fatal("want error for no unbilled sessions")

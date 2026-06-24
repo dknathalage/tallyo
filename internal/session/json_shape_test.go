@@ -9,11 +9,10 @@ import (
 // int FKs: invoiceId is the linked invoice's uuid (not an int), and the author
 // user FK is dropped from the API surface entirely (nothing links on it).
 func TestSessionJSONFKsAreUUIDs(t *testing.T) {
-	invoiceID, authorID := int64(11), int64(22)
+	invoiceID, authorID := "invoice-int-fk", "author-int-fk"
 	invoiceUUID := "invoice-uuid"
 	s := Session{
-		ID:           1,
-		UUID:         "session-uuid",
+		ID:           "session-uuid",
 		InvoiceID:    &invoiceID,
 		InvoiceUUID:  &invoiceUUID,
 		AuthorUserID: &authorID,

@@ -31,11 +31,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -48,12 +48,12 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 }
 
 // tctx returns a context carrying the given tenant id.
-func tctx(tenantID int64) context.Context {
+func tctx(tenantID string) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
 // seedClient inserts a minimal client for a tenant and returns its id.
-func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
+func seedClient(t *testing.T, conn *sql.DB, tenantID string, name string) string {
 	t.Helper()
 	p, err := client.NewClients(conn).Create(context.Background(), tenantID, client.ClientInput{Name: name})
 	if err != nil {
@@ -63,11 +63,11 @@ func seedClient(t *testing.T, conn *sql.DB, tenantID int64, name string) int64 {
 }
 
 // seedUser inserts a member user for the tenant and returns its id.
-func seedUser(t *testing.T, conn *sql.DB, tenantID int64) int64 {
+func seedUser(t *testing.T, conn *sql.DB, tenantID string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	u, err := gen.New(conn).CreateUser(context.Background(), gen.CreateUserParams{
-		Uuid: ids.New(), TenantID: tenantID, Email: ids.New() + "@x.com",
+		ID: ids.New(), TenantID: tenantID, Email: ids.New() + "@x.com",
 		PasswordHash: "x", Name: "U", Role: "member", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -77,7 +77,7 @@ func seedUser(t *testing.T, conn *sql.DB, tenantID int64) int64 {
 }
 
 // seedInvoice creates a minimal one-line invoice and returns its id.
-func seedInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64, unitPrice float64) int64 {
+func seedInvoice(t *testing.T, conn *sql.DB, tenantID, clientID string, unitPrice float64) string {
 	t.Helper()
 	inv, err := invoice.NewInvoices(conn).Create(context.Background(), tenantID, invoice.InvoiceInput{
 		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-01-31",
@@ -89,11 +89,11 @@ func seedInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64, unitPrice
 }
 
 // seedDraftInvoice inserts a minimal draft invoice and returns its id.
-func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64) int64 {
+func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	inv, err := gen.New(conn).CreateInvoice(context.Background(), gen.CreateInvoiceParams{
-		Uuid: ids.New(), TenantID: tenantID, Number: ids.New(), ClientID: clientID,
+		ID: ids.New(), TenantID: tenantID, Number: ids.New(), ClientID: clientID,
 		Status: "draft", IssueDate: "2026-01-01", DueDate: "2026-02-01", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -103,7 +103,7 @@ func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID int64) int6
 }
 
 // containsID reports whether ids contains target.
-func containsID(ids []int64, target int64) bool {
+func containsID(ids []string, target string) bool {
 	for i := range ids { // bounded by len(ids)
 		if ids[i] == target {
 			return true
