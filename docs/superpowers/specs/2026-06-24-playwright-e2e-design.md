@@ -45,9 +45,10 @@ Playwright is added as a `web/` devDependency. Two entry points:
 `playwright.config.ts` uses Playwright's `webServer` option to build and run the
 real binary before the suite, and tear it down after:
 
-- Build: `CGO_ENABLED=0 go build -o ../bin/tallyo-e2e ./cmd/tallyo` (the SPA must be
-  built and embedded first — `task build:web` / the existing build task produces
-  `web/build`, which `//go:embed` picks up).
+- Build: the SPA **must** be built and embedded before `go build`, or the binary
+  serves a stale `web/build`. So `webServer.command` runs `task build:web` (or
+  `npm run build`) **then** `CGO_ENABLED=0 go build -o ../bin/tallyo-e2e ./cmd/tallyo`
+  — both steps, not just the Go build.
 - Run: `./bin/tallyo-e2e --data-dir <fresh temp dir> --port <fixed test port>`.
 - Playwright waits on the port (`url` + `reuseExistingServer: false`), then kills the
   process on teardown.
@@ -68,7 +69,9 @@ no UI clicking for fixtures:
 
 1. `POST /api/signup` — the first user becomes the owner; the response sets the
    session cookie.
-2. Read the tenant uuid from the signup / current-user response.
+2. Read the tenant uuid from the **signup response body** (the plan must confirm
+   exactly where the uuid surfaces — note `/api/t/<uuid>/auth/me` cannot be the
+   source, since it already requires the uuid; avoid a chicken-and-egg seed).
 3. A few `POST /api/t/<uuid>/...` calls to seed baseline data (at minimum: one
    client and one price-list item, so invoice/estimate screens have something to
    work with).
