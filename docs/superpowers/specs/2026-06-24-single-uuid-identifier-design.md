@@ -81,9 +81,10 @@ import "github.com/google/uuid"
 func New() string { return uuid.Must(uuid.NewV7()).String() }
 ```
 
-Replace all **41** `uuid.NewString()` (v4) call sites across `internal/` with
-`ids.New()`. Definition of done: `grep -rn "uuid.NewString" internal/` returns
-zero hits. (`google/uuid` is already a dependency and provides `NewV7`.)
+Replace every `uuid.NewString()` (v4) call with `ids.New()` — **74 call sites
+across 41 files** in `internal/` (~27 in non-test code, the rest in tests).
+Definition of done: `grep -rn "uuid.NewString" internal/` returns zero hits.
+(`google/uuid` is already a dependency and provides `NewV7`.)
 
 ### 3. Platform layer
 
@@ -111,9 +112,12 @@ throughout. Inbound FK uuids are stored as-is (no resolve-to-int before insert).
 
 Slices: `invoice` (incl. payment), `estimate`, `recurring`, `session`, `client`,
 `payer`, `taxrate`, `businessprofile`, `customitem`, `pricelist`, `auth`,
-`smarts`, `export`, plus `internal/billing` (snapshot/line-item id handling). The
+`smarts`, plus `internal/billing` (snapshot/line-item id handling). The
 consumer-declared cross-slice interfaces (`invoice.SessionLinker`,
-`session.InvoiceChecker`) change their id params `int64 → string`.
+`session.InvoiceChecker`) change their id params `int64 → string`. (The
+`internal/listquery` helper is a query builder with no id columns of its own but
+threads id-typed params — check it during the sweep; CLAUDE.md lists a stray
+`export` slice that does not exist on disk, so ignore it.)
 
 ### 5. sqlc regeneration
 
