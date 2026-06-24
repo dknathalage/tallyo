@@ -18,7 +18,7 @@ type Execer interface {
 
 type Entry struct {
 	EntityType string
-	EntityID   int64
+	EntityID   string
 	Action     string
 	Changes    string // JSON; defaults to "{}"
 	Context    string
@@ -42,10 +42,10 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	if changes == "" {
 		changes = "{}"
 	}
-	tenant := nullInt64(reqctx.TenantFrom(ctx))
-	user := nullInt64(reqctx.UserFrom(ctx))
+	tenant := nullString(reqctx.TenantFrom(ctx))
+	user := nullString(reqctx.UserFrom(ctx))
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO audit_log (uuid, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
+		`INSERT INTO audit_log (id, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
 		ids.New(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context,
 		time.Now().UTC().Format(time.RFC3339),
@@ -56,10 +56,10 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	return nil
 }
 
-// nullInt64 maps a (value, present) pair from reqctx into a SQL argument: the
-// raw id when present and non-zero, otherwise nil (stored as NULL).
-func nullInt64(v int64, ok bool) any {
-	if !ok || v == 0 {
+// nullString maps a (value, present) pair from reqctx into a SQL argument: the
+// raw uuid id when present and non-empty, otherwise nil (stored as NULL).
+func nullString(v string, ok bool) any {
+	if !ok || v == "" {
 		return nil
 	}
 	return v

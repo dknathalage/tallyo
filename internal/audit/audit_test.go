@@ -18,7 +18,7 @@ func TestLogInsertsRow(t *testing.T) {
 
 	err := Log(context.Background(), conn, Entry{
 		EntityType: "business_profile",
-		EntityID:   1,
+		EntityID:   ids.New(),
 		Action:     "update",
 		Changes:    `{"name":"Acme"}`,
 	})
@@ -71,22 +71,23 @@ func TestLogStampsTenantAndUserFromContext(t *testing.T) {
 	defer conn.Close()
 	tenantID, userID := seedTenantUser(t, conn)
 
+	entityID := ids.New()
 	ctx := reqctx.WithUser(reqctx.WithTenant(context.Background(), tenantID), userID)
-	if err := Log(ctx, conn, Entry{EntityType: "invoice", EntityID: 5, Action: "create"}); err != nil {
+	if err := Log(ctx, conn, Entry{EntityType: "invoice", EntityID: entityID, Action: "create"}); err != nil {
 		t.Fatalf("Log: %v", err)
 	}
 
-	var gotTenant, gotUser sql.NullInt64
+	var gotTenant, gotUser sql.NullString
 	if err := conn.QueryRow(
-		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='invoice' AND entity_id=5",
+		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='invoice' AND entity_id=?", entityID,
 	).Scan(&gotTenant, &gotUser); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
-	if !gotTenant.Valid || gotTenant.Int64 != tenantID {
-		t.Fatalf("tenant_id = %+v, want %d", gotTenant, tenantID)
+	if !gotTenant.Valid || gotTenant.String != tenantID {
+		t.Fatalf("tenant_id = %+v, want %s", gotTenant, tenantID)
 	}
-	if !gotUser.Valid || gotUser.Int64 != userID {
-		t.Fatalf("user_id = %+v, want %d", gotUser, userID)
+	if !gotUser.Valid || gotUser.String != userID {
+		t.Fatalf("user_id = %+v, want %s", gotUser, userID)
 	}
 }
 
@@ -96,12 +97,13 @@ func TestLogNullStampsWhenNoContext(t *testing.T) {
 	conn := mustDB(t)
 	defer conn.Close()
 
-	if err := Log(context.Background(), conn, Entry{EntityType: "catalog_version", EntityID: 9, Action: "ingest"}); err != nil {
+	entityID := ids.New()
+	if err := Log(context.Background(), conn, Entry{EntityType: "catalog_version", EntityID: entityID, Action: "ingest"}); err != nil {
 		t.Fatalf("Log: %v", err)
 	}
-	var gotTenant, gotUser sql.NullInt64
+	var gotTenant, gotUser sql.NullString
 	if err := conn.QueryRow(
-		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='catalog_version' AND entity_id=9",
+		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='catalog_version' AND entity_id=?", entityID,
 	).Scan(&gotTenant, &gotUser); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -111,24 +113,22 @@ func TestLogNullStampsWhenNoContext(t *testing.T) {
 }
 
 // seedTenantUser inserts a tenant and a user so audit FK constraints hold.
-func seedTenantUser(t *testing.T, conn *sql.DB) (tenantID, userID int64) {
+func seedTenantUser(t *testing.T, conn *sql.DB) (tenantID, userID string) {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := conn.Exec(
-		`INSERT INTO tenants (uuid, name, status, created_at, updated_at) VALUES (?, 'Acme', 'active', ?, ?)`,
-		ids.New(), now, now)
-	if err != nil {
+	tenantID = ids.New()
+	if _, err := conn.Exec(
+		`INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES (?, 'Acme', 'active', ?, ?)`,
+		tenantID, now, now); err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
-	tenantID, _ = res.LastInsertId()
-	res, err = conn.Exec(
-		`INSERT INTO users (uuid, tenant_id, email, password_hash, name, role, created_at, updated_at)
+	userID = ids.New()
+	if _, err := conn.Exec(
+		`INSERT INTO users (id, tenant_id, email, password_hash, name, role, created_at, updated_at)
 		 VALUES (?, ?, 'o@acme.test', 'x', 'Owner', 'owner', ?, ?)`,
-		ids.New(), tenantID, now, now)
-	if err != nil {
+		userID, tenantID, now, now); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	userID, _ = res.LastInsertId()
 	return tenantID, userID
 }
 

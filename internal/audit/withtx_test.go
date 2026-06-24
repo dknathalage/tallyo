@@ -26,12 +26,12 @@ func TestWithTxCommitsAndAudits(t *testing.T) {
 	conn := mustWDB(t)
 	defer conn.Close()
 	ctx := context.Background()
-	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: 1, Action: "update", Changes: Changes(map[string]any{"name": "Acme"})},
+	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: "bp-1", Action: "update", Changes: Changes(map[string]any{"name": "Acme"})},
 		func(tx *sql.Tx) error {
-			if _, e := tx.ExecContext(ctx, `INSERT INTO tenants (id, uuid, name, status, created_at, updated_at) VALUES (1, 't', 'T', 'active', 'now', 'now')`); e != nil {
+			if _, e := tx.ExecContext(ctx, `INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES ('t-1', 'T', 'active', 'now', 'now')`); e != nil {
 				return e
 			}
-			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, tenant_id, name, created_at, updated_at) VALUES (1, 'u', 1, 'Acme', 'now', 'now')`)
+			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, tenant_id, name, created_at, updated_at) VALUES ('bp-1', 't-1', 'Acme', 'now', 'now')`)
 			return e
 		})
 	if err != nil {
@@ -53,10 +53,10 @@ func TestWithTxRollsBackOnFnError(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	boom := errors.New("boom")
-	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: 1, Action: "update"},
+	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: "bp-1", Action: "update"},
 		func(tx *sql.Tx) error {
-			_, _ = tx.ExecContext(ctx, `INSERT INTO tenants (id, uuid, name, status, created_at, updated_at) VALUES (1, 't', 'T', 'active', 'now', 'now')`)
-			_, _ = tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, tenant_id, name, created_at, updated_at) VALUES (1, 'u', 1, 'X', 'now', 'now')`)
+			_, _ = tx.ExecContext(ctx, `INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES ('t-1', 'T', 'active', 'now', 'now')`)
+			_, _ = tx.ExecContext(ctx, `INSERT INTO business_profile (id, tenant_id, name, created_at, updated_at) VALUES ('bp-1', 't-1', 'X', 'now', 'now')`)
 			return boom
 		})
 	if !errors.Is(err, boom) {
@@ -80,10 +80,10 @@ func TestWithTxSkipsAutoLogWhenActionEmpty(t *testing.T) {
 	// Action == "" → WithTx must NOT auto-log; the fn logs manually if it wants.
 	err := WithTx(ctx, conn, Entry{EntityType: "x", Action: ""},
 		func(tx *sql.Tx) error {
-			if _, e := tx.ExecContext(ctx, `INSERT INTO tenants (id, uuid, name, status, created_at, updated_at) VALUES (1, 't', 'T', 'active', 'now', 'now')`); e != nil {
+			if _, e := tx.ExecContext(ctx, `INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES ('t-1', 'T', 'active', 'now', 'now')`); e != nil {
 				return e
 			}
-			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, uuid, tenant_id, name, created_at, updated_at) VALUES (1, 'u', 1, 'A', 'now', 'now')`)
+			_, e := tx.ExecContext(ctx, `INSERT INTO business_profile (id, tenant_id, name, created_at, updated_at) VALUES ('bp-1', 't-1', 'A', 'now', 'now')`)
 			return e
 		})
 	if err != nil {
