@@ -126,7 +126,7 @@ type ValidationResult struct {
 // Invariants (NASA rule 5): tenantID and clientID must be non-zero and at
 // least one line must be present; violations are programmer errors surfaced as
 // plain errors (the caller's repository would reject them anyway).
-func (v *LineValidator) Validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
+func (v *LineValidator) Validate(ctx context.Context, tenantID, clientID string, items []LineItemInput) (*ValidationResult, error) {
 	return v.validate(ctx, tenantID, clientID, items)
 }
 
@@ -134,15 +134,15 @@ func (v *LineValidator) Validate(ctx context.Context, tenantID, clientID int64, 
 // catalogue line from the item's generic unit_price (filling when the caller
 // supplied no positive price). It is retained so the agent create path and the
 // session pricing path don't need to change call sites.
-func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
+func (v *LineValidator) ValidateFilling(ctx context.Context, tenantID, clientID string, items []LineItemInput) (*ValidationResult, error) {
 	return v.validate(ctx, tenantID, clientID, items)
 }
 
-func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, items []LineItemInput) (*ValidationResult, error) {
-	if tenantID == 0 {
+func (v *LineValidator) validate(ctx context.Context, tenantID, clientID string, items []LineItemInput) (*ValidationResult, error) {
+	if tenantID == "" {
 		return nil, fmt.Errorf("validate lines: tenant id required")
 	}
-	if clientID == 0 {
+	if clientID == "" {
 		return nil, fmt.Errorf("validate lines: client id required")
 	}
 	if len(items) == 0 {
@@ -172,7 +172,7 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID int64, 
 // failures to ve. Support-item lines run the full catalogue flow; custom-item
 // lines run only the non-negativity checks. Errors are accumulated, not thrown,
 // so the caller collects every problem in one pass.
-func (v *LineValidator) validateLine(ctx context.Context, tenantID int64, idx int, line *LineItemInput, ve *ValidationError) {
+func (v *LineValidator) validateLine(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) {
 	if line == nil {
 		return
 	}
@@ -195,7 +195,7 @@ func (v *LineValidator) validateLine(ctx context.Context, tenantID int64, idx in
 // validateSupportLine runs the catalogue steps for a support-item line, mutating
 // the line (snapshots, pinned version, filled price, set taxable) and appending
 // failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, tenantID int64, idx int, line *LineItemInput, ve *ValidationError) {
+func (v *LineValidator) validateSupportLine(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) {
 	if line.ServiceDate == "" {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for a catalogue item"})
 		return
@@ -236,25 +236,25 @@ func (v *LineValidator) validateSupportLine(ctx context.Context, tenantID int64,
 // has already appended the field error.
 // Returns (versionID for downstream control-DB lookups, versionUUID to pin onto
 // the tenant line, label, ok).
-func (v *LineValidator) resolveVersion(ctx context.Context, tenantID int64, idx int, line *LineItemInput, ve *ValidationError) (int64, string, string, bool) {
+func (v *LineValidator) resolveVersion(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) (string, string, string, bool) {
 	if line.PriceListVersionID != nil && *line.PriceListVersionID != "" {
 		ver, err := v.cat.GetVersionByUUID(ctx, tenantID, *line.PriceListVersionID)
 		if err != nil || ver == nil {
 			ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "the price-catalogue version pinned to this line could not be found"})
-			return 0, "", "", false
+			return "", "", "", false
 		}
-		return ver.ID, ver.UUID, ver.Label, true
+		return ver.ID, ver.ID, ver.Label, true
 	}
 	ver, err := v.cat.ResolveVersionForDate(ctx, tenantID, line.ServiceDate)
 	if err != nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "could not resolve a price catalogue for that service date"})
-		return 0, "", "", false
+		return "", "", "", false
 	}
 	if ver == nil {
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: fmt.Sprintf("no price list is in effect for service date %s", line.ServiceDate)})
-		return 0, "", "", false
+		return "", "", "", false
 	}
-	return ver.ID, ver.UUID, ver.Label, true
+	return ver.ID, ver.ID, ver.Label, true
 }
 
 // applyItemUnitPrice fills a coded line's unit price from the catalogue item's
@@ -284,7 +284,7 @@ func applyItemUnitPrice(line *LineItemInput, item *pricelist.Item) {
 // its own taxable flag, which would corrupt the computed tax. Custom-item lines
 // keep their client-controlled taxable (they never reach this function).
 func snapshotSupportItem(line *LineItemInput, versionUUID string, item *pricelist.Item) {
-	id := item.UUID
+	id := item.ID
 	line.ItemID = &id
 	vid := versionUUID
 	line.PriceListVersionID = &vid
@@ -325,7 +325,7 @@ func computeLineTax(items []LineItemInput, rate float64) float64 {
 }
 
 // defaultTaxRate reads the tenant's default tax rate (0 when none is set).
-func (v *LineValidator) defaultTaxRate(ctx context.Context, tenantID int64) (float64, error) {
+func (v *LineValidator) defaultTaxRate(ctx context.Context, tenantID string) (float64, error) {
 	tr, err := v.taxRates.GetDefault(ctx, tenantID)
 	if err != nil {
 		return 0, fmt.Errorf("validate lines: read default tax rate: %w", err)

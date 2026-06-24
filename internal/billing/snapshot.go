@@ -42,7 +42,7 @@ func SnapshotJSON(name, email, phone, address, metadata string) string {
 }
 
 // Business reads the tenant's business profile and renders a default snapshot.
-func (b *SnapshotBuilder) Business(ctx context.Context, tenantID int64) string {
+func (b *SnapshotBuilder) Business(ctx context.Context, tenantID string) string {
 	bp, err := gen.New(b.db).GetBusinessProfile(ctx, tenantID)
 	if err != nil {
 		return "{}"
@@ -51,7 +51,7 @@ func (b *SnapshotBuilder) Business(ctx context.Context, tenantID int64) string {
 }
 
 // Client reads the client and renders a default snapshot.
-func (b *SnapshotBuilder) Client(ctx context.Context, tenantID, clientID int64) string {
+func (b *SnapshotBuilder) Client(ctx context.Context, tenantID, clientID string) string {
 	p, err := gen.New(b.db).GetClientByID(ctx, gen.GetClientByIDParams{TenantID: tenantID, ID: clientID})
 	if err != nil {
 		return "{}"
@@ -61,7 +61,7 @@ func (b *SnapshotBuilder) Client(ctx context.Context, tenantID, clientID int64) 
 
 // Payer renders a default snapshot for the given payer, or "{}"
 // when none is set.
-func (b *SnapshotBuilder) Payer(ctx context.Context, tenantID int64, payerID *int64) string {
+func (b *SnapshotBuilder) Payer(ctx context.Context, tenantID string, payerID *string) string {
 	if payerID == nil {
 		return "{}"
 	}

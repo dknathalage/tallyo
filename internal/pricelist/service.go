@@ -30,7 +30,7 @@ func (s *Service) ListVersions(ctx context.Context) ([]*PriceListVersion, error)
 }
 
 // GetVersion returns a price-list version by id, or (nil, nil) when absent.
-func (s *Service) GetVersion(ctx context.Context, id int64) (*PriceListVersion, error) {
+func (s *Service) GetVersion(ctx context.Context, id string) (*PriceListVersion, error) {
 	return s.repo.GetVersion(ctx, reqctx.MustTenant(ctx), id)
 }
 
@@ -48,7 +48,7 @@ func (s *Service) ListItemsByVersionUUID(ctx context.Context, versionUUID string
 	if err != nil {
 		return nil, err
 	}
-	if versionID == 0 {
+	if versionID == "" {
 		return nil, ErrNotFound
 	}
 	items, err := s.repo.ListItems(ctx, tenantID, versionID)
@@ -69,7 +69,7 @@ type Match struct {
 	Unit      string   `json:"unit"`
 	Taxable   bool     `json:"taxable"`
 	UnitPrice *float64 `json:"unitPrice"`
-	VersionID int64    `json:"priceListVersionId"`
+	VersionID string   `json:"priceListVersionId"`
 }
 
 // SearchForDate resolves the price-list version effective on serviceDate and
@@ -158,7 +158,7 @@ func (s *ImportService) Inspect(data []byte, fileType, sheetName string, headerR
 
 // ImportSummary is the JSON-friendly result of a price-list import.
 type ImportSummary struct {
-	VersionID     int64  `json:"versionId"`
+	VersionID     string `json:"versionId"`
 	VersionUUID   string `json:"versionUuid"`
 	Label         string `json:"label"`
 	EffectiveFrom string `json:"effectiveFrom"`
@@ -218,10 +218,10 @@ func (s *ImportService) ImportMapped(ctx context.Context, data []byte, fileType,
 	}
 
 	// Broadcast to this tenant's SSE streams after the commit.
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "price_list_version", UUID: res.Version.UUID, Action: "import"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "price_list_version", UUID: res.Version.ID, Action: "import"})
 	return &ImportSummary{
 		VersionID:     res.Version.ID,
-		VersionUUID:   res.Version.UUID,
+		VersionUUID:   res.Version.ID,
 		Label:         res.Version.Label,
 		EffectiveFrom: res.Version.EffectiveFrom,
 		ItemCount:     res.ItemCount,

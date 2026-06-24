@@ -15,18 +15,18 @@ import (
 // tenant-scoped, for a line-item write. An empty/nil uuid → NULL FK; an unknown
 // uuid → ErrUnknownCustomItem so the handler can 400. The int FK never crosses
 // the API — storage stays int-based, resolved here at the write boundary.
-func ResolveCustomItemID(ctx context.Context, q *gen.Queries, tenantID int64, customItemUUID *string) (sql.NullInt64, error) {
+func ResolveCustomItemID(ctx context.Context, q *gen.Queries, tenantID string, customItemUUID *string) (sql.NullString, error) {
 	if customItemUUID == nil || *customItemUUID == "" {
-		return sql.NullInt64{}, nil
+		return sql.NullString{}, nil
 	}
-	id, err := q.GetCustomItemIDByUUID(ctx, gen.GetCustomItemIDByUUIDParams{TenantID: tenantID, Uuid: *customItemUUID})
+	id, err := q.GetCustomItemIDByUUID(ctx, gen.GetCustomItemIDByUUIDParams{TenantID: tenantID, ID: *customItemUUID})
 	if errors.Is(err, sql.ErrNoRows) {
-		return sql.NullInt64{}, fmt.Errorf("%w: %q", ErrUnknownCustomItem, *customItemUUID)
+		return sql.NullString{}, fmt.Errorf("%w: %q", ErrUnknownCustomItem, *customItemUUID)
 	}
 	if err != nil {
-		return sql.NullInt64{}, fmt.Errorf("resolve custom item uuid: %w", err)
+		return sql.NullString{}, fmt.Errorf("resolve custom item uuid: %w", err)
 	}
-	return sql.NullInt64{Int64: id, Valid: true}, nil
+	return sql.NullString{String: id, Valid: true}, nil
 }
 
 // ErrUnknownCustomItem is returned by ResolveCustomItemID when an inbound
@@ -38,12 +38,11 @@ var ErrUnknownCustomItem = errors.New("unknown custom item")
 // shape; each gen row type is converted to this before mapping so the API can
 // surface customItemId as the custom-item uuid rather than the int FK.
 type LineItemRow struct {
-	ID                 int64
-	Uuid               string
-	SessionID          sql.NullInt64
-	InvoiceID          sql.NullInt64
+	ID                 string
+	SessionID          sql.NullString
+	InvoiceID          sql.NullString
 	ItemID             sql.NullString
-	CustomItemID       sql.NullInt64
+	CustomItemID       sql.NullString
 	CustomItemUuid     sql.NullString
 	PriceListVersionID sql.NullString
 	Code               sql.NullString
@@ -66,11 +65,10 @@ type LineItemRow struct {
 func LineItemFromRow(row LineItemRow) *LineItem {
 	return &LineItem{
 		ID:                 row.ID,
-		UUID:               row.Uuid,
-		SessionID:          ptrInt(row.SessionID),
-		InvoiceID:          ptrInt(row.InvoiceID),
+		SessionID:          ptrStr(row.SessionID),
+		InvoiceID:          ptrStr(row.InvoiceID),
 		ItemID:             ptrStr(row.ItemID),
-		CustomItemID:       ptrInt(row.CustomItemID),
+		CustomItemID:       ptrStr(row.CustomItemID),
 		CustomItemUUID:     ptrStr(row.CustomItemUuid),
 		PriceListVersionID: ptrStr(row.PriceListVersionID),
 		Code:               row.Code.String,
@@ -91,7 +89,7 @@ func LineItemFromRow(row LineItemRow) *LineItem {
 // row types (all structurally identical) into the shared LineItemRow.
 func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
+		ID: r.ID, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -101,7 +99,7 @@ func LineItemRowFromInvoice(r gen.ListLineItemsForInvoiceRow) LineItemRow {
 
 func LineItemRowFromSessionList(r gen.ListLineItemsForSessionRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
+		ID: r.ID, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -111,7 +109,7 @@ func LineItemRowFromSessionList(r gen.ListLineItemsForSessionRow) LineItemRow {
 
 func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
+		ID: r.ID, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
@@ -121,20 +119,12 @@ func LineItemRowFromGet(r gen.GetLineItemRow) LineItemRow {
 
 func LineItemRowFromSessionUUID(r gen.GetSessionLineItemByUUIDRow) LineItemRow {
 	return LineItemRow{
-		ID: r.ID, Uuid: r.Uuid, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
+		ID: r.ID, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
 		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: r.CustomItemUuid,
 		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
-}
-
-func ptrInt(n sql.NullInt64) *int64 {
-	if !n.Valid {
-		return nil
-	}
-	v := n.Int64
-	return &v
 }
 
 func ptrStr(n sql.NullString) *string {
@@ -149,12 +139,11 @@ func ptrStr(n sql.NullString) *string {
 // the same row whether it lives on a session (SessionID set, InvoiceID nil) or on an
 // invoice (InvoiceID set); drafting links it by setting InvoiceID.
 type LineItem struct {
-	ID                 int64   `json:"-"`                  // internal PK; the public identifier is the uuid
-	UUID               string  `json:"id"`                 // public identifier (item uuid)
-	SessionID          *int64  `json:"-"`                  // internal parent FK; a line item is always fetched embedded in its parent session, so the parent ref is redundant on the API
-	InvoiceID          *int64  `json:"-"`                  // internal parent FK; a line item is always fetched embedded in its parent invoice, so the parent ref is redundant on the API
+	ID                 string  `json:"id"`                 // public identifier (item uuid)
+	SessionID          *string `json:"-"`                  // internal parent FK; a line item is always fetched embedded in its parent session, so the parent ref is redundant on the API
+	InvoiceID          *string `json:"-"`                  // internal parent FK; a line item is always fetched embedded in its parent invoice, so the parent ref is redundant on the API
 	ItemID             *string `json:"itemId"`             // tenant items.uuid
-	CustomItemID       *int64  `json:"-"`                  // internal tenant-local FK; the public ref is the uuid
+	CustomItemID       *string `json:"-"`                  // internal tenant-local FK; the public ref is the uuid
 	CustomItemUUID     *string `json:"customItemId"`       // tenant custom_items.uuid (nil when no custom item)
 	PriceListVersionID *string `json:"priceListVersionId"` // tenant price_list_versions.uuid
 	Code               string  `json:"code"`
