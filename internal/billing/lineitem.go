@@ -11,10 +11,10 @@ import (
 	"github.com/dknathalage/tallyo/internal/db/gen"
 )
 
-// ResolveCustomItemID translates an inbound custom-item uuid into its int FK,
+// ResolveCustomItemID resolves an inbound custom-item uuid to its row id (uuid),
 // tenant-scoped, for a line-item write. An empty/nil uuid → NULL FK; an unknown
-// uuid → ErrUnknownCustomItem so the handler can 400. The int FK never crosses
-// the API — storage stays int-based, resolved here at the write boundary.
+// uuid → ErrUnknownCustomItem so the handler can 400. Validated here against the
+// tenant at the write boundary before it is stored on the line.
 func ResolveCustomItemID(ctx context.Context, q *gen.Queries, tenantID string, customItemUUID *string) (sql.NullString, error) {
 	if customItemUUID == nil || *customItemUUID == "" {
 		return sql.NullString{}, nil
@@ -36,7 +36,7 @@ var ErrUnknownCustomItem = errors.New("unknown custom item")
 // LineItemRow is the joined central line_items row (the row + the related
 // custom-item uuid). The four by-* reads of line_items all produce the same
 // shape; each gen row type is converted to this before mapping so the API can
-// surface customItemId as the custom-item uuid rather than the int FK.
+// surface customItemId as the custom-item uuid.
 type LineItemRow struct {
 	ID                 string
 	SessionID          sql.NullString
@@ -61,7 +61,7 @@ type LineItemRow struct {
 // LineItemFromRow maps one joined central line_items row to the domain shape.
 // Shared by the invoice and session slices (both read the central line_items
 // table). customItemId surfaces as the custom-item uuid (nil when no custom
-// item); the int FK stays internal.
+// item); the row id stays internal.
 func LineItemFromRow(row LineItemRow) *LineItem {
 	return &LineItem{
 		ID:                 row.ID,
@@ -163,7 +163,7 @@ type LineItem struct {
 // (round2(quantity*unitPrice)) when not explicitly supplied.
 type LineItemInput struct {
 	ItemID             *string `json:"itemId"`             // tenant items.uuid
-	CustomItemID       *string `json:"customItemId"`       // tenant custom_items.uuid (resolved to the int FK at the write boundary)
+	CustomItemID       *string `json:"customItemId"`       // tenant custom_items.uuid (validated against the tenant at the write boundary)
 	PriceListVersionID *string `json:"priceListVersionId"` // tenant price_list_versions.uuid
 	Code               string  `json:"code"`
 	Description        string  `json:"description"`

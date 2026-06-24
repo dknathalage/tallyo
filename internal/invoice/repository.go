@@ -445,7 +445,7 @@ func (r *InvoicesRepo) GetByUUID(ctx context.Context, tenantID string, invoiceUU
 }
 
 // enrichInvoice loads an invoice's line items and total-paid/balance. The
-// invoice's int PK (inv.ID) keys the lookups.
+// invoice's row id (inv.ID) keys the lookups.
 func (r *InvoicesRepo) enrichInvoice(ctx context.Context, q *gen.Queries, tenantID string, inv *Invoice) (*Invoice, error) {
 	rows, err := q.ListLineItemsForInvoice(ctx, gen.ListLineItemsForInvoiceParams{TenantID: tenantID, InvoiceID: sql.NullString{String: inv.ID, Valid: true}})
 	if err != nil {
@@ -461,8 +461,8 @@ func (r *InvoicesRepo) enrichInvoice(ctx context.Context, q *gen.Queries, tenant
 	return inv, nil
 }
 
-// ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
-// tenant. Returns (0, nil) when no invoice matches the uuid (caller 404s).
+// ResolveInvoiceID resolves an invoice uuid to its row id (uuid), scoped to the
+// tenant. Returns ("", nil) when no invoice matches the uuid (caller 404s).
 func (r *InvoicesRepo) ResolveInvoiceID(ctx context.Context, tenantID string, invoiceUUID string) (string, error) {
 	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, ID: invoiceUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -787,8 +787,8 @@ func (r *InvoicesRepo) Exists(ctx context.Context, tenantID, invoiceID string) (
 	return inv != nil, nil
 }
 
-// ResolveClientID translates a client uuid into its int PK, scoped to
-// the tenant. Returns (0, nil) when no client matches (caller 404s).
+// ResolveClientID resolves a client uuid to its row id (uuid), scoped to
+// the tenant. Returns ("", nil) when no client matches (caller 404s).
 func (r *InvoicesRepo) ResolveClientID(ctx context.Context, tenantID string, clientUUID string) (string, error) {
 	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, ID: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -800,8 +800,8 @@ func (r *InvoicesRepo) ResolveClientID(ctx context.Context, tenantID string, cli
 	return id, nil
 }
 
-// ResolvePayerID translates a payer uuid into its int PK, scoped to
-// the tenant. Returns (0, nil) when no payer matches (caller 400s).
+// ResolvePayerID resolves a payer uuid to its row id (uuid), scoped to
+// the tenant. Returns ("", nil) when no payer matches (caller 400s).
 func (r *InvoicesRepo) ResolvePayerID(ctx context.Context, tenantID string, payerUUID string) (string, error) {
 	id, err := gen.New(r.db).GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, ID: payerUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -813,7 +813,7 @@ func (r *InvoicesRepo) ResolvePayerID(ctx context.Context, tenantID string, paye
 	return id, nil
 }
 
-// ResolveSessionIDs translates session uuids into their int PKs (preserving order),
+// ResolveSessionIDs resolves session uuids to row ids (uuid) (preserving order),
 // tenant-scoped. An unknown uuid is an error so draft-from-sessions can 400.
 func (r *InvoicesRepo) ResolveSessionIDs(ctx context.Context, tenantID string, sessionUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)
@@ -831,7 +831,7 @@ func (r *InvoicesRepo) ResolveSessionIDs(ctx context.Context, tenantID string, s
 	return out, nil
 }
 
-// ResolveInvoiceIDs translates invoice uuids into their int PKs (preserving
+// ResolveInvoiceIDs resolves invoice uuids to row ids (uuid) (preserving
 // order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
 func (r *InvoicesRepo) ResolveInvoiceIDs(ctx context.Context, tenantID string, invoiceUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)

@@ -67,21 +67,21 @@ func (s *Service) GetByUUID(ctx context.Context, estimateUUID string) (*Estimate
 	return s.repo.GetByUUID(ctx, tenantID, estimateUUID)
 }
 
-// ResolveClient translates a client uuid into its int FK for the
-// tenant. Returns (0, nil) when no client matches (caller 400s).
+// ResolveClient resolves a client uuid to its row id (uuid) for the
+// tenant. Returns ("", nil) when no client matches (caller 400s).
 func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
-// ResolvePayer translates a payer uuid into its int FK for the
-// tenant. Returns (0, nil) when no payer matches (caller 400s).
+// ResolvePayer resolves a payer uuid to its row id (uuid) for the
+// tenant. Returns ("", nil) when no payer matches (caller 400s).
 func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolvePayerID(ctx, tenantID, payerUUID)
 }
 
-// ResolveEstimateIDs translates a list of estimate uuids into their int PKs for
+// ResolveEstimateIDs resolves a list of estimate uuids to their row ids (uuid) for
 // the tenant (preserving order). An unknown uuid surfaces as an error so the
 // caller can 400 — bulk operations must not silently drop a member.
 func (s *Service) ResolveEstimateIDs(ctx context.Context, estimateUUIDs []string) ([]string, error) {
@@ -89,7 +89,7 @@ func (s *Service) ResolveEstimateIDs(ctx context.Context, estimateUUIDs []string
 	return s.repo.ResolveEstimateIDs(ctx, tenantID, estimateUUIDs)
 }
 
-// UpdateByUUID resolves the estimate uuid → int PK, then rewrites the estimate.
+// UpdateByUUID resolves the estimate uuid → row, then rewrites the estimate.
 // Returns (nil, nil) when no estimate matches the uuid so the handler can 404.
 func (s *Service) UpdateByUUID(ctx context.Context, estimateUUID string, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
@@ -103,8 +103,8 @@ func (s *Service) UpdateByUUID(ctx context.Context, estimateUUID string, in Esti
 	return s.Update(ctx, id, in, items)
 }
 
-// DeleteByUUID resolves the estimate uuid → int PK, then deletes the estimate.
-// A no-match uuid is a no-op (the int Delete is idempotent).
+// DeleteByUUID resolves the estimate uuid → row, then deletes the estimate.
+// A no-match uuid is a no-op (Delete is idempotent).
 func (s *Service) DeleteByUUID(ctx context.Context, estimateUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	id, err := s.repo.ResolveEstimateID(ctx, tenantID, estimateUUID)
@@ -117,7 +117,7 @@ func (s *Service) DeleteByUUID(ctx context.Context, estimateUUID string) error {
 	return s.Delete(ctx, id)
 }
 
-// UpdateStatusByUUID resolves the estimate uuid → int PK, then flips its status.
+// UpdateStatusByUUID resolves the estimate uuid → row, then flips its status.
 // A no-match uuid is a no-op.
 func (s *Service) UpdateStatusByUUID(ctx context.Context, estimateUUID, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
@@ -131,7 +131,7 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, estimateUUID, status s
 	return s.UpdateStatus(ctx, id, status)
 }
 
-// DuplicateByUUID resolves the estimate uuid → int PK, then duplicates it.
+// DuplicateByUUID resolves the estimate uuid → row, then duplicates it.
 // Returns (nil, nil) when no estimate matches the uuid so the handler can 404.
 func (s *Service) DuplicateByUUID(ctx context.Context, estimateUUID string) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
@@ -145,7 +145,7 @@ func (s *Service) DuplicateByUUID(ctx context.Context, estimateUUID string) (*Es
 	return s.Duplicate(ctx, id)
 }
 
-// ConvertByUUID resolves the estimate uuid → int PK, then converts it to an
+// ConvertByUUID resolves the estimate uuid → row, then converts it to an
 // invoice. Returns (nil, nil) when no estimate matches the uuid so the handler
 // can 404; ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
 func (s *Service) ConvertByUUID(ctx context.Context, estimateUUID string) (*ConvertResult, error) {

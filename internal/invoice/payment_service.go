@@ -32,8 +32,8 @@ func (s *PaymentService) ListForInvoice(ctx context.Context, invoiceID string) (
 	return s.repo.ListForInvoice(ctx, tenantID, invoiceID)
 }
 
-// ResolveInvoiceID translates an invoice uuid into its int PK for the tenant.
-// Returns (0, nil) when no invoice matches (caller 404s).
+// ResolveInvoiceID resolves an invoice uuid to its row id (uuid) for the tenant.
+// Returns ("", nil) when no invoice matches (caller 404s).
 func (s *PaymentService) ResolveInvoiceID(ctx context.Context, invoiceUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
@@ -78,10 +78,10 @@ func (s *PaymentService) Delete(ctx context.Context, id string) error {
 }
 
 // DeleteByUUID removes a payment addressed by its uuid under the given invoice
-// int id. A missing payment (or one under another invoice) surfaces
+// row id. A missing payment (or one under another invoice) surfaces
 // sql.ErrNoRows so the handler can 404; on success it broadcasts a payment
 // delete plus an invoice update so the balance refreshes. The SSE events carry
-// the payment uuid and the invoice uuid — no int PK crosses the API.
+// the payment uuid and the invoice uuid.
 func (s *PaymentService) DeleteByUUID(ctx context.Context, invoiceID string, paymentUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	deletedInvoiceID, err := s.repo.DeleteByUUID(ctx, tenantID, invoiceID, paymentUUID)

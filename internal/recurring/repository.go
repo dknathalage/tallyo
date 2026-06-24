@@ -47,10 +47,10 @@ var RecurringCols = listquery.Spec{
 
 // RecurringTemplate is the domain view of a recurring invoice template. Line
 // items are stored as a JSON string column and unmarshalled into the slice. The
-// public identifier is the uuid (json "id"); the int PK is internal-only. The
-// client/payer FKs are exposed as the related entities' uuids (json
-// "clientId"/"payerId"), resolved via LEFT JOIN, never the int FKs.
-// clientID is the internal client int PK, retained for generation
+// public identifier is the uuid (json "id"); the internal row id stays out of the
+// JSON. The client/payer FKs are exposed as the related entities' uuids (json
+// "clientId"/"payerId"), resolved via LEFT JOIN, never the internal row ids.
+// clientID is the internal client row id (uuid), retained for generation
 // snapshots (not serialized).
 type RecurringTemplate struct {
 	ID         string           `json:"id"`
@@ -85,7 +85,7 @@ type RecurringLine struct {
 
 // RecurringInput is the writable subset of a recurring template. Client and
 // payer arrive as uuid strings (the public identifiers) and are resolved
-// to the int FKs before insert/update. ClientUUID is required; an empty/nil
+// to the related row ids (uuid) before insert/update. ClientUUID is required; an empty/nil
 // PayerUUID maps to a NULL FK.
 type RecurringInput struct {
 	ClientUUID *string         `json:"clientId"`
@@ -151,8 +151,8 @@ func (r *Repo) validate(in RecurringInput) error {
 	return nil
 }
 
-// resolveClient translates the required inbound client uuid into the int
-// FK for insert/update. An unknown uuid (foreign or absent) → errClientNotFound.
+// resolveClient resolves the required inbound client uuid to the client row id
+// (uuid) for insert/update. An unknown uuid (foreign or absent) → errClientNotFound.
 func (r *Repo) resolveClient(ctx context.Context, q *gen.Queries, tenantID string, pUUID *string) (sql.NullString, error) {
 	if pUUID == nil || *pUUID == "" {
 		return sql.NullString{}, errClientNotFound
@@ -167,8 +167,8 @@ func (r *Repo) resolveClient(ctx context.Context, q *gen.Queries, tenantID strin
 	return sql.NullString{String: id, Valid: true}, nil
 }
 
-// resolvePayer translates an optional inbound payer uuid into the int
-// FK. A nil/empty uuid → NULL FK. An unknown uuid → errPayerNotFound.
+// resolvePayer resolves an optional inbound payer uuid to the payer row id
+// (uuid). A nil/empty uuid → NULL FK. An unknown uuid → errPayerNotFound.
 func (r *Repo) resolvePayer(ctx context.Context, q *gen.Queries, tenantID string, pmUUID *string) (sql.NullString, error) {
 	if pmUUID == nil || *pmUUID == "" {
 		return sql.NullString{}, nil
@@ -325,7 +325,7 @@ func (r *Repo) Create(ctx context.Context, tenantID string, in RecurringInput) (
 
 // Update validates and rewrites a template by uuid, atomically with one audit
 // row. Returns (nil, nil) when the template does not exist. The audit entry
-// records the row's int PK, resolved by-uuid inside the same tx.
+// records the row's id (uuid), resolved by-uuid inside the same tx.
 func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in RecurringInput) (*RecurringTemplate, error) {
 	if err := r.validate(in); err != nil {
 		return nil, err
@@ -389,7 +389,7 @@ func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in Recu
 }
 
 // Delete removes a template by uuid and writes one audit row, atomically. The
-// audit entry records the row's int PK, resolved by-uuid in the same tx. A
+// audit entry records the row's id (uuid), resolved by-uuid in the same tx. A
 // missing row is a silent no-op.
 func (r *Repo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {

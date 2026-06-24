@@ -42,9 +42,9 @@ var errPayerNotFound = errors.New("payer not found")
 
 // Client is the domain view of a row in the clients table. Nullable columns are
 // unwrapped to plain strings (""). The public identifier is the uuid (json
-// "id"); the int PK is internal-only. The payer FK is exposed as the
+// "id"); the internal row id stays out of the JSON. The payer FK is exposed as the
 // related payer uuid (nil when self-managed), resolved via LEFT JOIN,
-// never the int FK.
+// never the internal row id.
 type Client struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
@@ -60,7 +60,7 @@ type Client struct {
 }
 
 // ClientInput is the writable subset of a client. PayerUUID is the
-// payer's uuid (nil/empty → self-managed); it is resolved to the int FK
+// payer's uuid (nil/empty → self-managed); it is resolved to the payer row id (uuid)
 // before insert/update.
 type ClientInput struct {
 	Name      string  `json:"name"`
@@ -169,8 +169,8 @@ func (r *ClientsRepo) Get(ctx context.Context, tenantID string, uuid string) (*C
 	return toClientGet(row), nil
 }
 
-// GetByID returns the tenant's client by int PK, for internal cross-slice reads
-// (e.g. billing's plan-window lookup) that already hold the FK. The public API
+// GetByID returns the tenant's client by row id (uuid), for internal cross-slice reads
+// (e.g. billing's plan-window lookup) that already hold the id. The public API
 // addresses clients by uuid via Get.
 func (r *ClientsRepo) GetByID(ctx context.Context, tenantID, id string) (*Client, error) {
 	row, err := gen.New(r.db).GetClientByID(ctx, gen.GetClientByIDParams{TenantID: tenantID, ID: id})
@@ -183,7 +183,7 @@ func (r *ClientsRepo) GetByID(ctx context.Context, tenantID, id string) (*Client
 	return toClientGetByID(row), nil
 }
 
-// resolvePayer translates an inbound payer uuid into the int FK for
+// resolvePayer resolves an inbound payer uuid to the payer row id (uuid) for
 // insert/update. A nil/empty uuid → NULL FK. An unknown uuid (foreign or absent)
 // → errPayerNotFound so the handler can 400.
 func (r *ClientsRepo) resolvePayer(ctx context.Context, q *gen.Queries, tenantID string, pmUUID *string) (sql.NullString, error) {
@@ -257,7 +257,7 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID string, in ClientInpu
 
 // Update writes the client's fields and one audit row, atomically, then
 // re-reads. Returns (nil, nil) when the client does not exist. The audit entry
-// records the row's int PK, resolved by-uuid in the same tx.
+// records the row's id (uuid), resolved by-uuid in the same tx.
 func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, in ClientInput) (*Client, error) {
 	if in.Name == "" {
 		return nil, errors.New("update client: name is required")
@@ -314,7 +314,7 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, 
 }
 
 // Delete removes a client by uuid and writes one audit row, atomically. The
-// audit entry records the row's int PK, resolved by-uuid in the same tx. A
+// audit entry records the row's id (uuid), resolved by-uuid in the same tx. A
 // missing row is a silent no-op.
 func (r *ClientsRepo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
@@ -337,7 +337,7 @@ func (r *ClientsRepo) Delete(ctx context.Context, tenantID string, uuid string) 
 	})
 }
 
-// ResolveClientIDs translates client uuids into their int PKs (preserving
+// ResolveClientIDs resolves client uuids to their row ids (uuid) (preserving
 // order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
 func (r *ClientsRepo) ResolveClientIDs(ctx context.Context, tenantID string, clientUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)

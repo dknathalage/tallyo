@@ -63,8 +63,7 @@ func (s *Service) Create(ctx context.Context, in RecurringInput) (*RecurringTemp
 }
 
 // Update rewrites a template by uuid. A nil result means the row was not found,
-// in which case no event is published. The SSE event carries the row's int PK
-// (Phase 2.8 retypes the SSE payload).
+// in which case no event is published. The SSE event carries the row's id (uuid).
 func (s *Service) Update(ctx context.Context, uuid string, in RecurringInput) (*RecurringTemplate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	tpl, err := s.repo.Update(ctx, tenantID, uuid, in)
@@ -79,7 +78,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in RecurringInput) (*
 }
 
 // Delete removes a template by uuid, then broadcasts on success. The row is
-// resolved first so the post-commit event still carries the int PK.
+// resolved first so the post-commit event still carries the row's id (uuid).
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	tpl, err := s.repo.Get(ctx, tenantID, uuid)

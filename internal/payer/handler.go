@@ -136,7 +136,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // BulkDelete removes every payer whose uuid is in the request body. The
-// uuids are resolved to int PKs first; an unknown uuid → 400.
+// uuids are validated against the tenant first; an unknown uuid → 400.
 func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Ids []string `json:"ids"`

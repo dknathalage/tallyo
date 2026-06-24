@@ -80,7 +80,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in CustomItemInput) (
 }
 
 // Delete removes a custom item by uuid, then broadcasts on success. The row is
-// resolved first so the post-commit event still carries the int PK.
+// resolved first so the post-commit event still carries the uuid.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	item, err := s.repo.Get(ctx, tenantID, uuid)
@@ -97,7 +97,7 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	return nil
 }
 
-// ResolveCustomItemIDs translates a list of custom-item uuids into their int PKs
+// ResolveCustomItemIDs resolves a list of custom-item uuids to their row ids (uuid)
 // for the tenant (preserving order). An unknown uuid surfaces as an error so the
 // caller can 400 — bulk operations must not silently drop a member.
 func (s *Service) ResolveCustomItemIDs(ctx context.Context, itemUUIDs []string) ([]string, error) {

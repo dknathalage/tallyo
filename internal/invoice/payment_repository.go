@@ -155,8 +155,8 @@ func (r *PaymentsRepo) Delete(ctx context.Context, tenantID, id string) (payment
 	return paymentUUID, invoiceID, nil
 }
 
-// ResolveInvoiceID translates an invoice uuid into its int PK, scoped to the
-// tenant. Returns (0, nil) when no invoice matches (caller 404s).
+// ResolveInvoiceID resolves an invoice uuid to its row id (uuid), scoped to the
+// tenant. Returns ("", nil) when no invoice matches (caller 404s).
 func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID string, invoiceUUID string) (string, error) {
 	id, err := gen.New(r.db).GetInvoiceIDByUUID(ctx, gen.GetInvoiceIDByUUIDParams{TenantID: tenantID, ID: invoiceUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -168,9 +168,9 @@ func (r *PaymentsRepo) ResolveInvoiceID(ctx context.Context, tenantID string, in
 	return id, nil
 }
 
-// InvoiceUUID returns the public uuid of an invoice by its int PK (tenant-scoped),
+// InvoiceUUID returns the public uuid of an invoice by its row id (tenant-scoped),
 // or "" when no invoice matches. Used to broadcast the invoice-update SSE event
-// after a payment mutation without leaking the int PK.
+// after a payment mutation.
 func (r *PaymentsRepo) InvoiceUUID(ctx context.Context, tenantID, invoiceID string) (string, error) {
 	row, err := gen.New(r.db).GetInvoiceByID(ctx, gen.GetInvoiceByIDParams{TenantID: tenantID, ID: invoiceID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -183,7 +183,7 @@ func (r *PaymentsRepo) InvoiceUUID(ctx context.Context, tenantID, invoiceID stri
 }
 
 // DeleteByUUID removes a payment addressed by its uuid, scoped to the owning
-// invoice's int id (so a payment uuid from another invoice 404s), writing one
+// invoice's row id (so a payment uuid from another invoice 404s), writing one
 // audit row. Returns the invoice id so the caller can broadcast an invoice
 // update. A missing payment surfaces sql.ErrNoRows so the caller can 404.
 func (r *PaymentsRepo) DeleteByUUID(ctx context.Context, tenantID, invoiceID string, paymentUUID string) (string, error) {

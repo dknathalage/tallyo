@@ -200,7 +200,7 @@ func (r *Repo) Create(ctx context.Context, tenantID string, in CustomItemInput) 
 }
 
 // Update writes the custom item's fields and one audit row, atomically. The
-// audit entry records the row's int PK, resolved by-uuid inside the tx. Returns
+// audit entry records the row's id, looked up by-uuid inside the tx. Returns
 // (nil, nil) when the item does not exist so the caller can 404.
 func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in CustomItemInput) (*CustomItem, error) {
 	if in.Name == "" {
@@ -250,7 +250,7 @@ func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in Cust
 }
 
 // Delete removes a custom item by uuid and writes one audit row, atomically. The
-// audit entry records the row's int PK, resolved by-uuid in the same tx.
+// audit entry records the row's id, looked up by-uuid in the same tx.
 func (r *Repo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
@@ -272,7 +272,7 @@ func (r *Repo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	})
 }
 
-// ResolveCustomItemIDs translates custom-item uuids into their int PKs
+// ResolveCustomItemIDs resolves custom-item uuids to their row ids (uuid)
 // (preserving order), tenant-scoped. An unknown uuid is an error so bulk ops can
 // 400.
 func (r *Repo) ResolveCustomItemIDs(ctx context.Context, tenantID string, itemUUIDs []string) ([]string, error) {

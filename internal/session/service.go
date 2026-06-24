@@ -77,7 +77,7 @@ func (s *Service) List(ctx context.Context, status string) ([]*Session, error) {
 	return s.repo.List(ctx, tenantID)
 }
 
-// Get returns a session by int PK, or (nil, nil) when absent. This is the
+// Get returns a session by row id, or (nil, nil) when absent. This is the
 // internal/cross-slice read (agent SessionReader, the service's own pricing path);
 // the public HTTP path addresses sessions by uuid via GetByUUID.
 func (s *Service) Get(ctx context.Context, id string) (*Session, error) {
@@ -91,16 +91,16 @@ func (s *Service) GetByUUID(ctx context.Context, sessionUUID string) (*Session, 
 	return s.repo.GetByUUID(ctx, tenantID, sessionUUID)
 }
 
-// ResolveClient translates a client uuid into its int FK for the
+// ResolveClient resolves a client uuid to its row id (uuid) for the
 // tenant (inbound clientId resolution on session create/update). Returns
-// (0, nil) when the uuid is unknown so the handler can 400.
+// ("", nil) when the uuid is unknown so the handler can 400.
 func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
 // ListByClientUUID returns the tenant's sessions for one client,
-// resolving the client uuid to its int FK. An unknown client uuid
+// resolving the client uuid to its row id (uuid). An unknown client uuid
 // yields an empty (non-nil) slice — the filter simply matches nothing.
 func (s *Service) ListByClientUUID(ctx context.Context, clientUUID, status string) ([]*Session, error) {
 	tenantID := reqctx.MustTenant(ctx)
@@ -196,7 +196,7 @@ func (s *Service) repriceItemsForDate(ctx context.Context, tenantID string, sh *
 }
 
 // UpdateStatus advances a session's lifecycle status by uuid, then broadcasts on
-// success. The SSE event carries the row's int PK, resolved first.
+// success. The SSE event carries the row's id (uuid), resolved first.
 func (s *Service) UpdateStatus(ctx context.Context, sessionUUID, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.GetByUUID(ctx, tenantID, sessionUUID)
@@ -216,7 +216,7 @@ func (s *Service) UpdateStatus(ctx context.Context, sessionUUID, status string) 
 // Delete removes a session by uuid (its items cascade), then broadcasts on success.
 // A billed session — status past 'recorded' (drafted/sent/paid) — cannot be
 // deleted: its items live on an invoice. Returns ErrSessionBilled in that case.
-// The SSE event carries the row's int PK, resolved first.
+// The SSE event carries the row's id (uuid), resolved first.
 func (s *Service) Delete(ctx context.Context, sessionUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.GetByUUID(ctx, tenantID, sessionUUID)
@@ -345,22 +345,22 @@ func (s *Service) AddItem(ctx context.Context, sessionID string, in billing.Line
 	return item, nil
 }
 
-// resolveSession translates a session uuid into its int PK for the tenant. Returns
-// (0, nil) when no such session exists so HTTP item handlers can 404.
+// resolveSession resolves a session uuid to its row id (uuid) for the tenant. Returns
+// ("", nil) when no such session exists so HTTP item handlers can 404.
 func (s *Service) resolveSession(ctx context.Context, tenantID string, sessionUUID string) (string, error) {
 	return s.repo.ResolveID(ctx, tenantID, sessionUUID)
 }
 
-// ResolveSessionID translates a session uuid into its int PK for the acting tenant.
-// Returns (0, nil) when no such session exists (the Divide handler 404s). Exposed
-// so the handler can bridge the uuid path to the int-keyed DivideSession contract.
+// ResolveSessionID resolves a session uuid to its row id (uuid) for the acting tenant.
+// Returns ("", nil) when no such session exists (the Divide handler 404s). Exposed
+// so the handler can bridge the uuid path to the DivideSession contract.
 func (s *Service) ResolveSessionID(ctx context.Context, sessionUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveID(ctx, tenantID, sessionUUID)
 }
 
 // ListItemsBySessionUUID returns a session's line items, resolving the session uuid to
-// its int id first. Returns (nil, nil) when the session is absent (handler 404s).
+// its row id first. Returns (nil, nil) when the session is absent (handler 404s).
 func (s *Service) ListItemsBySessionUUID(ctx context.Context, sessionUUID string) ([]*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	sessionID, err := s.resolveSession(ctx, tenantID, sessionUUID)
@@ -450,7 +450,7 @@ func (s *Service) DeleteItemBySessionUUID(ctx context.Context, sessionUUID, item
 
 // ClearUnbilledItems removes all of a session's unbilled items (used to make a
 // re-divide idempotent). Broadcasts on success. Resolves the session's uuid first
-// so the post-commit event carries the public id, not the int PK.
+// so the post-commit event carries the public id (uuid).
 func (s *Service) ClearUnbilledItems(ctx context.Context, sessionID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.Get(ctx, tenantID, sessionID)

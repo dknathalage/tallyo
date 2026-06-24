@@ -22,7 +22,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // PriceListVersion is the domain view of a row in price_list_versions. The
-// public identifier (`id`) is the uuid; the int PK stays internal-only (json:"-").
+// public identifier (`id`) is the row's uuid.
 type PriceListVersion struct {
 	ID             string `json:"id"`
 	Label          string `json:"label"`
@@ -33,9 +33,9 @@ type PriceListVersion struct {
 }
 
 // Item is the domain view of a row in items. The public identifier (`id`) is the
-// uuid; the int PK stays internal-only. The owning version is exposed as its uuid
-// under `priceListVersionId` (items are listed under a version, so the SPA links
-// item→version by uuid). UnitPrice is nil when no generic per-unit price is set.
+// row's uuid. The owning version's uuid is held in PriceListVersionID but kept out
+// of JSON (json:"-"); items are listed under a version, so the SPA links
+// item→version by uuid. UnitPrice is nil when no generic per-unit price is set.
 type Item struct {
 	ID                  string   `json:"id"`
 	PriceListVersionID  string   `json:"-"`
@@ -131,9 +131,9 @@ func (r *ItemsRepo) ListItems(ctx context.Context, tenantID, versionID string) (
 	return out, nil
 }
 
-// ResolveVersionIDByUUID maps a price-list-version uuid to its int PK, returning
-// (0, nil) when no version carries that uuid. Used to translate a public version
-// uuid path param to the internal FK before filtering items.
+// ResolveVersionIDByUUID maps a price-list-version uuid to its row id (uuid),
+// returning ("", nil) when no version carries that uuid. Used to validate a public
+// version uuid path param against the tenant before filtering items.
 func (r *ItemsRepo) ResolveVersionIDByUUID(ctx context.Context, tenantID string, versionUUID string) (string, error) {
 	if versionUUID == "" {
 		return "", errors.New("resolve version id: uuid required")

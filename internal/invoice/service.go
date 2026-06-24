@@ -87,21 +87,21 @@ func (s *Service) GetByUUID(ctx context.Context, invoiceUUID string) (*Invoice, 
 	return s.repo.GetByUUID(ctx, tenantID, invoiceUUID)
 }
 
-// ResolveClient translates a client uuid into its int FK for the
-// tenant. Returns (0, nil) when no client matches (caller 400s).
+// ResolveClient resolves a client uuid to its row id (uuid) for the
+// tenant. Returns ("", nil) when no client matches (caller 400s).
 func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
-// ResolvePayer translates a payer uuid into its int FK for the
-// tenant. Returns (0, nil) when no payer matches (caller 400s).
+// ResolvePayer resolves a payer uuid to its row id (uuid) for the
+// tenant. Returns ("", nil) when no payer matches (caller 400s).
 func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolvePayerID(ctx, tenantID, payerUUID)
 }
 
-// ResolveSessionIDs translates a list of session uuids into their int PKs for the
+// ResolveSessionIDs resolves a list of session uuids to row ids (uuid) for the
 // tenant (preserving order). An unknown uuid surfaces as an error so the caller
 // can 400 — draft-from-sessions must not silently drop a session.
 func (s *Service) ResolveSessionIDs(ctx context.Context, sessionUUIDs []string) ([]string, error) {
@@ -109,7 +109,7 @@ func (s *Service) ResolveSessionIDs(ctx context.Context, sessionUUIDs []string) 
 	return s.repo.ResolveSessionIDs(ctx, tenantID, sessionUUIDs)
 }
 
-// ResolveInvoiceIDs translates a list of invoice uuids into their int PKs for
+// ResolveInvoiceIDs resolves a list of invoice uuids to row ids (uuid) for
 // the tenant (preserving order). An unknown uuid surfaces as an error so the
 // caller can 400 — bulk operations must not silently drop a member.
 func (s *Service) ResolveInvoiceIDs(ctx context.Context, invoiceUUIDs []string) ([]string, error) {
@@ -117,7 +117,7 @@ func (s *Service) ResolveInvoiceIDs(ctx context.Context, invoiceUUIDs []string) 
 	return s.repo.ResolveInvoiceIDs(ctx, tenantID, invoiceUUIDs)
 }
 
-// ClientStats resolves the client uuid to its int PK (tenant-scoped)
+// ClientStats resolves the client uuid to its row id (tenant-scoped)
 // then aggregates that client's invoices. Returns (nil, nil) when no
 // client matches the uuid so the handler can 404.
 func (s *Service) ClientStats(ctx context.Context, clientUUID string) (*ClientStats, error) {
@@ -219,7 +219,7 @@ func (s *Service) Update(ctx context.Context, id string, in InvoiceInput, items 
 	return inv, nil
 }
 
-// UpdateByUUID resolves the invoice uuid → int PK, then rewrites the invoice.
+// UpdateByUUID resolves the invoice uuid → row, then rewrites the invoice.
 // Returns (nil, nil) when no invoice matches the uuid so the handler can 404.
 func (s *Service) UpdateByUUID(ctx context.Context, invoiceUUID string, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
@@ -233,8 +233,8 @@ func (s *Service) UpdateByUUID(ctx context.Context, invoiceUUID string, in Invoi
 	return s.Update(ctx, id, in, items)
 }
 
-// DeleteByUUID resolves the invoice uuid → int PK, then deletes the invoice.
-// A no-match uuid is a no-op (the int Delete is idempotent).
+// DeleteByUUID resolves the invoice uuid → row, then deletes the invoice.
+// A no-match uuid is a no-op (Delete is idempotent).
 func (s *Service) DeleteByUUID(ctx context.Context, invoiceUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	id, err := s.repo.ResolveInvoiceID(ctx, tenantID, invoiceUUID)
@@ -247,7 +247,7 @@ func (s *Service) DeleteByUUID(ctx context.Context, invoiceUUID string) error {
 	return s.Delete(ctx, id)
 }
 
-// UpdateStatusByUUID resolves the invoice uuid → int PK, then flips its status.
+// UpdateStatusByUUID resolves the invoice uuid → row, then flips its status.
 // A no-match uuid is a no-op.
 func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status string) error {
 	tenantID := reqctx.MustTenant(ctx)

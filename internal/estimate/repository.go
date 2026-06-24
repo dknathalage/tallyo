@@ -94,8 +94,8 @@ type EstimateInput struct {
 }
 
 // ConvertResult identifies the invoice produced by Convert. The public
-// identifier is the new invoice's uuid, serialized as "id"; the int PK is kept
-// internal (the service reads it to broadcast the invoice "create" event).
+// identifier is the new invoice's uuid, serialized as "id"; the internal row id
+// is kept out of the JSON (the service reads it to broadcast the invoice "create" event).
 type ConvertResult struct {
 	InvoiceID      string `json:"-"`  // internal invoice id (uuid)
 	InvoiceUUID    string `json:"id"` // public identifier (new invoice uuid)
@@ -262,9 +262,9 @@ func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimate
 	return nil
 }
 
-// Get returns the estimate (with client name and line items) by int PK, or
+// Get returns the estimate (with client name and line items) by row id (uuid), or
 // (nil, nil) when absent. Internal read used by the convert/duplicate paths and
-// the int-keyed service methods.
+// the id-keyed service methods.
 func (r *EstimatesRepo) Get(ctx context.Context, tenantID, id string) (*Estimate, error) {
 	q := gen.New(r.db)
 	row, err := q.GetEstimateByID(ctx, gen.GetEstimateByIDParams{TenantID: tenantID, ID: id})
@@ -293,7 +293,7 @@ func (r *EstimatesRepo) GetByUUID(ctx context.Context, tenantID string, estimate
 	return r.withLineItems(ctx, q, tenantID, est)
 }
 
-// withLineItems loads an estimate's line items (keyed by the estimate's int PK).
+// withLineItems loads an estimate's line items (keyed by the estimate's row id (uuid)).
 func (r *EstimatesRepo) withLineItems(ctx context.Context, q *gen.Queries, tenantID string, est *Estimate) (*Estimate, error) {
 	rows, err := q.ListEstimateLineItems(ctx, gen.ListEstimateLineItemsParams{TenantID: tenantID, EstimateID: est.ID})
 	if err != nil {
@@ -303,8 +303,8 @@ func (r *EstimatesRepo) withLineItems(ctx context.Context, q *gen.Queries, tenan
 	return est, nil
 }
 
-// ResolveEstimateID translates an estimate uuid into its int PK, scoped to the
-// tenant. Returns (0, nil) when no estimate matches the uuid (caller 404s).
+// ResolveEstimateID resolves an estimate uuid to its row id (uuid), scoped to the
+// tenant. Returns ("", nil) when no estimate matches the uuid (caller 404s).
 func (r *EstimatesRepo) ResolveEstimateID(ctx context.Context, tenantID string, estimateUUID string) (string, error) {
 	id, err := gen.New(r.db).GetEstimateIDByUUID(ctx, gen.GetEstimateIDByUUIDParams{TenantID: tenantID, ID: estimateUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -316,7 +316,7 @@ func (r *EstimatesRepo) ResolveEstimateID(ctx context.Context, tenantID string, 
 	return id, nil
 }
 
-// ResolveEstimateIDs translates estimate uuids into their int PKs (preserving
+// ResolveEstimateIDs resolves estimate uuids to their row ids (uuid) (preserving
 // order), tenant-scoped. An unknown uuid is an error so bulk ops can 400.
 func (r *EstimatesRepo) ResolveEstimateIDs(ctx context.Context, tenantID string, estimateUUIDs []string) ([]string, error) {
 	q := gen.New(r.db)
@@ -334,8 +334,8 @@ func (r *EstimatesRepo) ResolveEstimateIDs(ctx context.Context, tenantID string,
 	return out, nil
 }
 
-// ResolveClientID translates a client uuid into its int PK, scoped to
-// the tenant. Returns (0, nil) when no client matches (caller 400s).
+// ResolveClientID resolves a client uuid to its row id (uuid), scoped to
+// the tenant. Returns ("", nil) when no client matches (caller 400s).
 func (r *EstimatesRepo) ResolveClientID(ctx context.Context, tenantID string, clientUUID string) (string, error) {
 	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, ID: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -347,8 +347,8 @@ func (r *EstimatesRepo) ResolveClientID(ctx context.Context, tenantID string, cl
 	return id, nil
 }
 
-// ResolvePayerID translates a payer uuid into its int PK, scoped to
-// the tenant. Returns (0, nil) when no payer matches (caller 400s).
+// ResolvePayerID resolves a payer uuid to its row id (uuid), scoped to
+// the tenant. Returns ("", nil) when no payer matches (caller 400s).
 func (r *EstimatesRepo) ResolvePayerID(ctx context.Context, tenantID string, payerUUID string) (string, error) {
 	id, err := gen.New(r.db).GetPayerIDByUUID(ctx, gen.GetPayerIDByUUIDParams{TenantID: tenantID, ID: payerUUID})
 	if errors.Is(err, sql.ErrNoRows) {

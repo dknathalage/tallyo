@@ -44,7 +44,7 @@ func (h *Handler) Routes(r chi.Router) {
 
 // estimateRequest is the flat write payload. ClientUUID/PayerUUID
 // arrive as uuids under the public field names (clientId/payerId) and
-// are resolved to int FKs before the service is called; the remaining fields
+// are validated against the tenant before the service is called; the remaining fields
 // mirror EstimateInput. LineItems carry the priced lines (catalogue refs already
 // uuid TEXT — passed through unchanged).
 type estimateRequest struct {
@@ -61,8 +61,8 @@ type estimateRequest struct {
 	LineItems        []billing.LineItemInput `json:"lineItems"`
 }
 
-// resolveInput translates an estimateRequest's client/payer uuids
-// into int FKs and returns the int-keyed EstimateInput. Writes a 400 and returns
+// resolveInput resolves an estimateRequest's client/payer uuids
+// to row ids (uuid) and returns the EstimateInput. Writes a 400 and returns
 // ok=false when the client uuid is missing/unknown for the tenant. A
 // missing/empty payer uuid stays NULL; a present-but-unknown one 400s.
 func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req estimateRequest) (EstimateInput, bool) {
@@ -315,7 +315,7 @@ func (h *Handler) Duplicate(w http.ResponseWriter, r *http.Request) {
 }
 
 // BulkDelete removes every estimate whose uuid is in the request body. The uuids
-// are resolved to int PKs first; an unknown uuid → 400.
+// are validated against the tenant first; an unknown uuid → 400.
 func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Ids []string `json:"ids"`
@@ -337,7 +337,7 @@ func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // BulkStatus sets the status of every estimate whose uuid is in the request
-// body. The uuids are resolved to int PKs first; an unknown uuid → 400.
+// body. The uuids are validated against the tenant first; an unknown uuid → 400.
 func (h *Handler) BulkStatus(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Ids    []string `json:"ids"`

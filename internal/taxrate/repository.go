@@ -240,7 +240,7 @@ func (r *TaxRatesRepo) Update(ctx context.Context, tenantID string, uuid string,
 }
 
 // Delete removes a tax rate by uuid and writes one audit row, atomically. The
-// audit entry records the row's int PK, resolved by-uuid in the same tx.
+// audit entry records the row's id, looked up by-uuid in the same tx.
 func (r *TaxRatesRepo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)

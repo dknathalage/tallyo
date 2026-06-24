@@ -80,7 +80,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in TaxRateInput) (*Ta
 }
 
 // Delete removes a tax rate by uuid, then broadcasts on success. The row is
-// resolved first so the post-commit event still carries the int PK.
+// resolved first so the post-commit event still carries the uuid.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	t, err := s.repo.Get(ctx, tenantID, uuid)

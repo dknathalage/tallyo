@@ -124,7 +124,7 @@ func (r *SessionsRepo) Create(ctx context.Context, tenantID string, authorUserID
 	return r.Get(ctx, tenantID, newID)
 }
 
-// Get returns the tenant's session by int PK, or (nil, nil) when absent. This is
+// Get returns the tenant's session by row id, or (nil, nil) when absent. This is
 // the internal/cross-slice read (agent SessionReader, the service's own pricing
 // path); the public HTTP path addresses sessions by uuid via GetByUUID.
 func (r *SessionsRepo) Get(ctx context.Context, tenantID, id string) (*Session, error) {
@@ -152,8 +152,8 @@ func (r *SessionsRepo) GetByUUID(ctx context.Context, tenantID string, sessionUU
 	return mapSession(sessionFieldsFromGet(row))
 }
 
-// ResolveID translates a session uuid into its int PK for the tenant. Returns
-// (0, nil) when no such session exists (so callers can 404 without an error).
+// ResolveID resolves a session uuid to its row id (uuid) for the tenant. Returns
+// ("", nil) when no such session exists (so callers can 404 without an error).
 func (r *SessionsRepo) ResolveID(ctx context.Context, tenantID string, sessionUUID string) (string, error) {
 	id, err := gen.New(r.db).GetSessionIDByUUID(ctx, gen.GetSessionIDByUUIDParams{TenantID: tenantID, ID: sessionUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -165,9 +165,9 @@ func (r *SessionsRepo) ResolveID(ctx context.Context, tenantID string, sessionUU
 	return id, nil
 }
 
-// ResolveClientID translates a client uuid into its int PK for the
+// ResolveClientID resolves a client uuid to its row id (uuid) for the
 // tenant (used by the ?client= session filter and inbound clientId
-// resolution). Returns (0, nil) when absent.
+// resolution). Returns ("", nil) when absent.
 func (r *SessionsRepo) ResolveClientID(ctx context.Context, tenantID string, clientUUID string) (string, error) {
 	id, err := gen.New(r.db).GetClientIDByUUID(ctx, gen.GetClientIDByUUIDParams{TenantID: tenantID, ID: clientUUID})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -257,7 +257,7 @@ func (r *SessionsRepo) ListRecordedUnbilled(ctx context.Context, tenantID, clien
 
 // Update rewrites a session's editable fields by uuid and writes one audit row,
 // atomically. Returns (nil, nil) when the session does not exist for the tenant.
-// The audit EntityID keeps the int PK, recovered from the RETURNING row.
+// The audit EntityID keeps the row id (uuid), recovered from the RETURNING row.
 func (r *SessionsRepo) Update(ctx context.Context, tenantID string, sessionUUID string, in SessionInput) (*Session, error) {
 	if !validISODate(in.ServiceDate) {
 		return nil, errors.New("update session: service date must be a valid YYYY-MM-DD date")
@@ -302,7 +302,7 @@ func (r *SessionsRepo) Update(ctx context.Context, tenantID string, sessionUUID 
 }
 
 // UpdateStatus sets a session's lifecycle status by uuid and writes one audit row.
-// The audit EntityID keeps the int PK, resolved in-tx; a missing row is a no-op.
+// The audit EntityID keeps the row id (uuid), resolved in-tx; a missing row is a no-op.
 func (r *SessionsRepo) UpdateStatus(ctx context.Context, tenantID string, sessionUUID, status string) error {
 	if status == "" {
 		return errors.New("update session status: status required")
@@ -398,7 +398,7 @@ func (r *SessionsRepo) ClearForInvoice(ctx context.Context, tenantID, invoiceID 
 }
 
 // Delete removes a session by uuid and writes one audit row, atomically. The audit
-// EntityID keeps the int PK, resolved in-tx; a missing row is a no-op.
+// EntityID keeps the row id (uuid), resolved in-tx; a missing row is a no-op.
 func (r *SessionsRepo) Delete(ctx context.Context, tenantID string, sessionUUID string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
@@ -583,7 +583,7 @@ func (r *SessionsRepo) DeleteItem(ctx context.Context, tenantID, itemID string) 
 }
 
 // GetItemByUUID returns a session's line item addressed by uuid, scoped to the
-// owning session's int id, or (nil, nil) when absent. The session scope ensures an
+// owning session's row id, or (nil, nil) when absent. The session scope ensures an
 // item uuid from another session (or tenant) 404s.
 func (r *SessionsRepo) GetItemByUUID(ctx context.Context, tenantID, sessionID string, itemUUID string) (*billing.LineItem, error) {
 	if tenantID == "" || sessionID == "" {
@@ -604,7 +604,7 @@ func (r *SessionsRepo) GetItemByUUID(ctx context.Context, tenantID, sessionID st
 // UpdateItemByUUID rewrites an UNBILLED session item addressed by uuid (scoped to
 // the owning session, invoice_id IS NULL guard) and writes one audit row. Returns
 // (nil, nil) when the item is absent or already billed. in is expected
-// pre-priced by the caller. The audit EntityID keeps the item's int PK.
+// pre-priced by the caller. The audit EntityID keeps the item's row id (uuid).
 func (r *SessionsRepo) UpdateItemByUUID(ctx context.Context, tenantID, sessionID string, itemUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
 	if tenantID == "" || sessionID == "" {
 		return nil, errors.New("update session item: tenant and session id required")
@@ -659,7 +659,7 @@ func (r *SessionsRepo) UpdateItemByUUID(ctx context.Context, tenantID, sessionID
 
 // DeleteItemByUUID removes an UNBILLED session item addressed by uuid (scoped to
 // the owning session, invoice_id IS NULL guard) and writes one audit row. A
-// missing/billed item is a no-op. The audit EntityID keeps the item's int PK,
+// missing/billed item is a no-op. The audit EntityID keeps the item's row id (uuid),
 // resolved in-tx.
 func (r *SessionsRepo) DeleteItemByUUID(ctx context.Context, tenantID, sessionID string, itemUUID string) error {
 	if tenantID == "" || sessionID == "" {
@@ -701,7 +701,7 @@ func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItem
 
 // lineItemParams builds the gen insert params for a line item. sessionID nil = an
 // invoice-only line; here it is always set (session item, invoice_id NULL). The
-// inbound custom-item uuid is resolved to the int FK by the caller and passed in.
+// inbound custom-item uuid is resolved to the row id (uuid) by the caller and passed in.
 func lineItemParams(tenantID string, sessionID *string, customItemID sql.NullString, in billing.LineItemInput) gen.CreateLineItemParams {
 	return gen.CreateLineItemParams{
 		ID:                 ids.New(),

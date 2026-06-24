@@ -186,7 +186,7 @@ func (r *PayersRepo) Create(ctx context.Context, tenantID string, in PayerInput)
 }
 
 // Update writes the payer's fields and one audit row, atomically. The
-// audit entry records the row's int PK, resolved by-uuid inside the tx. Returns
+// audit entry records the row's id, looked up by-uuid inside the tx. Returns
 // (nil, nil) when the row does not exist so the caller can 404.
 func (r *PayersRepo) Update(ctx context.Context, tenantID string, uuid string, in PayerInput) (*Payer, error) {
 	if in.Name == "" {
@@ -236,7 +236,7 @@ func (r *PayersRepo) Update(ctx context.Context, tenantID string, uuid string, i
 }
 
 // Delete removes a payer by uuid and writes one audit row, atomically.
-// The audit entry records the row's int PK, resolved by-uuid in the same tx.
+// The audit entry records the row's id, looked up by-uuid in the same tx.
 func (r *PayersRepo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
@@ -258,7 +258,7 @@ func (r *PayersRepo) Delete(ctx context.Context, tenantID string, uuid string) e
 	})
 }
 
-// ResolvePayerIDs translates payer uuids into their int PKs
+// ResolvePayerIDs resolves payer uuids to their row ids (uuid)
 // (preserving order), tenant-scoped. An unknown uuid is an error so bulk ops can
 // 400.
 func (r *PayersRepo) ResolvePayerIDs(ctx context.Context, tenantID string, pmUUIDs []string) ([]string, error) {

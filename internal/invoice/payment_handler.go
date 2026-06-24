@@ -40,8 +40,8 @@ type paymentRequest struct {
 	Notes       string  `json:"notes"`
 }
 
-// resolveInvoice translates the {invoiceUUID} path param into the invoice int
-// PK. Writes a 400 (bad uuid) or 404 (unknown) and returns ok=false on failure.
+// resolveInvoice resolves the {invoiceUUID} path param to the invoice row
+// id (uuid). Writes a 400 (bad uuid) or 404 (unknown) and returns ok=false on failure.
 func (h *PaymentHandler) resolveInvoice(w http.ResponseWriter, r *http.Request) (string, bool) {
 	invoiceUUID, ok := httpx.ParseUUID(r, "invoiceUUID")
 	if !ok {
@@ -61,7 +61,7 @@ func (h *PaymentHandler) resolveInvoice(w http.ResponseWriter, r *http.Request) 
 }
 
 // ListForInvoice returns one invoice's payments. The {invoiceUUID} path param is
-// the invoice uuid (resolved to the int FK).
+// the invoice uuid (resolved to its row id).
 func (h *PaymentHandler) ListForInvoice(w http.ResponseWriter, r *http.Request) {
 	invoiceID, ok := h.resolveInvoice(w, r)
 	if !ok {
@@ -76,7 +76,7 @@ func (h *PaymentHandler) ListForInvoice(w http.ResponseWriter, r *http.Request) 
 }
 
 // Create records a payment against an invoice. The {invoiceUUID} path param is
-// the invoice uuid (resolved to the int FK). A non-positive amount → 400.
+// the invoice uuid (resolved to its row id). A non-positive amount → 400.
 func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	invoiceID, ok := h.resolveInvoice(w, r)
 	if !ok {

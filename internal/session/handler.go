@@ -43,7 +43,7 @@ func (h *Handler) Routes(r chi.Router) {
 
 // List returns the tenant's sessions. With ?client={clientUUID} it
 // returns only that client's sessions (resolving the client uuid to its
-// int FK — this replaces the old nested client→sessions read). An optional
+// row id — this replaces the old nested client→sessions read). An optional
 // ?status= filter restricts the lifecycle status in either mode.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
@@ -85,9 +85,9 @@ func (h *Handler) ToRecord(w http.ResponseWriter, r *http.Request) {
 }
 
 // sessionBody is the HTTP write shape of a session. ClientUUID arrives as the
-// client's uuid (resolved to the int FK before insert/update); the other
-// fields mirror SessionInput. It is the inbound DTO — SessionInput stays int-keyed
-// for the cross-slice SessionCreator contract (agent import).
+// client's uuid (resolved to the row id before insert/update); the other
+// fields mirror SessionInput. It is the inbound DTO — SessionInput carries the
+// resolved row id for the cross-slice SessionCreator contract (agent import).
 type sessionBody struct {
 	ClientUUID  string   `json:"clientId"`
 	ServiceDate string   `json:"serviceDate"`
@@ -142,8 +142,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, sh)
 }
 
-// resolveBody translates a sessionBody's client uuid into the int FK and
-// returns the int-keyed SessionInput. Writes a 400 and returns ok=false when the
+// resolveBody resolves a sessionBody's client uuid to its row id and
+// returns the resolved SessionInput. Writes a 400 and returns ok=false when the
 // client uuid is unknown for the tenant.
 func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body sessionBody) (SessionInput, bool) {
 	pid, err := h.svc.ResolveClient(r.Context(), body.ClientUUID)

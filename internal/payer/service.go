@@ -75,7 +75,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in PayerInput) (*Paye
 }
 
 // Delete removes a payer by uuid, then broadcasts on success. The row is
-// resolved first so the post-commit event still carries the int PK.
+// resolved first so the post-commit event still carries the uuid.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	p, err := s.repo.Get(ctx, tenantID, uuid)
@@ -92,8 +92,8 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	return nil
 }
 
-// ResolvePayerIDs translates a list of payer uuids into their int
-// PKs for the tenant (preserving order). An unknown uuid surfaces as an error so
+// ResolvePayerIDs resolves a list of payer uuids to their row ids
+// (uuid) for the tenant (preserving order). An unknown uuid surfaces as an error so
 // the caller can 400 — bulk operations must not silently drop a member.
 func (s *Service) ResolvePayerIDs(ctx context.Context, pmUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
