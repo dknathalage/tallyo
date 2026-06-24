@@ -51,12 +51,12 @@ func (s *Service) ListByStatus(ctx context.Context, status string) ([]*Estimate,
 	return s.repo.ListByStatus(ctx, tenantID, status)
 }
 
-func (s *Service) ListClientEstimates(ctx context.Context, clientID int64) ([]*Estimate, error) {
+func (s *Service) ListClientEstimates(ctx context.Context, clientID string) ([]*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListClientEstimates(ctx, tenantID, clientID)
 }
 
-func (s *Service) Get(ctx context.Context, id int64) (*Estimate, error) {
+func (s *Service) Get(ctx context.Context, id string) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
@@ -69,14 +69,14 @@ func (s *Service) GetByUUID(ctx context.Context, estimateUUID string) (*Estimate
 
 // ResolveClient translates a client uuid into its int FK for the
 // tenant. Returns (0, nil) when no client matches (caller 400s).
-func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, error) {
+func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
 
 // ResolvePayer translates a payer uuid into its int FK for the
 // tenant. Returns (0, nil) when no payer matches (caller 400s).
-func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (int64, error) {
+func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolvePayerID(ctx, tenantID, payerUUID)
 }
@@ -84,7 +84,7 @@ func (s *Service) ResolvePayer(ctx context.Context, payerUUID string) (int64, er
 // ResolveEstimateIDs translates a list of estimate uuids into their int PKs for
 // the tenant (preserving order). An unknown uuid surfaces as an error so the
 // caller can 400 — bulk operations must not silently drop a member.
-func (s *Service) ResolveEstimateIDs(ctx context.Context, estimateUUIDs []string) ([]int64, error) {
+func (s *Service) ResolveEstimateIDs(ctx context.Context, estimateUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveEstimateIDs(ctx, tenantID, estimateUUIDs)
 }
@@ -97,7 +97,7 @@ func (s *Service) UpdateByUUID(ctx context.Context, estimateUUID string, in Esti
 	if err != nil {
 		return nil, err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil, nil
 	}
 	return s.Update(ctx, id, in, items)
@@ -111,7 +111,7 @@ func (s *Service) DeleteByUUID(ctx context.Context, estimateUUID string) error {
 	if err != nil {
 		return err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil
 	}
 	return s.Delete(ctx, id)
@@ -125,7 +125,7 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, estimateUUID, status s
 	if err != nil {
 		return err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil
 	}
 	return s.UpdateStatus(ctx, id, status)
@@ -139,7 +139,7 @@ func (s *Service) DuplicateByUUID(ctx context.Context, estimateUUID string) (*Es
 	if err != nil {
 		return nil, err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil, nil
 	}
 	return s.Duplicate(ctx, id)
@@ -154,7 +154,7 @@ func (s *Service) ConvertByUUID(ctx context.Context, estimateUUID string) (*Conv
 	if err != nil {
 		return nil, err
 	}
-	if id == 0 {
+	if id == "" {
 		return nil, nil
 	}
 	return s.Convert(ctx, id)
@@ -172,13 +172,13 @@ func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "create"})
 	return est, nil
 }
 
 // Update rewrites an estimate. A nil result means the row was not found, in which
 // case no event is published.
-func (s *Service) Update(ctx context.Context, id int64, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
+func (s *Service) Update(ctx context.Context, id string, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
 	if err != nil {
@@ -192,13 +192,13 @@ func (s *Service) Update(ctx context.Context, id int64, in EstimateInput, items 
 	if est == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "update"})
 	return est, nil
 }
 
 // UpdateStatus sets the estimate status, then broadcasts on success. The row's
 // uuid is resolved first so the post-commit event carries the public id.
-func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *Service) UpdateStatus(ctx context.Context, id string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Get(ctx, tenantID, id)
 	if err != nil {
@@ -210,13 +210,13 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "status"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "status"})
 	return nil
 }
 
 // Delete removes an estimate, then broadcasts on success. The row's uuid is
 // resolved first so the post-commit event carries the public id.
-func (s *Service) Delete(ctx context.Context, id int64) error {
+func (s *Service) Delete(ctx context.Context, id string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Get(ctx, tenantID, id)
 	if err != nil {
@@ -228,23 +228,23 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "delete"})
 	return nil
 }
 
 // Duplicate copies an estimate, then broadcasts a create for the new id.
-func (s *Service) Duplicate(ctx context.Context, id int64) (*Estimate, error) {
+func (s *Service) Duplicate(ctx context.Context, id string) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Duplicate(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "create"})
 	return est, nil
 }
 
 // BulkDelete removes several estimates, then broadcasts a single bulk event.
-func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
@@ -254,7 +254,7 @@ func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 // BulkUpdateStatus sets several estimates' status, then broadcasts a bulk event.
-func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status string) error {
+func (s *Service) BulkUpdateStatus(ctx context.Context, ids []string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
@@ -266,7 +266,7 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []int64, status stri
 // Convert turns an accepted estimate into an invoice. On success it broadcasts an
 // estimate "convert" event and an invoice "create" event for the new invoice, then
 // returns the result. ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
-func (s *Service) Convert(ctx context.Context, id int64) (*ConvertResult, error) {
+func (s *Service) Convert(ctx context.Context, id string) (*ConvertResult, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Get(ctx, tenantID, id)
 	if err != nil {
@@ -282,7 +282,7 @@ func (s *Service) Convert(ctx context.Context, id int64) (*ConvertResult, error)
 	if res == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.UUID, Action: "convert"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "convert"})
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: res.InvoiceUUID, Action: "create"})
 	return res, nil
 }

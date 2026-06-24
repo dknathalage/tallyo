@@ -75,18 +75,18 @@ func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req estim
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return EstimateInput{}, false
 	}
-	if pid == 0 {
+	if pid == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
 		return EstimateInput{}, false
 	}
-	var pmID *int64
+	var pmID *string
 	if req.PayerUUID != nil && *req.PayerUUID != "" {
 		id, err := h.svc.ResolvePayer(r.Context(), *req.PayerUUID)
 		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return EstimateInput{}, false
 		}
-		if id == 0 {
+		if id == "" {
 			httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
 			return EstimateInput{}, false
 		}
@@ -155,7 +155,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		if clientID == 0 {
+		if clientID == "" {
 			httpx.WriteJSON(w, http.StatusOK, []*Estimate{})
 			return
 		}
