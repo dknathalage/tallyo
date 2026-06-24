@@ -27,11 +27,11 @@ func newTestDB(t *testing.T) *sql.DB {
 	return conn
 }
 
-func seedTenant(t *testing.T, conn *sql.DB) int64 {
+func seedTenant(t *testing.T, conn *sql.DB) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      "Acme",
 		Status:    "active",
 		CreatedAt: now,
@@ -43,11 +43,11 @@ func seedTenant(t *testing.T, conn *sql.DB) int64 {
 	return tn.ID
 }
 
-func tctx(tenantID int64) context.Context {
+func tctx(tenantID string) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }
 
-func newSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newSvc(t *testing.T) (*Service, *realtime.Hub, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn)
@@ -70,8 +70,8 @@ func TestCustomItemCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.UUID != item.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want custom_item/%d/create", e, item.ID)
+		if e.Entity != "custom_item" || e.UUID != item.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want custom_item/%s/create", e, item.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
@@ -106,7 +106,7 @@ func TestCustomItemBulkDeleteBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.BulkDelete(ctx, []int64{item.ID}); err != nil {
+	if err := svc.BulkDelete(ctx, []string{item.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	select {
@@ -144,10 +144,10 @@ func TestCustomItemListSearchGet(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(found) != 1 || found[0].ID != widget.ID {
-		t.Fatalf("Search Widget = %+v, want one id %d", found, widget.ID)
+		t.Fatalf("Search Widget = %+v, want one id %s", found, widget.ID)
 	}
 
-	got, err := svc.Get(ctx, widget.UUID)
+	got, err := svc.Get(ctx, widget.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestCustomItemUpdateBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	updated, err := svc.Update(ctx, item.UUID, CustomItemInput{Name: "Widget Pro", Rate: 9})
+	updated, err := svc.Update(ctx, item.ID, CustomItemInput{Name: "Widget Pro", Rate: 9})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -189,8 +189,8 @@ func TestCustomItemUpdateBroadcasts(t *testing.T) {
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.UUID != item.UUID || e.Action != "update" {
-			t.Fatalf("event=%+v want custom_item/%d/update", e, item.ID)
+		if e.Entity != "custom_item" || e.UUID != item.ID || e.Action != "update" {
+			t.Fatalf("event=%+v want custom_item/%s/update", e, item.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Update")
@@ -221,24 +221,24 @@ func TestCustomItemDeleteBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.Delete(ctx, item.UUID); err != nil {
+	if err := svc.Delete(ctx, item.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	select {
 	case e := <-ch:
-		if e.Entity != "custom_item" || e.UUID != item.UUID || e.Action != "delete" {
-			t.Fatalf("event=%+v want custom_item/%d/delete", e, item.ID)
+		if e.Entity != "custom_item" || e.UUID != item.ID || e.Action != "delete" {
+			t.Fatalf("event=%+v want custom_item/%s/delete", e, item.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Delete")
 	}
 
-	got, err := svc.Get(ctx, item.UUID)
+	got, err := svc.Get(ctx, item.ID)
 	if err != nil {
 		t.Fatalf("Get after delete: %v", err)
 	}
 	if got != nil {
-		t.Fatalf("custom item %d still present after delete", item.ID)
+		t.Fatalf("custom item %s still present after delete", item.ID)
 	}
 }
 
@@ -263,11 +263,11 @@ func TestCustomItemTenantScoping(t *testing.T) {
 		t.Fatalf("tenant B sees %d custom items, want 0", len(listB))
 	}
 
-	gotB, err := svc.Get(tctx(tenantB), item.UUID)
+	gotB, err := svc.Get(tctx(tenantB), item.ID)
 	if err != nil {
 		t.Fatalf("Get B: %v", err)
 	}
 	if gotB != nil {
-		t.Fatalf("tenant B fetched tenant A custom item %d", item.ID)
+		t.Fatalf("tenant B fetched tenant A custom item %s", item.ID)
 	}
 }

@@ -16,7 +16,7 @@ import (
 // newClientHandler builds a handler over a fresh DB and returns it with the
 // tenant id, a seeded payer (its uuid), and a client seeded WITH that
 // payer.
-func newClientHandler(t *testing.T) (*Handler, int64, string, *Client) {
+func newClientHandler(t *testing.T) (*Handler, string, string, *Client) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -25,16 +25,16 @@ func newClientHandler(t *testing.T) (*Handler, int64, string, *Client) {
 		t.Fatalf("seed payer: %v", err)
 	}
 	svc := NewService(conn, realtime.NewHub())
-	seeded, err := svc.Create(tctx(tenantID), ClientInput{Name: "Jane", PayerUUID: &pm.UUID})
+	seeded, err := svc.Create(tctx(tenantID), ClientInput{Name: "Jane", PayerUUID: &pm.ID})
 	if err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
-	return NewHandler(svc), tenantID, pm.UUID, seeded
+	return NewHandler(svc), tenantID, pm.ID, seeded
 }
 
 // mountClient returns a router with the slice routes mounted and a
 // middleware that attaches the tenant id to every request (standing in for auth).
-func mountClient(h *Handler, tenantID int64) chi.Router {
+func mountClient(h *Handler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -50,7 +50,7 @@ func TestClientGetByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/clients/" + seeded.UUID)
+	res, err := http.Get(srv.URL + "/clients/" + seeded.ID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -62,8 +62,8 @@ func TestClientGetByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got["id"] != seeded.UUID {
-		t.Fatalf("json id=%v want uuid %q", got["id"], seeded.UUID)
+	if got["id"] != seeded.ID {
+		t.Fatalf("json id=%v want uuid %q", got["id"], seeded.ID)
 	}
 	if got["payerId"] != pmUUID {
 		t.Fatalf("json payerId=%v want payer uuid %q", got["payerId"], pmUUID)
@@ -114,7 +114,7 @@ func TestClientCreateResolvesPayerUUID(t *testing.T) {
 	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
-	body, _ := json.Marshal(map[string]any{"name": "Jane", "payerId": pm.UUID})
+	body, _ := json.Marshal(map[string]any{"name": "Jane", "payerId": pm.ID})
 	res, err := http.Post(srv.URL+"/clients", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST: %v", err)
@@ -127,8 +127,8 @@ func TestClientCreateResolvesPayerUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if created["payerId"] != pm.UUID {
-		t.Fatalf("created payerId=%v want %q", created["payerId"], pm.UUID)
+	if created["payerId"] != pm.ID {
+		t.Fatalf("created payerId=%v want %q", created["payerId"], pm.ID)
 	}
 
 	// Update to clear the payer (empty string → NULL FK).

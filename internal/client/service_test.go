@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newClientSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newClientSvc(t *testing.T) (*Service, *realtime.Hub, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -30,8 +30,8 @@ func TestClientCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "client" || e.UUID != c.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want client/%d/create", e, c.ID)
+		if e.Entity != "client" || e.UUID != c.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want client/%s/create", e, c.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")
@@ -66,7 +66,7 @@ func TestClientBulkDeleteBroadcasts(t *testing.T) {
 	ch, unsub := hub.Subscribe(tenantID)
 	defer unsub()
 
-	if err := svc.BulkDelete(ctx, []int64{c.ID}); err != nil {
+	if err := svc.BulkDelete(ctx, []string{c.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	select {

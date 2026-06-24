@@ -13,13 +13,11 @@ import (
 // "tenantId" is the tenant uuid (string). The int PKs never appear in the JSON.
 func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 	u := &User{
-		ID:         42,
-		UUID:       ids.New(),
-		TenantID:   7,
-		TenantUUID: ids.New(),
-		Email:      "owner@x.com",
-		Name:       "Owner",
-		Role:       "owner",
+		ID:       ids.New(),
+		TenantID: ids.New(),
+		Email:    "owner@x.com",
+		Name:     "Owner",
+		Role:     "owner",
 	}
 	raw, err := json.Marshal(u)
 	if err != nil {
@@ -29,12 +27,12 @@ func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 	if err := json.Unmarshal(raw, &generic); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	assertStringField(t, generic, "id", u.UUID, raw)
-	assertStringField(t, generic, "tenantId", u.TenantUUID, raw)
-	// The int PKs must not leak under any key.
+	assertStringField(t, generic, "id", u.ID, raw)
+	assertStringField(t, generic, "tenantId", u.TenantID, raw)
+	// No JSON value may be a number — every id is a uuid string.
 	for k, v := range generic {
-		if f, ok := v.(float64); ok && (f == 42 || f == 7) {
-			t.Fatalf("int PK leaked under %q (=%v): %s", k, v, raw)
+		if _, ok := v.(float64); ok {
+			t.Fatalf("numeric value leaked under %q (=%v): %s", k, v, raw)
 		}
 	}
 }
@@ -44,7 +42,7 @@ func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 // uuid (serialized as "id"); no integer tenant id appears in the JSON.
 func TestEmailTenantJSONExposesUUIDNotInt(t *testing.T) {
 	et := EmailTenant{
-		TenantID:   9,
+		TenantID:   ids.New(),
 		TenantUUID: ids.New(),
 		TenantName: "Acme",
 		Role:       "owner",
@@ -59,11 +57,11 @@ func TestEmailTenantJSONExposesUUIDNotInt(t *testing.T) {
 	}
 	assertStringField(t, generic, "id", et.TenantUUID, raw)
 	if _, leaked := generic["tenantId"]; leaked {
-		t.Fatalf("int tenantId leaked: %s", raw)
+		t.Fatalf("tenantId leaked: %s", raw)
 	}
 	for k, v := range generic {
-		if f, ok := v.(float64); ok && f == 9 {
-			t.Fatalf("int tenant PK leaked under %q (=%v): %s", k, v, raw)
+		if _, ok := v.(float64); ok {
+			t.Fatalf("numeric value leaked under %q (=%v): %s", k, v, raw)
 		}
 	}
 }
@@ -82,21 +80,21 @@ func TestGetByIDPopulatesTenantUUID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if created.TenantUUID == "" {
-		t.Fatal("Create did not populate TenantUUID")
+	if created.TenantID == "" {
+		t.Fatal("Create did not populate TenantID")
 	}
 	got, err := repo.GetByID(ctx, tid, created.ID)
 	if err != nil || got == nil {
 		t.Fatalf("GetByID %+v err=%v", got, err)
 	}
-	if got.TenantUUID == "" || got.TenantUUID != created.TenantUUID {
-		t.Fatalf("GetByID TenantUUID=%q, want %q", got.TenantUUID, created.TenantUUID)
+	if got.TenantID == "" || got.TenantID != created.TenantID {
+		t.Fatalf("GetByID TenantID=%q, want %q", got.TenantID, created.TenantID)
 	}
 	// The serialized "tenantId" must be the tenant uuid.
 	raw, _ := json.Marshal(got)
 	var generic map[string]any
 	_ = json.Unmarshal(raw, &generic)
-	assertStringField(t, generic, "tenantId", got.TenantUUID, raw)
+	assertStringField(t, generic, "tenantId", got.TenantID, raw)
 }
 
 func assertStringField(t *testing.T, m map[string]any, key, want string, raw []byte) {

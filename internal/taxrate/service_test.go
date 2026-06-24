@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newTaxSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newTaxSvc(t *testing.T) (*Service, *realtime.Hub, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -30,8 +30,8 @@ func TestTaxRateCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "tax_rate" || e.UUID != tr.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want tax_rate/%d/create", e, tr.ID)
+		if e.Entity != "tax_rate" || e.UUID != tr.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want tax_rate/%s/create", e, tr.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")

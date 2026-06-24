@@ -15,24 +15,24 @@ func TestCustomItemCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if ci.ID == 0 || ci.Rate != 1.5 || !ci.Taxable || ci.Unit != "km" {
+	if ci.ID == "" || ci.Rate != 1.5 || !ci.Taxable || ci.Unit != "km" {
 		t.Fatalf("Create = %+v", ci)
 	}
-	got, err := repo.Get(ctx, tid, ci.UUID)
+	got, err := repo.Get(ctx, tid, ci.ID)
 	if err != nil || got == nil || got.Name != "Travel" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
-	up, err := repo.Update(ctx, tid, ci.UUID, CustomItemInput{Name: "Travel2", Rate: 2})
+	up, err := repo.Update(ctx, tid, ci.ID, CustomItemInput{Name: "Travel2", Rate: 2})
 	if err != nil || up == nil || up.Name != "Travel2" || up.Rate != 2 {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
 	if list, _ := repo.List(ctx, tid); len(list) != 1 {
 		t.Fatalf("List len = %d, want 1", len(list))
 	}
-	if err := repo.Delete(ctx, tid, ci.UUID); err != nil {
+	if err := repo.Delete(ctx, tid, ci.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, ci.UUID); got != nil {
+	if got, _ := repo.Get(ctx, tid, ci.ID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -48,7 +48,7 @@ func TestCustomItemTenantIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	if got, _ := repo.Get(ctx, b, ci.UUID); got != nil {
+	if got, _ := repo.Get(ctx, b, ci.ID); got != nil {
 		t.Fatalf("tenant B read tenant A's custom item: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b); len(list) != 0 {
@@ -99,11 +99,11 @@ func TestCustomItemBulkDelete(t *testing.T) {
 	if err := repo.BulkDelete(ctx, tid, nil); err != nil {
 		t.Fatalf("BulkDelete empty: %v", err)
 	}
-	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
+	if err := repo.BulkDelete(ctx, tid, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	list, _ := repo.List(ctx, tid)
 	if len(list) != 1 || list[0].ID != c.ID {
-		t.Fatalf("after bulk delete = %+v, want only c (id=%d)", list, c.ID)
+		t.Fatalf("after bulk delete = %+v, want only c (id=%s)", list, c.ID)
 	}
 }

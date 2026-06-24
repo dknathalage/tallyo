@@ -28,11 +28,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -45,6 +45,6 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
 }
 
 // tctx returns a context carrying the given tenant id.
-func tctx(tenantID int64) context.Context {
+func tctx(tenantID string) context.Context {
 	return reqctx.WithTenant(context.Background(), tenantID)
 }

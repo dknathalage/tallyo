@@ -29,7 +29,7 @@ func TestTenantsForEmail(t *testing.T) {
 		t.Fatalf("rows=%d want 2", len(rows))
 	}
 	// bounded loop: at most 2 rows
-	seen := map[int64]bool{}
+	seen := map[string]bool{}
 	for i := range rows {
 		if rows[i].TenantName == "" || rows[i].TenantUUID == "" {
 			t.Fatalf("row %d missing name/uuid: %+v", i, rows[i])
@@ -94,7 +94,7 @@ func TestGetCredentialsForTenant(t *testing.T) {
 func TestGetCredentialsForTenantRejectsZeroTenant(t *testing.T) {
 	conn := mustUserDB(t)
 	defer conn.Close()
-	if _, _, err := NewUsers(conn).GetCredentialsForTenant(context.Background(), 0, "a@x.com"); err == nil {
+	if _, _, err := NewUsers(conn).GetCredentialsForTenant(context.Background(), "", "a@x.com"); err == nil {
 		t.Fatal("zero tenant id must error")
 	}
 }
@@ -172,7 +172,7 @@ func TestGetCredentialsGlobalAmbiguous(t *testing.T) {
 func TestUserCreateRejectsZeroTenant(t *testing.T) {
 	conn := mustUserDB(t)
 	defer conn.Close()
-	if _, err := NewUsers(conn).Create(context.Background(), 0, "a@x.com", "h", "N", "owner", false); err == nil {
+	if _, err := NewUsers(conn).Create(context.Background(), "", "a@x.com", "h", "N", "owner", false); err == nil {
 		t.Fatal("zero tenant id must error")
 	}
 }

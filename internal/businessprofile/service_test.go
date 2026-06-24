@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newSvc(t *testing.T) (*Service, *realtime.Hub, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")

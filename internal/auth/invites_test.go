@@ -14,7 +14,7 @@ import (
 
 // mustInviteDB returns a migrated DB, a tenant id, and the id of a pre-created
 // owner user, which is required to satisfy the invites.created_by foreign key.
-func mustInviteDB(t *testing.T) (*sql.DB, int64, int64) {
+func mustInviteDB(t *testing.T) (*sql.DB, string, string) {
 	t.Helper()
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "i.db"))
 	if err != nil {
@@ -98,7 +98,7 @@ func TestInviteCreateAndGet(t *testing.T) {
 	if inv.Token == "" {
 		t.Fatal("token must be non-empty")
 	}
-	if inv.Email != "staff@x.com" || inv.Role != "member" || inv.ID == 0 || inv.TenantID != tid {
+	if inv.Email != "staff@x.com" || inv.Role != "member" || inv.ID == "" || inv.TenantID != tid {
 		t.Fatalf("bad invite %+v", inv)
 	}
 	exp, err := time.Parse(time.RFC3339, inv.ExpiresAt)
@@ -228,7 +228,7 @@ func TestInviteExposesUUIDAsID(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	// The DTO carries the uuid (the public id), distinct from the int PK.
-	if inv.UUID == "" {
+	if inv.ID == "" {
 		t.Fatal("invite UUID must be non-empty")
 	}
 	b, err := json.Marshal(inv)
@@ -239,8 +239,8 @@ func TestInviteExposesUUIDAsID(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if m["id"] != inv.UUID {
-		t.Fatalf("json id=%v want uuid %q", m["id"], inv.UUID)
+	if m["id"] != inv.ID {
+		t.Fatalf("json id=%v want uuid %q", m["id"], inv.ID)
 	}
 	// The int PK and tenant id must not leak.
 	if _, ok := m["tenantId"]; ok {
@@ -261,7 +261,7 @@ func TestDeleteInviteByUUID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.DeleteByUUID(ctx, tid, inv.UUID); err != nil {
+	if err := repo.DeleteByUUID(ctx, tid, inv.ID); err != nil {
 		t.Fatalf("DeleteByUUID: %v", err)
 	}
 	// gone: the token no longer resolves.
@@ -294,7 +294,7 @@ func TestDeleteInviteByUUIDTenantScoped(t *testing.T) {
 	}
 	otherTenant := seedTenant(t, conn, "Other")
 	// Deleting under the wrong tenant must not remove the invite.
-	if err := repo.DeleteByUUID(ctx, otherTenant, inv.UUID); err != nil {
+	if err := repo.DeleteByUUID(ctx, otherTenant, inv.ID); err != nil {
 		t.Fatalf("DeleteByUUID other tenant: %v", err)
 	}
 	got, err := repo.GetByToken(ctx, inv.Token)

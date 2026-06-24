@@ -25,11 +25,11 @@ func mustUserDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id (users FK → tenants).
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid: ids.New(), Name: name, Status: "active", CreatedAt: now, UpdatedAt: now,
+		ID: ids.New(), Name: name, Status: "active", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("seedTenant %q: %v", name, err)
@@ -54,7 +54,7 @@ func TestUserCreateGetListDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if u.Role != "owner" || u.Email != "owner@x.com" || u.ID == 0 || u.Name != "Owner" || u.TenantID != tid {
+	if u.Role != "owner" || u.Email != "owner@x.com" || u.ID == "" || u.Name != "Owner" || u.TenantID != tid {
 		t.Fatalf("bad user %+v", u)
 	}
 

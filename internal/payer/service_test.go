@@ -7,7 +7,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newPayerSvc(t *testing.T) (*Service, *realtime.Hub, int64) {
+func newPayerSvc(t *testing.T) (*Service, *realtime.Hub, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -30,8 +30,8 @@ func TestPayerCreateBroadcasts(t *testing.T) {
 
 	select {
 	case e := <-ch:
-		if e.Entity != "payer" || e.UUID != pm.UUID || e.Action != "create" {
-			t.Fatalf("event=%+v want payer/%d/create", e, pm.ID)
+		if e.Entity != "payer" || e.UUID != pm.ID || e.Action != "create" {
+			t.Fatalf("event=%+v want payer/%s/create", e, pm.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no broadcast after Create")

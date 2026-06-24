@@ -30,11 +30,11 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 // seedTenant creates a tenant and returns its id.
-func seedTenant(t *testing.T, conn *sql.DB, name string) int64 {
+func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	tn, err := gen.New(conn).CreateTenant(context.Background(), gen.CreateTenantParams{
-		Uuid:      ids.New(),
+		ID:        ids.New(),
 		Name:      name,
 		Status:    "active",
 		CreatedAt: now,
@@ -59,10 +59,10 @@ func TestClientCreateGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if p == nil || p.ID == 0 || p.Name != "Jane" || p.Reference != "430000001" || p.Email != "j@x.com" {
+	if p == nil || p.ID == "" || p.Name != "Jane" || p.Reference != "430000001" || p.Email != "j@x.com" {
 		t.Fatalf("Create = %+v", p)
 	}
-	got, err := repo.Get(ctx, tid, p.UUID)
+	got, err := repo.Get(ctx, tid, p.ID)
 	if err != nil || got == nil || got.Reference != "430000001" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
@@ -77,7 +77,7 @@ func TestClientWithPayerName(t *testing.T) {
 		t.Fatalf("Create PM: %v", err)
 	}
 	repo := NewClients(conn)
-	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", PayerUUID: &pm.UUID})
+	p, err := repo.Create(ctx, tid, ClientInput{Name: "Jane", PayerUUID: &pm.ID})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -115,14 +115,14 @@ func TestClientUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, p.UUID, ClientInput{Name: "Janet", Reference: "ref-1"})
+	up, err := repo.Update(ctx, tid, p.ID, ClientInput{Name: "Janet", Reference: "ref-1"})
 	if err != nil || up == nil || up.Name != "Janet" || up.Reference != "ref-1" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
-	if err := repo.Delete(ctx, tid, p.UUID); err != nil {
+	if err := repo.Delete(ctx, tid, p.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, p.UUID); got != nil {
+	if got, _ := repo.Get(ctx, tid, p.ID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -139,17 +139,17 @@ func TestClientTenantIsolation(t *testing.T) {
 		t.Fatalf("Create A: %v", err)
 	}
 	// Tenant B cannot read tenant A's client.
-	if got, _ := repo.Get(ctx, b, p.UUID); got != nil {
+	if got, _ := repo.Get(ctx, b, p.ID); got != nil {
 		t.Fatalf("tenant B read tenant A's client: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, ""); len(list) != 0 {
 		t.Fatalf("tenant B List len = %d, want 0", len(list))
 	}
 	// Tenant B's update of A's row must not affect it (no rows match → nil).
-	if got, _ := repo.Update(ctx, b, p.UUID, ClientInput{Name: "Hijack"}); got != nil {
+	if got, _ := repo.Update(ctx, b, p.ID, ClientInput{Name: "Hijack"}); got != nil {
 		t.Fatalf("tenant B updated tenant A's client: %+v", got)
 	}
-	stillA, _ := repo.Get(ctx, a, p.UUID)
+	stillA, _ := repo.Get(ctx, a, p.ID)
 	if stillA == nil || stillA.Name != "Tenant A Person" {
 		t.Fatalf("tenant A's client was mutated cross-tenant: %+v", stillA)
 	}
@@ -169,12 +169,12 @@ func TestClientBulkDelete(t *testing.T) {
 	if err := repo.BulkDelete(ctx, tid, nil); err != nil {
 		t.Fatalf("BulkDelete empty: %v", err)
 	}
-	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
+	if err := repo.BulkDelete(ctx, tid, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	list, _ := repo.List(ctx, tid, "")
 	if len(list) != 1 || list[0].ID != c.ID {
-		t.Fatalf("after bulk delete = %+v, want only Carol (id=%d)", list, c.ID)
+		t.Fatalf("after bulk delete = %+v, want only Carol (id=%s)", list, c.ID)
 	}
 }
 

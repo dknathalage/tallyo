@@ -19,7 +19,7 @@ func TestMarkAcceptedUnknownTokenFails(t *testing.T) {
 func TestInviteCreateRejectsZeroTenant(t *testing.T) {
 	conn, _, owner := mustInviteDB(t)
 	defer conn.Close()
-	if _, err := NewInvites(conn).Create(context.Background(), 0, "a@x.com", "member", owner, time.Hour); err == nil {
+	if _, err := NewInvites(conn).Create(context.Background(), "", "a@x.com", "member", owner, time.Hour); err == nil {
 		t.Fatal("zero tenant id must error")
 	}
 }

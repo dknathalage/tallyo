@@ -15,10 +15,10 @@ func TestPayerCreateGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if pm == nil || pm.ID == 0 || pm.Name != "Acme PM" || pm.Metadata != "{}" {
+	if pm == nil || pm.ID == "" || pm.Name != "Acme PM" || pm.Metadata != "{}" {
 		t.Fatalf("Create = %+v", pm)
 	}
-	got, err := repo.Get(ctx, tid, pm.UUID)
+	got, err := repo.Get(ctx, tid, pm.ID)
 	if err != nil || got == nil || got.Name != "Acme PM" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
@@ -70,14 +70,14 @@ func TestPayerUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, pm.UUID, PayerInput{Name: "Acme2", Email: "n@x.com"})
+	up, err := repo.Update(ctx, tid, pm.ID, PayerInput{Name: "Acme2", Email: "n@x.com"})
 	if err != nil || up == nil || up.Name != "Acme2" || up.Email != "n@x.com" {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
-	if err := repo.Delete(ctx, tid, pm.UUID); err != nil {
+	if err := repo.Delete(ctx, tid, pm.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if got, _ := repo.Get(ctx, tid, pm.UUID); got != nil {
+	if got, _ := repo.Get(ctx, tid, pm.ID); got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
 }
@@ -90,7 +90,7 @@ func TestPayerBulkDelete(t *testing.T) {
 
 	a, _ := repo.Create(ctx, tid, PayerInput{Name: "A"})
 	b, _ := repo.Create(ctx, tid, PayerInput{Name: "B"})
-	if err := repo.BulkDelete(ctx, tid, []int64{a.ID, b.ID}); err != nil {
+	if err := repo.BulkDelete(ctx, tid, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
 	}
 	if list, _ := repo.List(ctx, tid, ""); len(list) != 0 {
@@ -112,7 +112,7 @@ func TestPayerTenantIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	if got, _ := repo.Get(ctx, b, pm.UUID); got != nil {
+	if got, _ := repo.Get(ctx, b, pm.ID); got != nil {
 		t.Fatalf("tenant B read tenant A's payer: %+v", got)
 	}
 	if list, _ := repo.List(ctx, b, ""); len(list) != 0 {

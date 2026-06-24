@@ -13,7 +13,7 @@ import (
 
 // newPMHandler builds a handler over a fresh DB and returns it with the tenant
 // id and a seeded payer.
-func newPMHandler(t *testing.T) (*Handler, int64, *Payer) {
+func newPMHandler(t *testing.T) (*Handler, string, *Payer) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
@@ -27,7 +27,7 @@ func newPMHandler(t *testing.T) (*Handler, int64, *Payer) {
 
 // mountPM returns a router with the slice routes mounted and a middleware that
 // attaches the tenant id to every request context (standing in for auth).
-func mountPM(h *Handler, tenantID int64) chi.Router {
+func mountPM(h *Handler, tenantID string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -43,7 +43,7 @@ func TestPayerGetByUUID(t *testing.T) {
 	srv := httptest.NewServer(mountPM(h, tenantID))
 	defer srv.Close()
 
-	res, err := http.Get(srv.URL + "/payers/" + seeded.UUID)
+	res, err := http.Get(srv.URL + "/payers/" + seeded.ID)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -55,8 +55,8 @@ func TestPayerGetByUUID(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got["id"] != seeded.UUID {
-		t.Fatalf("json id=%v want uuid %q", got["id"], seeded.UUID)
+	if got["id"] != seeded.ID {
+		t.Fatalf("json id=%v want uuid %q", got["id"], seeded.ID)
 	}
 }
 

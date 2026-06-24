@@ -41,7 +41,7 @@ func TestTenantCountAndCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if tn.ID == 0 || tn.UUID == "" {
+	if tn.ID == "" {
 		t.Fatalf("create returned bad ids %+v", tn)
 	}
 	if tn.Name != "Acme Pty Ltd" || tn.Status != "active" {
@@ -101,7 +101,7 @@ func TestTenantStatus(t *testing.T) {
 func TestTenantStatusMissingReturnsNotFound(t *testing.T) {
 	conn := mustTenantDB(t)
 	defer conn.Close()
-	status, found, err := NewTenants(conn).Status(context.Background(), 99999)
+	status, found, err := NewTenants(conn).Status(context.Background(), "no-such-tenant")
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -116,8 +116,8 @@ func TestTenantStatusMissingReturnsNotFound(t *testing.T) {
 func TestTenantStatusRejectsZeroID(t *testing.T) {
 	conn := mustTenantDB(t)
 	defer conn.Close()
-	if _, _, err := NewTenants(conn).Status(context.Background(), 0); err == nil {
-		t.Fatal("zero tenant id must error")
+	if _, _, err := NewTenants(conn).Status(context.Background(), ""); err == nil {
+		t.Fatal("empty tenant id must error")
 	}
 }
 
@@ -143,7 +143,7 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 	if owner == nil || owner.Email != "owner@signup.com" || owner.Role != "owner" {
 		t.Fatalf("bad owner %+v", owner)
 	}
-	if owner.TenantID == 0 {
+	if owner.TenantID == "" {
 		t.Fatal("owner has no tenant id")
 	}
 
@@ -216,7 +216,7 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 		t.Fatalf("second signup: %v", err)
 	}
 	if a.TenantID == b.TenantID {
-		t.Fatalf("both signups landed in tenant %d", a.TenantID)
+		t.Fatalf("both signups landed in tenant %s", a.TenantID)
 	}
 
 	n, err := repo.Count(ctx)
@@ -245,7 +245,7 @@ func TestNewTenantsNilDBPanics(t *testing.T) {
 // profileProv is the single-DB test provisioner: it upserts the business_profile
 // on the same handle the control rows were created on.
 func profileProv(conn *sql.DB) ProfileProvisioner {
-	return func(ctx context.Context, tenantID int64, in SignupInput) error {
+	return func(ctx context.Context, tenantID string, in SignupInput) error {
 		return ProvisionBusinessProfile(ctx, conn, tenantID, in)
 	}
 }

@@ -15,11 +15,11 @@ func TestTaxRateCreateGetList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if gst.ID == 0 || !gst.IsDefault || gst.Rate != 10 {
+	if gst.ID == "" || !gst.IsDefault || gst.Rate != 10 {
 		t.Fatalf("Create = %+v", gst)
 	}
 
-	got, err := repo.Get(ctx, tid, gst.UUID)
+	got, err := repo.Get(ctx, tid, gst.ID)
 	if err != nil || got == nil || got.Name != "GST" {
 		t.Fatalf("Get = %+v err=%v", got, err)
 	}
@@ -58,14 +58,14 @@ func TestTaxRateUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	up, err := repo.Update(ctx, tid, tr.UUID, TaxRateInput{Name: "GST2", Rate: 12})
+	up, err := repo.Update(ctx, tid, tr.ID, TaxRateInput{Name: "GST2", Rate: 12})
 	if err != nil || up == nil || up.Name != "GST2" || up.Rate != 12 {
 		t.Fatalf("Update = %+v err=%v", up, err)
 	}
-	if err := repo.Delete(ctx, tid, tr.UUID); err != nil {
+	if err := repo.Delete(ctx, tid, tr.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	got, _ := repo.Get(ctx, tid, tr.UUID)
+	got, _ := repo.Get(ctx, tid, tr.ID)
 	if got != nil {
 		t.Fatalf("row present after delete: %+v", got)
 	}
@@ -83,7 +83,7 @@ func TestTaxRateTenantIsolation(t *testing.T) {
 		t.Fatalf("Create A: %v", err)
 	}
 	// Tenant B cannot read tenant A's row.
-	got, err := repo.Get(ctx, b, tr.UUID)
+	got, err := repo.Get(ctx, b, tr.ID)
 	if err != nil {
 		t.Fatalf("Get B: %v", err)
 	}
