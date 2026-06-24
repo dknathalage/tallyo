@@ -151,7 +151,7 @@ func (h *Handler) resolveBody(w http.ResponseWriter, r *http.Request, body sessi
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return SessionInput{}, false
 	}
-	if pid == 0 {
+	if pid == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
 		return SessionInput{}, false
 	}

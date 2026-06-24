@@ -20,7 +20,7 @@ var ErrSessionBilled = errors.New("session: cannot delete a billed session")
 // session→invoice import cycle: the session package declares this interface; the
 // caller (main.go) injects a concrete *invoice.InvoicesRepo which satisfies it.
 type InvoiceChecker interface {
-	Exists(ctx context.Context, tenantID, invoiceID int64) (bool, error)
+	Exists(ctx context.Context, tenantID, invoiceID string) (bool, error)
 }
 
 // Service orchestrates the session lifecycle (record→draft→bill) and
@@ -46,23 +46,23 @@ func NewService(db db.Executor, hub *realtime.Hub, invoices InvoiceChecker) *Ser
 
 // ListUnbilledForClient returns a client's recorded-but-unbilled sessions for
 // the given tenant. Used by the draft-invoice Smart to gather billable work.
-func (s *Service) ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]*Session, error) {
+func (s *Service) ListUnbilledForClient(ctx context.Context, tenantID, clientID string) ([]*Session, error) {
 	return s.repo.ListRecordedUnbilled(ctx, tenantID, clientID)
 }
 
 // Suggestion is a billing prompt: a client's recorded-but-unbilled sessions
 // grouped together, ready to draft onto a single invoice.
 type Suggestion struct {
-	ClientID int64   `json:"clientId"`
-	IDs      []int64 `json:"ids"`
-	From     string  `json:"from"`
-	To       string  `json:"to"`
-	Count    int     `json:"count"`
+	ClientID string   `json:"clientId"`
+	IDs      []string `json:"ids"`
+	From     string   `json:"from"`
+	To       string   `json:"to"`
+	Count    int      `json:"count"`
 }
 
 // ListClient returns a client's sessions, optionally restricted to the
 // [from, to] service-date window (both empty → all sessions).
-func (s *Service) ListClient(ctx context.Context, clientID int64, from, to string) ([]*Session, error) {
+func (s *Service) ListClient(ctx context.Context, clientID string, from, to string) ([]*Session, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListClient(ctx, tenantID, clientID, from, to)
 }
@@ -80,7 +80,7 @@ func (s *Service) List(ctx context.Context, status string) ([]*Session, error) {
 // Get returns a session by int PK, or (nil, nil) when absent. This is the
 // internal/cross-slice read (agent SessionReader, the service's own pricing path);
 // the public HTTP path addresses sessions by uuid via GetByUUID.
-func (s *Service) Get(ctx context.Context, id int64) (*Session, error) {
+func (s *Service) Get(ctx context.Context, id string) (*Session, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.Get(ctx, tenantID, id)
 }
@@ -94,7 +94,7 @@ func (s *Service) GetByUUID(ctx context.Context, sessionUUID string) (*Session, 
 // ResolveClient translates a client uuid into its int FK for the
 // tenant (inbound clientId resolution on session create/update). Returns
 // (0, nil) when the uuid is unknown so the handler can 400.
-func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (int64, error) {
+func (s *Service) ResolveClient(ctx context.Context, clientUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveClientID(ctx, tenantID, clientUUID)
 }
@@ -108,7 +108,7 @@ func (s *Service) ListByClientUUID(ctx context.Context, clientUUID, status strin
 	if err != nil {
 		return nil, err
 	}
-	if pid == 0 {
+	if pid == "" {
 		return []*Session{}, nil
 	}
 	sessions, err := s.repo.ListClient(ctx, tenantID, pid, "", "")
@@ -131,7 +131,7 @@ func (s *Service) ListByClientUUID(ctx context.Context, clientUUID, status strin
 // after the commit succeeds.
 func (s *Service) Create(ctx context.Context, in SessionInput) (*Session, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	var author *int64
+	var author *string
 	if uid, ok := reqctx.UserFrom(ctx); ok {
 		author = &uid
 	}
@@ -139,7 +139,7 @@ func (s *Service) Create(ctx context.Context, in SessionInput) (*Session, error)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "create"})
 	return sh, nil
 }
 
@@ -165,14 +165,14 @@ func (s *Service) Update(ctx context.Context, sessionUUID string, in SessionInpu
 			return nil, err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return sh, nil
 }
 
 // repriceItemsForDate re-stamps every unbilled item of the session to the session's
 // (new) service date and re-prices it against that date's catalogue. Bounded by
 // the number of items on the session.
-func (s *Service) repriceItemsForDate(ctx context.Context, tenantID int64, sh *Session) error {
+func (s *Service) repriceItemsForDate(ctx context.Context, tenantID string, sh *Session) error {
 	items, err := s.repo.ListItems(ctx, tenantID, sh.ID)
 	if err != nil {
 		return err
@@ -209,7 +209,7 @@ func (s *Service) UpdateStatus(ctx context.Context, sessionUUID, status string) 
 	if err := s.repo.UpdateStatus(ctx, tenantID, sessionUUID, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return nil
 }
 
@@ -232,7 +232,7 @@ func (s *Service) Delete(ctx context.Context, sessionUUID string) error {
 	if err := s.repo.Delete(ctx, tenantID, sessionUUID); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "delete"})
 	return nil
 }
 
@@ -256,7 +256,7 @@ func (s *Service) Suggestions(ctx context.Context) ([]Suggestion, error) {
 		if e != nil {
 			return nil, e
 		}
-		ids := make([]int64, 0, len(sessions))
+		ids := make([]string, 0, len(sessions))
 		for j := range sessions { // bounded by len(sessions)
 			ids = append(ids, sessions[j].ID)
 		}
@@ -275,12 +275,12 @@ func (s *Service) Suggestions(ctx context.Context) ([]Suggestion, error) {
 // then broadcasts a single bulk event. An empty id list is a no-op. The invoice
 // MUST belong to the caller's tenant — verified tenant-scoped first to prevent
 // cross-tenant linkage.
-func (s *Service) MarkDrafted(ctx context.Context, invoiceID int64, sessionIDs []int64) error {
+func (s *Service) MarkDrafted(ctx context.Context, invoiceID string, sessionIDs []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if len(sessionIDs) == 0 {
 		return nil
 	}
-	if invoiceID <= 0 {
+	if invoiceID == "" {
 		return fmt.Errorf("mark drafted: invoice id required")
 	}
 	exists, err := s.invoices.Exists(ctx, tenantID, invoiceID)
@@ -288,7 +288,7 @@ func (s *Service) MarkDrafted(ctx context.Context, invoiceID int64, sessionIDs [
 		return fmt.Errorf("mark drafted: verify invoice: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("mark drafted: invoice %d not found for tenant", invoiceID)
+		return fmt.Errorf("mark drafted: invoice %s not found for tenant", invoiceID)
 	}
 	for i := range sessionIDs { // bounded by len(sessionIDs)
 		if err := s.repo.SetInvoice(ctx, tenantID, sessionIDs[i], invoiceID, "drafted"); err != nil {
@@ -302,18 +302,18 @@ func (s *Service) MarkDrafted(ctx context.Context, invoiceID int64, sessionIDs [
 // SetStatusForInvoice advances every session linked to an invoice to status (the
 // invoice→session cascade on 'sent'/'paid'). It satisfies invoice.SessionLinker;
 // tenantID is supplied by the caller (the invoice service's request scope).
-func (s *Service) SetStatusForInvoice(ctx context.Context, tenantID, invoiceID int64, status string) error {
+func (s *Service) SetStatusForInvoice(ctx context.Context, tenantID, invoiceID string, status string) error {
 	return s.repo.SetStatusForInvoice(ctx, tenantID, invoiceID, status)
 }
 
 // ClearForInvoice reverts every session linked to an invoice back to 'recorded'
 // with a NULL invoice_id (invoice delete). It satisfies invoice.SessionLinker.
-func (s *Service) ClearForInvoice(ctx context.Context, tenantID, invoiceID int64) error {
+func (s *Service) ClearForInvoice(ctx context.Context, tenantID, invoiceID string) error {
 	return s.repo.ClearForInvoice(ctx, tenantID, invoiceID)
 }
 
 // ListItems returns a session's line items (billed + unbilled).
-func (s *Service) ListItems(ctx context.Context, sessionID int64) ([]*billing.LineItem, error) {
+func (s *Service) ListItems(ctx context.Context, sessionID string) ([]*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ListItems(ctx, tenantID, sessionID)
 }
@@ -321,7 +321,7 @@ func (s *Service) ListItems(ctx context.Context, sessionID int64) ([]*billing.Li
 // AddItem prices then inserts one item on a session (invoice_id NULL), then
 // broadcasts. Returns (nil, nil) when the session is absent. A blank ServiceDate
 // defaults to the session's date so pricing keys off the right catalogue.
-func (s *Service) AddItem(ctx context.Context, sessionID int64, in billing.LineItemInput) (*billing.LineItem, error) {
+func (s *Service) AddItem(ctx context.Context, sessionID string, in billing.LineItemInput) (*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.Get(ctx, tenantID, sessionID)
 	if err != nil {
@@ -341,20 +341,20 @@ func (s *Service) AddItem(ctx context.Context, sessionID int64, in billing.LineI
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return item, nil
 }
 
 // resolveSession translates a session uuid into its int PK for the tenant. Returns
 // (0, nil) when no such session exists so HTTP item handlers can 404.
-func (s *Service) resolveSession(ctx context.Context, tenantID int64, sessionUUID string) (int64, error) {
+func (s *Service) resolveSession(ctx context.Context, tenantID string, sessionUUID string) (string, error) {
 	return s.repo.ResolveID(ctx, tenantID, sessionUUID)
 }
 
 // ResolveSessionID translates a session uuid into its int PK for the acting tenant.
 // Returns (0, nil) when no such session exists (the Divide handler 404s). Exposed
 // so the handler can bridge the uuid path to the int-keyed DivideSession contract.
-func (s *Service) ResolveSessionID(ctx context.Context, sessionUUID string) (int64, error) {
+func (s *Service) ResolveSessionID(ctx context.Context, sessionUUID string) (string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveID(ctx, tenantID, sessionUUID)
 }
@@ -367,7 +367,7 @@ func (s *Service) ListItemsBySessionUUID(ctx context.Context, sessionUUID string
 	if err != nil {
 		return nil, err
 	}
-	if sessionID == 0 {
+	if sessionID == "" {
 		return nil, nil
 	}
 	return s.repo.ListItems(ctx, tenantID, sessionID)
@@ -395,7 +395,7 @@ func (s *Service) AddItemBySessionUUID(ctx context.Context, sessionUUID string, 
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return item, nil
 }
 
@@ -425,7 +425,7 @@ func (s *Service) UpdateItemBySessionUUID(ctx context.Context, sessionUUID, item
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return item, nil
 }
 
@@ -437,7 +437,7 @@ func (s *Service) DeleteItemBySessionUUID(ctx context.Context, sessionUUID, item
 	if err != nil {
 		return err
 	}
-	if sessionID == 0 {
+	if sessionID == "" {
 		return nil
 	}
 	if err := s.repo.DeleteItemByUUID(ctx, tenantID, sessionID, itemUUID); err != nil {
@@ -451,7 +451,7 @@ func (s *Service) DeleteItemBySessionUUID(ctx context.Context, sessionUUID, item
 // ClearUnbilledItems removes all of a session's unbilled items (used to make a
 // re-divide idempotent). Broadcasts on success. Resolves the session's uuid first
 // so the post-commit event carries the public id, not the int PK.
-func (s *Service) ClearUnbilledItems(ctx context.Context, sessionID int64) error {
+func (s *Service) ClearUnbilledItems(ctx context.Context, sessionID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.Get(ctx, tenantID, sessionID)
 	if err != nil {
@@ -463,14 +463,14 @@ func (s *Service) ClearUnbilledItems(ctx context.Context, sessionID int64) error
 	if err := s.repo.DeleteUnbilledItems(ctx, tenantID, sessionID); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return nil
 }
 
 // priceItem resolves catalogue-authoritative pricing for one input line via the
 // shared LineValidator (G3: pinned by ServiceDate). Returns the normalised,
 // priced line.
-func (s *Service) priceItem(ctx context.Context, tenantID, clientID int64, in billing.LineItemInput) (billing.LineItemInput, error) {
+func (s *Service) priceItem(ctx context.Context, tenantID, clientID string, in billing.LineItemInput) (billing.LineItemInput, error) {
 	res, err := s.validator.ValidateFilling(ctx, tenantID, clientID, []billing.LineItemInput{in})
 	if err != nil {
 		return billing.LineItemInput{}, fmt.Errorf("price item: %w", err)
