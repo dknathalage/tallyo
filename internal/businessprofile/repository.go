@@ -54,8 +54,8 @@ func NewBusinessProfile(db db.Executor) *BusinessProfileRepo {
 }
 
 // Get returns the tenant's profile, or (nil, nil) when none exists yet.
-func (r *BusinessProfileRepo) Get(ctx context.Context, tenantID int64) (*BusinessProfile, error) {
-	if tenantID == 0 {
+func (r *BusinessProfileRepo) Get(ctx context.Context, tenantID string) (*BusinessProfile, error) {
+	if tenantID == "" {
 		return nil, errors.New("get business profile: tenant id required")
 	}
 	row, err := gen.New(r.db).GetBusinessProfile(ctx, tenantID)
@@ -77,8 +77,8 @@ func (r *BusinessProfileRepo) Get(ctx context.Context, tenantID int64) (*Busines
 }
 
 // Save upserts the tenant's profile and writes one audit row, atomically.
-func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID int64, in BusinessProfileInput) error {
-	if tenantID == 0 {
+func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID string, in BusinessProfileInput) error {
+	if tenantID == "" {
 		return errors.New("save business profile: tenant id required")
 	}
 	if in.Name == "" {
@@ -104,9 +104,9 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID int64, in Busin
 
 // existingUUID returns the tenant's current profile uuid, or a freshly generated
 // one when no row exists yet. Read inside the tx so the upsert preserves it.
-func existingUUID(ctx context.Context, tx *sql.Tx, tenantID int64) (string, error) {
+func existingUUID(ctx context.Context, tx *sql.Tx, tenantID string) (string, error) {
 	var id string
-	err := tx.QueryRowContext(ctx, "SELECT uuid FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&id)
+	err := tx.QueryRowContext(ctx, "SELECT id FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ids.New(), nil
 	}
@@ -117,7 +117,7 @@ func existingUUID(ctx context.Context, tx *sql.Tx, tenantID int64) (string, erro
 }
 
 // buildParams maps input + defaults into the generated upsert params.
-func buildParams(tenantID int64, id string, in BusinessProfileInput) gen.UpsertBusinessProfileParams {
+func buildParams(tenantID string, id string, in BusinessProfileInput) gen.UpsertBusinessProfileParams {
 	currency := in.DefaultCurrency
 	if currency == "" {
 		currency = "AUD"
@@ -129,7 +129,7 @@ func buildParams(tenantID int64, id string, in BusinessProfileInput) gen.UpsertB
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpsertBusinessProfileParams{
 		TenantID:        tenantID,
-		Uuid:            id,
+		ID:              id,
 		Name:            in.Name,
 		Email:           db.Nz(in.Email),
 		Phone:           db.Nz(in.Phone),
