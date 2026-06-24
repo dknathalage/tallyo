@@ -26,6 +26,11 @@ tasks:
     cmds:
       - go test -race ./...
 
+  test:e2e:
+    desc: Run Playwright e2e (boots the real binary)
+    cmds:
+      - npm --prefix web run test:e2e
+
   lint:
     desc: Full quality gate (vet, gofmt, test, svelte-check)
     cmds:
