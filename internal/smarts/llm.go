@@ -15,10 +15,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
+
+// supportsTuning reports whether a model accepts adaptive thinking and the
+// effort/output-config param. Haiku 4.5 accepts neither — sending either is a
+// 400 — so the Smarts gate both off for it and any model can be configured.
+// ponytail: name-substring check; extend if more models diverge.
+func supportsTuning(m anthropic.Model) bool {
+	return !strings.Contains(string(m), "haiku")
+}
 
 // defaultModel is Anthropic's most capable widely-used model; overridable via
 // the model arg to NewAnthropicClient (ANTHROPIC_MODEL in the composition root).
@@ -185,10 +194,10 @@ func (c *anthropicClient) baseParams(system, user string, tools []Tool, thinking
 	if user != "" {
 		p.Messages = []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(user))}
 	}
-	if thinking {
+	if thinking && supportsTuning(c.model) {
 		p.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{}}
 	}
-	if c.effort != "" {
+	if c.effort != "" && supportsTuning(c.model) {
 		p.OutputConfig = anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort(c.effort)}
 	}
 	return p

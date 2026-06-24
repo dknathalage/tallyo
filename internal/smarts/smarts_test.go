@@ -182,3 +182,13 @@ func TestMapImportDropsUnknownTargets(t *testing.T) {
 		t.Fatalf("unknown header should be dropped: %+v", res.Mappings)
 	}
 }
+
+func TestSupportsTuning(t *testing.T) {
+	// Haiku 4.5 rejects adaptive thinking + effort (400); frontier models accept them.
+	if supportsTuning("claude-haiku-4-5") {
+		t.Fatal("haiku must NOT be tuned (thinking/effort would 400)")
+	}
+	if !supportsTuning("claude-opus-4-8") {
+		t.Fatal("opus must be tuned")
+	}
+}
