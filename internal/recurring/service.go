@@ -58,7 +58,7 @@ func (s *Service) Create(ctx context.Context, in RecurringInput) (*RecurringTemp
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "create"})
 	return tpl, nil
 }
 
@@ -74,7 +74,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in RecurringInput) (*
 	if tpl == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "update"})
 	return tpl, nil
 }
 
@@ -92,7 +92,7 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "delete"})
 	return nil
 }
 
@@ -115,8 +115,8 @@ func (s *Service) GenerateOne(ctx context.Context, uuid string) (*invoice.Invoic
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.UUID, Action: "generate"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "generate"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
 	return inv, nil
 }
 
@@ -137,7 +137,7 @@ func (s *Service) GenerateOne(ctx context.Context, uuid string) (*invoice.Invoic
 // it surfaces only when the invoice is next edited (which re-validates). This is
 // acceptable for this scope: generated invoices are drafts, reviewed before
 // being sent. Revisit when adding a service-date policy for recurring lines.
-func (s *Service) GenerateDueForTenant(ctx context.Context, tenantID int64) ([]GeneratedInvoice, error) {
+func (s *Service) GenerateDueForTenant(ctx context.Context, tenantID string) ([]GeneratedInvoice, error) {
 	gens, err := s.repo.GenerateDueForTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
