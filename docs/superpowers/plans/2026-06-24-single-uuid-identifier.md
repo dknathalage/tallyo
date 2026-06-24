@@ -243,6 +243,12 @@ git commit -m "refactor(db): regenerate sqlc for uuid string ids"
 
 Each slice gets the **same transformation**. Worked example = `client`; apply the identical pattern to the rest.
 
+**Two rules that apply across every slice in this phase:**
+
+1. **Nullable FKs: `sql.NullInt64 → sql.NullString`.** Every optional FK (`payer_id`, `invoice_id`, `converted_invoice_id`, `custom_item_id`, `author_user_id`, …) flips its Go scan/param type. Touches `client`, `payer`, `invoice`, `estimate`, `recurring`, `session`, `customitem`, `billing`.
+
+2. **Hand-written SQL is NOT covered by `sqlc generate` — edit it by hand.** The `listquery`-backed slices — **`client`, `invoice`, `estimate`, `recurring`** — build their list/count query from a raw Go string constant (`clientListSelect`, `invoiceListSelect`, `estimateListSelect`, `recurringListSelect`) and `rows.Scan` into a manual field struct. These embed dropped-column projections like `p.uuid AS client_uuid`, `pm.uuid AS payer_uuid`, `ci.uuid AS converted_invoice_uuid`. `sqlc` will not touch them and the regen in Phase 1 will **not** surface them. For each: drop the `AS *_uuid` projections, collapse the `id`/`uuid` pair to one `id` column, fix the positional `Scan` arg list to match, and remove the separate `uuid` field from the row struct. A slice that skips this **compiles but mis-scans columns at runtime** — there is no safety net here but careful review and the e2e/test gate.
+
 ### Task 6: client slice (worked reference)
 
 **Files:** `internal/client/repository.go`, `service.go`, `handler.go`, `*_test.go`.
@@ -257,6 +263,7 @@ The transformation:
 - Handler: `ParseUUID(r, "clientUUID")` result is passed directly to the repo as the id (no `GetByUUID` round-trip to find an int).
 
 - [ ] **Step 1:** Convert `repository.go` (struct, all method sigs, delete resolve helpers, `ids.New()` on create).
+- [ ] **Step 1b: Hand-edit the raw list SQL.** In `repository.go`, fix the `clientListSelect` string constant and its `Query` method: drop `p.uuid AS payer_uuid` (and any other `*.uuid AS *_uuid`) projections, collapse `id`/`uuid` to one `id` column, drop the `uuid` field from the `clientFields` (row) struct, and fix the positional `rows.Scan(&f.id, &f.uuid, …)` arg list to match the new column order. **This is not covered by sqlc regen.**
 - [ ] **Step 2:** Convert `service.go` (signatures `int64 → string`, drop any resolve calls).
 - [ ] **Step 3:** Convert `handler.go` (pass uuid directly).
 - [ ] **Step 4:** Convert `client/*_test.go` seeds/asserts to string ids.
@@ -268,9 +275,9 @@ The transformation:
 Apply the Task 6 pattern to each. One commit per slice (`refactor(<slice>): uuid-string ids`). Per-slice notes:
 
 - [ ] **Task 7: payer** — referenced by clients/invoices/estimates/recurring via `payer_id`; nullable FK → `sql.NullString`.
-- [ ] **Task 8: invoice (incl. payment)** — `client_id`, `payer_id` FKs; `payments.invoice_id`; declares `SessionLinker` (its id params `int64 → string`).
-- [ ] **Task 9: estimate** — `client_id`, `payer_id`, `converted_invoice_id`, `estimate_line_items.estimate_id`.
-- [ ] **Task 10: recurring** — `client_id`, `payer_id` nullable FKs.
+- [ ] **Task 8: invoice (incl. payment)** — `client_id`, `payer_id` FKs; `payments.invoice_id`; declares `SessionLinker` (its id params `int64 → string`). **Has a raw `invoiceListSelect` + manual Scan — apply rule 2 (Step 1b).**
+- [ ] **Task 9: estimate** — `client_id`, `payer_id`, `converted_invoice_id`, `estimate_line_items.estimate_id`. **Has a raw `estimateListSelect` + manual Scan (`ci.uuid AS converted_invoice_uuid`) — apply rule 2.**
+- [ ] **Task 10: recurring** — `client_id`, `payer_id` nullable FKs. **Has a raw `recurringListSelect` + manual Scan — apply rule 2.**
 - [ ] **Task 11: session** — table `work_sessions`; `client_id`, `invoice_id`, `author_user_id`; declares `InvoiceChecker` (id params → string).
 - [ ] **Task 12: taxrate**.
 - [ ] **Task 13: businessprofile** — `tenant_id UNIQUE` 1:1.
@@ -301,7 +308,7 @@ Iterate until it builds. Expected end state: exit 0.
 
 **Files:** `internal/app/*_test.go`, every slice `*_test.go`, `internal/audit`, `internal/reqctx` (done), `internal/smarts` fakes.
 
-- [ ] **Step 1:** Update seed helpers (`seedTenantOwner` etc.) to mint/return uuid strings; replace int literal ids (`EntityID: 1`, `tenantID := int64(1)`, `clientID := created.ID`) with uuid strings or the created row's string `ID`.
+- [ ] **Step 1:** Update seed helpers (`seedTenantOwner` etc.) to mint/return uuid strings; replace int literal ids (`EntityID: 1`, `tenantID := int64(1)`, `clientID := created.ID`) with uuid strings or the created row's string `ID`. Note `internal/audit/audit_test.go` grabs seeded ids via `res.LastInsertId()` (int64) — with no autoincrement PK this must change to using the supplied uuid string.
 - [ ] **Step 2: Run the gate**
 
 ```bash
