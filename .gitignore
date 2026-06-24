@@ -35,3 +35,6 @@ web/build/*
 
 # Session scratchpad (temp test artifacts, not for commit)
 scratchpad/
+
+# Git worktrees
+.worktrees/
