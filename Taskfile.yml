@@ -48,14 +48,48 @@ tasks:
   # --- internal helpers (hidden from --list) ---
 
   build:web:
+    deps: [build:web:install]
     dir: web
+    sources:
+      - src/**/*
+      - static/**/*
+      - package.json
+      - svelte.config.js
+      - vite.config.*
+      - tsconfig.json
+      - "**/*.css"
+    generates:
+      - build/**/*
     cmds:
-      - npm install
       - npm run build
 
-  build:go:
+  build:web:install:
+    dir: web
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
     cmds:
-      - CGO_ENABLED=0 go build -o {{.BINARY}} ./cmd/tallyo
+      - npm ci
+
+  build:go:
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+      - web/build/**/*
+    generates:
+      - "{{.BINARY}}"
+    # deterministic: -trimpath strips local paths, -buildid= zeroes the build id
+    cmds:
+      - CGO_ENABLED=0 go build -trimpath -ldflags=-buildid= -o {{.BINARY}} ./cmd/tallyo
+
+  run:
+    deps: [build:go, build:web]
+    cmds:
+      - PID=$(lsof -t -i :8080 || true); test -n "$PID" && kill -9 $PID || true
+      - ./{{.BINARY}}
 
   dev:go:
     cmds:

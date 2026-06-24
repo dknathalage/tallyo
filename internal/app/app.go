@@ -109,6 +109,7 @@ func setupLogger(format, level string) *slog.Logger {
 // graceful shutdown before returning. version is embedded in startup logs.
 func Run(cfg Config, version string) error {
 	logger := setupLogger(cfg.LogFormat, cfg.LogLevel)
+	logger.Info("starting tallyo", slog.String("version", version), slog.Int("port", cfg.Port))
 
 	agentCfg := agent.Config{
 		APIKey: EnvOr("ANTHROPIC_API_KEY", ""),
@@ -148,6 +149,7 @@ func Run(cfg Config, version string) error {
 	if err := appdb.Migrate(database); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+	logger.Info("database connected", slog.String("path", filepath.Join(dir, "tallyo.db")))
 	defer func() {
 		if cerr := database.Close(); cerr != nil {
 			logger.Error("close db failed", slog.Any("error", cerr))

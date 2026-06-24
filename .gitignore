@@ -30,3 +30,6 @@ tallyo
 
 # ralph-loop transient state (never commit)
 .claude/ralph-loop.local.md
+
+# Taskfile checksum cache
+.task/
