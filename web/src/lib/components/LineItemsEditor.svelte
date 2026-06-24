@@ -2,6 +2,7 @@
 	import { priceList } from '$lib/stores/priceList.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import Sparkle from '$lib/components/Sparkle.svelte';
 	import type { Item, LineItem, ValidationDetail } from '$lib/api/types';
 
 	// An editor row. `kind` distinguishes a price-list item line (code-driven,
@@ -198,7 +199,7 @@
 					{line.kind === 'support' ? 'Catalogue item' : 'Custom item'}
 					{#if line.aiSuggested}
 						<span class="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700 normal-case tracking-normal">
-							✨ AI suggested · review
+							<Sparkle /> AI suggested · review
 						</span>
 					{/if}
 				</span>

@@ -3,14 +3,26 @@
 	import { taxRates } from '$lib/stores/taxRates.svelte';
 	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import CreateModal from '$lib/components/CreateModal.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { TaxRate } from '$lib/api/types';
+	import type { TaxRate, TaxRateInput } from '$lib/api/types';
 
 	onMount(() => {
 		taxRates.ensureSubscribed();
 		void taxRates.query({ page: 1, limit: 50 });
 	});
+
+	let createOpen = $state(false);
+
+	function toInput(r: TaxRate): TaxRateInput {
+		return { name: r.name, rate: r.rate, isDefault: r.isDefault };
+	}
+
+	function validate(key: string, value: unknown): string | null {
+		if (key === 'name' && String(value ?? '').trim() === '') return 'Name is required.';
+		return null;
+	}
 
 	// DataTable column definitions. Keys match TaxRate JSON fields (and the server
 	// allowlist), so one key drives filter, sort, display, and edit-page input kind.
@@ -58,7 +70,17 @@
 			store={taxRates}
 			{rowActions}
 			rowHref={(r) => t(`/tax-rates/${r.id}`)}
-			newHref={t('/tax-rates/new')}
+			onnew={() => (createOpen = true)}
 		/>
 	</section>
 </div>
+
+<CreateModal
+	title="tax rate"
+	{columns}
+	create={taxRates.crud.create}
+	{toInput}
+	{validate}
+	bind:open={createOpen}
+	onsaved={() => taxRates.query({ page: 1, limit: 50 })}
+/>

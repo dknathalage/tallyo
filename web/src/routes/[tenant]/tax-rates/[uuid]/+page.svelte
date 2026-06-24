@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
@@ -22,16 +23,23 @@
 	}
 
 	const idParam = $derived((page.params.uuid ?? 'new'));
+
+	// Creation is modal-only (from the tax-rates list); a stray /tax-rates/new redirects.
+	$effect(() => {
+		if (idParam === 'new') void goto(t('/tax-rates'));
+	});
 </script>
 
 {#key idParam}
-	<EntityEditor
-		title="Tax rate"
-		{columns}
-		crud={taxRates.crud}
-		id={idParam}
-		{toInput}
-		{validate}
-		backHref={t('/tax-rates')}
-	/>
+	{#if idParam !== 'new'}
+		<EntityEditor
+			title="Tax rate"
+			{columns}
+			crud={taxRates.crud}
+			id={idParam}
+			{toInput}
+			{validate}
+			backHref={t('/tax-rates')}
+		/>
+	{/if}
 {/key}

@@ -97,6 +97,7 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 - JSON is camelCase (Go struct json tags); list endpoints return `[]` (non-nil) when empty.
 - **UUID addressing.** The HTTP/JSON API addresses every entity by its **uuid** — paths are `/{...UUID}` (e.g. `/invoices/{invoiceUUID}`) and every JSON `id` / `*Id` field is a uuid string. The int64 PK is internal-only: never in a URL or JSON payload. Handlers resolve `uuid → row` at the boundary (`httpx.ParseUUID` + a `GetXByUUID` lookup) and operate on the int PK internally; inbound FK uuids resolve to int before insert. SvelteKit routes use `[uuid]` params.
 - Clean-break data model (fresh goose schema; no migration from the old Electron `tallyo.db`).
+- **Gotchas: [`docs/gotchas.md`](docs/gotchas.md)** — hard-won traps (e.g. seeding lazily-mounted modal forms with `$effect.pre`). Read before touching a listed area; add an entry when you hit a new one.
 - Commits follow Conventional Commits.
 
 ## Database

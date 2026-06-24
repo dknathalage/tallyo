@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { t } from '$lib/nav';
 	import ClientEditor from '$lib/components/ClientEditor.svelte';
 
 	const idParam = $derived((page.params.uuid ?? 'new'));
+
+	// Creation is modal-only (from the clients list); a stray /clients/new redirects.
+	$effect(() => {
+		if (idParam === 'new') void goto(t('/clients'));
+	});
 </script>
 
 <!--
@@ -12,5 +19,7 @@
 	with the other routes that {#key} their editor on the route id.
 -->
 {#key idParam}
-	<ClientEditor {idParam} />
+	{#if idParam !== 'new'}
+		<ClientEditor {idParam} />
+	{/if}
 {/key}

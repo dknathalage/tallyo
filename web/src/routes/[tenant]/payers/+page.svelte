@@ -3,14 +3,26 @@
 	import { payers } from '$lib/stores/payers.svelte';
 	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import CreateModal from '$lib/components/CreateModal.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { Payer } from '$lib/api/types';
+	import type { Payer, PayerInput } from '$lib/api/types';
 
 	onMount(() => {
 		payers.ensureSubscribed();
 		void payers.query({ page: 1, limit: 50 });
 	});
+
+	let createOpen = $state(false);
+
+	function toInput(p: Payer): PayerInput {
+		return { name: p.name, email: p.email, phone: p.phone, address: p.address, metadata: p.metadata ?? '' };
+	}
+
+	function validate(key: string, value: unknown): string | null {
+		if (key === 'name' && String(value ?? '').trim() === '') return 'Name is required.';
+		return null;
+	}
 
 	// DataTable column definitions. Keys match Payer JSON fields (and the
 	// server allowlist), so one key drives filter, sort, display, and edit-page input kind.
@@ -55,7 +67,17 @@
 			store={payers}
 			{rowActions}
 			rowHref={(r) => t(`/payers/${r.id}`)}
-			newHref={t('/payers/new')}
+			onnew={() => (createOpen = true)}
 		/>
 	</section>
 </div>
+
+<CreateModal
+	title="payer"
+	{columns}
+	create={payers.crud.create}
+	{toInput}
+	{validate}
+	bind:open={createOpen}
+	onsaved={() => payers.query({ page: 1, limit: 50 })}
+/>

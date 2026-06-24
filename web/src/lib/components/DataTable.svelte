@@ -23,12 +23,16 @@
 		rowActions?: RowAction<T>[];
 		/** Row click target, e.g. (r) => `/tax-rates/${r.id}`. */
 		rowHref: (row: T) => string;
-		/** "+ New" target, e.g. '/tax-rates/new'. */
-		newHref: string;
+		/** "+ New" click handler — opens a create modal. Falls back to navigating
+		 *  to newHref when omitted (entities not yet on the modal flow). */
+		onnew?: () => void;
+		/** "+ New" target when onnew is not provided, e.g. '/invoices/new'. */
+		newHref?: string;
 		pageSize?: number;
 	};
 
-	let { title, columns, store, rowActions = [], rowHref, newHref, pageSize = 50 }: Props = $props();
+	let { title, columns, store, rowActions = [], rowHref, onnew, newHref, pageSize = 50 }: Props =
+		$props();
 
 	// Per-column filter state. Reassigned (not mutated) so runes react.
 	type FState =
@@ -265,7 +269,7 @@
 			</div>
 		{:else}
 			<div class="ml-auto">
-				<Button size="sm" onclick={() => goto(newHref)}>
+				<Button size="sm" onclick={() => (onnew ? onnew() : newHref && goto(newHref))}>
 					<Plus class="size-3.5" /> New
 				</Button>
 			</div>

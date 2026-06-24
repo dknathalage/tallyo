@@ -4,6 +4,7 @@
 	import { t } from '$lib/nav';
 	import { createAutosave, type SaveState } from './autosave';
 	import { sessions } from '$lib/stores/sessions.svelte';
+	import Sparkle from '$lib/components/Sparkle.svelte';
 	import { invoices } from '$lib/stores/invoices.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { payers } from '$lib/stores/payers.svelte';
@@ -388,7 +389,7 @@
 								disabled={aiDrafting}
 								onclick={draftInvoiceWithAI}
 							>
-								✨ Draft invoice with AI
+								<Sparkle /> Draft invoice with AI
 							</Button>
 						{/if}
 					</div>

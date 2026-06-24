@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
@@ -23,17 +24,24 @@
 	}
 
 	const idParam = $derived((page.params.uuid ?? 'new'));
+
+	// Creation is modal-only (from the custom-items list); a stray /custom-items/new redirects.
+	$effect(() => {
+		if (idParam === 'new') void goto(t('/custom-items'));
+	});
 </script>
 
 {#key idParam}
-	<EntityEditor
-		title="Custom item"
-		{columns}
-		crud={customItems.crud}
-		id={idParam}
-		{toInput}
-		{validate}
-		blank={{ taxable: false }}
-		backHref={t('/custom-items')}
-	/>
+	{#if idParam !== 'new'}
+		<EntityEditor
+			title="Custom item"
+			{columns}
+			crud={customItems.crud}
+			id={idParam}
+			{toInput}
+			{validate}
+			blank={{ taxable: false }}
+			backHref={t('/custom-items')}
+		/>
+	{/if}
 {/key}

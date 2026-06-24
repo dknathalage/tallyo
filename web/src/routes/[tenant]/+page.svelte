@@ -6,6 +6,7 @@
 	import { clients } from '$lib/stores/clients.svelte';
 	import * as sessionsApi from '$lib/api/sessions';
 	import SessionTable from '$lib/components/SessionTable.svelte';
+	import SessionForm from '$lib/components/SessionForm.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import { shortDate, todayISO } from '$lib/sessions/format';
@@ -30,7 +31,9 @@
 		return 'Upcoming';
 	}
 
-	// ---- Session editing (record / edit / add) — full route pages. ----
+	// ---- Session editing (record / edit) — full route pages; add via modal. ----
+	let addOpen = $state(false);
+
 	function openSession(session: Session): void {
 		void goto(t('/sessions/' + session.id));
 	}
@@ -51,7 +54,7 @@
 				Record scheduled sessions, then draft invoices from recorded work.
 			</p>
 		</div>
-		<Button class="shrink-0" onclick={() => goto(t('/sessions/new'))}>+ Add session</Button>
+		<Button class="shrink-0" onclick={() => (addOpen = true)}>+ Add session</Button>
 	</div>
 
 	{#if sessions.error}
@@ -95,3 +98,5 @@
 		</section>
 	{/if}
 </div>
+
+<SessionForm bind:open={addOpen} onsaved={() => sessions.load()} />

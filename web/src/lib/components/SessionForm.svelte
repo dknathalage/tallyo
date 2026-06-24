@@ -62,23 +62,25 @@
 	let itemsBusy = $state(false);
 	let itemError = $state<string | null>(null);
 
-	// Seed the form from props. In modal mode, re-seed each time the modal
-	// transitions to open (the form is reused). In inline mode the host route
-	// remounts the component (via {#key idParam}), so seed once on mount.
+	// Seed the form from props. Two hosts, two timings:
 	let lastOpen = false;
 	let seeded = false;
-	$effect(() => {
-		if (inline) {
-			if (!seeded) {
-				seed();
-				seeded = true;
-			}
-			return;
-		}
-		if (open && !lastOpen) {
-			seed();
-		}
+	// Modal: the body is mounted lazily ({#if open}), so the client <select> is
+	// created the instant open flips true. Seed in $effect.pre so it runs BEFORE
+	// that render and the select mounts already set to presetClientId — a
+	// post-render $effect leaves it stuck on "— select —".
+	$effect.pre(() => {
+		if (inline) return;
+		if (open && !lastOpen) seed();
 		lastOpen = open;
+	});
+	// Inline (full-page route): host remounts via {#key idParam} and the body is
+	// always present, so seed once after mount with a plain $effect.
+	$effect(() => {
+		if (inline && !seeded) {
+			seed();
+			seeded = true;
+		}
 	});
 
 	function seed(): void {

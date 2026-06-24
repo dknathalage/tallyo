@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { priceList } from '$lib/stores/priceList.svelte';
+	import Sparkle from '$lib/components/Sparkle.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { apiUpload, tenantPath } from '$lib/api/client';
 	import type { PriceListVersion, Item } from '$lib/api/types';
@@ -249,7 +250,7 @@
 									disabled={autoMapping}
 									onclick={autoMap}
 								>
-									✨ Auto-map columns
+									<Sparkle /> Auto-map columns
 								</Button>
 							{/if}
 						</div>

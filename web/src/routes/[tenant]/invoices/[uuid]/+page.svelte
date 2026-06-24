@@ -5,6 +5,7 @@
 	import { apiPost, ApiError, tenantPath } from '$lib/api/client';
 	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
+	import Sparkle from '$lib/components/Sparkle.svelte';
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
@@ -372,7 +373,7 @@
 				{#if features.smarts}
 					<div class="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
 						<label class="mb-2 block">
-							<span class="mb-1 block text-sm font-medium">✨ Describe the work</span>
+							<span class="mb-1 block text-sm font-medium"><Sparkle /> Describe the work</span>
 							<textarea
 								bind:value={aiNote}
 								rows="2"
@@ -526,7 +527,7 @@
 						disabled={reminderBusy}
 						onclick={draftReminder}
 					>
-						✨ Draft reminder
+						<Sparkle /> Draft reminder
 					</Button>
 				</div>
 				{#if reminderError}<p class="mt-2 text-sm text-red-600">{reminderError}</p>{/if}

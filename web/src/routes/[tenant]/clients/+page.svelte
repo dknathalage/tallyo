@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import ClientCreateModal from '$lib/components/ClientCreateModal.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { Client } from '$lib/api/types';
@@ -11,6 +13,8 @@
 		clients.ensureSubscribed();
 		void clients.query({ page: 1, limit: 50 });
 	});
+
+	let createOpen = $state(false);
 
 	// DataTable column definitions. Keys match Client JSON fields (and the
 	// server allowlist), so one key drives filter, sort, and display.
@@ -53,7 +57,12 @@
 			store={clients}
 			{rowActions}
 			rowHref={(p) => t(`/clients/${p.id}`)}
-			newHref={t('/clients/new')}
+			onnew={() => (createOpen = true)}
 		/>
 	</section>
 </div>
+
+<ClientCreateModal
+	bind:open={createOpen}
+	onsaved={(c) => goto(t(`/clients/${c.id}`))}
+/>

@@ -3,14 +3,26 @@
 	import { customItems } from '$lib/stores/customItems.svelte';
 	import { t } from '$lib/nav';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import CreateModal from '$lib/components/CreateModal.svelte';
 	import type { Column, RowAction } from '$lib/components/datatable';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { CustomItem } from '$lib/api/types';
+	import type { CustomItem, CustomItemInput } from '$lib/api/types';
 
 	onMount(() => {
 		customItems.ensureSubscribed();
 		void customItems.query({ page: 1, limit: 50 });
 	});
+
+	let createOpen = $state(false);
+
+	function toInput(c: CustomItem): CustomItemInput {
+		return { name: c.name, rate: Number(c.rate), unit: c.unit, taxable: c.taxable, metadata: c.metadata ?? '' };
+	}
+
+	function validate(key: string, value: unknown): string | null {
+		if (key === 'name' && String(value ?? '').trim() === '') return 'Name is required.';
+		return null;
+	}
 
 	// DataTable column definitions. Keys match CustomItem JSON fields (and the
 	// server allowlist), so one key drives filter, sort, display, and edit-page input kind.
@@ -68,7 +80,18 @@
 			store={customItems}
 			{rowActions}
 			rowHref={(r) => t(`/custom-items/${r.id}`)}
-			newHref={t('/custom-items/new')}
+			onnew={() => (createOpen = true)}
 		/>
 	</section>
 </div>
+
+<CreateModal
+	title="custom item"
+	{columns}
+	create={customItems.crud.create}
+	{toInput}
+	{validate}
+	blank={{ taxable: false }}
+	bind:open={createOpen}
+	onsaved={() => customItems.query({ page: 1, limit: 50 })}
+/>

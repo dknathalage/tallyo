@@ -23,12 +23,16 @@
 	});
 
 	// Load the target session on id change. {#key idParam} remounts SessionForm so its
-	// form state resets alongside this load (new → edit, edit → edit).
+	// form state resets alongside this load. Creation is modal-only now, so a stray
+	// /sessions/new redirects back to the dashboard.
 	$effect(() => {
 		const current = idParam;
 		loadError = null;
 		loadedSession = null;
-		if (current === 'new') return;
+		if (current === 'new') {
+			void goto(t('/'));
+			return;
+		}
 		void loadSession(current);
 	});
 
@@ -55,7 +59,7 @@
 		<p class="text-sm text-red-600">{loadError}</p>
 	{:else if idParam !== 'new' && loading && loadedSession === null}
 		<p class="text-sm text-gray-500">Loading…</p>
-	{:else if idParam === 'new' || loadedSession !== null}
+	{:else if loadedSession !== null}
 		{#key idParam}
 			<SessionForm inline session={loadedSession} {recording} onsaved={done} oncancel={done} />
 		{/key}
