@@ -7,10 +7,10 @@ SELECT * FROM price_list_versions WHERE tenant_id = sqlc.arg(tenant_id) ORDER BY
 SELECT * FROM price_list_versions WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
 -- name: GetPriceListVersionByUUID :one
-SELECT * FROM price_list_versions WHERE tenant_id = sqlc.arg(tenant_id) AND uuid = sqlc.arg(uuid);
+SELECT * FROM price_list_versions WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
 -- name: GetPriceListVersionIDByUUID :one
-SELECT id FROM price_list_versions WHERE tenant_id = sqlc.arg(tenant_id) AND uuid = sqlc.arg(uuid);
+SELECT id FROM price_list_versions WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
 -- name: ResolvePriceListVersionForDate :one
 SELECT * FROM price_list_versions
@@ -27,7 +27,7 @@ ORDER BY effective_from DESC
 LIMIT 1;
 
 -- name: CreatePriceListVersion :one
-INSERT INTO price_list_versions (tenant_id, uuid, label, effective_from, effective_to, source_filename, created_at)
+INSERT INTO price_list_versions (tenant_id, id, label, effective_from, effective_to, source_filename, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 

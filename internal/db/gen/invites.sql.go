@@ -11,25 +11,25 @@ import (
 )
 
 const createInvite = `-- name: CreateInvite :one
-INSERT INTO invites (uuid, tenant_id, token, email, role, created_by, expires_at, created_at)
+INSERT INTO invites (id, tenant_id, token, email, role, created_by, expires_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at
+RETURNING id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at
 `
 
 type CreateInviteParams struct {
-	Uuid      string `json:"uuid"`
-	TenantID  int64  `json:"tenant_id"`
+	ID        string `json:"id"`
+	TenantID  string `json:"tenant_id"`
 	Token     string `json:"token"`
 	Email     string `json:"email"`
 	Role      string `json:"role"`
-	CreatedBy int64  `json:"created_by"`
+	CreatedBy string `json:"created_by"`
 	ExpiresAt string `json:"expires_at"`
 	CreatedAt string `json:"created_at"`
 }
 
 func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error) {
 	row := q.db.QueryRowContext(ctx, createInvite,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.Token,
 		arg.Email,
@@ -41,7 +41,6 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Inv
 	var i Invite
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Token,
 		&i.Email,
@@ -59,8 +58,8 @@ DELETE FROM invites WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteInviteParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) error {
@@ -69,21 +68,21 @@ func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) erro
 }
 
 const deleteInviteByUUID = `-- name: DeleteInviteByUUID :exec
-DELETE FROM invites WHERE tenant_id = ? AND uuid = ?
+DELETE FROM invites WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteInviteByUUIDParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUIDParams) error {
-	_, err := q.db.ExecContext(ctx, deleteInviteByUUID, arg.TenantID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deleteInviteByUUID, arg.TenantID, arg.ID)
 	return err
 }
 
 const getInviteByToken = `-- name: GetInviteByToken :one
-SELECT id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE token = ?
+SELECT id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE token = ?
 `
 
 func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, error) {
@@ -91,7 +90,6 @@ func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, e
 	var i Invite
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Token,
 		&i.Email,
@@ -105,10 +103,10 @@ func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, e
 }
 
 const listInvites = `-- name: ListInvites :many
-SELECT id, uuid, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE tenant_id = ? ORDER BY created_at DESC
+SELECT id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE tenant_id = ? ORDER BY created_at DESC
 `
 
-func (q *Queries) ListInvites(ctx context.Context, tenantID int64) ([]Invite, error) {
+func (q *Queries) ListInvites(ctx context.Context, tenantID string) ([]Invite, error) {
 	rows, err := q.db.QueryContext(ctx, listInvites, tenantID)
 	if err != nil {
 		return nil, err
@@ -119,7 +117,6 @@ func (q *Queries) ListInvites(ctx context.Context, tenantID int64) ([]Invite, er
 		var i Invite
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Token,
 			&i.Email,

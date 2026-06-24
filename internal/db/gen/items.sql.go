@@ -15,8 +15,8 @@ SELECT COUNT(*) FROM items WHERE tenant_id = ?1 AND price_list_version_id = ?2
 `
 
 type CountItemsParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	VersionID int64 `json:"version_id"`
+	TenantID  string `json:"tenant_id"`
+	VersionID string `json:"version_id"`
 }
 
 func (q *Queries) CountItems(ctx context.Context, arg CountItemsParams) (int64, error) {
@@ -28,15 +28,15 @@ func (q *Queries) CountItems(ctx context.Context, arg CountItemsParams) (int64, 
 
 const createItem = `-- name: CreateItem :one
 INSERT INTO items (
-    tenant_id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
+    tenant_id, id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id
+RETURNING id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id
 `
 
 type CreateItemParams struct {
-	TenantID           int64           `json:"tenant_id"`
-	Uuid               string          `json:"uuid"`
-	PriceListVersionID int64           `json:"price_list_version_id"`
+	TenantID           string          `json:"tenant_id"`
+	ID                 string          `json:"id"`
+	PriceListVersionID string          `json:"price_list_version_id"`
 	Code               string          `json:"code"`
 	Name               string          `json:"name"`
 	Unit               sql.NullString  `json:"unit"`
@@ -49,7 +49,7 @@ type CreateItemParams struct {
 func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, error) {
 	row := q.db.QueryRowContext(ctx, createItem,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 		arg.PriceListVersionID,
 		arg.Code,
 		arg.Name,
@@ -62,7 +62,6 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 	var i Item
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.PriceListVersionID,
 		&i.Code,
 		&i.Name,
@@ -81,8 +80,8 @@ DELETE FROM items WHERE tenant_id = ?1 AND price_list_version_id = ?2
 `
 
 type DeleteItemsForVersionParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	VersionID int64 `json:"version_id"`
+	TenantID  string `json:"tenant_id"`
+	VersionID string `json:"version_id"`
 }
 
 func (q *Queries) DeleteItemsForVersion(ctx context.Context, arg DeleteItemsForVersionParams) error {
@@ -91,12 +90,12 @@ func (q *Queries) DeleteItemsForVersion(ctx context.Context, arg DeleteItemsForV
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items WHERE tenant_id = ?1 AND id = ?2
+SELECT id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items WHERE tenant_id = ?1 AND id = ?2
 `
 
 type GetItemParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) {
@@ -104,7 +103,6 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) 
 	var i Item
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.PriceListVersionID,
 		&i.Code,
 		&i.Name,
@@ -119,13 +117,13 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) 
 }
 
 const getItemByCode = `-- name: GetItemByCode :one
-SELECT id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items
+SELECT id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items
 WHERE tenant_id = ?1 AND price_list_version_id = ?2 AND code = ?3
 `
 
 type GetItemByCodeParams struct {
-	TenantID  int64  `json:"tenant_id"`
-	VersionID int64  `json:"version_id"`
+	TenantID  string `json:"tenant_id"`
+	VersionID string `json:"version_id"`
 	Code      string `json:"code"`
 }
 
@@ -134,7 +132,6 @@ func (q *Queries) GetItemByCode(ctx context.Context, arg GetItemByCodeParams) (I
 	var i Item
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.PriceListVersionID,
 		&i.Code,
 		&i.Name,
@@ -149,31 +146,31 @@ func (q *Queries) GetItemByCode(ctx context.Context, arg GetItemByCodeParams) (I
 }
 
 const getItemIDByUUID = `-- name: GetItemIDByUUID :one
-SELECT id FROM items WHERE tenant_id = ?1 AND uuid = ?2
+SELECT id FROM items WHERE tenant_id = ?1 AND id = ?2
 `
 
 type GetItemIDByUUIDParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
-func (q *Queries) GetItemIDByUUID(ctx context.Context, arg GetItemIDByUUIDParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getItemIDByUUID, arg.TenantID, arg.Uuid)
-	var id int64
+func (q *Queries) GetItemIDByUUID(ctx context.Context, arg GetItemIDByUUIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getItemIDByUUID, arg.TenantID, arg.ID)
+	var id string
 	err := row.Scan(&id)
 	return id, err
 }
 
 const listItems = `-- name: ListItems :many
 
-SELECT id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items
+SELECT id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items
 WHERE tenant_id = ?1 AND price_list_version_id = ?2
 ORDER BY code
 `
 
 type ListItemsParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	VersionID int64 `json:"version_id"`
+	TenantID  string `json:"tenant_id"`
+	VersionID string `json:"version_id"`
 }
 
 // Per-tenant price-list items (tenant-owned, scoped by tenant_id).
@@ -188,7 +185,6 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Item, e
 		var i Item
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.PriceListVersionID,
 			&i.Code,
 			&i.Name,
@@ -213,7 +209,7 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]Item, e
 }
 
 const searchItems = `-- name: SearchItems :many
-SELECT id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items
+SELECT id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id FROM items
 WHERE tenant_id = ?1 AND price_list_version_id = ?2
   AND ( (code     LIKE ?3 ESCAPE '\')
      OR (name     LIKE ?3 ESCAPE '\')
@@ -224,8 +220,8 @@ LIMIT 50
 `
 
 type SearchItemsParams struct {
-	TenantID  int64  `json:"tenant_id"`
-	VersionID int64  `json:"version_id"`
+	TenantID  string `json:"tenant_id"`
+	VersionID string `json:"version_id"`
 	Q         string `json:"q"`
 }
 
@@ -242,7 +238,6 @@ func (q *Queries) SearchItems(ctx context.Context, arg SearchItemsParams) ([]Ite
 		var i Item
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.PriceListVersionID,
 			&i.Code,
 			&i.Name,
@@ -268,7 +263,7 @@ func (q *Queries) SearchItems(ctx context.Context, arg SearchItemsParams) ([]Ite
 
 const upsertItem = `-- name: UpsertItem :one
 INSERT INTO items (
-    tenant_id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
+    tenant_id, id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (price_list_version_id, code) DO UPDATE SET
     name = excluded.name,
@@ -277,13 +272,13 @@ ON CONFLICT (price_list_version_id, code) DO UPDATE SET
     unit_price = excluded.unit_price,
     taxable = excluded.taxable,
     metadata = excluded.metadata
-RETURNING id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id
+RETURNING id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata, tenant_id
 `
 
 type UpsertItemParams struct {
-	TenantID           int64           `json:"tenant_id"`
-	Uuid               string          `json:"uuid"`
-	PriceListVersionID int64           `json:"price_list_version_id"`
+	TenantID           string          `json:"tenant_id"`
+	ID                 string          `json:"id"`
+	PriceListVersionID string          `json:"price_list_version_id"`
 	Code               string          `json:"code"`
 	Name               string          `json:"name"`
 	Unit               sql.NullString  `json:"unit"`
@@ -296,7 +291,7 @@ type UpsertItemParams struct {
 func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (Item, error) {
 	row := q.db.QueryRowContext(ctx, upsertItem,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 		arg.PriceListVersionID,
 		arg.Code,
 		arg.Name,
@@ -309,7 +304,6 @@ func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (Item, e
 	var i Item
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.PriceListVersionID,
 		&i.Code,
 		&i.Name,

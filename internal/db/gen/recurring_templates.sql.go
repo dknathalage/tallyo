@@ -12,31 +12,31 @@ import (
 
 const createRecurringTemplate = `-- name: CreateRecurringTemplate :one
 INSERT INTO recurring_templates (
-    uuid, tenant_id, client_id, payer_id, name, frequency, next_due,
+    id, tenant_id, client_id, payer_id, name, frequency, next_due,
     line_items, tax_rate, notes, is_active, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, client_id, payer_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at
+RETURNING id, tenant_id, client_id, payer_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at
 `
 
 type CreateRecurringTemplateParams struct {
-	Uuid      string        `json:"uuid"`
-	TenantID  int64         `json:"tenant_id"`
-	ClientID  sql.NullInt64 `json:"client_id"`
-	PayerID   sql.NullInt64 `json:"payer_id"`
-	Name      string        `json:"name"`
-	Frequency string        `json:"frequency"`
-	NextDue   string        `json:"next_due"`
-	LineItems string        `json:"line_items"`
-	TaxRate   float64       `json:"tax_rate"`
-	Notes     string        `json:"notes"`
-	IsActive  int64         `json:"is_active"`
-	CreatedAt string        `json:"created_at"`
-	UpdatedAt string        `json:"updated_at"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
+	ClientID  sql.NullString `json:"client_id"`
+	PayerID   sql.NullString `json:"payer_id"`
+	Name      string         `json:"name"`
+	Frequency string         `json:"frequency"`
+	NextDue   string         `json:"next_due"`
+	LineItems string         `json:"line_items"`
+	TaxRate   float64        `json:"tax_rate"`
+	Notes     string         `json:"notes"`
+	IsActive  int64          `json:"is_active"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
 func (q *Queries) CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error) {
 	row := q.db.QueryRowContext(ctx, createRecurringTemplate,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.ClientID,
 		arg.PayerID,
@@ -53,7 +53,6 @@ func (q *Queries) CreateRecurringTemplate(ctx context.Context, arg CreateRecurri
 	var i RecurringTemplate
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.PayerID,
@@ -71,38 +70,37 @@ func (q *Queries) CreateRecurringTemplate(ctx context.Context, arg CreateRecurri
 }
 
 const deleteRecurringTemplate = `-- name: DeleteRecurringTemplate :exec
-DELETE FROM recurring_templates WHERE tenant_id = ? AND uuid = ?
+DELETE FROM recurring_templates WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteRecurringTemplateParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error {
-	_, err := q.db.ExecContext(ctx, deleteRecurringTemplate, arg.TenantID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deleteRecurringTemplate, arg.TenantID, arg.ID)
 	return err
 }
 
 const getRecurringTemplate = `-- name: GetRecurringTemplate :one
-SELECT r.id, r.uuid, r.tenant_id, r.client_id, r.payer_id, r.name, r.frequency, r.next_due, r.line_items, r.tax_rate, r.notes, r.is_active, r.created_at, r.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT r.id, r.tenant_id, r.client_id, r.payer_id, r.name, r.frequency, r.next_due, r.line_items, r.tax_rate, r.notes, r.is_active, r.created_at, r.updated_at, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM recurring_templates r
 LEFT JOIN clients p ON r.client_id = p.id AND p.tenant_id = r.tenant_id
 LEFT JOIN payers pm ON r.payer_id = pm.id AND pm.tenant_id = r.tenant_id
-WHERE r.tenant_id = ? AND r.uuid = ?
+WHERE r.tenant_id = ? AND r.id = ?
 `
 
 type GetRecurringTemplateParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 type GetRecurringTemplateRow struct {
-	ID         int64          `json:"id"`
-	Uuid       string         `json:"uuid"`
-	TenantID   int64          `json:"tenant_id"`
-	ClientID   sql.NullInt64  `json:"client_id"`
-	PayerID    sql.NullInt64  `json:"payer_id"`
+	ID         string         `json:"id"`
+	TenantID   string         `json:"tenant_id"`
+	ClientID   sql.NullString `json:"client_id"`
+	PayerID    sql.NullString `json:"payer_id"`
 	Name       string         `json:"name"`
 	Frequency  string         `json:"frequency"`
 	NextDue    string         `json:"next_due"`
@@ -118,11 +116,10 @@ type GetRecurringTemplateRow struct {
 }
 
 func (q *Queries) GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error) {
-	row := q.db.QueryRowContext(ctx, getRecurringTemplate, arg.TenantID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getRecurringTemplate, arg.TenantID, arg.ID)
 	var i GetRecurringTemplateRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.PayerID,
@@ -143,7 +140,7 @@ func (q *Queries) GetRecurringTemplate(ctx context.Context, arg GetRecurringTemp
 }
 
 const listActiveRecurringTemplates = `-- name: ListActiveRecurringTemplates :many
-SELECT r.id, r.uuid, r.tenant_id, r.client_id, r.payer_id, r.name, r.frequency, r.next_due, r.line_items, r.tax_rate, r.notes, r.is_active, r.created_at, r.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT r.id, r.tenant_id, r.client_id, r.payer_id, r.name, r.frequency, r.next_due, r.line_items, r.tax_rate, r.notes, r.is_active, r.created_at, r.updated_at, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM recurring_templates r
 LEFT JOIN clients p ON r.client_id = p.id AND p.tenant_id = r.tenant_id
 LEFT JOIN payers pm ON r.payer_id = pm.id AND pm.tenant_id = r.tenant_id
@@ -152,11 +149,10 @@ ORDER BY r.next_due
 `
 
 type ListActiveRecurringTemplatesRow struct {
-	ID         int64          `json:"id"`
-	Uuid       string         `json:"uuid"`
-	TenantID   int64          `json:"tenant_id"`
-	ClientID   sql.NullInt64  `json:"client_id"`
-	PayerID    sql.NullInt64  `json:"payer_id"`
+	ID         string         `json:"id"`
+	TenantID   string         `json:"tenant_id"`
+	ClientID   sql.NullString `json:"client_id"`
+	PayerID    sql.NullString `json:"payer_id"`
 	Name       string         `json:"name"`
 	Frequency  string         `json:"frequency"`
 	NextDue    string         `json:"next_due"`
@@ -171,7 +167,7 @@ type ListActiveRecurringTemplatesRow struct {
 	PayerUuid  sql.NullString `json:"payer_uuid"`
 }
 
-func (q *Queries) ListActiveRecurringTemplates(ctx context.Context, tenantID int64) ([]ListActiveRecurringTemplatesRow, error) {
+func (q *Queries) ListActiveRecurringTemplates(ctx context.Context, tenantID string) ([]ListActiveRecurringTemplatesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listActiveRecurringTemplates, tenantID)
 	if err != nil {
 		return nil, err
@@ -182,7 +178,6 @@ func (q *Queries) ListActiveRecurringTemplates(ctx context.Context, tenantID int
 		var i ListActiveRecurringTemplatesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.PayerID,
@@ -213,13 +208,13 @@ func (q *Queries) ListActiveRecurringTemplates(ctx context.Context, tenantID int
 }
 
 const listDueTemplatesForTenant = `-- name: ListDueTemplatesForTenant :many
-SELECT id, uuid, tenant_id, client_id, payer_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at FROM recurring_templates
+SELECT id, tenant_id, client_id, payer_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at FROM recurring_templates
 WHERE tenant_id = ? AND is_active = 1 AND next_due <= ?
 ORDER BY next_due
 `
 
 type ListDueTemplatesForTenantParams struct {
-	TenantID int64  `json:"tenant_id"`
+	TenantID string `json:"tenant_id"`
 	NextDue  string `json:"next_due"`
 }
 
@@ -234,7 +229,6 @@ func (q *Queries) ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemp
 		var i RecurringTemplate
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.PayerID,
@@ -262,7 +256,7 @@ func (q *Queries) ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemp
 }
 
 const listRecurringTemplates = `-- name: ListRecurringTemplates :many
-SELECT r.id, r.uuid, r.tenant_id, r.client_id, r.payer_id, r.name, r.frequency, r.next_due, r.line_items, r.tax_rate, r.notes, r.is_active, r.created_at, r.updated_at, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT r.id, r.tenant_id, r.client_id, r.payer_id, r.name, r.frequency, r.next_due, r.line_items, r.tax_rate, r.notes, r.is_active, r.created_at, r.updated_at, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM recurring_templates r
 LEFT JOIN clients p ON r.client_id = p.id AND p.tenant_id = r.tenant_id
 LEFT JOIN payers pm ON r.payer_id = pm.id AND pm.tenant_id = r.tenant_id
@@ -271,11 +265,10 @@ ORDER BY r.next_due
 `
 
 type ListRecurringTemplatesRow struct {
-	ID         int64          `json:"id"`
-	Uuid       string         `json:"uuid"`
-	TenantID   int64          `json:"tenant_id"`
-	ClientID   sql.NullInt64  `json:"client_id"`
-	PayerID    sql.NullInt64  `json:"payer_id"`
+	ID         string         `json:"id"`
+	TenantID   string         `json:"tenant_id"`
+	ClientID   sql.NullString `json:"client_id"`
+	PayerID    sql.NullString `json:"payer_id"`
 	Name       string         `json:"name"`
 	Frequency  string         `json:"frequency"`
 	NextDue    string         `json:"next_due"`
@@ -290,7 +283,7 @@ type ListRecurringTemplatesRow struct {
 	PayerUuid  sql.NullString `json:"payer_uuid"`
 }
 
-func (q *Queries) ListRecurringTemplates(ctx context.Context, tenantID int64) ([]ListRecurringTemplatesRow, error) {
+func (q *Queries) ListRecurringTemplates(ctx context.Context, tenantID string) ([]ListRecurringTemplatesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRecurringTemplates, tenantID)
 	if err != nil {
 		return nil, err
@@ -301,7 +294,6 @@ func (q *Queries) ListRecurringTemplates(ctx context.Context, tenantID int64) ([
 		var i ListRecurringTemplatesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.PayerID,
@@ -338,8 +330,8 @@ UPDATE recurring_templates SET next_due = ?, updated_at = ? WHERE tenant_id = ? 
 type SetRecurringNextDueParams struct {
 	NextDue   string `json:"next_due"`
 	UpdatedAt string `json:"updated_at"`
-	TenantID  int64  `json:"tenant_id"`
-	ID        int64  `json:"id"`
+	TenantID  string `json:"tenant_id"`
+	ID        string `json:"id"`
 }
 
 func (q *Queries) SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error {
@@ -356,23 +348,23 @@ const updateRecurringTemplate = `-- name: UpdateRecurringTemplate :one
 UPDATE recurring_templates SET
     client_id = ?, payer_id = ?, name = ?, frequency = ?, next_due = ?,
     line_items = ?, tax_rate = ?, notes = ?, is_active = ?, updated_at = ?
-WHERE tenant_id = ? AND uuid = ?
-RETURNING id, uuid, tenant_id, client_id, payer_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at
+WHERE tenant_id = ? AND id = ?
+RETURNING id, tenant_id, client_id, payer_id, name, frequency, next_due, line_items, tax_rate, notes, is_active, created_at, updated_at
 `
 
 type UpdateRecurringTemplateParams struct {
-	ClientID  sql.NullInt64 `json:"client_id"`
-	PayerID   sql.NullInt64 `json:"payer_id"`
-	Name      string        `json:"name"`
-	Frequency string        `json:"frequency"`
-	NextDue   string        `json:"next_due"`
-	LineItems string        `json:"line_items"`
-	TaxRate   float64       `json:"tax_rate"`
-	Notes     string        `json:"notes"`
-	IsActive  int64         `json:"is_active"`
-	UpdatedAt string        `json:"updated_at"`
-	TenantID  int64         `json:"tenant_id"`
-	Uuid      string        `json:"uuid"`
+	ClientID  sql.NullString `json:"client_id"`
+	PayerID   sql.NullString `json:"payer_id"`
+	Name      string         `json:"name"`
+	Frequency string         `json:"frequency"`
+	NextDue   string         `json:"next_due"`
+	LineItems string         `json:"line_items"`
+	TaxRate   float64        `json:"tax_rate"`
+	Notes     string         `json:"notes"`
+	IsActive  int64          `json:"is_active"`
+	UpdatedAt string         `json:"updated_at"`
+	TenantID  string         `json:"tenant_id"`
+	ID        string         `json:"id"`
 }
 
 func (q *Queries) UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error) {
@@ -388,12 +380,11 @@ func (q *Queries) UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurri
 		arg.IsActive,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 	)
 	var i RecurringTemplate
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.PayerID,

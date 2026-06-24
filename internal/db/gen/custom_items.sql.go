@@ -11,14 +11,14 @@ import (
 )
 
 const createCustomItem = `-- name: CreateCustomItem :one
-INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at)
+INSERT INTO custom_items (id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at
+RETURNING id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at
 `
 
 type CreateCustomItemParams struct {
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Rate      float64        `json:"rate"`
 	Unit      sql.NullString `json:"unit"`
@@ -30,7 +30,7 @@ type CreateCustomItemParams struct {
 
 func (q *Queries) CreateCustomItem(ctx context.Context, arg CreateCustomItemParams) (CustomItem, error) {
 	row := q.db.QueryRowContext(ctx, createCustomItem,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.Name,
 		arg.Rate,
@@ -43,7 +43,6 @@ func (q *Queries) CreateCustomItem(ctx context.Context, arg CreateCustomItemPara
 	var i CustomItem
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Rate,
@@ -57,16 +56,16 @@ func (q *Queries) CreateCustomItem(ctx context.Context, arg CreateCustomItemPara
 }
 
 const deleteCustomItem = `-- name: DeleteCustomItem :exec
-DELETE FROM custom_items WHERE tenant_id = ? AND uuid = ?
+DELETE FROM custom_items WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteCustomItemParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteCustomItem(ctx context.Context, arg DeleteCustomItemParams) error {
-	_, err := q.db.ExecContext(ctx, deleteCustomItem, arg.TenantID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deleteCustomItem, arg.TenantID, arg.ID)
 	return err
 }
 
@@ -75,8 +74,8 @@ DELETE FROM custom_items WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteCustomItemByIDParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteCustomItemByID(ctx context.Context, arg DeleteCustomItemByIDParams) error {
@@ -85,20 +84,19 @@ func (q *Queries) DeleteCustomItemByID(ctx context.Context, arg DeleteCustomItem
 }
 
 const getCustomItem = `-- name: GetCustomItem :one
-SELECT id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND uuid = ?
+SELECT id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND id = ?
 `
 
 type GetCustomItemParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) GetCustomItem(ctx context.Context, arg GetCustomItemParams) (CustomItem, error) {
-	row := q.db.QueryRowContext(ctx, getCustomItem, arg.TenantID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getCustomItem, arg.TenantID, arg.ID)
 	var i CustomItem
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Rate,
@@ -112,26 +110,26 @@ func (q *Queries) GetCustomItem(ctx context.Context, arg GetCustomItemParams) (C
 }
 
 const getCustomItemIDByUUID = `-- name: GetCustomItemIDByUUID :one
-SELECT id FROM custom_items WHERE tenant_id = ? AND uuid = ?
+SELECT id FROM custom_items WHERE tenant_id = ? AND id = ?
 `
 
 type GetCustomItemIDByUUIDParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
-func (q *Queries) GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemIDByUUIDParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getCustomItemIDByUUID, arg.TenantID, arg.Uuid)
-	var id int64
+func (q *Queries) GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemIDByUUIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getCustomItemIDByUUID, arg.TenantID, arg.ID)
+	var id string
 	err := row.Scan(&id)
 	return id, err
 }
 
 const listCustomItems = `-- name: ListCustomItems :many
-SELECT id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? ORDER BY name
+SELECT id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? ORDER BY name
 `
 
-func (q *Queries) ListCustomItems(ctx context.Context, tenantID int64) ([]CustomItem, error) {
+func (q *Queries) ListCustomItems(ctx context.Context, tenantID string) ([]CustomItem, error) {
 	rows, err := q.db.QueryContext(ctx, listCustomItems, tenantID)
 	if err != nil {
 		return nil, err
@@ -142,7 +140,6 @@ func (q *Queries) ListCustomItems(ctx context.Context, tenantID int64) ([]Custom
 		var i CustomItem
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Name,
 			&i.Rate,
@@ -166,11 +163,11 @@ func (q *Queries) ListCustomItems(ctx context.Context, tenantID int64) ([]Custom
 }
 
 const searchCustomItems = `-- name: SearchCustomItems :many
-SELECT id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND name LIKE ? ORDER BY name
+SELECT id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at FROM custom_items WHERE tenant_id = ? AND name LIKE ? ORDER BY name
 `
 
 type SearchCustomItemsParams struct {
-	TenantID int64  `json:"tenant_id"`
+	TenantID string `json:"tenant_id"`
 	Name     string `json:"name"`
 }
 
@@ -185,7 +182,6 @@ func (q *Queries) SearchCustomItems(ctx context.Context, arg SearchCustomItemsPa
 		var i CustomItem
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Name,
 			&i.Rate,
@@ -210,8 +206,8 @@ func (q *Queries) SearchCustomItems(ctx context.Context, arg SearchCustomItemsPa
 
 const updateCustomItem = `-- name: UpdateCustomItem :one
 UPDATE custom_items SET name = ?, rate = ?, unit = ?, taxable = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND uuid = ?
-RETURNING id, uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at
+WHERE tenant_id = ? AND id = ?
+RETURNING id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at
 `
 
 type UpdateCustomItemParams struct {
@@ -221,8 +217,8 @@ type UpdateCustomItemParams struct {
 	Taxable   int64          `json:"taxable"`
 	Metadata  sql.NullString `json:"metadata"`
 	UpdatedAt string         `json:"updated_at"`
-	TenantID  int64          `json:"tenant_id"`
-	Uuid      string         `json:"uuid"`
+	TenantID  string         `json:"tenant_id"`
+	ID        string         `json:"id"`
 }
 
 func (q *Queries) UpdateCustomItem(ctx context.Context, arg UpdateCustomItemParams) (CustomItem, error) {
@@ -234,12 +230,11 @@ func (q *Queries) UpdateCustomItem(ctx context.Context, arg UpdateCustomItemPara
 		arg.Metadata,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 	)
 	var i CustomItem
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Rate,

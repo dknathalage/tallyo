@@ -21,7 +21,7 @@ LIMIT 50;
 SELECT * FROM items WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
 -- name: GetItemIDByUUID :one
-SELECT id FROM items WHERE tenant_id = sqlc.arg(tenant_id) AND uuid = sqlc.arg(uuid);
+SELECT id FROM items WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
 -- name: GetItemByCode :one
 SELECT * FROM items
@@ -29,13 +29,13 @@ WHERE tenant_id = sqlc.arg(tenant_id) AND price_list_version_id = sqlc.arg(versi
 
 -- name: CreateItem :one
 INSERT INTO items (
-    tenant_id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
+    tenant_id, id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpsertItem :one
 INSERT INTO items (
-    tenant_id, uuid, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
+    tenant_id, id, price_list_version_id, code, name, unit, category, unit_price, taxable, metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (price_list_version_id, code) DO UPDATE SET
     name = excluded.name,

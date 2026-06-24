@@ -12,18 +12,18 @@ import (
 
 const createClient = `-- name: CreateClient :one
 INSERT INTO clients (
-    uuid, tenant_id, name, reference, payer_id,
+    id, tenant_id, name, reference, payer_id,
     email, phone, address, metadata, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, name, reference, payer_id, email, phone, address, metadata, created_at, updated_at
+RETURNING id, tenant_id, name, reference, payer_id, email, phone, address, metadata, created_at, updated_at
 `
 
 type CreateClientParams struct {
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Reference sql.NullString `json:"reference"`
-	PayerID   sql.NullInt64  `json:"payer_id"`
+	PayerID   sql.NullString `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
@@ -34,7 +34,7 @@ type CreateClientParams struct {
 
 func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Client, error) {
 	row := q.db.QueryRowContext(ctx, createClient,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.Name,
 		arg.Reference,
@@ -49,7 +49,6 @@ func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Cli
 	var i Client
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Reference,
@@ -65,16 +64,16 @@ func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Cli
 }
 
 const deleteClient = `-- name: DeleteClient :exec
-DELETE FROM clients WHERE tenant_id = ? AND uuid = ?
+DELETE FROM clients WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteClientParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteClient(ctx context.Context, arg DeleteClientParams) error {
-	_, err := q.db.ExecContext(ctx, deleteClient, arg.TenantID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deleteClient, arg.TenantID, arg.ID)
 	return err
 }
 
@@ -83,8 +82,8 @@ DELETE FROM clients WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteClientByIDParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteClientByID(ctx context.Context, arg DeleteClientByIDParams) error {
@@ -93,24 +92,23 @@ func (q *Queries) DeleteClientByID(ctx context.Context, arg DeleteClientByIDPara
 }
 
 const getClient = `-- name: GetClient :one
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.uuid AS payer_uuid
+SELECT p.id, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.id AS payer_uuid
 FROM clients p
 LEFT JOIN payers pm ON p.payer_id = pm.id AND pm.tenant_id = p.tenant_id
-WHERE p.tenant_id = ? AND p.uuid = ?
+WHERE p.tenant_id = ? AND p.id = ?
 `
 
 type GetClientParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 type GetClientRow struct {
-	ID        int64          `json:"id"`
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Reference sql.NullString `json:"reference"`
-	PayerID   sql.NullInt64  `json:"payer_id"`
+	PayerID   sql.NullString `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
@@ -122,11 +120,10 @@ type GetClientRow struct {
 }
 
 func (q *Queries) GetClient(ctx context.Context, arg GetClientParams) (GetClientRow, error) {
-	row := q.db.QueryRowContext(ctx, getClient, arg.TenantID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getClient, arg.TenantID, arg.ID)
 	var i GetClientRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Reference,
@@ -144,24 +141,23 @@ func (q *Queries) GetClient(ctx context.Context, arg GetClientParams) (GetClient
 }
 
 const getClientByID = `-- name: GetClientByID :one
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.uuid AS payer_uuid
+SELECT p.id, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.id AS payer_uuid
 FROM clients p
 LEFT JOIN payers pm ON p.payer_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ? AND p.id = ?
 `
 
 type GetClientByIDParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 type GetClientByIDRow struct {
-	ID        int64          `json:"id"`
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Reference sql.NullString `json:"reference"`
-	PayerID   sql.NullInt64  `json:"payer_id"`
+	PayerID   sql.NullString `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
@@ -177,7 +173,6 @@ func (q *Queries) GetClientByID(ctx context.Context, arg GetClientByIDParams) (G
 	var i GetClientByIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Reference,
@@ -195,23 +190,23 @@ func (q *Queries) GetClientByID(ctx context.Context, arg GetClientByIDParams) (G
 }
 
 const getClientIDByUUID = `-- name: GetClientIDByUUID :one
-SELECT id FROM clients WHERE tenant_id = ? AND uuid = ?
+SELECT id FROM clients WHERE tenant_id = ? AND id = ?
 `
 
 type GetClientIDByUUIDParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
-func (q *Queries) GetClientIDByUUID(ctx context.Context, arg GetClientIDByUUIDParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getClientIDByUUID, arg.TenantID, arg.Uuid)
-	var id int64
+func (q *Queries) GetClientIDByUUID(ctx context.Context, arg GetClientIDByUUIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getClientIDByUUID, arg.TenantID, arg.ID)
+	var id string
 	err := row.Scan(&id)
 	return id, err
 }
 
 const listClients = `-- name: ListClients :many
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.uuid AS payer_uuid
+SELECT p.id, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.id AS payer_uuid
 FROM clients p
 LEFT JOIN payers pm ON p.payer_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ?
@@ -219,12 +214,11 @@ ORDER BY p.name
 `
 
 type ListClientsRow struct {
-	ID        int64          `json:"id"`
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Reference sql.NullString `json:"reference"`
-	PayerID   sql.NullInt64  `json:"payer_id"`
+	PayerID   sql.NullString `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
@@ -235,7 +229,7 @@ type ListClientsRow struct {
 	PayerUuid sql.NullString `json:"payer_uuid"`
 }
 
-func (q *Queries) ListClients(ctx context.Context, tenantID int64) ([]ListClientsRow, error) {
+func (q *Queries) ListClients(ctx context.Context, tenantID string) ([]ListClientsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listClients, tenantID)
 	if err != nil {
 		return nil, err
@@ -246,7 +240,6 @@ func (q *Queries) ListClients(ctx context.Context, tenantID int64) ([]ListClient
 		var i ListClientsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Name,
 			&i.Reference,
@@ -274,7 +267,7 @@ func (q *Queries) ListClients(ctx context.Context, tenantID int64) ([]ListClient
 }
 
 const searchClients = `-- name: SearchClients :many
-SELECT p.id, p.uuid, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.uuid AS payer_uuid
+SELECT p.id, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.id AS payer_uuid
 FROM clients p
 LEFT JOIN payers pm ON p.payer_id = pm.id AND pm.tenant_id = p.tenant_id
 WHERE p.tenant_id = ? AND (p.name LIKE ? OR p.email LIKE ? OR p.reference LIKE ?)
@@ -282,19 +275,18 @@ ORDER BY p.name
 `
 
 type SearchClientsParams struct {
-	TenantID  int64          `json:"tenant_id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
 	Reference sql.NullString `json:"reference"`
 }
 
 type SearchClientsRow struct {
-	ID        int64          `json:"id"`
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Reference sql.NullString `json:"reference"`
-	PayerID   sql.NullInt64  `json:"payer_id"`
+	PayerID   sql.NullString `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
@@ -321,7 +313,6 @@ func (q *Queries) SearchClients(ctx context.Context, arg SearchClientsParams) ([
 		var i SearchClientsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Name,
 			&i.Reference,
@@ -352,21 +343,21 @@ const updateClient = `-- name: UpdateClient :one
 UPDATE clients SET
     name = ?, reference = ?, payer_id = ?,
     email = ?, phone = ?, address = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND uuid = ?
-RETURNING id, uuid, tenant_id, name, reference, payer_id, email, phone, address, metadata, created_at, updated_at
+WHERE tenant_id = ? AND id = ?
+RETURNING id, tenant_id, name, reference, payer_id, email, phone, address, metadata, created_at, updated_at
 `
 
 type UpdateClientParams struct {
 	Name      string         `json:"name"`
 	Reference sql.NullString `json:"reference"`
-	PayerID   sql.NullInt64  `json:"payer_id"`
+	PayerID   sql.NullString `json:"payer_id"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
 	Metadata  sql.NullString `json:"metadata"`
 	UpdatedAt string         `json:"updated_at"`
-	TenantID  int64          `json:"tenant_id"`
-	Uuid      string         `json:"uuid"`
+	TenantID  string         `json:"tenant_id"`
+	ID        string         `json:"id"`
 }
 
 func (q *Queries) UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error) {
@@ -380,12 +371,11 @@ func (q *Queries) UpdateClient(ctx context.Context, arg UpdateClientParams) (Cli
 		arg.Metadata,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 	)
 	var i Client
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Reference,

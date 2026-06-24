@@ -9,14 +9,14 @@ FROM payments WHERE tenant_id = ? AND invoice_id = ?;
 SELECT * FROM payments WHERE tenant_id = ? AND id = ?;
 
 -- name: CreatePayment :one
-INSERT INTO payments (uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at)
+INSERT INTO payments (id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
 
 -- name: DeletePayment :exec
 DELETE FROM payments WHERE tenant_id = ? AND id = ?;
 
 -- name: GetPaymentByUUID :one
-SELECT * FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?;
+SELECT * FROM payments WHERE tenant_id = ? AND invoice_id = ? AND id = ?;
 
 -- name: DeletePaymentByUUID :exec
-DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?;
+DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND id = ?;

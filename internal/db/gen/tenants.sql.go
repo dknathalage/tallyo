@@ -10,13 +10,13 @@ import (
 )
 
 const createTenant = `-- name: CreateTenant :one
-INSERT INTO tenants (uuid, name, status, created_at, updated_at)
+INSERT INTO tenants (id, name, status, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, uuid, name, status, created_at, updated_at
+RETURNING id, name, status, created_at, updated_at
 `
 
 type CreateTenantParams struct {
-	Uuid      string `json:"uuid"`
+	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
@@ -25,7 +25,7 @@ type CreateTenantParams struct {
 
 func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error) {
 	row := q.db.QueryRowContext(ctx, createTenant,
-		arg.Uuid,
+		arg.ID,
 		arg.Name,
 		arg.Status,
 		arg.CreatedAt,
@@ -34,7 +34,6 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 	var i Tenant
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.Name,
 		&i.Status,
 		&i.CreatedAt,
@@ -47,21 +46,20 @@ const deleteTenant = `-- name: DeleteTenant :exec
 DELETE FROM tenants WHERE id = ?
 `
 
-func (q *Queries) DeleteTenant(ctx context.Context, id int64) error {
+func (q *Queries) DeleteTenant(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteTenant, id)
 	return err
 }
 
 const getTenant = `-- name: GetTenant :one
-SELECT id, uuid, name, status, created_at, updated_at FROM tenants WHERE id = ?
+SELECT id, name, status, created_at, updated_at FROM tenants WHERE id = ?
 `
 
-func (q *Queries) GetTenant(ctx context.Context, id int64) (Tenant, error) {
+func (q *Queries) GetTenant(ctx context.Context, id string) (Tenant, error) {
 	row := q.db.QueryRowContext(ctx, getTenant, id)
 	var i Tenant
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.Name,
 		&i.Status,
 		&i.CreatedAt,
@@ -71,15 +69,14 @@ func (q *Queries) GetTenant(ctx context.Context, id int64) (Tenant, error) {
 }
 
 const getTenantByUUID = `-- name: GetTenantByUUID :one
-SELECT id, uuid, name, status, created_at, updated_at FROM tenants WHERE uuid = ?
+SELECT id, name, status, created_at, updated_at FROM tenants WHERE id = ?
 `
 
-func (q *Queries) GetTenantByUUID(ctx context.Context, uuid string) (Tenant, error) {
-	row := q.db.QueryRowContext(ctx, getTenantByUUID, uuid)
+func (q *Queries) GetTenantByUUID(ctx context.Context, id string) (Tenant, error) {
+	row := q.db.QueryRowContext(ctx, getTenantByUUID, id)
 	var i Tenant
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.Name,
 		&i.Status,
 		&i.CreatedAt,
@@ -92,15 +89,15 @@ const listActiveTenantIDs = `-- name: ListActiveTenantIDs :many
 SELECT id FROM tenants WHERE status = 'active' ORDER BY id
 `
 
-func (q *Queries) ListActiveTenantIDs(ctx context.Context) ([]int64, error) {
+func (q *Queries) ListActiveTenantIDs(ctx context.Context) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, listActiveTenantIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []int64
+	var items []string
 	for rows.Next() {
-		var id int64
+		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -116,7 +113,7 @@ func (q *Queries) ListActiveTenantIDs(ctx context.Context) ([]int64, error) {
 }
 
 const listTenants = `-- name: ListTenants :many
-SELECT id, uuid, name, status, created_at, updated_at FROM tenants ORDER BY created_at DESC
+SELECT id, name, status, created_at, updated_at FROM tenants ORDER BY created_at DESC
 `
 
 func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
@@ -130,7 +127,6 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 		var i Tenant
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.Name,
 			&i.Status,
 			&i.CreatedAt,
@@ -152,13 +148,13 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 const updateTenant = `-- name: UpdateTenant :one
 UPDATE tenants SET name = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, uuid, name, status, created_at, updated_at
+RETURNING id, name, status, created_at, updated_at
 `
 
 type UpdateTenantParams struct {
 	Name      string `json:"name"`
 	UpdatedAt string `json:"updated_at"`
-	ID        int64  `json:"id"`
+	ID        string `json:"id"`
 }
 
 func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error) {
@@ -166,7 +162,6 @@ func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Ten
 	var i Tenant
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.Name,
 		&i.Status,
 		&i.CreatedAt,
@@ -182,7 +177,7 @@ UPDATE tenants SET status = ?, updated_at = ? WHERE id = ?
 type UpdateTenantStatusParams struct {
 	Status    string `json:"status"`
 	UpdatedAt string `json:"updated_at"`
-	ID        int64  `json:"id"`
+	ID        string `json:"id"`
 }
 
 func (q *Queries) UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error {

@@ -2,7 +2,7 @@
 SELECT COUNT(*) FROM users WHERE tenant_id = ?;
 
 -- name: CreateUser :one
-INSERT INTO users (uuid, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at)
+INSERT INTO users (id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -16,7 +16,7 @@ SELECT * FROM users WHERE email = ?;
 SELECT COUNT(*) FROM users WHERE email = ?;
 
 -- name: ListTenantsByEmail :many
-SELECT u.tenant_id, t.name AS tenant_name, t.uuid AS tenant_uuid, u.role AS role
+SELECT u.tenant_id, t.name AS tenant_name, t.id AS tenant_uuid, u.role AS role
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
 WHERE u.email = ?

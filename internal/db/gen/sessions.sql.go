@@ -16,9 +16,9 @@ WHERE tenant_id = ? AND invoice_id = ?
 `
 
 type ClearSessionsForInvoiceParams struct {
-	UpdatedAt string        `json:"updated_at"`
-	TenantID  int64         `json:"tenant_id"`
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
+	UpdatedAt string         `json:"updated_at"`
+	TenantID  string         `json:"tenant_id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
 }
 
 func (q *Queries) ClearSessionsForInvoice(ctx context.Context, arg ClearSessionsForInvoiceParams) error {
@@ -34,13 +34,13 @@ GROUP BY client_id
 `
 
 type ClientUnbilledAggRow struct {
-	ClientID int64       `json:"client_id"`
+	ClientID string      `json:"client_id"`
 	Cnt      int64       `json:"cnt"`
 	FromDate interface{} `json:"from_date"`
 	ToDate   interface{} `json:"to_date"`
 }
 
-func (q *Queries) ClientUnbilledAgg(ctx context.Context, tenantID int64) ([]ClientUnbilledAggRow, error) {
+func (q *Queries) ClientUnbilledAgg(ctx context.Context, tenantID string) ([]ClientUnbilledAggRow, error) {
 	rows, err := q.db.QueryContext(ctx, clientUnbilledAgg, tenantID)
 	if err != nil {
 		return nil, err
@@ -70,28 +70,28 @@ func (q *Queries) ClientUnbilledAgg(ctx context.Context, tenantID int64) ([]Clie
 
 const createSession = `-- name: CreateSession :one
 INSERT INTO work_sessions (
-    uuid, tenant_id, client_id, service_date, note, tags, status,
+    id, tenant_id, client_id, service_date, note, tags, status,
     author_user_id, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, client_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at
+RETURNING id, tenant_id, client_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at
 `
 
 type CreateSessionParams struct {
-	Uuid         string        `json:"uuid"`
-	TenantID     int64         `json:"tenant_id"`
-	ClientID     int64         `json:"client_id"`
-	ServiceDate  string        `json:"service_date"`
-	Note         string        `json:"note"`
-	Tags         string        `json:"tags"`
-	Status       string        `json:"status"`
-	AuthorUserID sql.NullInt64 `json:"author_user_id"`
-	CreatedAt    string        `json:"created_at"`
-	UpdatedAt    string        `json:"updated_at"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
+	ServiceDate  string         `json:"service_date"`
+	Note         string         `json:"note"`
+	Tags         string         `json:"tags"`
+	Status       string         `json:"status"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (WorkSession, error) {
 	row := q.db.QueryRowContext(ctx, createSession,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.ClientID,
 		arg.ServiceDate,
@@ -105,7 +105,6 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (W
 	var i WorkSession
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.ServiceDate,
@@ -121,43 +120,42 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (W
 }
 
 const deleteSession = `-- name: DeleteSession :exec
-DELETE FROM work_sessions WHERE tenant_id = ? AND uuid = ?
+DELETE FROM work_sessions WHERE tenant_id = ? AND id = ?
 `
 
 type DeleteSessionParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteSession(ctx context.Context, arg DeleteSessionParams) error {
-	_, err := q.db.ExecContext(ctx, deleteSession, arg.TenantID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deleteSession, arg.TenantID, arg.ID)
 	return err
 }
 
 const getSession = `-- name: GetSession :one
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.uuid = ?
+WHERE s.tenant_id = ? AND s.id = ?
 `
 
 type GetSessionParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 type GetSessionRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -165,11 +163,10 @@ type GetSessionRow struct {
 }
 
 func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error) {
-	row := q.db.QueryRowContext(ctx, getSession, arg.TenantID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getSession, arg.TenantID, arg.ID)
 	var i GetSessionRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.ServiceDate,
@@ -187,7 +184,7 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSess
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -195,21 +192,20 @@ WHERE s.tenant_id = ? AND s.id = ?
 `
 
 type GetSessionByIDParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 type GetSessionByIDRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -221,7 +217,6 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 	var i GetSessionByIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.ServiceDate,
@@ -239,23 +234,23 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 }
 
 const getSessionIDByUUID = `-- name: GetSessionIDByUUID :one
-SELECT id FROM work_sessions WHERE tenant_id = ? AND uuid = ?
+SELECT id FROM work_sessions WHERE tenant_id = ? AND id = ?
 `
 
 type GetSessionIDByUUIDParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
-func (q *Queries) GetSessionIDByUUID(ctx context.Context, arg GetSessionIDByUUIDParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getSessionIDByUUID, arg.TenantID, arg.Uuid)
-	var id int64
+func (q *Queries) GetSessionIDByUUID(ctx context.Context, arg GetSessionIDByUUIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getSessionIDByUUID, arg.TenantID, arg.ID)
+	var id string
 	err := row.Scan(&id)
 	return id, err
 }
 
 const listRecordedUnbilledByClient = `-- name: ListRecordedUnbilledByClient :many
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -264,21 +259,20 @@ ORDER BY s.service_date, s.id
 `
 
 type ListRecordedUnbilledByClientParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ClientID int64 `json:"client_id"`
+	TenantID string `json:"tenant_id"`
+	ClientID string `json:"client_id"`
 }
 
 type ListRecordedUnbilledByClientRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -296,7 +290,6 @@ func (q *Queries) ListRecordedUnbilledByClient(ctx context.Context, arg ListReco
 		var i ListRecordedUnbilledByClientRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.ServiceDate,
@@ -324,7 +317,7 @@ func (q *Queries) ListRecordedUnbilledByClient(ctx context.Context, arg ListReco
 }
 
 const listScheduledSessions = `-- name: ListScheduledSessions :many
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -332,23 +325,22 @@ WHERE s.tenant_id = ? AND s.status = 'scheduled' ORDER BY s.service_date, s.id
 `
 
 type ListScheduledSessionsRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
 	InvoiceUuid  sql.NullString `json:"invoice_uuid"`
 }
 
-func (q *Queries) ListScheduledSessions(ctx context.Context, tenantID int64) ([]ListScheduledSessionsRow, error) {
+func (q *Queries) ListScheduledSessions(ctx context.Context, tenantID string) ([]ListScheduledSessionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listScheduledSessions, tenantID)
 	if err != nil {
 		return nil, err
@@ -359,7 +351,6 @@ func (q *Queries) ListScheduledSessions(ctx context.Context, tenantID int64) ([]
 		var i ListScheduledSessionsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.ServiceDate,
@@ -388,7 +379,7 @@ func (q *Queries) ListScheduledSessions(ctx context.Context, tenantID int64) ([]
 
 const listSessions = `-- name: ListSessions :many
 
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -396,16 +387,15 @@ WHERE s.tenant_id = ? ORDER BY s.service_date DESC, s.id DESC
 `
 
 type ListSessionsRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -417,7 +407,7 @@ type ListSessionsRow struct {
 // client FK as its uuid (clientId) instead of the internal int, and
 // LEFT JOIN invoices for i.uuid so the linked-invoice FK surfaces as its uuid
 // (invoiceId) instead of the internal int.
-func (q *Queries) ListSessions(ctx context.Context, tenantID int64) ([]ListSessionsRow, error) {
+func (q *Queries) ListSessions(ctx context.Context, tenantID string) ([]ListSessionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSessions, tenantID)
 	if err != nil {
 		return nil, err
@@ -428,7 +418,6 @@ func (q *Queries) ListSessions(ctx context.Context, tenantID int64) ([]ListSessi
 		var i ListSessionsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.ServiceDate,
@@ -456,7 +445,7 @@ func (q *Queries) ListSessions(ctx context.Context, tenantID int64) ([]ListSessi
 }
 
 const listSessionsByClient = `-- name: ListSessionsByClient :many
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -465,21 +454,20 @@ ORDER BY s.service_date, s.id
 `
 
 type ListSessionsByClientParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ClientID int64 `json:"client_id"`
+	TenantID string `json:"tenant_id"`
+	ClientID string `json:"client_id"`
 }
 
 type ListSessionsByClientRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -497,7 +485,6 @@ func (q *Queries) ListSessionsByClient(ctx context.Context, arg ListSessionsByCl
 		var i ListSessionsByClientRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.ServiceDate,
@@ -525,7 +512,7 @@ func (q *Queries) ListSessionsByClient(ctx context.Context, arg ListSessionsByCl
 }
 
 const listSessionsByClientRange = `-- name: ListSessionsByClientRange :many
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -535,23 +522,22 @@ ORDER BY s.service_date, s.id
 `
 
 type ListSessionsByClientRangeParams struct {
-	TenantID      int64  `json:"tenant_id"`
-	ClientID      int64  `json:"client_id"`
+	TenantID      string `json:"tenant_id"`
+	ClientID      string `json:"client_id"`
 	ServiceDate   string `json:"service_date"`
 	ServiceDate_2 string `json:"service_date_2"`
 }
 
 type ListSessionsByClientRangeRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -574,7 +560,6 @@ func (q *Queries) ListSessionsByClientRange(ctx context.Context, arg ListSession
 		var i ListSessionsByClientRangeRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.ServiceDate,
@@ -602,7 +587,7 @@ func (q *Queries) ListSessionsByClientRange(ctx context.Context, arg ListSession
 }
 
 const listSessionsByStatus = `-- name: ListSessionsByStatus :many
-SELECT s.id, s.uuid, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.uuid AS client_uuid, i.uuid AS invoice_uuid
+SELECT s.id, s.tenant_id, s.client_id, s.service_date, s.note, s.tags, s.status, s.invoice_id, s.author_user_id, s.created_at, s.updated_at, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
@@ -610,21 +595,20 @@ WHERE s.tenant_id = ? AND s.status = ? ORDER BY s.service_date, s.id
 `
 
 type ListSessionsByStatusParams struct {
-	TenantID int64  `json:"tenant_id"`
+	TenantID string `json:"tenant_id"`
 	Status   string `json:"status"`
 }
 
 type ListSessionsByStatusRow struct {
-	ID           int64          `json:"id"`
-	Uuid         string         `json:"uuid"`
-	TenantID     int64          `json:"tenant_id"`
-	ClientID     int64          `json:"client_id"`
+	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id"`
+	ClientID     string         `json:"client_id"`
 	ServiceDate  string         `json:"service_date"`
 	Note         string         `json:"note"`
 	Tags         string         `json:"tags"`
 	Status       string         `json:"status"`
-	InvoiceID    sql.NullInt64  `json:"invoice_id"`
-	AuthorUserID sql.NullInt64  `json:"author_user_id"`
+	InvoiceID    sql.NullString `json:"invoice_id"`
+	AuthorUserID sql.NullString `json:"author_user_id"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 	ClientUuid   sql.NullString `json:"client_uuid"`
@@ -642,7 +626,6 @@ func (q *Queries) ListSessionsByStatus(ctx context.Context, arg ListSessionsBySt
 		var i ListSessionsByStatusRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.ClientID,
 			&i.ServiceDate,
@@ -674,11 +657,11 @@ UPDATE work_sessions SET invoice_id = ?, status = ?, updated_at = ? WHERE tenant
 `
 
 type SetSessionInvoiceParams struct {
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
-	Status    string        `json:"status"`
-	UpdatedAt string        `json:"updated_at"`
-	TenantID  int64         `json:"tenant_id"`
-	ID        int64         `json:"id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
+	Status    string         `json:"status"`
+	UpdatedAt string         `json:"updated_at"`
+	TenantID  string         `json:"tenant_id"`
+	ID        string         `json:"id"`
 }
 
 func (q *Queries) SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error {
@@ -697,10 +680,10 @@ UPDATE work_sessions SET status = ?, updated_at = ? WHERE tenant_id = ? AND invo
 `
 
 type SetStatusForInvoiceParams struct {
-	Status    string        `json:"status"`
-	UpdatedAt string        `json:"updated_at"`
-	TenantID  int64         `json:"tenant_id"`
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
+	Status    string         `json:"status"`
+	UpdatedAt string         `json:"updated_at"`
+	TenantID  string         `json:"tenant_id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
 }
 
 func (q *Queries) SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error {
@@ -716,8 +699,8 @@ func (q *Queries) SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoi
 const updateSession = `-- name: UpdateSession :one
 UPDATE work_sessions SET
     service_date = ?, note = ?, tags = ?, status = ?, updated_at = ?
-WHERE tenant_id = ? AND uuid = ?
-RETURNING id, uuid, tenant_id, client_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at
+WHERE tenant_id = ? AND id = ?
+RETURNING id, tenant_id, client_id, service_date, note, tags, status, invoice_id, author_user_id, created_at, updated_at
 `
 
 type UpdateSessionParams struct {
@@ -726,8 +709,8 @@ type UpdateSessionParams struct {
 	Tags        string `json:"tags"`
 	Status      string `json:"status"`
 	UpdatedAt   string `json:"updated_at"`
-	TenantID    int64  `json:"tenant_id"`
-	Uuid        string `json:"uuid"`
+	TenantID    string `json:"tenant_id"`
+	ID          string `json:"id"`
 }
 
 func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (WorkSession, error) {
@@ -738,12 +721,11 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (W
 		arg.Status,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 	)
 	var i WorkSession
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.ClientID,
 		&i.ServiceDate,
@@ -759,14 +741,14 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (W
 }
 
 const updateSessionStatus = `-- name: UpdateSessionStatus :exec
-UPDATE work_sessions SET status = ?, updated_at = ? WHERE tenant_id = ? AND uuid = ?
+UPDATE work_sessions SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
 `
 
 type UpdateSessionStatusParams struct {
 	Status    string `json:"status"`
 	UpdatedAt string `json:"updated_at"`
-	TenantID  int64  `json:"tenant_id"`
-	Uuid      string `json:"uuid"`
+	TenantID  string `json:"tenant_id"`
+	ID        string `json:"id"`
 }
 
 func (q *Queries) UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error {
@@ -774,7 +756,7 @@ func (q *Queries) UpdateSessionStatus(ctx context.Context, arg UpdateSessionStat
 		arg.Status,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 	)
 	return err
 }

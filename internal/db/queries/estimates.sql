@@ -1,5 +1,5 @@
 -- name: ListEstimates :many
-SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid, ci.id AS converted_invoice_uuid
 FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
@@ -8,7 +8,7 @@ WHERE e.tenant_id = ?
 ORDER BY e.created_at DESC;
 
 -- name: ListEstimatesByStatus :many
-SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid, ci.id AS converted_invoice_uuid
 FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
@@ -17,7 +17,7 @@ WHERE e.tenant_id = ? AND e.status = ?
 ORDER BY e.created_at DESC;
 
 -- name: ListClientEstimates :many
-SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid, ci.id AS converted_invoice_uuid
 FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
@@ -26,15 +26,15 @@ WHERE e.tenant_id = ? AND e.client_id = ?
 ORDER BY e.created_at DESC;
 
 -- name: GetEstimate :one
-SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid, ci.id AS converted_invoice_uuid
 FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.uuid = ?;
+WHERE e.tenant_id = ? AND e.id = ?;
 
 -- name: GetEstimateByID :one
-SELECT e.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid, ci.uuid AS converted_invoice_uuid
+SELECT e.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid, ci.id AS converted_invoice_uuid
 FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
@@ -42,11 +42,11 @@ LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.ten
 WHERE e.tenant_id = ? AND e.id = ?;
 
 -- name: GetEstimateIDByUUID :one
-SELECT id FROM estimates WHERE tenant_id = ? AND uuid = ?;
+SELECT id FROM estimates WHERE tenant_id = ? AND id = ?;
 
 -- name: CreateEstimate :one
 INSERT INTO estimates (
-    uuid, tenant_id, number, client_id, payer_id, status, issue_date, valid_until,
+    id, tenant_id, number, client_id, payer_id, status, issue_date, valid_until,
     subtotal, tax, total, notes, converted_invoice_id,
     business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

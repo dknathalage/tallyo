@@ -1,5 +1,5 @@
 -- name: ListInvoices :many
-SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT i.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
@@ -7,7 +7,7 @@ WHERE i.tenant_id = ?
 ORDER BY i.created_at DESC;
 
 -- name: ListInvoicesByStatus :many
-SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT i.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
@@ -15,7 +15,7 @@ WHERE i.tenant_id = ? AND i.status = ?
 ORDER BY i.created_at DESC;
 
 -- name: ListClientInvoices :many
-SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT i.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
@@ -23,25 +23,25 @@ WHERE i.tenant_id = ? AND i.client_id = ?
 ORDER BY i.created_at DESC;
 
 -- name: GetInvoice :one
-SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT i.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.uuid = ?;
+WHERE i.tenant_id = ? AND i.id = ?;
 
 -- name: GetInvoiceByID :one
-SELECT i.*, p.name AS client_name, p.uuid AS client_uuid, pm.uuid AS payer_uuid
+SELECT i.*, p.name AS client_name, p.id AS client_uuid, pm.id AS payer_uuid
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
 WHERE i.tenant_id = ? AND i.id = ?;
 
 -- name: GetInvoiceIDByUUID :one
-SELECT id FROM invoices WHERE tenant_id = ? AND uuid = ?;
+SELECT id FROM invoices WHERE tenant_id = ? AND id = ?;
 
 -- name: CreateInvoice :one
 INSERT INTO invoices (
-    uuid, tenant_id, number, client_id, payer_id, status, issue_date, due_date,
+    id, tenant_id, number, client_id, payer_id, status, issue_date, due_date,
     subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot,
     created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

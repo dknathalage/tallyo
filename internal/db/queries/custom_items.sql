@@ -5,23 +5,23 @@ SELECT * FROM custom_items WHERE tenant_id = ? ORDER BY name;
 SELECT * FROM custom_items WHERE tenant_id = ? AND name LIKE ? ORDER BY name;
 
 -- name: GetCustomItem :one
-SELECT * FROM custom_items WHERE tenant_id = ? AND uuid = ?;
+SELECT * FROM custom_items WHERE tenant_id = ? AND id = ?;
 
 -- name: GetCustomItemIDByUUID :one
-SELECT id FROM custom_items WHERE tenant_id = ? AND uuid = ?;
+SELECT id FROM custom_items WHERE tenant_id = ? AND id = ?;
 
 -- name: CreateCustomItem :one
-INSERT INTO custom_items (uuid, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at)
+INSERT INTO custom_items (id, tenant_id, name, rate, unit, taxable, metadata, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateCustomItem :one
 UPDATE custom_items SET name = ?, rate = ?, unit = ?, taxable = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND uuid = ?
+WHERE tenant_id = ? AND id = ?
 RETURNING *;
 
 -- name: DeleteCustomItem :exec
-DELETE FROM custom_items WHERE tenant_id = ? AND uuid = ?;
+DELETE FROM custom_items WHERE tenant_id = ? AND id = ?;
 
 -- name: DeleteCustomItemByID :exec
 DELETE FROM custom_items WHERE tenant_id = ? AND id = ?;

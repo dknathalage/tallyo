@@ -11,14 +11,14 @@ import (
 )
 
 const createPayer = `-- name: CreatePayer :one
-INSERT INTO payers (uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at)
+INSERT INTO payers (id, tenant_id, name, email, phone, address, metadata, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at
+RETURNING id, tenant_id, name, email, phone, address, metadata, created_at, updated_at
 `
 
 type CreatePayerParams struct {
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
 	Name      string         `json:"name"`
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
@@ -30,7 +30,7 @@ type CreatePayerParams struct {
 
 func (q *Queries) CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error) {
 	row := q.db.QueryRowContext(ctx, createPayer,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.Name,
 		arg.Email,
@@ -43,7 +43,6 @@ func (q *Queries) CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer
 	var i Payer
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Email,
@@ -57,16 +56,16 @@ func (q *Queries) CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer
 }
 
 const deletePayer = `-- name: DeletePayer :exec
-DELETE FROM payers WHERE tenant_id = ? AND uuid = ?
+DELETE FROM payers WHERE tenant_id = ? AND id = ?
 `
 
 type DeletePayerParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeletePayer(ctx context.Context, arg DeletePayerParams) error {
-	_, err := q.db.ExecContext(ctx, deletePayer, arg.TenantID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deletePayer, arg.TenantID, arg.ID)
 	return err
 }
 
@@ -75,8 +74,8 @@ DELETE FROM payers WHERE tenant_id = ? AND id = ?
 `
 
 type DeletePayerByIDParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeletePayerByID(ctx context.Context, arg DeletePayerByIDParams) error {
@@ -85,20 +84,19 @@ func (q *Queries) DeletePayerByID(ctx context.Context, arg DeletePayerByIDParams
 }
 
 const getPayer = `-- name: GetPayer :one
-SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? AND uuid = ?
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? AND id = ?
 `
 
 type GetPayerParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) GetPayer(ctx context.Context, arg GetPayerParams) (Payer, error) {
-	row := q.db.QueryRowContext(ctx, getPayer, arg.TenantID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getPayer, arg.TenantID, arg.ID)
 	var i Payer
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Email,
@@ -112,12 +110,12 @@ func (q *Queries) GetPayer(ctx context.Context, arg GetPayerParams) (Payer, erro
 }
 
 const getPayerByID = `-- name: GetPayerByID :one
-SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? AND id = ?
 `
 
 type GetPayerByIDParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Payer, error) {
@@ -125,7 +123,6 @@ func (q *Queries) GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Pay
 	var i Payer
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Email,
@@ -139,26 +136,26 @@ func (q *Queries) GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Pay
 }
 
 const getPayerIDByUUID = `-- name: GetPayerIDByUUID :one
-SELECT id FROM payers WHERE tenant_id = ? AND uuid = ?
+SELECT id FROM payers WHERE tenant_id = ? AND id = ?
 `
 
 type GetPayerIDByUUIDParams struct {
-	TenantID int64  `json:"tenant_id"`
-	Uuid     string `json:"uuid"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
-func (q *Queries) GetPayerIDByUUID(ctx context.Context, arg GetPayerIDByUUIDParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getPayerIDByUUID, arg.TenantID, arg.Uuid)
-	var id int64
+func (q *Queries) GetPayerIDByUUID(ctx context.Context, arg GetPayerIDByUUIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getPayerIDByUUID, arg.TenantID, arg.ID)
+	var id string
 	err := row.Scan(&id)
 	return id, err
 }
 
 const listPayers = `-- name: ListPayers :many
-SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? ORDER BY name
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? ORDER BY name
 `
 
-func (q *Queries) ListPayers(ctx context.Context, tenantID int64) ([]Payer, error) {
+func (q *Queries) ListPayers(ctx context.Context, tenantID string) ([]Payer, error) {
 	rows, err := q.db.QueryContext(ctx, listPayers, tenantID)
 	if err != nil {
 		return nil, err
@@ -169,7 +166,6 @@ func (q *Queries) ListPayers(ctx context.Context, tenantID int64) ([]Payer, erro
 		var i Payer
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Name,
 			&i.Email,
@@ -193,13 +189,13 @@ func (q *Queries) ListPayers(ctx context.Context, tenantID int64) ([]Payer, erro
 }
 
 const searchPayers = `-- name: SearchPayers :many
-SELECT id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers
 WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ?)
 ORDER BY name
 `
 
 type SearchPayersParams struct {
-	TenantID int64          `json:"tenant_id"`
+	TenantID string         `json:"tenant_id"`
 	Name     string         `json:"name"`
 	Email    sql.NullString `json:"email"`
 }
@@ -215,7 +211,6 @@ func (q *Queries) SearchPayers(ctx context.Context, arg SearchPayersParams) ([]P
 		var i Payer
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.Name,
 			&i.Email,
@@ -240,8 +235,8 @@ func (q *Queries) SearchPayers(ctx context.Context, arg SearchPayersParams) ([]P
 
 const updatePayer = `-- name: UpdatePayer :one
 UPDATE payers SET name = ?, email = ?, phone = ?, address = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND uuid = ?
-RETURNING id, uuid, tenant_id, name, email, phone, address, metadata, created_at, updated_at
+WHERE tenant_id = ? AND id = ?
+RETURNING id, tenant_id, name, email, phone, address, metadata, created_at, updated_at
 `
 
 type UpdatePayerParams struct {
@@ -251,8 +246,8 @@ type UpdatePayerParams struct {
 	Address   sql.NullString `json:"address"`
 	Metadata  sql.NullString `json:"metadata"`
 	UpdatedAt string         `json:"updated_at"`
-	TenantID  int64          `json:"tenant_id"`
-	Uuid      string         `json:"uuid"`
+	TenantID  string         `json:"tenant_id"`
+	ID        string         `json:"id"`
 }
 
 func (q *Queries) UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error) {
@@ -264,12 +259,11 @@ func (q *Queries) UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer
 		arg.Metadata,
 		arg.UpdatedAt,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 	)
 	var i Payer
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Email,

@@ -1,5 +1,5 @@
 -- name: CreateInvite :one
-INSERT INTO invites (uuid, tenant_id, token, email, role, created_by, expires_at, created_at)
+INSERT INTO invites (id, tenant_id, token, email, role, created_by, expires_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -16,4 +16,4 @@ UPDATE invites SET accepted_at = ? WHERE token = ?;
 DELETE FROM invites WHERE tenant_id = ? AND id = ?;
 
 -- name: DeleteInviteByUUID :exec
-DELETE FROM invites WHERE tenant_id = ? AND uuid = ?;
+DELETE FROM invites WHERE tenant_id = ? AND id = ?;

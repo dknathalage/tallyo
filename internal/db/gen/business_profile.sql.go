@@ -11,15 +11,14 @@ import (
 )
 
 const getBusinessProfile = `-- name: GetBusinessProfile :one
-SELECT id, uuid, tenant_id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = ?
+SELECT id, tenant_id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = ?
 `
 
-func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID int64) (BusinessProfile, error) {
+func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID string) (BusinessProfile, error) {
 	row := q.db.QueryRowContext(ctx, getBusinessProfile, tenantID)
 	var i BusinessProfile
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.Name,
 		&i.Abn,
@@ -37,7 +36,7 @@ func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID int64) (Busin
 
 const upsertBusinessProfile = `-- name: UpsertBusinessProfile :exec
 INSERT INTO business_profile (
-    tenant_id, uuid, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at
+    tenant_id, id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(tenant_id) DO UPDATE SET
     name = excluded.name,
@@ -52,8 +51,8 @@ ON CONFLICT(tenant_id) DO UPDATE SET
 `
 
 type UpsertBusinessProfileParams struct {
-	TenantID        int64          `json:"tenant_id"`
-	Uuid            string         `json:"uuid"`
+	TenantID        string         `json:"tenant_id"`
+	ID              string         `json:"id"`
 	Name            string         `json:"name"`
 	Abn             sql.NullString `json:"abn"`
 	Email           sql.NullString `json:"email"`
@@ -69,7 +68,7 @@ type UpsertBusinessProfileParams struct {
 func (q *Queries) UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error {
 	_, err := q.db.ExecContext(ctx, upsertBusinessProfile,
 		arg.TenantID,
-		arg.Uuid,
+		arg.ID,
 		arg.Name,
 		arg.Abn,
 		arg.Email,

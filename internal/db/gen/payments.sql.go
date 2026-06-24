@@ -11,14 +11,14 @@ import (
 )
 
 const createPayment = `-- name: CreatePayment :one
-INSERT INTO payments (uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at
+INSERT INTO payments (id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at
 `
 
 type CreatePaymentParams struct {
-	Uuid      string         `json:"uuid"`
-	TenantID  int64          `json:"tenant_id"`
-	InvoiceID int64          `json:"invoice_id"`
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenant_id"`
+	InvoiceID string         `json:"invoice_id"`
 	Amount    float64        `json:"amount"`
 	PaidAt    string         `json:"paid_at"`
 	Method    sql.NullString `json:"method"`
@@ -30,7 +30,7 @@ type CreatePaymentParams struct {
 
 func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error) {
 	row := q.db.QueryRowContext(ctx, createPayment,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.InvoiceID,
 		arg.Amount,
@@ -44,7 +44,6 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 	var i Payment
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.InvoiceID,
 		&i.Amount,
@@ -63,8 +62,8 @@ DELETE FROM payments WHERE tenant_id = ? AND id = ?
 `
 
 type DeletePaymentParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeletePayment(ctx context.Context, arg DeletePaymentParams) error {
@@ -73,27 +72,27 @@ func (q *Queries) DeletePayment(ctx context.Context, arg DeletePaymentParams) er
 }
 
 const deletePaymentByUUID = `-- name: DeletePaymentByUUID :exec
-DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?
+DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND id = ?
 `
 
 type DeletePaymentByUUIDParams struct {
-	TenantID  int64  `json:"tenant_id"`
-	InvoiceID int64  `json:"invoice_id"`
-	Uuid      string `json:"uuid"`
+	TenantID  string `json:"tenant_id"`
+	InvoiceID string `json:"invoice_id"`
+	ID        string `json:"id"`
 }
 
 func (q *Queries) DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error {
-	_, err := q.db.ExecContext(ctx, deletePaymentByUUID, arg.TenantID, arg.InvoiceID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deletePaymentByUUID, arg.TenantID, arg.InvoiceID, arg.ID)
 	return err
 }
 
 const getPayment = `-- name: GetPayment :one
-SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND id = ?
 `
 
 type GetPaymentParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error) {
@@ -101,7 +100,6 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Payment
 	var i Payment
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.InvoiceID,
 		&i.Amount,
@@ -116,21 +114,20 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Payment
 }
 
 const getPaymentByUUID = `-- name: GetPaymentByUUID :one
-SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? AND uuid = ?
+SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? AND id = ?
 `
 
 type GetPaymentByUUIDParams struct {
-	TenantID  int64  `json:"tenant_id"`
-	InvoiceID int64  `json:"invoice_id"`
-	Uuid      string `json:"uuid"`
+	TenantID  string `json:"tenant_id"`
+	InvoiceID string `json:"invoice_id"`
+	ID        string `json:"id"`
 }
 
 func (q *Queries) GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error) {
-	row := q.db.QueryRowContext(ctx, getPaymentByUUID, arg.TenantID, arg.InvoiceID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getPaymentByUUID, arg.TenantID, arg.InvoiceID, arg.ID)
 	var i Payment
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.InvoiceID,
 		&i.Amount,
@@ -150,8 +147,8 @@ FROM payments WHERE tenant_id = ? AND invoice_id = ?
 `
 
 type InvoiceTotalPaidParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	InvoiceID int64 `json:"invoice_id"`
+	TenantID  string `json:"tenant_id"`
+	InvoiceID string `json:"invoice_id"`
 }
 
 func (q *Queries) InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error) {
@@ -162,12 +159,12 @@ func (q *Queries) InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidPara
 }
 
 const listInvoicePayments = `-- name: ListInvoicePayments :many
-SELECT id, uuid, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? ORDER BY paid_at, id
+SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? ORDER BY paid_at, id
 `
 
 type ListInvoicePaymentsParams struct {
-	TenantID  int64 `json:"tenant_id"`
-	InvoiceID int64 `json:"invoice_id"`
+	TenantID  string `json:"tenant_id"`
+	InvoiceID string `json:"invoice_id"`
 }
 
 func (q *Queries) ListInvoicePayments(ctx context.Context, arg ListInvoicePaymentsParams) ([]Payment, error) {
@@ -181,7 +178,6 @@ func (q *Queries) ListInvoicePayments(ctx context.Context, arg ListInvoicePaymen
 		var i Payment
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.InvoiceID,
 			&i.Amount,

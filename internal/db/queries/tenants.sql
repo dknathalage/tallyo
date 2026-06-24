@@ -1,5 +1,5 @@
 -- name: CreateTenant :one
-INSERT INTO tenants (uuid, name, status, created_at, updated_at)
+INSERT INTO tenants (id, name, status, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM tenants WHERE id = ?;
 
 -- name: GetTenantByUUID :one
-SELECT * FROM tenants WHERE uuid = ?;
+SELECT * FROM tenants WHERE id = ?;
 
 -- name: ListTenants :many
 SELECT * FROM tenants ORDER BY created_at DESC;

@@ -15,8 +15,8 @@ SELECT COUNT(*) FROM line_items WHERE tenant_id = ? AND session_id = ? AND invoi
 `
 
 type CountSessionItemsParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	SessionID sql.NullInt64 `json:"session_id"`
+	TenantID  string         `json:"tenant_id"`
+	SessionID sql.NullString `json:"session_id"`
 }
 
 func (q *Queries) CountSessionItems(ctx context.Context, arg CountSessionItemsParams) (int64, error) {
@@ -28,20 +28,20 @@ func (q *Queries) CountSessionItems(ctx context.Context, arg CountSessionItemsPa
 
 const createLineItem = `-- name: CreateLineItem :one
 INSERT INTO line_items (
-    uuid, tenant_id, session_id, invoice_id, item_id, custom_item_id,
+    id, tenant_id, session_id, invoice_id, item_id, custom_item_id,
     price_list_version_id, code, description, service_date, unit, start_time,
     end_time, quantity, unit_price, taxable, line_total, sort_order
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, uuid, tenant_id, session_id, invoice_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
+RETURNING id, tenant_id, session_id, invoice_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type CreateLineItemParams struct {
-	Uuid               string         `json:"uuid"`
-	TenantID           int64          `json:"tenant_id"`
-	SessionID          sql.NullInt64  `json:"session_id"`
-	InvoiceID          sql.NullInt64  `json:"invoice_id"`
+	ID                 string         `json:"id"`
+	TenantID           string         `json:"tenant_id"`
+	SessionID          sql.NullString `json:"session_id"`
+	InvoiceID          sql.NullString `json:"invoice_id"`
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -58,7 +58,7 @@ type CreateLineItemParams struct {
 
 func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error) {
 	row := q.db.QueryRowContext(ctx, createLineItem,
-		arg.Uuid,
+		arg.ID,
 		arg.TenantID,
 		arg.SessionID,
 		arg.InvoiceID,
@@ -80,7 +80,6 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 	var i LineItem
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.SessionID,
 		&i.InvoiceID,
@@ -107,8 +106,8 @@ DELETE FROM line_items WHERE tenant_id = ? AND invoice_id = ?
 `
 
 type DeleteLineItemsForInvoiceParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
+	TenantID  string         `json:"tenant_id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
 }
 
 func (q *Queries) DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error {
@@ -121,8 +120,8 @@ DELETE FROM line_items WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
 `
 
 type DeleteSessionLineItemParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 func (q *Queries) DeleteSessionLineItem(ctx context.Context, arg DeleteSessionLineItemParams) error {
@@ -131,17 +130,17 @@ func (q *Queries) DeleteSessionLineItem(ctx context.Context, arg DeleteSessionLi
 }
 
 const deleteSessionLineItemByUUID = `-- name: DeleteSessionLineItemByUUID :exec
-DELETE FROM line_items WHERE tenant_id = ? AND session_id = ? AND uuid = ? AND invoice_id IS NULL
+DELETE FROM line_items WHERE tenant_id = ? AND session_id = ? AND id = ? AND invoice_id IS NULL
 `
 
 type DeleteSessionLineItemByUUIDParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	SessionID sql.NullInt64 `json:"session_id"`
-	Uuid      string        `json:"uuid"`
+	TenantID  string         `json:"tenant_id"`
+	SessionID sql.NullString `json:"session_id"`
+	ID        string         `json:"id"`
 }
 
 func (q *Queries) DeleteSessionLineItemByUUID(ctx context.Context, arg DeleteSessionLineItemByUUIDParams) error {
-	_, err := q.db.ExecContext(ctx, deleteSessionLineItemByUUID, arg.TenantID, arg.SessionID, arg.Uuid)
+	_, err := q.db.ExecContext(ctx, deleteSessionLineItemByUUID, arg.TenantID, arg.SessionID, arg.ID)
 	return err
 }
 
@@ -150,8 +149,8 @@ DELETE FROM line_items WHERE tenant_id = ? AND session_id = ? AND invoice_id IS 
 `
 
 type DeleteUnbilledItemsForSessionParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	SessionID sql.NullInt64 `json:"session_id"`
+	TenantID  string         `json:"tenant_id"`
+	SessionID sql.NullString `json:"session_id"`
 }
 
 func (q *Queries) DeleteUnbilledItemsForSession(ctx context.Context, arg DeleteUnbilledItemsForSessionParams) error {
@@ -160,25 +159,24 @@ func (q *Queries) DeleteUnbilledItemsForSession(ctx context.Context, arg DeleteU
 }
 
 const getLineItem = `-- name: GetLineItem :one
-SELECT li.id, li.uuid, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.id AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.id = ?
 `
 
 type GetLineItemParams struct {
-	TenantID int64 `json:"tenant_id"`
-	ID       int64 `json:"id"`
+	TenantID string `json:"tenant_id"`
+	ID       string `json:"id"`
 }
 
 type GetLineItemRow struct {
-	ID                 int64          `json:"id"`
-	Uuid               string         `json:"uuid"`
-	TenantID           int64          `json:"tenant_id"`
-	SessionID          sql.NullInt64  `json:"session_id"`
-	InvoiceID          sql.NullInt64  `json:"invoice_id"`
+	ID                 string         `json:"id"`
+	TenantID           string         `json:"tenant_id"`
+	SessionID          sql.NullString `json:"session_id"`
+	InvoiceID          sql.NullString `json:"invoice_id"`
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -199,7 +197,6 @@ func (q *Queries) GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLi
 	var i GetLineItemRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.SessionID,
 		&i.InvoiceID,
@@ -223,26 +220,25 @@ func (q *Queries) GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLi
 }
 
 const getSessionLineItemByUUID = `-- name: GetSessionLineItemByUUID :one
-SELECT li.id, li.uuid, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.id AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
-WHERE li.tenant_id = ? AND li.session_id = ? AND li.uuid = ?
+WHERE li.tenant_id = ? AND li.session_id = ? AND li.id = ?
 `
 
 type GetSessionLineItemByUUIDParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	SessionID sql.NullInt64 `json:"session_id"`
-	Uuid      string        `json:"uuid"`
+	TenantID  string         `json:"tenant_id"`
+	SessionID sql.NullString `json:"session_id"`
+	ID        string         `json:"id"`
 }
 
 type GetSessionLineItemByUUIDRow struct {
-	ID                 int64          `json:"id"`
-	Uuid               string         `json:"uuid"`
-	TenantID           int64          `json:"tenant_id"`
-	SessionID          sql.NullInt64  `json:"session_id"`
-	InvoiceID          sql.NullInt64  `json:"invoice_id"`
+	ID                 string         `json:"id"`
+	TenantID           string         `json:"tenant_id"`
+	SessionID          sql.NullString `json:"session_id"`
+	InvoiceID          sql.NullString `json:"invoice_id"`
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -260,11 +256,10 @@ type GetSessionLineItemByUUIDRow struct {
 
 // A session's line item addressed by its uuid, scoped to the owning session's int id.
 func (q *Queries) GetSessionLineItemByUUID(ctx context.Context, arg GetSessionLineItemByUUIDParams) (GetSessionLineItemByUUIDRow, error) {
-	row := q.db.QueryRowContext(ctx, getSessionLineItemByUUID, arg.TenantID, arg.SessionID, arg.Uuid)
+	row := q.db.QueryRowContext(ctx, getSessionLineItemByUUID, arg.TenantID, arg.SessionID, arg.ID)
 	var i GetSessionLineItemByUUIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.SessionID,
 		&i.InvoiceID,
@@ -293,10 +288,10 @@ WHERE tenant_id = ? AND session_id = ? AND invoice_id IS NULL
 `
 
 type LinkSessionItemsToInvoiceParams struct {
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
-	SortOrder sql.NullInt64 `json:"sort_order"`
-	TenantID  int64         `json:"tenant_id"`
-	SessionID sql.NullInt64 `json:"session_id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
+	SortOrder sql.NullInt64  `json:"sort_order"`
+	TenantID  string         `json:"tenant_id"`
+	SessionID sql.NullString `json:"session_id"`
 }
 
 func (q *Queries) LinkSessionItemsToInvoice(ctx context.Context, arg LinkSessionItemsToInvoiceParams) error {
@@ -310,25 +305,24 @@ func (q *Queries) LinkSessionItemsToInvoice(ctx context.Context, arg LinkSession
 }
 
 const listLineItemsForInvoice = `-- name: ListLineItemsForInvoice :many
-SELECT li.id, li.uuid, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.id AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.invoice_id = ? ORDER BY li.sort_order, li.id
 `
 
 type ListLineItemsForInvoiceParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
+	TenantID  string         `json:"tenant_id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
 }
 
 type ListLineItemsForInvoiceRow struct {
-	ID                 int64          `json:"id"`
-	Uuid               string         `json:"uuid"`
-	TenantID           int64          `json:"tenant_id"`
-	SessionID          sql.NullInt64  `json:"session_id"`
-	InvoiceID          sql.NullInt64  `json:"invoice_id"`
+	ID                 string         `json:"id"`
+	TenantID           string         `json:"tenant_id"`
+	SessionID          sql.NullString `json:"session_id"`
+	InvoiceID          sql.NullString `json:"invoice_id"`
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -355,7 +349,6 @@ func (q *Queries) ListLineItemsForInvoice(ctx context.Context, arg ListLineItems
 		var i ListLineItemsForInvoiceRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.SessionID,
 			&i.InvoiceID,
@@ -389,25 +382,24 @@ func (q *Queries) ListLineItemsForInvoice(ctx context.Context, arg ListLineItems
 }
 
 const listLineItemsForSession = `-- name: ListLineItemsForSession :many
-SELECT li.id, li.uuid, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.uuid AS custom_item_uuid
+SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.item_id, li.custom_item_id, li.price_list_version_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, ci.id AS custom_item_uuid
 FROM line_items li
 LEFT JOIN custom_items ci ON li.custom_item_id = ci.id
 WHERE li.tenant_id = ? AND li.session_id = ? ORDER BY li.id
 `
 
 type ListLineItemsForSessionParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	SessionID sql.NullInt64 `json:"session_id"`
+	TenantID  string         `json:"tenant_id"`
+	SessionID sql.NullString `json:"session_id"`
 }
 
 type ListLineItemsForSessionRow struct {
-	ID                 int64          `json:"id"`
-	Uuid               string         `json:"uuid"`
-	TenantID           int64          `json:"tenant_id"`
-	SessionID          sql.NullInt64  `json:"session_id"`
-	InvoiceID          sql.NullInt64  `json:"invoice_id"`
+	ID                 string         `json:"id"`
+	TenantID           string         `json:"tenant_id"`
+	SessionID          sql.NullString `json:"session_id"`
+	InvoiceID          sql.NullString `json:"invoice_id"`
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -434,7 +426,6 @@ func (q *Queries) ListLineItemsForSession(ctx context.Context, arg ListLineItems
 		var i ListLineItemsForSessionRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Uuid,
 			&i.TenantID,
 			&i.SessionID,
 			&i.InvoiceID,
@@ -474,8 +465,8 @@ WHERE tenant_id = ? AND session_id = ? AND invoice_id IS NULL
 
 type RestampUnbilledSessionItemsParams struct {
 	ServiceDate sql.NullString `json:"service_date"`
-	TenantID    int64          `json:"tenant_id"`
-	SessionID   sql.NullInt64  `json:"session_id"`
+	TenantID    string         `json:"tenant_id"`
+	SessionID   sql.NullString `json:"session_id"`
 }
 
 func (q *Queries) RestampUnbilledSessionItems(ctx context.Context, arg RestampUnbilledSessionItemsParams) error {
@@ -489,8 +480,8 @@ WHERE tenant_id = ? AND invoice_id = ? AND session_id IS NOT NULL
 `
 
 type UnlinkSessionItemsFromInvoiceParams struct {
-	TenantID  int64         `json:"tenant_id"`
-	InvoiceID sql.NullInt64 `json:"invoice_id"`
+	TenantID  string         `json:"tenant_id"`
+	InvoiceID sql.NullString `json:"invoice_id"`
 }
 
 func (q *Queries) UnlinkSessionItemsFromInvoice(ctx context.Context, arg UnlinkSessionItemsFromInvoiceParams) error {
@@ -504,12 +495,12 @@ UPDATE line_items SET
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
     quantity = ?, unit_price = ?, taxable = ?, line_total = ?
 WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
-RETURNING id, uuid, tenant_id, session_id, invoice_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
+RETURNING id, tenant_id, session_id, invoice_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type UpdateSessionLineItemParams struct {
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -521,8 +512,8 @@ type UpdateSessionLineItemParams struct {
 	UnitPrice          float64        `json:"unit_price"`
 	Taxable            int64          `json:"taxable"`
 	LineTotal          float64        `json:"line_total"`
-	TenantID           int64          `json:"tenant_id"`
-	ID                 int64          `json:"id"`
+	TenantID           string         `json:"tenant_id"`
+	ID                 string         `json:"id"`
 }
 
 func (q *Queries) UpdateSessionLineItem(ctx context.Context, arg UpdateSessionLineItemParams) (LineItem, error) {
@@ -546,7 +537,6 @@ func (q *Queries) UpdateSessionLineItem(ctx context.Context, arg UpdateSessionLi
 	var i LineItem
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.SessionID,
 		&i.InvoiceID,
@@ -573,13 +563,13 @@ UPDATE line_items SET
     item_id = ?, custom_item_id = ?, price_list_version_id = ?, code = ?,
     description = ?, service_date = ?, unit = ?, start_time = ?, end_time = ?,
     quantity = ?, unit_price = ?, taxable = ?, line_total = ?
-WHERE tenant_id = ? AND session_id = ? AND uuid = ? AND invoice_id IS NULL
-RETURNING id, uuid, tenant_id, session_id, invoice_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
+WHERE tenant_id = ? AND session_id = ? AND id = ? AND invoice_id IS NULL
+RETURNING id, tenant_id, session_id, invoice_id, item_id, custom_item_id, price_list_version_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order
 `
 
 type UpdateSessionLineItemByUUIDParams struct {
 	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullInt64  `json:"custom_item_id"`
+	CustomItemID       sql.NullString `json:"custom_item_id"`
 	PriceListVersionID sql.NullString `json:"price_list_version_id"`
 	Code               sql.NullString `json:"code"`
 	Description        string         `json:"description"`
@@ -591,9 +581,9 @@ type UpdateSessionLineItemByUUIDParams struct {
 	UnitPrice          float64        `json:"unit_price"`
 	Taxable            int64          `json:"taxable"`
 	LineTotal          float64        `json:"line_total"`
-	TenantID           int64          `json:"tenant_id"`
-	SessionID          sql.NullInt64  `json:"session_id"`
-	Uuid               string         `json:"uuid"`
+	TenantID           string         `json:"tenant_id"`
+	SessionID          sql.NullString `json:"session_id"`
+	ID                 string         `json:"id"`
 }
 
 // Rewrite one UNBILLED session item addressed by uuid, scoped to the owning session.
@@ -614,12 +604,11 @@ func (q *Queries) UpdateSessionLineItemByUUID(ctx context.Context, arg UpdateSes
 		arg.LineTotal,
 		arg.TenantID,
 		arg.SessionID,
-		arg.Uuid,
+		arg.ID,
 	)
 	var i LineItem
 	err := row.Scan(
 		&i.ID,
-		&i.Uuid,
 		&i.TenantID,
 		&i.SessionID,
 		&i.InvoiceID,
