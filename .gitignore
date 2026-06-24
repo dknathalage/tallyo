@@ -25,7 +25,6 @@ web/build/*
 !web/build/.gitkeep
 
 .superpowers/
-tallyo
 *.db*
 
 # ralph-loop transient state (never commit)
