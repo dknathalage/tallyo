@@ -60,7 +60,7 @@ func (s *Service) Create(ctx context.Context, in CustomItemInput) (*CustomItem, 
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.UUID, Action: "create"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.ID, Action: "create"})
 	return item, nil
 }
 
@@ -75,7 +75,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in CustomItemInput) (
 	if item == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.UUID, Action: "update"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.ID, Action: "update"})
 	return item, nil
 }
 
@@ -93,21 +93,21 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.UUID, Action: "delete"})
+	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.ID, Action: "delete"})
 	return nil
 }
 
 // ResolveCustomItemIDs translates a list of custom-item uuids into their int PKs
 // for the tenant (preserving order). An unknown uuid surfaces as an error so the
 // caller can 400 — bulk operations must not silently drop a member.
-func (s *Service) ResolveCustomItemIDs(ctx context.Context, itemUUIDs []string) ([]int64, error) {
+func (s *Service) ResolveCustomItemIDs(ctx context.Context, itemUUIDs []string) ([]string, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	return s.repo.ResolveCustomItemIDs(ctx, tenantID, itemUUIDs)
 }
 
 // BulkDelete removes multiple custom items, then broadcasts a single bulk_delete
 // event on success.
-func (s *Service) BulkDelete(ctx context.Context, ids []int64) error {
+func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
