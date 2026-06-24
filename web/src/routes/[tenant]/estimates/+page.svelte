@@ -112,7 +112,7 @@
 <div class="space-y-6">
 	<section>
 		<div class="mb-2">
-			<h1 class="mb-1 text-xl font-semibold">Estimates</h1>
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">Estimates</h1>
 			<p class="text-sm text-gray-500">Quote work before invoicing.</p>
 		</div>
 	</section>

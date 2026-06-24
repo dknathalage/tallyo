@@ -79,10 +79,10 @@
 			type="button"
 			onclick={() => onaddday?.(iso)}
 			class="min-h-[4.5rem] rounded-lg border bg-white p-1.5 text-left {iso === today
-				? 'border-blue-500 ring-1 ring-blue-500'
+				? 'border-brand-500 ring-1 ring-brand-500'
 				: 'border-gray-200 hover:bg-gray-50'}"
 		>
-			<span class="block text-xs text-gray-500">{day}{iso === today ? ' • today' : ''}</span>
+			<span class="block text-xs text-gray-500"><span class="font-mono tabular-nums">{day}</span>{iso === today ? ' • today' : ''}</span>
 			{#each daySessions as s (s.id)}
 				<span
 					role="button"
@@ -98,7 +98,7 @@
 							onopen?.(s);
 						}
 					}}
-					class="mt-1 block truncate rounded px-1 py-0.5 text-[10.5px] font-medium {eventClass(
+					class="mt-1 block truncate rounded-lg px-1 py-0.5 text-[10.5px] font-medium {eventClass(
 						s.status
 					)}"
 				>

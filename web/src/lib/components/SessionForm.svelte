@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Modal from '$lib/components/Modal.svelte';
+	import Button from '$lib/components/Button.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
 	import { priceList } from '$lib/stores/priceList.svelte';
 	import { features } from '$lib/stores/features.svelte';
@@ -306,7 +307,7 @@
 					type="date"
 					bind:value={fDate}
 					required
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
 			<label class="block">
@@ -314,7 +315,7 @@
 				<select
 					bind:value={fClientId}
 					required
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				>
 					<option value="">— select —</option>
 					{#each clients.items as p (p.id)}
@@ -329,12 +330,12 @@
 			<textarea
 				bind:value={fNote}
 				rows="3"
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+				class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 			></textarea>
 		</label>
 
 		{#if editing && session}
-			<div class="rounded border border-gray-200 p-3">
+			<div class="rounded-lg border border-gray-200 p-3">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm font-medium">Line items</span>
 					{#if features.agent}
@@ -342,7 +343,7 @@
 							type="button"
 							onclick={divideAI}
 							disabled={itemsBusy}
-							class="rounded border border-indigo-300 px-3 py-1 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+							class="rounded-lg border border-indigo-300 px-3 py-1 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
 						>
 							{itemsBusy ? 'Working…' : 'Divide with AI'}
 						</button>
@@ -359,8 +360,8 @@
 							{#if it.code}<span class="font-mono text-xs text-gray-500">{it.code}</span> {/if}
 							{it.description}
 						</span>
-						<span class="text-gray-500">{it.quantity} {it.unit}</span>
-						<span class="w-20 text-right">${money(it.lineTotal)}</span>
+						<span class="text-gray-500"><span class="font-mono tabular-nums">{it.quantity}</span> {it.unit}</span>
+						<span class="w-20 text-right font-mono tabular-nums">${money(it.lineTotal)}</span>
 						{#if it.invoiceId === null}
 							<button
 								type="button"
@@ -380,36 +381,32 @@
 				{/each}
 
 				<!-- Add-item draft row -->
-				<div class="mt-3 space-y-2 rounded bg-gray-50 p-2">
+				<div class="mt-3 space-y-2 rounded-lg bg-gray-50 p-2">
 					<div class="flex gap-1">
 						<input
 							type="text"
 							bind:value={niCode}
 							placeholder="Item code (optional)"
-							class="w-44 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+							class="w-44 rounded-lg border border-gray-300 px-2 py-1 font-mono tabular-nums text-xs"
 						/>
-						<button
-							type="button"
-							onclick={openPicker}
-							class="shrink-0 rounded border border-gray-300 px-2 text-xs hover:bg-white"
-						>
+						<Button variant="secondary" size="sm" onclick={openPicker} class="shrink-0">
 							Find
-						</button>
+						</Button>
 						<input
 							type="text"
 							bind:value={niDescription}
 							placeholder="Description"
-							class="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+							class="flex-1 rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						/>
 					</div>
 
 					{#if pickerOpen}
-						<div class="rounded border border-gray-200 bg-white p-2">
+						<div class="rounded-lg border border-gray-200 bg-white p-2">
 							<input
 								type="text"
 								bind:value={pickerSearch}
 								placeholder="Search by code or name"
-								class="mb-2 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+								class="mb-2 w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 							/>
 							{#if !catalogLoaded}
 								<p class="text-xs text-gray-500">Loading catalogue…</p>
@@ -422,9 +419,9 @@
 											<button
 												type="button"
 												onclick={() => pickItem(it)}
-												class="w-full rounded px-2 py-1 text-left hover:bg-gray-50"
+												class="w-full rounded-lg px-2 py-1 text-left hover:bg-gray-50"
 											>
-												<span class="font-mono text-xs">{it.code}</span> — {it.name}
+												<span class="font-mono tabular-nums text-xs">{it.code}</span> — {it.name}
 											</button>
 										</li>
 									{:else}
@@ -442,7 +439,7 @@
 								type="text"
 								bind:value={niUnit}
 								placeholder="H, KM, EA…"
-								class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+								class="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm"
 							/>
 						</label>
 						{#if unitClass(niUnit) === 'time'}
@@ -452,7 +449,7 @@
 									type="time"
 									bind:value={niStart}
 									oninput={onDraftTime}
-									class="rounded border border-gray-300 px-2 py-1 text-sm"
+									class="rounded-lg border border-gray-300 px-2 py-1 text-sm"
 								/>
 							</label>
 							<label class="block">
@@ -461,7 +458,7 @@
 									type="time"
 									bind:value={niEnd}
 									oninput={onDraftTime}
-									class="rounded border border-gray-300 px-2 py-1 text-sm"
+									class="rounded-lg border border-gray-300 px-2 py-1 text-sm"
 								/>
 							</label>
 						{/if}
@@ -472,7 +469,7 @@
 								step="any"
 								min="0"
 								bind:value={niQuantity}
-								class="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+								class="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm font-mono tabular-nums"
 							/>
 						</label>
 						{#if niCode.trim() === ''}
@@ -483,18 +480,13 @@
 									step="any"
 									min="0"
 									bind:value={niUnitPrice}
-									class="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+									class="w-24 rounded-lg border border-gray-300 px-2 py-1 text-sm font-mono tabular-nums"
 								/>
 							</label>
 						{/if}
-						<button
-							type="button"
-							onclick={addItem}
-							disabled={itemsBusy}
-							class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-white disabled:opacity-50"
-						>
+						<Button variant="secondary" size="sm" onclick={addItem} disabled={itemsBusy}>
 							Add item
-						</button>
+						</Button>
 					</div>
 					{#if niCode.trim() !== ''}
 						<p class="text-xs text-gray-400">Coded lines are priced from the price list on save.</p>
@@ -510,26 +502,21 @@
 		{/if}
 
 		<div class="flex justify-end gap-2">
-			<button
-				type="button"
+			<Button
+				variant="secondary"
 				onclick={() => (inline ? oncancel?.() : (open = false))}
-				class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
 			>
 				Cancel
-			</button>
-			<button
-				type="submit"
-				disabled={saving}
-				class="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-			>
+			</Button>
+			<Button type="submit" loading={saving} disabled={saving}>
 				{saving ? 'Saving…' : saveLabel}
-			</button>
+			</Button>
 		</div>
 	</form>
 {/snippet}
 
 {#if inline}
-	<div class="rounded border border-gray-200 bg-white p-4">
+	<div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 		<h2 class="mb-3 text-lg font-semibold">{title}</h2>
 		{@render body()}
 	</div>

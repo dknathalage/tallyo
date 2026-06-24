@@ -12,6 +12,8 @@
 	import SessionForm from '$lib/components/SessionForm.svelte';
 	import Calendar from '$lib/components/Calendar.svelte';
 	import InvoiceSuggestions from '$lib/components/InvoiceSuggestions.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import Badge from '$lib/components/Badge.svelte';
 	import { todayISO } from '$lib/sessions/format';
 	import type { Client, ClientInput, Session } from '$lib/api/types';
 
@@ -138,16 +140,16 @@
 		return '$' + (Number.isFinite(n) ? n : 0).toFixed(2);
 	}
 
-	function invStatusClass(s: string): string {
+	function invStatusTone(s: string): 'green' | 'brand' | 'red' | 'gray' {
 		switch (s) {
 			case 'paid':
-				return 'bg-green-100 text-green-800';
+				return 'green';
 			case 'sent':
-				return 'bg-blue-100 text-blue-800';
+				return 'brand';
 			case 'overdue':
-				return 'bg-red-100 text-red-800';
+				return 'red';
 			default:
-				return 'bg-gray-100 text-gray-700';
+				return 'gray';
 		}
 	}
 
@@ -214,14 +216,14 @@
 					</span>
 				{/if}
 			</span>
-			<button
-				type="button"
+			<Button
+				size="sm"
 				onclick={saveNow}
+				loading={status === 'saving'}
 				disabled={!loaded || status === 'saving'}
-				class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
 			>
 				Save
-			</button>
+			</Button>
 		</div>
 	</div>
 
@@ -239,7 +241,7 @@
 					type="text"
 					bind:value={name}
 					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				/>
 				{#if nameError}<span class="mt-1 block text-xs text-red-600">{nameError}</span>{/if}
 			</label>
@@ -250,7 +252,7 @@
 					type="text"
 					bind:value={reference}
 					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
 
@@ -262,7 +264,7 @@
 						payer = e.currentTarget.value;
 						changed();
 					}}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				>
 					<option value="">— none —</option>
 					{#each payerOptions as pm (pm.id)}
@@ -277,7 +279,7 @@
 					type="text"
 					bind:value={email}
 					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
 
@@ -287,7 +289,7 @@
 					type="text"
 					bind:value={phone}
 					oninput={changed}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
 
@@ -297,7 +299,7 @@
 					bind:value={address}
 					oninput={changed}
 					rows="3"
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				></textarea>
 			</label>
 		</div>
@@ -310,30 +312,26 @@
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div class="flex items-center gap-2">
 							<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Sessions</h2>
-							<div class="flex overflow-hidden rounded border border-gray-300 text-xs">
+							<div class="flex overflow-hidden rounded-lg border border-gray-300 text-xs">
 								<button
 									type="button"
 									onclick={() => (sessionView = 'table')}
 									class="px-2.5 py-1 {sessionView === 'table'
-										? 'bg-gray-900 text-white'
+										? 'bg-brand-700 text-onbrand'
 										: 'text-gray-600 hover:bg-gray-50'}">Table</button
 								>
 								<button
 									type="button"
 									onclick={() => (sessionView = 'calendar')}
 									class="px-2.5 py-1 {sessionView === 'calendar'
-										? 'bg-gray-900 text-white'
+										? 'bg-brand-700 text-onbrand'
 										: 'text-gray-600 hover:bg-gray-50'}">Calendar</button
 								>
 							</div>
 						</div>
-						<button
-							type="button"
-							onclick={() => openAdd(currentId)}
-							class="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
-						>
+						<Button onclick={() => openAdd(currentId)}>
 							+ Ad-hoc session
-						</button>
+						</Button>
 					</div>
 
 					{#if sessionView === 'table'}
@@ -367,17 +365,15 @@
 							class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-gray-400"
 						>
 							<span>
-								<b>{inv.number}</b>
-								<span
-									class="ml-2 inline-block rounded px-2 py-0.5 text-xs font-medium capitalize {invStatusClass(
-										inv.status
-									)}">{inv.status}</span
-								>
-								<span class="block text-sm text-gray-500">
+								<b class="font-mono tabular-nums">{inv.number}</b>
+								<span class="ml-2 inline-block capitalize">
+									<Badge tone={invStatusTone(inv.status)}>{inv.status}</Badge>
+								</span>
+								<span class="block text-sm text-gray-500 font-mono tabular-nums">
 									{inv.issueDate ? inv.issueDate.slice(0, 10) : '—'}
 								</span>
 							</span>
-							<span class="font-semibold">{money(inv.total)} ›</span>
+							<span class="font-semibold font-mono tabular-nums">{money(inv.total)} ›</span>
 						</a>
 					{:else}
 						<p class="text-sm text-gray-500">No invoices yet.</p>

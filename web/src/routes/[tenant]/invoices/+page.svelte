@@ -66,7 +66,7 @@
 <div class="space-y-6">
 	<section>
 		<div class="mb-2">
-			<h1 class="mb-1 text-xl font-semibold">Invoices</h1>
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">Invoices</h1>
 			<p class="text-sm text-gray-500">Invoices for your clients.</p>
 		</div>
 	</section>

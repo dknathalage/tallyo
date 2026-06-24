@@ -4,6 +4,15 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<!-- ponytail: fonts via Google CDN to land the look. Self-hosted deploys should
+		     vendor the woff2 into web/static + @font-face so the app works offline and
+		     doesn't leak user IPs to Google. Upgrade when that matters. -->
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
 		<script>
 			// Apply the saved/system theme before paint to avoid a flash of light UI.
 			try {

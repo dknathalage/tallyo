@@ -4,6 +4,8 @@
 	import { session } from '$lib/stores/session.svelte';
 	import { apiUpload, tenantPath } from '$lib/api/client';
 	import type { PriceListVersion, Item } from '$lib/api/types';
+	import Button from '$lib/components/Button.svelte';
+	import Badge from '$lib/components/Badge.svelte';
 
 	function money(n: number): string {
 		const v = Number.isFinite(n) ? n : 0;
@@ -167,14 +169,14 @@
 
 <div class="space-y-8">
 	<section>
-		<h1 class="mb-1 text-xl font-semibold">Price list</h1>
+		<h1 class="mb-1 text-2xl font-semibold tracking-tight">Price list</h1>
 		<p class="text-sm text-gray-500">
 			Your tenant's price list. Browse versions and their items. This data is read-only.
 		</p>
 	</section>
 
 	{#if session.isManager}
-		<section class="rounded border border-amber-200 bg-amber-50 p-4">
+		<section class="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
 			<h2 class="mb-1 text-base font-semibold">Import a new price-list version</h2>
 			<p class="mb-4 text-sm text-gray-600">
 				Owner/admin only. Upload a CSV or XLSX, map its columns to the price-list fields, then
@@ -192,16 +194,17 @@
 						type="number"
 						min="1"
 						bind:value={importHeaderRow}
-						class="w-20 rounded border border-gray-300 px-3 py-2 text-sm"
+						class="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums"
 					/>
 				</label>
-				<button
+				<Button
 					type="submit"
+					variant="secondary"
+					loading={inspecting}
 					disabled={inspecting || importFile === null}
-					class="rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
 				>
 					{inspecting ? 'Inspecting…' : 'Inspect columns'}
-				</button>
+				</Button>
 			</form>
 
 			{#if inspectHeaders.length > 0}
@@ -214,7 +217,7 @@
 									<span class="mb-1 block font-medium">{header}</span>
 									<select
 										bind:value={mapping[header]}
-										class="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+										class="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
 									>
 										<option value="">— ignore —</option>
 										{#each TARGETS as target (target)}
@@ -232,7 +235,7 @@
 					{#if mappedPreview.length > 0}
 						<div>
 							<h3 class="mb-2 text-sm font-semibold">Preview</h3>
-							<div class="overflow-x-auto rounded border border-gray-200 bg-white">
+							<div class="overflow-x-auto rounded-lg border border-gray-200 bg-white">
 								<table class="w-full text-sm">
 									<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 										<tr>
@@ -262,17 +265,16 @@
 								type="text"
 								bind:value={importLabel}
 								placeholder="2025-26 v1.1"
-								class="w-48 rounded border border-gray-300 px-3 py-2 text-sm"
+								class="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
 							/>
 						</label>
-						<button
-							type="button"
+						<Button
 							onclick={commitImport}
+							loading={importing}
 							disabled={importing || !hasNameMapped || importLabel.trim() === ''}
-							class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
 						>
 							{importing ? 'Importing…' : 'Import'}
-						</button>
+						</Button>
 					</div>
 				</div>
 			{/if}
@@ -302,8 +304,8 @@
 					<button
 						type="button"
 						onclick={() => selectVersion(v)}
-						class="rounded px-3 py-1 text-sm {selectedVersionId === v.id
-							? 'bg-gray-900 text-white'
+						class="rounded-lg px-3 py-1 text-sm {selectedVersionId === v.id
+							? 'bg-brand-700 text-onbrand'
 							: 'border border-gray-300 hover:bg-gray-50'}"
 					>
 						{v.label}
@@ -322,7 +324,7 @@
 					type="text"
 					bind:value={itemSearch}
 					placeholder="Filter by code or name"
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 				/>
 			</label>
 
@@ -333,7 +335,7 @@
 				<p class="text-sm text-red-600">{itemsError}</p>
 			{/if}
 
-			<div class="overflow-hidden rounded border border-gray-200 bg-white">
+			<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 				<table class="w-full text-sm">
 					<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 						<tr>
@@ -348,14 +350,18 @@
 					<tbody>
 						{#each filteredItems as item (item.id)}
 							<tr class="border-b border-gray-100 last:border-0">
-								<td class="px-3 py-2 font-mono text-xs">{item.code}</td>
+								<td class="px-3 py-2 font-mono text-xs tabular-nums">{item.code}</td>
 								<td class="px-3 py-2 font-medium">{item.name}</td>
 								<td class="px-3 py-2 text-gray-600">{item.unit || '—'}</td>
 								<td class="px-3 py-2 text-gray-600">{item.category || '—'}</td>
-								<td class="px-3 py-2 text-right text-gray-600"
+								<td class="px-3 py-2 text-right font-mono text-gray-600 tabular-nums"
 									>{item.unitPrice === null ? '—' : money(item.unitPrice)}</td
 								>
-								<td class="px-3 py-2 text-gray-600">{item.taxable ? 'Taxable' : 'GST-free'}</td>
+								<td class="px-3 py-2 text-gray-600">
+									{#if item.taxable}<Badge tone="brand">Taxable</Badge>{:else}<Badge tone="gray"
+											>GST-free</Badge
+										>{/if}
+								</td>
 							</tr>
 						{:else}
 							<tr>

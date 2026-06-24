@@ -6,6 +6,8 @@
 	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import Badge from '$lib/components/Badge.svelte';
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { invoices as invoiceStore } from '$lib/stores/invoices.svelte';
@@ -212,16 +214,17 @@
 		if (idParam !== 'new') void loadDetail();
 	});
 
-	function statusBadgeClass(status: string): string {
+	type BadgeTone = 'gray' | 'brand' | 'green' | 'amber' | 'red' | 'blue' | 'slate';
+	function statusTone(status: string): BadgeTone {
 		switch (status) {
 			case 'paid':
-				return 'bg-green-100 text-green-800';
+				return 'green';
 			case 'sent':
-				return 'bg-blue-100 text-blue-800';
+				return 'brand';
 			case 'overdue':
-				return 'bg-red-100 text-red-800';
+				return 'red';
 			default:
-				return 'bg-gray-100 text-gray-700';
+				return 'gray';
 		}
 	}
 
@@ -263,16 +266,19 @@
 	{#if idParam === 'new'}
 		<div class="space-y-5">
 			<a href={t('/invoices')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
-			<h1 class="text-xl font-semibold">New invoice</h1>
+			<h1 class="text-2xl font-semibold tracking-tight">New invoice</h1>
 
-			<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitCreate}>
+			<form
+				class="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+				onsubmit={submitCreate}
+			>
 				<div class="grid grid-cols-2 gap-3">
 					<label class="col-span-1">
 						<span class="mb-1 block text-sm font-medium">Client</span>
 						<select
 							bind:value={formClientId}
 							required
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							<option value="">— select —</option>
 							{#each clients.items as p (p.id)}
@@ -287,7 +293,7 @@
 							type="date"
 							bind:value={formIssueDate}
 							required
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums"
 						/>
 					</label>
 					<label class="col-span-1">
@@ -296,7 +302,7 @@
 							type="date"
 							bind:value={formDueDate}
 							required
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums"
 						/>
 					</label>
 					<label class="col-span-2">
@@ -304,7 +310,7 @@
 						<input
 							type="text"
 							bind:value={formNotes}
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						/>
 					</label>
 				</div>
@@ -315,7 +321,7 @@
 					<dl class="w-56 space-y-1 text-sm">
 						<div class="flex justify-between">
 							<dt class="text-gray-500">Subtotal (preview)</dt>
-							<dd>{money(subtotalPreview)}</dd>
+							<dd class="font-mono tabular-nums">{money(subtotalPreview)}</dd>
 						</div>
 						<p class="text-xs text-gray-400">Tax + total are calculated on save.</p>
 					</dl>
@@ -326,19 +332,10 @@
 				{/if}
 
 				<div class="flex gap-2">
-					<button
-						type="submit"
-						disabled={saving}
-						class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-					>
+					<Button type="submit" loading={saving} disabled={saving}>
 						{saving ? 'Saving…' : 'Create invoice'}
-					</button>
-					<a
-						href={t('/invoices')}
-						class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-					>
-						Cancel
-					</a>
+					</Button>
+					<Button variant="secondary" href={t('/invoices')}>Cancel</Button>
 				</div>
 			</form>
 		</div>
@@ -359,29 +356,26 @@
 {#snippet extras(row: Invoice)}
 	<div class="space-y-6">
 		<div
-			class="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-gray-200 bg-white p-4"
+			class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 		>
 			<div>
 				<div class="flex items-center gap-2">
-					<b class="text-lg">{row.number}</b>
-					<span
-						class="inline-block rounded px-2 py-0.5 text-xs font-medium capitalize {statusBadgeClass(
-							(detail ?? row).status
-						)}"
-					>
+					<b class="font-mono text-lg tabular-nums">{row.number}</b>
+					<Badge tone={statusTone((detail ?? row).status)} class="capitalize">
 						{(detail ?? row).status}
-					</span>
+					</Badge>
 				</div>
 				<p class="text-sm text-gray-500">
-					{row.clientName || '—'} · issued {row.issueDate ? row.issueDate.slice(0, 10) : '—'}
+					{row.clientName || '—'} · issued
+					<span class="tabular-nums">{row.issueDate ? row.issueDate.slice(0, 10) : '—'}</span>
 				</p>
 			</div>
 			<div class="text-right">
-				<div class="text-xl font-bold">{money((detail ?? row).total)}</div>
+				<div class="font-mono text-xl font-bold tabular-nums">{money((detail ?? row).total)}</div>
 			</div>
 		</div>
 
-		<section class="rounded-lg border border-gray-200 bg-white p-4">
+		<section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 			<h2 class="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">Line items</h2>
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
@@ -398,26 +392,28 @@
 					<tbody>
 						{#each (detail ?? row).lineItems as li (li.id)}
 							<tr class="border-b border-gray-100 last:border-0">
-								<td class="px-2 py-1.5 text-gray-600">
+								<td class="px-2 py-1.5 text-gray-600 tabular-nums">
 									{li.serviceDate ? li.serviceDate.slice(0, 10) : '—'}
 								</td>
 								<td class="px-2 py-1.5">{li.description}</td>
 								<td class="px-2 py-1.5 font-mono text-xs text-gray-500">{li.code || '—'}</td>
-								<td class="px-2 py-1.5 text-right tabular-nums">{li.quantity}</td>
-								<td class="px-2 py-1.5 text-right tabular-nums">{money(li.unitPrice)}</td>
-								<td class="px-2 py-1.5 text-right tabular-nums">{money(li.lineTotal)}</td>
+								<td class="px-2 py-1.5 text-right font-mono tabular-nums">{li.quantity}</td>
+								<td class="px-2 py-1.5 text-right font-mono tabular-nums">{money(li.unitPrice)}</td>
+								<td class="px-2 py-1.5 text-right font-mono tabular-nums">{money(li.lineTotal)}</td>
 							</tr>
 						{/each}
 						<tr class="border-t-2 border-gray-300 font-semibold">
 							<td class="px-2 py-1.5" colspan="5">Total</td>
-							<td class="px-2 py-1.5 text-right tabular-nums">{money((detail ?? row).total)}</td>
+							<td class="px-2 py-1.5 text-right font-mono tabular-nums">
+								{money((detail ?? row).total)}
+							</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
 		</section>
 
-		<section class="rounded-lg border border-gray-200 bg-white p-4">
+		<section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 			<h2 class="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">
 				Source sessions ({sourceSessions.length})
 			</h2>
@@ -442,22 +438,16 @@
 				<span class="mr-auto text-sm text-red-600">{detailError}</span>
 			{/if}
 			{#if nextAction}
-				<button
+				<Button
 					type="button"
+					loading={detailBusy}
 					disabled={detailBusy}
 					onclick={() => nextAction && advance(nextAction.status)}
-					class="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
 				>
 					{detailBusy ? 'Saving…' : nextAction.label}
-				</button>
+				</Button>
 			{:else}
-				<span
-					class="inline-block rounded px-3 py-2 text-sm font-medium {statusBadgeClass(
-						(detail ?? row).status
-					)}"
-				>
-					Paid ✓
-				</span>
+				<Badge tone={statusTone((detail ?? row).status)}>Paid ✓</Badge>
 			{/if}
 		</div>
 	</div>

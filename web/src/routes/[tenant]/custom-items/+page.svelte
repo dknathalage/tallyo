@@ -50,7 +50,7 @@
 <div class="space-y-6">
 	<section>
 		<div class="mb-2">
-			<h1 class="mb-1 text-xl font-semibold">Custom items</h1>
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">Custom items</h1>
 			<p class="text-sm text-gray-500">
 				Your own line items (e.g. travel, gap fees). Catalogue items come from the price list.
 			</p>

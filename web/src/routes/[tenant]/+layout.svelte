@@ -79,6 +79,7 @@
 	import Settings from '@lucide/svelte/icons/settings';
 	import Sun from '@lucide/svelte/icons/sun';
 	import Moon from '@lucide/svelte/icons/moon';
+	import Receipt from '@lucide/svelte/icons/receipt';
 
 	type NavChild = { href: string; label: string };
 	type NavGroup = { label: string; icon: typeof IconType; children: NavChild[] };
@@ -169,7 +170,14 @@
 		<nav
 			class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 md:h-full md:flex-col md:flex-nowrap md:items-stretch md:gap-y-1 md:px-3 md:py-4"
 		>
-			<a href={t('/')} class="shrink-0 text-lg font-semibold md:mb-2 md:px-2">Tallyo</a>
+			<a href={t('/')} class="flex shrink-0 items-center gap-2 md:mb-3 md:px-2">
+				<span
+					class="flex size-7 items-center justify-center rounded-lg bg-brand-700 text-onbrand"
+				>
+					<Receipt class="size-4" aria-hidden="true" />
+				</span>
+				<span class="text-lg font-semibold tracking-tight text-gray-900">Tallyo</span>
+			</a>
 
 			{#if session.tenants.length > 1}
 				<label class="sr-only" for="tenant-switcher">Organisation</label>
@@ -195,8 +203,8 @@
 						title={group.label}
 						aria-label={group.label}
 						aria-current={active ? 'page' : undefined}
-						class="flex items-center gap-2 whitespace-nowrap md:rounded md:px-2 md:py-1.5 {active
-							? 'text-gray-900 md:bg-gray-100 md:font-medium'
+						class="flex items-center gap-2 whitespace-nowrap md:rounded-lg md:px-2 md:py-1.5 {active
+							? 'text-brand-700 md:bg-brand-50 md:font-medium'
 							: 'text-gray-600 hover:text-gray-900 md:hover:bg-gray-100'}"
 					>
 						<group.icon class="size-5 shrink-0" aria-hidden="true" />
@@ -230,7 +238,7 @@
 						href={t(child.href)}
 						aria-current={active ? 'page' : undefined}
 						class="-mb-px border-b-2 px-3 py-2 text-sm {active
-							? 'border-gray-900 font-medium text-gray-900'
+							? 'border-brand-600 font-medium text-brand-700'
 							: 'border-transparent text-gray-600 hover:text-gray-900'}"
 					>
 						{child.label}

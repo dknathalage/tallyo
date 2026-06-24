@@ -1,6 +1,66 @@
 @import "tailwindcss";
 
 /*
+ * Design tokens. Tallyo's identity: trust-teal primary + amber accent, IBM Plex
+ * (Sans for UI, Mono for money/codes/invoice numbers). Data-dense dashboard.
+ * Tailwind v4 reads these vars to generate utilities — set them here, the whole
+ * app re-skins with no markup churn.
+ */
+@theme {
+	--font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+	/* Brand (teal) — primary actions, active nav, focus rings, links. */
+	--color-brand-50: #f0fdfa;
+	--color-brand-100: #ccfbf1;
+	--color-brand-200: #99f6e4;
+	--color-brand-300: #5eead4;
+	--color-brand-400: #2dd4bf;
+	--color-brand-500: #14b8a6;
+	--color-brand-600: #0d9488;
+	--color-brand-700: #0f766e;
+	--color-brand-800: #115e59;
+	--color-brand-900: #134e4a;
+
+	/* Accent (amber) — highlights, "new", attention. Used sparingly. */
+	--color-accent-500: #f59e0b;
+	--color-accent-600: #d97706;
+	--color-accent-700: #b45309;
+
+	/* Text on a coloured fill — always white, NOT inverted in dark mode (the
+	   .dark block flips --color-white for the legacy gray-900 buttons). Use
+	   text-onbrand on any teal/red/amber filled button so it stays readable. */
+	--color-onbrand: #ffffff;
+}
+
+/* Brand reads well on the dark surface; nudge primary lighter for contrast. */
+.dark {
+	--color-brand-600: #14b8a6;
+	--color-brand-700: #0d9488;
+}
+
+/*
+ * Quality floor: every interactive element gets a visible, on-brand focus ring
+ * (the audit found ZERO custom focus styles), and form controls share one look.
+ */
+@layer base {
+	*:focus-visible {
+		outline: 2px solid var(--color-brand-500);
+		outline-offset: 2px;
+		border-radius: 2px;
+	}
+	button,
+	[role="button"],
+	a {
+		transition:
+			background-color 0.15s ease,
+			color 0.15s ease,
+			border-color 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+}
+
+/*
  * Dark mode. Tailwind v4 compiles colour utilities to var(--color-*), so
  * redefining the gray scale + white under .dark flips the whole app without
  * touching any markup. text-white only pairs with bg-gray-900 (primary

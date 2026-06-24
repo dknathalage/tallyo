@@ -7,6 +7,7 @@
 	import { clients } from '$lib/stores/clients.svelte';
 	import { taxRates } from '$lib/stores/taxRates.svelte';
 	import type { RecurringFrequency, RecurringLine } from '$lib/api/types';
+	import Button from '$lib/components/Button.svelte';
 
 	// A draft line-item row used by the editor. (Recurring lines are plain
 	// code/description/qty/price rows — no catalog/service-date complexity — so a
@@ -184,14 +185,19 @@
 
 <div class="space-y-5">
 	<a href={t('/recurring')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
-	<h1 class="text-xl font-semibold">{idParam === 'new' ? 'New template' : 'Edit template'}</h1>
+	<h1 class="text-2xl font-semibold tracking-tight">
+		{idParam === 'new' ? 'New template' : 'Edit template'}
+	</h1>
 
 	{#if loadError}
 		<p class="text-sm text-red-600">{loadError}</p>
 	{/if}
 
 	{#key idParam}
-		<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitForm}>
+		<form
+			class="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+			onsubmit={submitForm}
+		>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="col-span-1">
 					<span class="mb-1 block text-sm font-medium">Name</span>
@@ -199,7 +205,7 @@
 						type="text"
 						bind:value={formName}
 						required
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 					/>
 				</label>
 				<label class="col-span-1">
@@ -207,7 +213,7 @@
 					<select
 						bind:value={formClientId}
 						required
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 					>
 						<option value="">— select —</option>
 						{#each clients.items as p (p.id)}
@@ -219,7 +225,7 @@
 					<span class="mb-1 block text-sm font-medium">Frequency</span>
 					<select
 						bind:value={formFrequency}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm capitalize"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm capitalize"
 					>
 						{#each FREQUENCIES as f (f)}
 							<option value={f}>{f}</option>
@@ -232,14 +238,14 @@
 						type="date"
 						bind:value={formNextDue}
 						required
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 					/>
 				</label>
 				<label class="col-span-1">
 					<span class="mb-1 block text-sm font-medium">Tax rate</span>
 					<select
 						bind:value={formTaxRateId}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 					>
 						<option value="">— none —</option>
 						{#each taxRates.items as tr (tr.id)}
@@ -256,7 +262,7 @@
 					<input
 						type="text"
 						bind:value={formNotes}
-						class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 					/>
 				</label>
 			</div>
@@ -264,16 +270,10 @@
 			<div>
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm font-medium">Line items</span>
-					<button
-						type="button"
-						onclick={addLine}
-						class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-					>
-						Add line
-					</button>
+					<Button type="button" variant="secondary" size="sm" onclick={addLine}>Add line</Button>
 				</div>
 	
-				<div class="overflow-hidden rounded border border-gray-200">
+				<div class="overflow-hidden rounded-lg border border-gray-200">
 					<table class="w-full text-sm">
 						<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 							<tr>
@@ -294,14 +294,14 @@
 											type="text"
 											bind:value={line.code}
 											placeholder="Item code"
-											class="w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+											class="w-full rounded-lg border border-gray-300 px-2 py-1 font-mono text-xs tabular-nums"
 										/>
 									</td>
 									<td class="px-3 py-2">
 										<input
 											type="text"
 											bind:value={line.description}
-											class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+											class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 										/>
 									</td>
 									<td class="px-3 py-2">
@@ -309,7 +309,7 @@
 											type="number"
 											step="any"
 											bind:value={line.quantity}
-											class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+											class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm font-mono tabular-nums"
 										/>
 									</td>
 									<td class="px-3 py-2">
@@ -317,13 +317,13 @@
 											type="number"
 											step="any"
 											bind:value={line.unitPrice}
-											class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+											class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm font-mono tabular-nums"
 										/>
 									</td>
 									<td class="px-3 py-2 text-center">
 										<input type="checkbox" bind:checked={line.taxable} class="h-4 w-4" />
 									</td>
-									<td class="px-3 py-2 text-right whitespace-nowrap">
+									<td class="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap">
 										{money(lineAmount(line))}
 									</td>
 									<td class="px-3 py-2 text-right">
@@ -352,19 +352,10 @@
 			{/if}
 	
 			<div class="flex gap-2">
-				<button
-					type="submit"
-					disabled={saving}
-					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-				>
+				<Button type="submit" disabled={saving} loading={saving}>
 					{saving ? 'Saving…' : idParam === 'new' ? 'Create template' : 'Save changes'}
-				</button>
-				<a
-					href={t('/recurring')}
-					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-				>
-					Cancel
-				</a>
+				</Button>
+				<Button variant="secondary" href={t('/recurring')}>Cancel</Button>
 			</div>
 		</form>
 	{/key}

@@ -66,24 +66,6 @@ export function statusLabel(status: string): string {
 	return STATUS_LABELS[status as SessionStatus] ?? status;
 }
 
-/** Tailwind badge classes per lifecycle status (mirrors the prototype palette). */
-export function statusBadgeClass(status: string): string {
-	switch (status) {
-		case 'scheduled':
-			return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
-		case 'recorded':
-			return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200';
-		case 'drafted':
-			return 'bg-slate-50 text-slate-700 ring-1 ring-slate-200';
-		case 'sent':
-			return 'bg-teal-50 text-teal-700 ring-1 ring-teal-200';
-		case 'paid':
-			return 'bg-green-50 text-green-700 ring-1 ring-green-200';
-		default:
-			return 'bg-gray-100 text-gray-700';
-	}
-}
-
 /** Calendar event chip classes per status. */
 export function eventClass(status: string): string {
 	switch (status) {

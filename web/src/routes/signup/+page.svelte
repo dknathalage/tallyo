@@ -3,6 +3,10 @@
 	import { apiPost } from '$lib/api/client';
 	import { session } from '$lib/stores/session.svelte';
 	import type { User } from '$lib/api/types';
+	import Button from '$lib/components/Button.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import Field from '$lib/components/Field.svelte';
+	import Receipt from '@lucide/svelte/icons/receipt';
 
 	let businessName = $state('');
 	let name = $state('');
@@ -35,66 +39,70 @@
 	}
 </script>
 
-<div class="mx-auto max-w-sm">
-	<h1 class="mb-1 text-xl font-semibold">Create your Tallyo account</h1>
-	<p class="mb-6 text-sm text-gray-500">Set up your business in one step.</p>
+<div class="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-12">
+	<a href="/login" class="mb-6 flex items-center justify-center gap-2">
+		<span class="flex size-8 items-center justify-center rounded-lg bg-brand-700 text-onbrand">
+			<Receipt class="size-5" aria-hidden="true" />
+		</span>
+		<span class="text-xl font-semibold tracking-tight text-brand-700">Tallyo</span>
+	</a>
 
-	<form class="space-y-4" onsubmit={submit}>
-		<label class="block">
-			<span class="mb-1 block text-sm font-medium">Business name</span>
-			<input
-				type="text"
-				bind:value={businessName}
-				required
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-			/>
-		</label>
-		<label class="block">
-			<span class="mb-1 block text-sm font-medium">Your name</span>
-			<input
-				type="text"
-				bind:value={name}
-				required
-				autocomplete="name"
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-			/>
-		</label>
-		<label class="block">
-			<span class="mb-1 block text-sm font-medium">Email</span>
-			<input
-				type="email"
-				bind:value={email}
-				required
-				autocomplete="email"
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-			/>
-		</label>
-		<label class="block">
-			<span class="mb-1 block text-sm font-medium">Password</span>
-			<input
-				type="password"
-				bind:value={password}
-				required
-				minlength="8"
-				autocomplete="new-password"
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-			/>
-			<span class="mt-1 block text-xs text-gray-500">At least 8 characters.</span>
-		</label>
-		{#if error}
-			<p class="text-sm text-red-600">{error}</p>
-		{/if}
+	<Card>
+		<h1 class="mb-1 text-xl font-semibold tracking-tight">Create your Tallyo account</h1>
+		<p class="mb-6 text-sm text-gray-500">Set up your business in one step.</p>
 
-		<button
-			type="submit"
-			disabled={submitting}
-			class="w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-		>
-			{submitting ? 'Creating…' : 'Create account'}
-		</button>
-	</form>
+		<form class="space-y-4" onsubmit={submit}>
+			<Field label="Business name" id="businessName">
+				<input
+					id="businessName"
+					type="text"
+					bind:value={businessName}
+					required
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+				/>
+			</Field>
+			<Field label="Your name" id="name">
+				<input
+					id="name"
+					type="text"
+					bind:value={name}
+					required
+					autocomplete="name"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+				/>
+			</Field>
+			<Field label="Email" id="email">
+				<input
+					id="email"
+					type="email"
+					bind:value={email}
+					required
+					autocomplete="email"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+				/>
+			</Field>
+			<Field label="Password" id="password" hint="At least 8 characters.">
+				<input
+					id="password"
+					type="password"
+					bind:value={password}
+					required
+					minlength="8"
+					autocomplete="new-password"
+					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+				/>
+			</Field>
+			{#if error}
+				<p class="text-sm text-red-600" role="alert">{error}</p>
+			{/if}
 
-	<p class="mt-4 text-center text-sm text-gray-500">
-		Already have an account? <a href="/login" class="text-gray-900 underline">Sign in</a>
-	</p>
+			<Button type="submit" loading={submitting} class="w-full">Create account</Button>
+		</form>
+
+		<p class="mt-4 text-center text-sm text-gray-500">
+			Already have an account? <a href="/login" class="font-medium text-brand-700 hover:text-brand-800"
+				>Sign in</a
+			>
+		</p>
+	</Card>
 </div>

@@ -6,6 +6,8 @@
 	import { t } from '$lib/nav';
 	import EntityEditor from '$lib/components/EntityEditor.svelte';
 	import LineItemsEditor from '$lib/components/LineItemsEditor.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import Badge from '$lib/components/Badge.svelte';
 	import type { EditorLine } from '$lib/components/LineItemsEditor.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import { estimates as estimateStore } from '$lib/stores/estimates.svelte';
@@ -209,16 +211,16 @@
 		if (idParam !== 'new') void loadDetail();
 	});
 
-	function statusBadgeClass(status: string): string {
+	function statusTone(status: string): 'green' | 'blue' | 'red' | 'slate' {
 		switch (status) {
 			case 'accepted':
-				return 'bg-green-100 text-green-800';
+				return 'green';
 			case 'converted':
-				return 'bg-blue-100 text-blue-800';
+				return 'blue';
 			case 'declined':
-				return 'bg-red-100 text-red-800';
+				return 'red';
 			default:
-				return 'bg-gray-100 text-gray-700';
+				return 'slate';
 		}
 	}
 
@@ -270,16 +272,19 @@
 	{#if idParam === 'new'}
 		<div class="space-y-5">
 			<a href={t('/estimates')} class="text-sm text-gray-500 hover:text-gray-900">← Back</a>
-			<h1 class="text-xl font-semibold">New estimate</h1>
+			<h1 class="text-2xl font-semibold tracking-tight">New estimate</h1>
 
-			<form class="space-y-4 rounded border border-gray-200 bg-white p-4" onsubmit={submitCreate}>
+			<form
+				class="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+				onsubmit={submitCreate}
+			>
 				<div class="grid grid-cols-2 gap-3">
 					<label class="col-span-1">
 						<span class="mb-1 block text-sm font-medium">Client</span>
 						<select
 							bind:value={formClientId}
 							required
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							<option value="">— select —</option>
 							{#each clients.items as p (p.id)}
@@ -294,7 +299,7 @@
 							type="date"
 							bind:value={formIssueDate}
 							required
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						/>
 					</label>
 					<label class="col-span-1">
@@ -303,7 +308,7 @@
 							type="date"
 							bind:value={formValidUntil}
 							required
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						/>
 					</label>
 					<label class="col-span-2">
@@ -311,7 +316,7 @@
 						<input
 							type="text"
 							bind:value={formNotes}
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						/>
 					</label>
 				</div>
@@ -322,7 +327,7 @@
 					<dl class="w-56 space-y-1 text-sm">
 						<div class="flex justify-between">
 							<dt class="text-gray-500">Subtotal (preview)</dt>
-							<dd>{money(subtotalPreview)}</dd>
+							<dd class="font-mono tabular-nums">{money(subtotalPreview)}</dd>
 						</div>
 						<p class="text-xs text-gray-400">Tax + total are calculated on save.</p>
 					</dl>
@@ -333,19 +338,10 @@
 				{/if}
 
 				<div class="flex gap-2">
-					<button
-						type="submit"
-						disabled={saving}
-						class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-					>
+					<Button type="submit" disabled={saving} loading={saving}>
 						{saving ? 'Saving…' : 'Create estimate'}
-					</button>
-					<a
-						href={t('/estimates')}
-						class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-					>
-						Cancel
-					</a>
+					</Button>
+					<Button variant="secondary" href={t('/estimates')}>Cancel</Button>
 				</div>
 			</form>
 		</div>
@@ -370,21 +366,17 @@
 		>
 			<div>
 				<div class="flex items-center gap-2">
-					<b class="text-lg">{row.number}</b>
-					<span
-						class="inline-block rounded px-2 py-0.5 text-xs font-medium capitalize {statusBadgeClass(
-							(detail ?? row).status
-						)}"
-					>
+					<b class="font-mono text-lg tabular-nums">{row.number}</b>
+					<Badge tone={statusTone((detail ?? row).status)} class="capitalize">
 						{(detail ?? row).status}
-					</span>
+					</Badge>
 				</div>
 				<p class="text-sm text-gray-500">
 					{row.clientName || '—'} · issued {row.issueDate ? row.issueDate.slice(0, 10) : '—'}
 				</p>
 			</div>
 			<div class="text-right">
-				<div class="text-xl font-bold">{money((detail ?? row).total)}</div>
+				<div class="font-mono text-xl font-bold tabular-nums">{money((detail ?? row).total)}</div>
 			</div>
 		</div>
 
@@ -410,14 +402,14 @@
 								</td>
 								<td class="px-2 py-1.5">{li.description}</td>
 								<td class="px-2 py-1.5 font-mono text-xs text-gray-500">{li.code || '—'}</td>
-								<td class="px-2 py-1.5 text-right tabular-nums">{li.quantity}</td>
-								<td class="px-2 py-1.5 text-right tabular-nums">{money(li.unitPrice)}</td>
-								<td class="px-2 py-1.5 text-right tabular-nums">{money(li.lineTotal)}</td>
+								<td class="px-2 py-1.5 text-right font-mono tabular-nums">{li.quantity}</td>
+								<td class="px-2 py-1.5 text-right font-mono tabular-nums">{money(li.unitPrice)}</td>
+								<td class="px-2 py-1.5 text-right font-mono tabular-nums">{money(li.lineTotal)}</td>
 							</tr>
 						{/each}
 						<tr class="border-t-2 border-gray-300 font-semibold">
 							<td class="px-2 py-1.5" colspan="5">Total</td>
-							<td class="px-2 py-1.5 text-right tabular-nums">{money((detail ?? row).total)}</td>
+							<td class="px-2 py-1.5 text-right font-mono tabular-nums">{money((detail ?? row).total)}</td>
 						</tr>
 					</tbody>
 				</table>
@@ -429,7 +421,7 @@
 				<h2 class="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">Converted</h2>
 				<a
 					href={t(`/invoices/${(detail ?? row).convertedInvoiceId}`)}
-					class="text-sm text-blue-700 underline"
+					class="text-sm text-brand-700 underline"
 				>
 					View resulting invoice →
 				</a>
@@ -441,41 +433,26 @@
 				<span class="mr-auto text-sm text-red-600">{detailError}</span>
 			{/if}
 			{#if (detail ?? row).status === 'draft'}
-				<button
-					type="button"
-					disabled={detailBusy}
-					onclick={() => setStatus('accepted')}
-					class="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-				>
+				<Button type="button" disabled={detailBusy} loading={detailBusy} onclick={() => setStatus('accepted')}>
 					{detailBusy ? 'Saving…' : 'Accept'}
-				</button>
-				<button
+				</Button>
+				<Button
+					variant="secondary"
 					type="button"
 					disabled={detailBusy}
 					onclick={() => setStatus('declined')}
-					class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
 				>
 					Decline
-				</button>
+				</Button>
 			{/if}
 			{#if (detail ?? row).status !== 'converted'}
-				<button
-					type="button"
-					disabled={detailBusy}
-					onclick={convert}
-					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+				<Button variant="secondary" type="button" disabled={detailBusy} onclick={convert}
+					>Convert to invoice</Button
 				>
-					Convert to invoice
-				</button>
 			{/if}
-			<button
-				type="button"
-				disabled={detailBusy}
-				onclick={duplicate}
-				class="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-			>
+			<Button variant="secondary" type="button" disabled={detailBusy} onclick={duplicate}>
 				Duplicate
-			</button>
+			</Button>
 		</div>
 	</div>
 {/snippet}

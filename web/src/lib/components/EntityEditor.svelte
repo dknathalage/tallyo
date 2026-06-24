@@ -4,6 +4,7 @@
 	import { replaceState } from '$app/navigation';
 	import type { Column, EditInput } from './datatable';
 	import { createAutosave, type SaveState } from './autosave';
+	import Button from './Button.svelte';
 
 	type Crud = {
 		get: (id: string) => Promise<T>;
@@ -132,14 +133,14 @@
 					</span>
 				{/if}
 			</span>
-			<button
-				type="button"
+			<Button
+				size="sm"
 				onclick={saveNow}
+				loading={saveState === 'saving'}
 				disabled={!draft || saveState === 'saving'}
-				class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
 			>
 				Save
-			</button>
+			</Button>
 		</div>
 	</div>
 
@@ -168,7 +169,7 @@
 						<select
 							value={String((draft as Record<string, unknown>)[col.key] ?? '')}
 							onchange={(e) => edit(col, e.currentTarget.value)}
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							{#each col.values ?? [] as opt (opt)}<option value={opt}>{opt}</option>{/each}
 						</select>
@@ -177,7 +178,7 @@
 							value={String((draft as Record<string, unknown>)[col.key] ?? '')}
 							oninput={(e) => edit(col, e.currentTarget.value)}
 							rows="3"
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						></textarea>
 					{:else}
 						<input
@@ -185,7 +186,7 @@
 							value={String((draft as Record<string, unknown>)[col.key] ?? '')}
 							oninput={(e) =>
 								edit(col, kind === 'number' ? num(e.currentTarget.value) : e.currentTarget.value)}
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm {kind === 'number' ? 'font-mono tabular-nums' : ''}"
 						/>
 					{/if}
 					{#if errors[col.key]}<span class="mt-1 block text-xs text-red-600">{errors[col.key]}</span>{/if}

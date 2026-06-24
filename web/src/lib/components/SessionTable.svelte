@@ -2,8 +2,29 @@
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { DataTable, type ColumnDef } from '@careswitch/svelte-data-table';
-	import { dowDate, statusLabel, statusBadgeClass } from '$lib/sessions/format';
+	import { dowDate, statusLabel } from '$lib/sessions/format';
+	import Badge from '$lib/components/Badge.svelte';
+	import Button from '$lib/components/Button.svelte';
 	import type { Session, SessionStatus } from '$lib/api/types';
+
+	// Lifecycle status → Badge tone. Mirrors the session palette
+	// (scheduled=amber, recorded=blue, drafted=slate, sent=brand/teal, paid=green).
+	function statusTone(status: string): 'amber' | 'blue' | 'slate' | 'brand' | 'green' | 'gray' {
+		switch (status) {
+			case 'scheduled':
+				return 'amber';
+			case 'recorded':
+				return 'blue';
+			case 'drafted':
+				return 'slate';
+			case 'sent':
+				return 'brand';
+			case 'paid':
+				return 'green';
+			default:
+				return 'gray';
+		}
+	}
 
 	type Props = {
 		sessions: Session[];
@@ -176,27 +197,18 @@
 <div class="space-y-3">
 	{#if selected.size > 0}
 		<div
-			class="flex items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm"
+			class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm"
 		>
-			<span class="font-medium text-gray-700">{selected.size} selected</span>
-			<button
-				type="button"
-				onclick={deleteSelected}
-				disabled={deleting}
-				class="rounded bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-			>
+			<span class="font-medium text-gray-700"><span class="font-mono tabular-nums">{selected.size}</span> selected</span>
+			<Button variant="danger" size="sm" onclick={deleteSelected} loading={deleting} disabled={deleting}>
 				{deleting ? 'Deleting…' : 'Delete'}
-			</button>
-			<button
-				type="button"
-				onclick={() => selected.clear()}
-				class="text-xs text-gray-500 hover:text-gray-900"
-			>
+			</Button>
+			<Button variant="ghost" size="sm" onclick={() => selected.clear()}>
 				Clear
-			</button>
+			</Button>
 		</div>
 	{/if}
-	<div class="max-h-80 overflow-auto rounded border border-gray-200 bg-white">
+	<div class="max-h-80 overflow-auto rounded-xl border border-gray-200 bg-white shadow-sm">
 		<table class="w-full text-sm">
 			<thead class="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-left text-gray-500">
 				<tr>
@@ -233,14 +245,14 @@
 							bind:value={dateQuery}
 							placeholder="filter…"
 							aria-label="Filter by date"
-							class="w-full rounded border border-gray-300 px-2 py-1 text-xs font-normal"
+							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs font-normal"
 						/>
 					</th>
 					<th class="px-3 py-1.5">
 						<select
 							bind:value={clientFilter}
 							aria-label="Filter by client"
-							class="w-full rounded border border-gray-300 px-1 py-1 text-xs font-normal"
+							class="w-full rounded-lg border border-gray-300 px-1 py-1 text-xs font-normal"
 						>
 							<option value="">All</option>
 							{#each clientNames as n (n)}
@@ -253,14 +265,14 @@
 							bind:value={noteQuery}
 							placeholder="search…"
 							aria-label="Search notes"
-							class="w-full rounded border border-gray-300 px-2 py-1 text-xs font-normal"
+							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs font-normal"
 						/>
 					</th>
 					<th class="px-3 py-1.5">
 						<select
 							bind:value={tagFilter}
 							aria-label="Filter by tag"
-							class="w-full rounded border border-gray-300 px-1 py-1 text-xs font-normal"
+							class="w-full rounded-lg border border-gray-300 px-1 py-1 text-xs font-normal"
 						>
 							<option value="">All</option>
 							{#each tagOptions as t (t)}
@@ -272,7 +284,7 @@
 						<select
 							bind:value={statusFilter}
 							aria-label="Filter by status"
-							class="w-full rounded border border-gray-300 px-1 py-1 text-xs font-normal"
+							class="w-full rounded-lg border border-gray-300 px-1 py-1 text-xs font-normal"
 						>
 							<option value="all">All</option>
 							{#each STATUSES as s (s)}
@@ -286,7 +298,7 @@
 				{#each table.rows as row (row.id)}
 					<tr
 						class="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50"
-						class:bg-blue-50={selected.has(row.id)}
+						class:bg-brand-50={selected.has(row.id)}
 						onclick={() => onopen?.(row.session)}
 					>
 						<td class="px-3 py-1.5">
@@ -299,7 +311,7 @@
 								class="align-middle"
 							/>
 						</td>
-						<td class="px-3 py-1.5 whitespace-nowrap">{dowDate(row.date)}</td>
+						<td class="px-3 py-1.5 whitespace-nowrap font-mono tabular-nums">{dowDate(row.date)}</td>
 						<td class="px-3 py-1.5">{row.client}</td>
 						<td class="max-w-[18rem] px-3 py-1.5 text-gray-600">
 							{#if row.note}
@@ -310,21 +322,15 @@
 						</td>
 						<td class="px-3 py-1.5">
 							{#each row.session.tags as tag (tag)}
-								<span
-									class="mr-1 mb-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200"
-								>
-									{tag}
+								<span class="mr-1 mb-1 inline-block">
+									<Badge tone="gray">{tag}</Badge>
 								</span>
 							{/each}
 						</td>
 						<td class="px-3 py-1.5">
-							<span
-								class="inline-block rounded px-2 py-0.5 text-xs font-semibold whitespace-nowrap {statusBadgeClass(
-									row.status
-								)}"
-							>
+							<Badge tone={statusTone(row.status)} class="whitespace-nowrap">
 								{statusLabel(row.status)}
-							</span>
+							</Badge>
 						</td>
 					</tr>
 				{:else}

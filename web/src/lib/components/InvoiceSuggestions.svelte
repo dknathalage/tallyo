@@ -3,6 +3,7 @@
 	import { t } from '$lib/nav';
 	import * as sessionsApi from '$lib/api/sessions';
 	import { shortDate } from '$lib/sessions/format';
+	import Button from '$lib/components/Button.svelte';
 	import type { SessionSuggestion } from '$lib/api/types';
 
 	type Props = {
@@ -51,17 +52,16 @@
 				class="flex items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
 			>
 				<div class="flex-1 text-sm">
-					<span class="font-semibold">{nameFor(s.clientId)}</span> — {s.count} recorded
-					{s.count === 1 ? 'session' : 'sessions'} · {shortDate(s.from)}–{shortDate(s.to)}
+					<span class="font-semibold">{nameFor(s.clientId)}</span> — <span class="font-mono tabular-nums">{s.count}</span> recorded
+					{s.count === 1 ? 'session' : 'sessions'} · <span class="font-mono tabular-nums">{shortDate(s.from)}–{shortDate(s.to)}</span>
 				</div>
-				<button
-					type="button"
+				<Button
+					loading={drafting === s.clientId}
 					disabled={drafting === s.clientId}
 					onclick={() => draft(s)}
-					class="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
 				>
 					{drafting === s.clientId ? 'Drafting…' : 'Draft invoice'}
-				</button>
+				</Button>
 			</div>
 		{/each}
 	</div>

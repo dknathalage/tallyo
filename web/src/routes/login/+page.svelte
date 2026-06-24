@@ -3,6 +3,10 @@
 	import { apiPost, ApiError } from '$lib/api/client';
 	import { session } from '$lib/stores/session.svelte';
 	import type { User, EmailTenant } from '$lib/api/types';
+	import Button from '$lib/components/Button.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import Field from '$lib/components/Field.svelte';
+	import Receipt from '@lucide/svelte/icons/receipt';
 
 	let email = $state('');
 	let password = $state('');
@@ -65,86 +69,86 @@
 	}
 </script>
 
-<div class="mx-auto max-w-sm">
-	<h1 class="mb-6 text-xl font-semibold">Sign in to Tallyo</h1>
+<div class="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-12">
+	<a href="/login" class="mb-6 flex items-center justify-center gap-2">
+		<span class="flex size-8 items-center justify-center rounded-lg bg-brand-700 text-onbrand">
+			<Receipt class="size-5" aria-hidden="true" />
+		</span>
+		<span class="text-xl font-semibold tracking-tight text-brand-700">Tallyo</span>
+	</a>
 
-	{#if tenantChoices.length > 0}
-		<p class="mb-4 text-sm text-gray-600">
-			Your email belongs to more than one organisation. Choose which one to sign in to.
-		</p>
-		<form class="space-y-4" onsubmit={submitWithTenant}>
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Organisation</span>
-				<select
-					bind:value={selectedTenantId}
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+	<Card>
+		<h1 class="mb-6 text-xl font-semibold tracking-tight">Sign in to Tallyo</h1>
+
+		{#if tenantChoices.length > 0}
+			<p class="mb-4 text-sm text-gray-600">
+				Your email belongs to more than one organisation. Choose which one to sign in to.
+			</p>
+			<form class="space-y-4" onsubmit={submitWithTenant}>
+				<Field label="Organisation" id="tenant">
+					<select
+						id="tenant"
+						bind:value={selectedTenantId}
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+					>
+						{#each tenantChoices as t (t.id)}
+							<option value={t.id}>{t.tenantName}</option>
+						{/each}
+					</select>
+				</Field>
+
+				{#if error}
+					<p class="text-sm text-red-600" role="alert">{error}</p>
+				{/if}
+
+				<Button type="submit" loading={submitting} class="w-full">Continue</Button>
+				<Button
+					type="button"
+					variant="secondary"
+					class="w-full"
+					onclick={() => {
+						tenantChoices = [];
+						error = null;
+					}}
 				>
-					{#each tenantChoices as t (t.id)}
-						<option value={t.id}>{t.tenantName}</option>
-					{/each}
-				</select>
-			</label>
+					Back
+				</Button>
+			</form>
+		{:else}
+			<form class="space-y-4" onsubmit={submit}>
+				<Field label="Email" id="email">
+					<input
+						id="email"
+						type="email"
+						bind:value={email}
+						required
+						autocomplete="email"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+					/>
+				</Field>
+				<Field label="Password" id="password">
+					<input
+						id="password"
+						type="password"
+						bind:value={password}
+						required
+						autocomplete="current-password"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+					/>
+				</Field>
 
-			{#if error}
-				<p class="text-sm text-red-600">{error}</p>
-			{/if}
+				{#if error}
+					<p class="text-sm text-red-600" role="alert">{error}</p>
+				{/if}
 
-			<button
-				type="submit"
-				disabled={submitting}
-				class="w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-			>
-				{submitting ? 'Signing in…' : 'Continue'}
-			</button>
-			<button
-				type="button"
-				onclick={() => {
-					tenantChoices = [];
-					error = null;
-				}}
-				class="w-full rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-			>
-				Back
-			</button>
-		</form>
-	{:else}
-		<form class="space-y-4" onsubmit={submit}>
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Email</span>
-				<input
-					type="email"
-					bind:value={email}
-					required
-					autocomplete="email"
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="block">
-				<span class="mb-1 block text-sm font-medium">Password</span>
-				<input
-					type="password"
-					bind:value={password}
-					required
-					autocomplete="current-password"
-					class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
+				<Button type="submit" loading={submitting} class="w-full">Sign in</Button>
+			</form>
 
-			{#if error}
-				<p class="text-sm text-red-600">{error}</p>
-			{/if}
-
-			<button
-				type="submit"
-				disabled={submitting}
-				class="w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-			>
-				{submitting ? 'Signing in…' : 'Sign in'}
-			</button>
-		</form>
-
-		<p class="mt-4 text-center text-sm text-gray-500">
-			New to Tallyo? <a href="/signup" class="text-gray-900 underline">Create an account</a>
-		</p>
-	{/if}
+			<p class="mt-4 text-center text-sm text-gray-500">
+				New to Tallyo? <a href="/signup" class="font-medium text-brand-700 hover:text-brand-800"
+					>Create an account</a
+				>
+			</p>
+		{/if}
+	</Card>
 </div>

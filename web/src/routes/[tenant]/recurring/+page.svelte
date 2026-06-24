@@ -93,7 +93,7 @@
 <div class="space-y-6">
 	<section>
 		<div class="mb-2">
-			<h1 class="mb-1 text-xl font-semibold">Recurring templates</h1>
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">Recurring templates</h1>
 			<p class="text-sm text-gray-500">Schedule invoices that generate on a recurring cadence.</p>
 		</div>
 	</section>

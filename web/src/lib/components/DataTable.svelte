@@ -7,6 +7,7 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import X from '@lucide/svelte/icons/x';
 	import { goto } from '$app/navigation';
+	import Button from './Button.svelte';
 
 	type Store = {
 		rows: T[];
@@ -227,22 +228,22 @@
 
 <svelte:window onclick={onWindowClick} onkeydown={onWindowKey} />
 
-<div class="dt-card overflow-visible rounded border border-gray-200 bg-white">
+<div class="dt-card overflow-visible rounded-xl border border-gray-200 bg-white shadow-sm">
 	<!-- strip: title + filter chips, then New or selection actions -->
 	<div class="flex min-h-[46px] items-center gap-2.5 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs">
 		<span class="shrink-0 text-sm font-semibold text-gray-900">{title}</span>
 
 		{#each activeChips as chip (chip.key)}
-			<span class="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-2.5 py-0.5">
-				<span class="text-gray-400">{chip.label}</span>
+			<span class="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-brand-700">
+				<span class="text-brand-500">{chip.label}</span>
 				{chip.text}
-				<button type="button" class="text-gray-400 hover:text-gray-900" onclick={() => clearFilter(chip.key)} aria-label="Clear {chip.label} filter">
+				<button type="button" class="text-brand-400 hover:text-brand-700" onclick={() => clearFilter(chip.key)} aria-label="Clear {chip.label} filter">
 					<X class="size-3" />
 				</button>
 			</span>
 		{/each}
 		{#if activeChips.length > 0}
-			<button type="button" class="text-blue-600 hover:underline" onclick={clearAllFilters}>Clear filters</button>
+			<button type="button" class="text-brand-700 hover:underline" onclick={clearAllFilters}>Clear filters</button>
 		{/if}
 
 		{#if selected.size > 0}
@@ -263,13 +264,11 @@
 				</button>
 			</div>
 		{:else}
-			<button
-				type="button"
-				class="ml-auto inline-flex items-center gap-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-gray-800"
-				onclick={() => goto(newHref)}
-			>
-				<Plus class="size-3.5" /> New
-			</button>
+			<div class="ml-auto">
+				<Button size="sm" onclick={() => goto(newHref)}>
+					<Plus class="size-3.5" /> New
+				</Button>
+			</div>
 		{/if}
 	</div>
 
@@ -294,7 +293,7 @@
 							{#if sort === col.key}
 								{#if dir === 'asc'}<ChevronUp class="size-3 text-gray-900" />{:else}<ChevronDown class="size-3 text-gray-900" />{/if}
 							{/if}
-							<Filter class="ml-auto size-3 {isActive(filters[col.key]) ? 'text-blue-600' : 'text-gray-300'}" />
+							<Filter class="ml-auto size-3 {isActive(filters[col.key]) ? 'text-brand-700' : 'text-gray-300'}" />
 						</button>
 
 						{#if openMenu === col.key}
@@ -305,8 +304,8 @@
 
 								{#if col.sortable}
 									<div class="flex gap-1.5">
-										<button type="button" class="flex-1 rounded border px-2 py-1.5 text-xs {sort === col.key && dir === 'asc' ? 'border-blue-200 bg-blue-50 font-medium text-blue-600' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}" onclick={() => setSort(col.key, 'asc')}>▲ Asc</button>
-										<button type="button" class="flex-1 rounded border px-2 py-1.5 text-xs {sort === col.key && dir === 'desc' ? 'border-blue-200 bg-blue-50 font-medium text-blue-600' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}" onclick={() => setSort(col.key, 'desc')}>▼ Desc</button>
+										<button type="button" class="flex-1 rounded-lg border px-2 py-1.5 text-xs {sort === col.key && dir === 'asc' ? 'border-brand-200 bg-brand-50 font-medium text-brand-700' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}" onclick={() => setSort(col.key, 'asc')}>▲ Asc</button>
+										<button type="button" class="flex-1 rounded-lg border px-2 py-1.5 text-xs {sort === col.key && dir === 'desc' ? 'border-brand-200 bg-brand-50 font-medium text-brand-700' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}" onclick={() => setSort(col.key, 'desc')}>▼ Desc</button>
 									</div>
 									{#if col.filter}<div class="my-2 h-px bg-gray-100"></div>{/if}
 								{/if}
@@ -318,7 +317,7 @@
 										placeholder="contains…"
 										value={textVal(col.key)}
 										oninput={(e) => setText(col.key, e.currentTarget.value)}
-										class="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+										class="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
 									/>
 								{:else if col.filter === 'enum'}
 									<div class="mb-1.5 text-[11px] uppercase tracking-wide text-gray-400">Filter</div>
@@ -335,12 +334,12 @@
 									{/each}
 								{:else if col.filter === 'date'}
 									<div class="mb-1.5 text-[11px] uppercase tracking-wide text-gray-400">Range</div>
-									<input type="date" value={dateVal(col.key, 'from')} onchange={(e) => setRange(col.key, 'date', 'from', e.currentTarget.value)} class="mb-1.5 w-full rounded border border-gray-300 px-2 py-1.5 text-sm" />
-									<input type="date" value={dateVal(col.key, 'to')} onchange={(e) => setRange(col.key, 'date', 'to', e.currentTarget.value)} class="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" />
+									<input type="date" value={dateVal(col.key, 'from')} onchange={(e) => setRange(col.key, 'date', 'from', e.currentTarget.value)} class="mb-1.5 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+									<input type="date" value={dateVal(col.key, 'to')} onchange={(e) => setRange(col.key, 'date', 'to', e.currentTarget.value)} class="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
 								{:else if col.filter === 'number'}
 									<div class="mb-1.5 text-[11px] uppercase tracking-wide text-gray-400">Range</div>
-									<input type="number" placeholder="min" value={numVal(col.key, 'min')} oninput={(e) => setRange(col.key, 'number', 'min', e.currentTarget.value)} class="mb-1.5 w-full rounded border border-gray-300 px-2 py-1.5 text-sm" />
-									<input type="number" placeholder="max" value={numVal(col.key, 'max')} oninput={(e) => setRange(col.key, 'number', 'max', e.currentTarget.value)} class="w-full rounded border border-gray-300 px-2 py-1.5 text-sm" />
+									<input type="number" placeholder="min" value={numVal(col.key, 'min')} oninput={(e) => setRange(col.key, 'number', 'min', e.currentTarget.value)} class="mb-1.5 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-mono tabular-nums" />
+									<input type="number" placeholder="max" value={numVal(col.key, 'max')} oninput={(e) => setRange(col.key, 'number', 'max', e.currentTarget.value)} class="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-mono tabular-nums" />
 								{/if}
 							</div>
 						{/if}
@@ -351,7 +350,7 @@
 		<tbody>
 			{#each rows as row, idx (row.id)}
 				<tr
-					class="cursor-pointer border-t border-gray-100 {selected.has(row.id) ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}"
+					class="cursor-pointer border-t border-gray-100 {selected.has(row.id) ? 'bg-brand-50 hover:bg-brand-100' : 'hover:bg-gray-50'}"
 					onclick={() => goto(rowHref(row))}
 				>
 					<td class="w-9 px-3 py-2 text-center">
@@ -367,9 +366,9 @@
 						/>
 					</td>
 					{#each columns as col (col.key)}
-						<td class="px-3 py-2 {col.key === columns[0].key ? 'font-medium text-gray-900' : 'text-gray-600'}">
+						<td class="px-3 py-2 {col.key === columns[0].key ? 'font-medium text-gray-900' : 'text-gray-600'} {col.filter === 'number' ? 'font-mono tabular-nums' : ''}">
 							{#if col.filter === 'enum'}
-								<span class="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700">{cellText(col, row)}</span>
+								<span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-gray-200">{cellText(col, row)}</span>
 							{:else}
 								{cellText(col, row)}
 							{/if}
@@ -388,11 +387,11 @@
 
 	<!-- footer -->
 	<div class="flex items-center justify-between border-t border-gray-100 px-3.5 py-2.5 text-xs text-gray-500">
-		<span>{total} {total === 1 ? 'row' : 'rows'}</span>
+		<span><span class="font-mono tabular-nums">{total}</span> {total === 1 ? 'row' : 'rows'}</span>
 		<span class="flex items-center gap-2">
-			Page {page} of {pageCount}
-			<button type="button" class="rounded border border-gray-300 px-2 py-0.5 disabled:opacity-40" disabled={page <= 1} onclick={() => (page = page - 1)}>‹</button>
-			<button type="button" class="rounded border border-gray-300 px-2 py-0.5 disabled:opacity-40" disabled={page >= pageCount} onclick={() => (page = page + 1)}>›</button>
+			Page <span class="font-mono tabular-nums">{page}</span> of <span class="font-mono tabular-nums">{pageCount}</span>
+			<button type="button" class="rounded-lg border border-gray-300 px-2 py-0.5 disabled:opacity-40" disabled={page <= 1} onclick={() => (page = page - 1)}>‹</button>
+			<button type="button" class="rounded-lg border border-gray-300 px-2 py-0.5 disabled:opacity-40" disabled={page >= pageCount} onclick={() => (page = page + 1)}>›</button>
 		</span>
 	</div>
 </div>

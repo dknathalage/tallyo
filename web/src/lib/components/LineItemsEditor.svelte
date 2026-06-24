@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { priceList } from '$lib/stores/priceList.svelte';
 	import { customItems } from '$lib/stores/customItems.svelte';
+	import Button from '$lib/components/Button.svelte';
 	import type { Item, ValidationDetail } from '$lib/api/types';
 
 	// An editor row. `kind` distinguishes a price-list item line (code-driven,
@@ -156,25 +157,17 @@
 	<div class="flex items-center justify-between">
 		<span class="text-sm font-medium">Line items</span>
 		<div class="flex gap-2">
-			<button
-				type="button"
-				onclick={addSupportLine}
-				class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-			>
+			<Button variant="secondary" size="sm" onclick={addSupportLine}>
 				Add catalogue line
-			</button>
-			<button
-				type="button"
-				onclick={addCustomLine}
-				class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-			>
+			</Button>
+			<Button variant="secondary" size="sm" onclick={addCustomLine}>
 				Add custom line
-			</button>
+			</Button>
 		</div>
 	</div>
 
 	{#each lines as line, i (i)}
-		<div class="rounded border border-gray-200 p-3">
+		<div class="rounded-lg border border-gray-200 p-3">
 			<div class="mb-2 flex items-center justify-between">
 				<span class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
 					{line.kind === 'support' ? 'Catalogue item' : 'Custom item'}
@@ -198,12 +191,12 @@
 								type="text"
 								bind:value={line.code}
 								placeholder="e.g. 01_011_0107_1_1"
-								class="w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+								class="w-full rounded-lg border border-gray-300 px-2 py-1 font-mono tabular-nums text-xs"
 							/>
 							<button
 								type="button"
 								onclick={() => openPicker(i)}
-								class="shrink-0 rounded border border-gray-300 px-2 text-xs hover:bg-gray-50"
+								class="shrink-0 rounded-lg border border-gray-300 px-2 text-xs hover:bg-gray-50"
 							>
 								Find
 							</button>
@@ -217,7 +210,7 @@
 						<input
 							type="date"
 							bind:value={line.serviceDate}
-							class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						/>
 						{#if fieldError(i, 'serviceDate')}
 							<p class="mt-1 text-xs text-red-600">{fieldError(i, 'serviceDate')}</p>
@@ -228,18 +221,18 @@
 						<input
 							type="text"
 							bind:value={line.description}
-							class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						/>
 					</div>
 				</div>
 
 				{#if pickerOpen === i}
-					<div class="mt-2 rounded border border-gray-200 bg-gray-50 p-2">
+					<div class="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
 						<input
 							type="text"
 							bind:value={pickerSearch}
 							placeholder="Search support items by code or name"
-							class="mb-2 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+							class="mb-2 w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						/>
 						{#if !catalogLoaded}
 							<p class="text-xs text-gray-500">Loading catalogue…</p>
@@ -252,9 +245,9 @@
 										<button
 											type="button"
 											onclick={() => pickItem(i, it)}
-											class="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-white"
+											class="flex w-full items-center justify-between rounded-lg px-2 py-1 text-left hover:bg-white"
 										>
-											<span><span class="font-mono text-xs">{it.code}</span> — {it.name}</span>
+											<span><span class="font-mono tabular-nums text-xs">{it.code}</span> — {it.name}</span>
 											<span class="text-xs text-gray-500">{it.taxable ? 'Taxable' : 'GST-free'}</span>
 										</button>
 									</li>
@@ -271,7 +264,7 @@
 						<span class="mb-1 block text-xs font-medium text-gray-500">From custom item</span>
 						<select
 							onchange={(e) => selectCustomItem(i, e)}
-							class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						>
 							<option value="">— manual —</option>
 							{#each customItems.items as ci (ci.id)}
@@ -284,7 +277,7 @@
 						<input
 							type="text"
 							bind:value={line.description}
-							class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						/>
 					</div>
 				</div>
@@ -296,7 +289,7 @@
 					<input
 						type="text"
 						bind:value={line.unit}
-						class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 					/>
 				</div>
 				<div class="col-span-6 sm:col-span-2">
@@ -305,7 +298,7 @@
 						type="number"
 						step="any"
 						bind:value={line.quantity}
-						class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm font-mono tabular-nums"
 					/>
 					{#if fieldError(i, 'quantity')}
 						<p class="mt-1 text-xs text-red-600">{fieldError(i, 'quantity')}</p>
@@ -317,7 +310,7 @@
 						type="number"
 						step="any"
 						bind:value={line.unitPrice}
-						class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+						class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm font-mono tabular-nums"
 					/>
 					{#if fieldError(i, 'unitPrice')}
 						<p class="mt-1 text-xs text-red-600">{fieldError(i, 'unitPrice')}</p>
@@ -338,7 +331,7 @@
 				</div>
 				<div class="col-span-12 text-right sm:col-span-3">
 					<span class="mb-1 block text-xs font-medium text-gray-500">Amount</span>
-					<span class="text-sm">{money(lineAmount(line))}</span>
+					<span class="text-sm font-mono tabular-nums">{money(lineAmount(line))}</span>
 				</div>
 			</div>
 
