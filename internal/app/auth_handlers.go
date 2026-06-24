@@ -101,7 +101,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok || status == auth.StatusSuspended {
 		httpx.LoggerFrom(r.Context()).Warn("login blocked: tenant suspended",
-			slog.Int64("tenant_id", creds.TenantID))
+			slog.String("tenant_id", creds.TenantID))
 		httpx.WriteError(w, http.StatusForbidden, "tenant suspended")
 		return
 	}
@@ -416,7 +416,7 @@ func (h *SignupHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	// Email identity for ResolveTenant (owner.Email is already normalized).
 	h.sm.Put(r.Context(), "email", owner.Email)
 	httpx.LoggerFrom(r.Context()).Info("tenant signup",
-		slog.Int64("tenant_id", owner.TenantID), slog.Int64("user_id", owner.ID))
+		slog.String("tenant_id", owner.TenantID), slog.String("user_id", owner.ID))
 	httpx.WriteJSON(w, http.StatusCreated, owner)
 }
 

@@ -31,15 +31,15 @@ var (
 // SessionReader loads a client's unbilled (recorded) sessions for the
 // draft-invoice gather. Satisfied by *session.Service.
 type SessionReader interface {
-	ListUnbilledForClient(ctx context.Context, tenantID, clientID int64) ([]*session.Session, error)
+	ListUnbilledForClient(ctx context.Context, tenantID, clientID string) ([]*session.Session, error)
 }
 
 // CatalogueSearcher is the tenant-scoped, all-fields grounding capability plus
 // version resolution. Satisfied by *pricelist.ItemsRepo.
 type CatalogueSearcher interface {
-	ResolveVersionForDate(ctx context.Context, tenantID int64, serviceDate string) (*pricelist.PriceListVersion, error)
-	SearchItems(ctx context.Context, tenantID, versionID int64, query string) ([]*pricelist.Item, error)
-	GetItemByCode(ctx context.Context, tenantID, versionID int64, code string) (*pricelist.Item, error)
+	ResolveVersionForDate(ctx context.Context, tenantID string, serviceDate string) (*pricelist.PriceListVersion, error)
+	SearchItems(ctx context.Context, tenantID, versionID string, query string) ([]*pricelist.Item, error)
+	GetItemByCode(ctx context.Context, tenantID, versionID string, code string) (*pricelist.Item, error)
 }
 
 // InvoiceDrafter creates an invoice through the trusted, self-validating service

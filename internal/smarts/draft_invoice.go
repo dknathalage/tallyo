@@ -134,14 +134,14 @@ func (s *Service) DraftInvoiceFromSessions(ctx context.Context, clientUUID strin
 	if err != nil {
 		return "", err
 	}
-	return inv.UUID, nil
+	return inv.ID, nil
 }
 
 // resolveLines turns the model's proposed lines into priced LineItemInputs.
 // Pricing is deterministic: each code is resolved against the catalogue and the
 // catalogue's unit_price/taxable are used. Unknown codes are dropped (the model
 // was told to skip unmatched work). The model never sets a price.
-func (s *Service) resolveLines(ctx context.Context, tenantID int64, ver *pricelist.PriceListVersion, proposed []proposedLine) []billing.LineItemInput {
+func (s *Service) resolveLines(ctx context.Context, tenantID string, ver *pricelist.PriceListVersion, proposed []proposedLine) []billing.LineItemInput {
 	out := make([]billing.LineItemInput, 0, len(proposed))
 	for i := range proposed { // bounded by len(proposed)
 		p := proposed[i]
@@ -160,8 +160,8 @@ func (s *Service) resolveLines(ctx context.Context, tenantID int64, ver *priceli
 		if item.UnitPrice != nil {
 			price = *item.UnitPrice
 		}
-		verUUID := ver.UUID
-		itemUUID := item.UUID
+		verUUID := ver.ID
+		itemUUID := item.ID
 		out = append(out, billing.LineItemInput{
 			ItemID:             &itemUUID,
 			PriceListVersionID: &verUUID,
