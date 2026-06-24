@@ -11,9 +11,8 @@
 -- control ids. Same-file FKs are kept.
 
 CREATE TABLE payers (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid       TEXT NOT NULL UNIQUE,
-    tenant_id  INTEGER NOT NULL,
+    id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
+    tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
     name       TEXT NOT NULL,
     email      TEXT DEFAULT '',
     phone      TEXT DEFAULT '',
@@ -25,12 +24,11 @@ CREATE TABLE payers (
 CREATE INDEX idx_payers_tenant ON payers (tenant_id);
 
 CREATE TABLE clients (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid            TEXT NOT NULL UNIQUE,
-    tenant_id       INTEGER NOT NULL,
+    id              TEXT PRIMARY KEY,           -- uuidv7, app-supplied
+    tenant_id       TEXT NOT NULL,              -- guard column (uuid)
     name            TEXT NOT NULL,
     reference       TEXT DEFAULT '',
-    payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL,
+    payer_id TEXT REFERENCES payers(id) ON DELETE SET NULL,
     email           TEXT DEFAULT '',
     phone           TEXT DEFAULT '',
     address         TEXT DEFAULT '',
@@ -42,9 +40,8 @@ CREATE INDEX idx_clients_tenant       ON clients (tenant_id);
 CREATE INDEX idx_clients_payer ON clients (payer_id);
 
 CREATE TABLE business_profile (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid             TEXT NOT NULL UNIQUE,
-    tenant_id        INTEGER NOT NULL UNIQUE,   -- 1:1 per tenant (file scopes it)
+    id               TEXT PRIMARY KEY,          -- uuidv7, app-supplied
+    tenant_id        TEXT NOT NULL UNIQUE,      -- 1:1 per tenant (guard column, uuid)
     name             TEXT NOT NULL DEFAULT '',
     abn              TEXT DEFAULT '',
     email            TEXT DEFAULT '',
@@ -58,9 +55,8 @@ CREATE TABLE business_profile (
 );
 
 CREATE TABLE custom_items (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid       TEXT NOT NULL UNIQUE,
-    tenant_id  INTEGER NOT NULL,
+    id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
+    tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
     name       TEXT NOT NULL,
     rate       REAL NOT NULL DEFAULT 0,
     unit       TEXT DEFAULT '',
@@ -72,9 +68,8 @@ CREATE TABLE custom_items (
 CREATE INDEX idx_custom_items_tenant ON custom_items (tenant_id);
 
 CREATE TABLE tax_rates (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid       TEXT NOT NULL UNIQUE,
-    tenant_id  INTEGER NOT NULL,
+    id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
+    tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
     name       TEXT NOT NULL,
     rate       REAL NOT NULL DEFAULT 0,
     is_default INTEGER NOT NULL DEFAULT 0,
@@ -84,12 +79,11 @@ CREATE TABLE tax_rates (
 CREATE INDEX idx_tax_rates_tenant ON tax_rates (tenant_id);
 
 CREATE TABLE invoices (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid              TEXT NOT NULL UNIQUE,
-    tenant_id         INTEGER NOT NULL,
+    id                TEXT PRIMARY KEY,          -- uuidv7, app-supplied
+    tenant_id         TEXT NOT NULL,             -- guard column (uuid)
     number            TEXT NOT NULL,
-    client_id         INTEGER NOT NULL REFERENCES clients(id),
-    payer_id   INTEGER REFERENCES payers(id) ON DELETE SET NULL,
+    client_id         TEXT NOT NULL REFERENCES clients(id),
+    payer_id   TEXT REFERENCES payers(id) ON DELETE SET NULL,
     status            TEXT NOT NULL DEFAULT 'draft',
     issue_date        TEXT NOT NULL,
     due_date          TEXT NOT NULL,
@@ -114,17 +108,16 @@ CREATE INDEX idx_invoices_created_at  ON invoices (created_at);
 -- the domain slice maps gen.WorkSession to the domain type Session.
 -- author_user_id references control-DB users: column kept, FK dropped.
 CREATE TABLE work_sessions (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid           TEXT NOT NULL UNIQUE,
-    tenant_id      INTEGER NOT NULL,
-    client_id      INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    id             TEXT PRIMARY KEY,            -- uuidv7, app-supplied
+    tenant_id      TEXT NOT NULL,               -- guard column (uuid)
+    client_id      TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
     service_date   TEXT NOT NULL,
     note           TEXT NOT NULL DEFAULT '',
     tags           TEXT NOT NULL DEFAULT '[]',
     status         TEXT NOT NULL DEFAULT 'recorded'
                      CHECK (status IN ('scheduled','recorded','drafted','sent','paid')),
-    invoice_id     INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
-    author_user_id INTEGER,
+    invoice_id     TEXT REFERENCES invoices(id) ON DELETE SET NULL,
+    author_user_id TEXT,
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
@@ -135,13 +128,12 @@ CREATE INDEX idx_work_sessions_invoice         ON work_sessions(invoice_id);
 -- line_items: final shape (00008) — session_id + invoice_id (one required),
 -- start/end time. Catalogue links are control-DB UUIDs (TEXT, no FK).
 CREATE TABLE line_items (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid               TEXT NOT NULL UNIQUE,
-    tenant_id          INTEGER NOT NULL,
-    session_id           INTEGER REFERENCES work_sessions(id) ON DELETE CASCADE,
-    invoice_id         INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
-    item_id               TEXT DEFAULT '',  -- tenant items.uuid (no FK)
-    custom_item_id     INTEGER REFERENCES custom_items(id) ON DELETE SET NULL,
+    id                 TEXT PRIMARY KEY,        -- uuidv7, app-supplied
+    tenant_id          TEXT NOT NULL,           -- guard column (uuid)
+    session_id           TEXT REFERENCES work_sessions(id) ON DELETE CASCADE,
+    invoice_id         TEXT REFERENCES invoices(id) ON DELETE CASCADE,
+    item_id               TEXT DEFAULT '',  -- tenant items.id (uuid, no FK)
+    custom_item_id     TEXT REFERENCES custom_items(id) ON DELETE SET NULL,
     price_list_version_id TEXT DEFAULT '',  -- tenant price_list_versions.uuid (no FK), pinned
     code               TEXT DEFAULT '',     -- snapshot
     description        TEXT NOT NULL,       -- snapshot
@@ -162,12 +154,11 @@ CREATE INDEX idx_line_items_item ON line_items(item_id);
 CREATE INDEX idx_line_items_session        ON line_items(session_id);
 
 CREATE TABLE estimates (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid                 TEXT NOT NULL UNIQUE,
-    tenant_id            INTEGER NOT NULL,
+    id                   TEXT PRIMARY KEY,       -- uuidv7, app-supplied
+    tenant_id            TEXT NOT NULL,          -- guard column (uuid)
     number               TEXT NOT NULL,
-    client_id            INTEGER REFERENCES clients(id),
-    payer_id      INTEGER REFERENCES payers(id) ON DELETE SET NULL,
+    client_id            TEXT REFERENCES clients(id),
+    payer_id      TEXT REFERENCES payers(id) ON DELETE SET NULL,
     status               TEXT NOT NULL DEFAULT 'draft',
     issue_date           TEXT NOT NULL,
     valid_until          TEXT NOT NULL,
@@ -175,7 +166,7 @@ CREATE TABLE estimates (
     tax                  REAL NOT NULL DEFAULT 0,
     total                REAL NOT NULL DEFAULT 0,
     notes                TEXT DEFAULT '',
-    converted_invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+    converted_invoice_id TEXT REFERENCES invoices(id) ON DELETE SET NULL,
     business_snapshot    TEXT DEFAULT '{}',
     client_snapshot      TEXT DEFAULT '{}',
     payer_snapshot       TEXT DEFAULT '{}',
@@ -188,12 +179,11 @@ CREATE INDEX idx_estimates_status      ON estimates (status);
 CREATE INDEX idx_estimates_client ON estimates (client_id);
 
 CREATE TABLE estimate_line_items (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid               TEXT NOT NULL UNIQUE,
-    tenant_id          INTEGER NOT NULL,
-    estimate_id        INTEGER NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
-    item_id               TEXT DEFAULT '',  -- tenant items.uuid (no FK)
-    custom_item_id     INTEGER REFERENCES custom_items(id) ON DELETE SET NULL,
+    id                 TEXT PRIMARY KEY,        -- uuidv7, app-supplied
+    tenant_id          TEXT NOT NULL,           -- guard column (uuid)
+    estimate_id        TEXT NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+    item_id               TEXT DEFAULT '',  -- tenant items.id (uuid, no FK)
+    custom_item_id     TEXT REFERENCES custom_items(id) ON DELETE SET NULL,
     price_list_version_id TEXT DEFAULT '',  -- tenant price_list_versions.uuid (no FK), pinned
     code               TEXT DEFAULT '',     -- snapshot
     description        TEXT NOT NULL,       -- snapshot
@@ -209,10 +199,9 @@ CREATE INDEX idx_estimate_line_items_tenant   ON estimate_line_items (tenant_id)
 CREATE INDEX idx_estimate_line_items_estimate ON estimate_line_items (estimate_id);
 
 CREATE TABLE payments (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid       TEXT NOT NULL UNIQUE,
-    tenant_id  INTEGER NOT NULL,
-    invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
+    tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
+    invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
     amount     REAL NOT NULL,
     paid_at    TEXT NOT NULL,
     method     TEXT DEFAULT '',
@@ -225,11 +214,10 @@ CREATE INDEX idx_payments_tenant  ON payments (tenant_id);
 CREATE INDEX idx_payments_invoice ON payments (invoice_id);
 
 CREATE TABLE recurring_templates (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid            TEXT NOT NULL UNIQUE,
-    tenant_id       INTEGER NOT NULL,
-    client_id       INTEGER REFERENCES clients(id) ON DELETE SET NULL,
-    payer_id INTEGER REFERENCES payers(id) ON DELETE SET NULL,
+    id              TEXT PRIMARY KEY,           -- uuidv7, app-supplied
+    tenant_id       TEXT NOT NULL,              -- guard column (uuid)
+    client_id       TEXT REFERENCES clients(id) ON DELETE SET NULL,
+    payer_id TEXT REFERENCES payers(id) ON DELETE SET NULL,
     name            TEXT NOT NULL,
     frequency       TEXT NOT NULL,
     next_due        TEXT NOT NULL,

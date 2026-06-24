@@ -9,12 +9,11 @@
 -- IF NOT EXISTS so combined single-file mode (control audit_log already present)
 -- is a no-op; a pure tenant DB creates it here.
 CREATE TABLE IF NOT EXISTS audit_log (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid        TEXT NOT NULL UNIQUE,
-    tenant_id   INTEGER,
-    user_id     INTEGER,
+    id          TEXT PRIMARY KEY,               -- uuidv7, app-supplied
+    tenant_id   TEXT,
+    user_id     TEXT,
     entity_type TEXT NOT NULL,
-    entity_id   INTEGER,
+    entity_id   TEXT,
     action      TEXT NOT NULL,
     changes     TEXT DEFAULT '{}',
     context     TEXT DEFAULT '',

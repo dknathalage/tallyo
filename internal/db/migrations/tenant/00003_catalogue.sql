@@ -5,8 +5,7 @@
 -- Fresh clean-break schema — no data migration.
 
 CREATE TABLE price_list_versions (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid            TEXT NOT NULL UNIQUE,
+    id              TEXT PRIMARY KEY,           -- uuidv7, app-supplied
     label           TEXT NOT NULL,           -- e.g. '2025-26 v1.1'
     effective_from  TEXT NOT NULL,           -- DATE
     effective_to    TEXT,                    -- DATE NULL (open-ended = current)
@@ -16,9 +15,8 @@ CREATE TABLE price_list_versions (
 CREATE INDEX idx_price_list_versions_effective ON price_list_versions (effective_from, effective_to);
 
 CREATE TABLE items (
-    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid                  TEXT NOT NULL UNIQUE,
-    price_list_version_id INTEGER NOT NULL REFERENCES price_list_versions(id) ON DELETE CASCADE,
+    id                    TEXT PRIMARY KEY,      -- uuidv7, app-supplied
+    price_list_version_id TEXT NOT NULL REFERENCES price_list_versions(id) ON DELETE CASCADE,
     code                  TEXT NOT NULL,
     name                  TEXT NOT NULL,
     unit                  TEXT DEFAULT '',

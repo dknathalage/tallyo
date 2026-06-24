@@ -6,8 +6,8 @@
 -- Backfill stamps existing rows with the sole tenant when exactly one exists
 -- (the common clean-break case); multi-tenant installs reload catalogues after
 -- this migration. New rows always carry tenant_id explicitly (set in app).
-ALTER TABLE price_list_versions ADD COLUMN tenant_id INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE items ADD COLUMN tenant_id INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE price_list_versions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE items ADD COLUMN tenant_id TEXT NOT NULL DEFAULT '';
 
 UPDATE price_list_versions SET tenant_id = (SELECT id FROM tenants ORDER BY id LIMIT 1)
   WHERE (SELECT COUNT(*) FROM tenants) = 1;

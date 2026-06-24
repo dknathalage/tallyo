@@ -9,8 +9,7 @@
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE tenants (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid       TEXT NOT NULL UNIQUE,
+    id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
     name       TEXT NOT NULL,
     status     TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended')),
     created_at TEXT NOT NULL,
@@ -18,9 +17,8 @@ CREATE TABLE tenants (
 );
 
 CREATE TABLE users (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid              TEXT NOT NULL UNIQUE,
-    tenant_id         INTEGER NOT NULL REFERENCES tenants(id),
+    id                TEXT PRIMARY KEY,         -- uuidv7, app-supplied
+    tenant_id         TEXT NOT NULL REFERENCES tenants(id),
     email             TEXT NOT NULL,
     password_hash     TEXT NOT NULL,
     name              TEXT NOT NULL DEFAULT '',
@@ -34,13 +32,12 @@ CREATE TABLE users (
 CREATE INDEX idx_users_tenant ON users (tenant_id);
 
 CREATE TABLE invites (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid        TEXT NOT NULL UNIQUE,
-    tenant_id   INTEGER NOT NULL REFERENCES tenants(id),
+    id          TEXT PRIMARY KEY,               -- uuidv7, app-supplied
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id),
     token       TEXT NOT NULL UNIQUE,
     email       TEXT NOT NULL,
     role        TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','admin','member')),
-    created_by  INTEGER NOT NULL REFERENCES users(id),
+    created_by  TEXT NOT NULL REFERENCES users(id),
     expires_at  TEXT NOT NULL,
     accepted_at TEXT,
     created_at  TEXT NOT NULL
@@ -63,12 +60,11 @@ CREATE INDEX idx_sessions_expiry ON sessions (expiry);
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE audit_log (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    uuid        TEXT NOT NULL UNIQUE,
-    tenant_id   INTEGER REFERENCES tenants(id),
-    user_id     INTEGER REFERENCES users(id),
+    id          TEXT PRIMARY KEY,               -- uuidv7, app-supplied
+    tenant_id   TEXT REFERENCES tenants(id),
+    user_id     TEXT REFERENCES users(id),
     entity_type TEXT NOT NULL,
-    entity_id   INTEGER,
+    entity_id   TEXT,
     action      TEXT NOT NULL,
     changes     TEXT DEFAULT '{}',
     context     TEXT DEFAULT '',
