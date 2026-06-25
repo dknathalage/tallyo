@@ -6,6 +6,7 @@ package gen
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
@@ -13,26 +14,18 @@ type Querier interface {
 	ClearSessionsForInvoice(ctx context.Context, arg ClearSessionsForInvoiceParams) error
 	ClientInvoiceStats(ctx context.Context, arg ClientInvoiceStatsParams) (ClientInvoiceStatsRow, error)
 	ClientUnbilledAgg(ctx context.Context, tenantID string) ([]ClientUnbilledAggRow, error)
-	// Close every still-open (effective_to IS NULL) version for this tenant. Called
-	// when a new version is ingested so date-windows never overlap and historical
-	// service dates resolve to the version that was effective then.
-	CloseOpenPriceListVersions(ctx context.Context, arg CloseOpenPriceListVersionsParams) error
-	ClosePriceListVersion(ctx context.Context, arg ClosePriceListVersionParams) error
-	CountItems(ctx context.Context, arg CountItemsParams) (int64, error)
 	CountSessionItems(ctx context.Context, arg CountSessionItemsParams) (int64, error)
 	CountUsers(ctx context.Context, tenantID string) (int64, error)
 	CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error)
+	CreateCatalogueItem(ctx context.Context, arg CreateCatalogueItemParams) (CatalogueItem, error)
 	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)
-	CreateCustomItem(ctx context.Context, arg CreateCustomItemParams) (CustomItem, error)
 	CreateEstimate(ctx context.Context, arg CreateEstimateParams) (Estimate, error)
 	CreateEstimateLineItem(ctx context.Context, arg CreateEstimateLineItemParams) (EstimateLineItem, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
-	CreateItem(ctx context.Context, arg CreateItemParams) (Item, error)
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
-	CreatePriceListVersion(ctx context.Context, arg CreatePriceListVersionParams) (PriceListVersion, error)
 	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (WorkSession, error)
 	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
@@ -40,20 +33,16 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteClient(ctx context.Context, arg DeleteClientParams) error
 	DeleteClientByID(ctx context.Context, arg DeleteClientByIDParams) error
-	DeleteCustomItem(ctx context.Context, arg DeleteCustomItemParams) error
-	DeleteCustomItemByID(ctx context.Context, arg DeleteCustomItemByIDParams) error
 	DeleteEstimate(ctx context.Context, arg DeleteEstimateParams) error
 	DeleteEstimateLineItemsForEstimate(ctx context.Context, arg DeleteEstimateLineItemsForEstimateParams) error
 	DeleteInvite(ctx context.Context, arg DeleteInviteParams) error
 	DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUIDParams) error
 	DeleteInvoice(ctx context.Context, arg DeleteInvoiceParams) error
-	DeleteItemsForVersion(ctx context.Context, arg DeleteItemsForVersionParams) error
 	DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineItemsForInvoiceParams) error
 	DeletePayer(ctx context.Context, arg DeletePayerParams) error
 	DeletePayerByID(ctx context.Context, arg DeletePayerByIDParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error
-	DeletePriceListVersion(ctx context.Context, arg DeletePriceListVersionParams) error
 	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 	DeleteSessionLineItem(ctx context.Context, arg DeleteSessionLineItemParams) error
@@ -62,13 +51,20 @@ type Querier interface {
 	DeleteTenant(ctx context.Context, id string) error
 	DeleteUnbilledItemsForSession(ctx context.Context, arg DeleteUnbilledItemsForSessionParams) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
+	EstimateLineReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error)
 	GetBusinessProfile(ctx context.Context, tenantID string) (BusinessProfile, error)
+	// A specific version row by id (any is_current). The validator reads a line
+	// pinned version, which copy-on-write guarantees is frozen.
+	GetCatalogueItem(ctx context.Context, arg GetCatalogueItemParams) (CatalogueItem, error)
+	// Resolve a current version-row uuid to its logical_id (for bulk-delete; unknown
+	// uuid returns no rows so the caller can 400).
+	GetCatalogueLogicalIDByUUID(ctx context.Context, arg GetCatalogueLogicalIDByUUIDParams) (string, error)
 	GetClient(ctx context.Context, arg GetClientParams) (GetClientRow, error)
 	GetClientByID(ctx context.Context, arg GetClientByIDParams) (GetClientByIDRow, error)
 	GetClientIDByUUID(ctx context.Context, arg GetClientIDByUUIDParams) (string, error)
-	GetCurrentPriceListVersion(ctx context.Context, tenantID string) (PriceListVersion, error)
-	GetCustomItem(ctx context.Context, arg GetCustomItemParams) (CustomItem, error)
-	GetCustomItemIDByUUID(ctx context.Context, arg GetCustomItemIDByUUIDParams) (string, error)
+	// The current row for a code (the import upsert key). Empty code never matches.
+	GetCurrentCatalogueByCode(ctx context.Context, arg GetCurrentCatalogueByCodeParams) (CatalogueItem, error)
+	GetCurrentCatalogueByLogical(ctx context.Context, arg GetCurrentCatalogueByLogicalParams) (CatalogueItem, error)
 	GetDefaultTaxRate(ctx context.Context, tenantID string) (TaxRate, error)
 	GetEstimate(ctx context.Context, arg GetEstimateParams) (GetEstimateRow, error)
 	GetEstimateByID(ctx context.Context, arg GetEstimateByIDParams) (GetEstimateByIDRow, error)
@@ -77,18 +73,12 @@ type Querier interface {
 	GetInvoice(ctx context.Context, arg GetInvoiceParams) (GetInvoiceRow, error)
 	GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) (GetInvoiceByIDRow, error)
 	GetInvoiceIDByUUID(ctx context.Context, arg GetInvoiceIDByUUIDParams) (string, error)
-	GetItem(ctx context.Context, arg GetItemParams) (Item, error)
-	GetItemByCode(ctx context.Context, arg GetItemByCodeParams) (Item, error)
-	GetItemIDByUUID(ctx context.Context, arg GetItemIDByUUIDParams) (string, error)
 	GetLineItem(ctx context.Context, arg GetLineItemParams) (GetLineItemRow, error)
 	GetPayer(ctx context.Context, arg GetPayerParams) (Payer, error)
 	GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Payer, error)
 	GetPayerIDByUUID(ctx context.Context, arg GetPayerIDByUUIDParams) (string, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error)
-	GetPriceListVersion(ctx context.Context, arg GetPriceListVersionParams) (PriceListVersion, error)
-	GetPriceListVersionByUUID(ctx context.Context, arg GetPriceListVersionByUUIDParams) (PriceListVersion, error)
-	GetPriceListVersionIDByUUID(ctx context.Context, arg GetPriceListVersionIDByUUIDParams) (string, error)
 	GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
 	GetSessionByID(ctx context.Context, arg GetSessionByIDParams) (GetSessionByIDRow, error)
@@ -102,13 +92,16 @@ type Querier interface {
 	GetUserByEmailGlobal(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
+	LineItemReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error)
 	LinkSessionItemsToInvoice(ctx context.Context, arg LinkSessionItemsToInvoiceParams) error
 	ListActiveRecurringTemplates(ctx context.Context, tenantID string) ([]ListActiveRecurringTemplatesRow, error)
 	ListActiveTenantIDs(ctx context.Context) ([]string, error)
+	// Per-tenant catalogue (tenant-owned, scoped by tenant_id). One append-only
+	// table with per-item copy-on-write versioning: is_current = 1 is the live row.
+	ListCatalogue(ctx context.Context, tenantID string) ([]CatalogueItem, error)
 	ListClientEstimates(ctx context.Context, arg ListClientEstimatesParams) ([]ListClientEstimatesRow, error)
 	ListClientInvoices(ctx context.Context, arg ListClientInvoicesParams) ([]ListClientInvoicesRow, error)
 	ListClients(ctx context.Context, tenantID string) ([]ListClientsRow, error)
-	ListCustomItems(ctx context.Context, tenantID string) ([]CustomItem, error)
 	ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemplatesForTenantParams) ([]RecurringTemplate, error)
 	ListEstimateLineItems(ctx context.Context, arg ListEstimateLineItemsParams) ([]ListEstimateLineItemsRow, error)
 	ListEstimates(ctx context.Context, tenantID string) ([]ListEstimatesRow, error)
@@ -117,13 +110,9 @@ type Querier interface {
 	ListInvoicePayments(ctx context.Context, arg ListInvoicePaymentsParams) ([]Payment, error)
 	ListInvoices(ctx context.Context, tenantID string) ([]ListInvoicesRow, error)
 	ListInvoicesByStatus(ctx context.Context, arg ListInvoicesByStatusParams) ([]ListInvoicesByStatusRow, error)
-	// Per-tenant price-list items (tenant-owned, scoped by tenant_id).
-	ListItems(ctx context.Context, arg ListItemsParams) ([]Item, error)
 	ListLineItemsForInvoice(ctx context.Context, arg ListLineItemsForInvoiceParams) ([]ListLineItemsForInvoiceRow, error)
 	ListLineItemsForSession(ctx context.Context, arg ListLineItemsForSessionParams) ([]ListLineItemsForSessionRow, error)
 	ListPayers(ctx context.Context, tenantID string) ([]Payer, error)
-	// Per-tenant price list (tenant-owned, scoped by tenant_id).
-	ListPriceListVersions(ctx context.Context, tenantID string) ([]PriceListVersion, error)
 	ListRecordedUnbilledByClient(ctx context.Context, arg ListRecordedUnbilledByClientParams) ([]ListRecordedUnbilledByClientRow, error)
 	ListRecurringTemplates(ctx context.Context, tenantID string) ([]ListRecurringTemplatesRow, error)
 	ListScheduledSessions(ctx context.Context, tenantID string) ([]ListScheduledSessionsRow, error)
@@ -140,7 +129,9 @@ type Querier interface {
 	ListTenants(ctx context.Context) ([]Tenant, error)
 	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
 	ListUsers(ctx context.Context, tenantID string) ([]User, error)
+	MarkCatalogueVersionStale(ctx context.Context, arg MarkCatalogueVersionStaleParams) error
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
+	MaxCatalogueVersionForLogical(ctx context.Context, arg MaxCatalogueVersionForLogicalParams) (interface{}, error)
 	// Highest numeric sequence (parsed from the suffix after prefix_len chars),
 	// pad-width independent. prefix_len is the length of the non-numeric prefix
 	// (e.g. 4 for 'EST-'); the numeric part begins at prefix_len + 1.
@@ -149,23 +140,24 @@ type Querier interface {
 	// pad-width independent. prefix_len is the length of the non-numeric prefix
 	// (e.g. 4 for 'INV-'); the numeric part begins at prefix_len + 1.
 	MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumberLikeParams) (int64, error)
-	ResolvePriceListVersionForDate(ctx context.Context, arg ResolvePriceListVersionForDateParams) (PriceListVersion, error)
 	RestampUnbilledSessionItems(ctx context.Context, arg RestampUnbilledSessionItemsParams) error
+	// All searchable fields (code, name, category, unit), current rows only.
+	// The LIKE pattern is escaped; pair with ESCAPE backslash.
+	SearchCatalogue(ctx context.Context, arg SearchCatalogueParams) ([]CatalogueItem, error)
 	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
-	SearchCustomItems(ctx context.Context, arg SearchCustomItemsParams) ([]CustomItem, error)
-	// All searchable fields (code, name, category, unit), tenant-scoped. sqlc.arg(q)
-	// is the escaped LIKE pattern; pair with ESCAPE '\'.
-	SearchItems(ctx context.Context, arg SearchItemsParams) ([]Item, error)
 	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
 	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID string) ([]SelectOverdueInvoicesForTenantRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error
 	SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
+	// Delete flips every row of the logical_id out of current; referenced versions
+	// linger so existing documents stay intact.
+	TombstoneCatalogueLogical(ctx context.Context, arg TombstoneCatalogueLogicalParams) error
 	TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) error
 	UnlinkSessionItemsFromInvoice(ctx context.Context, arg UnlinkSessionItemsFromInvoiceParams) error
+	UpdateCatalogueItemInPlace(ctx context.Context, arg UpdateCatalogueItemInPlaceParams) (CatalogueItem, error)
 	UpdateClient(ctx context.Context, arg UpdateClientParams) (Client, error)
-	UpdateCustomItem(ctx context.Context, arg UpdateCustomItemParams) (CustomItem, error)
 	UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) (Estimate, error)
 	UpdateEstimateStatus(ctx context.Context, arg UpdateEstimateStatusParams) error
 	UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (Invoice, error)
@@ -183,7 +175,6 @@ type Querier interface {
 	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
-	UpsertItem(ctx context.Context, arg UpsertItemParams) (Item, error)
 }
 
 var _ Querier = (*Queries)(nil)

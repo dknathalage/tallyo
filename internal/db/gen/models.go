@@ -36,6 +36,23 @@ type BusinessProfile struct {
 	UpdatedAt       string         `json:"updated_at"`
 }
 
+type CatalogueItem struct {
+	ID        string         `json:"id"`
+	LogicalID string         `json:"logical_id"`
+	TenantID  string         `json:"tenant_id"`
+	Code      sql.NullString `json:"code"`
+	Name      string         `json:"name"`
+	Unit      sql.NullString `json:"unit"`
+	Category  sql.NullString `json:"category"`
+	UnitPrice float64        `json:"unit_price"`
+	Taxable   int64          `json:"taxable"`
+	Metadata  string         `json:"metadata"`
+	Version   int64          `json:"version"`
+	IsCurrent int64          `json:"is_current"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+}
+
 type Client struct {
 	ID        string         `json:"id"`
 	TenantID  string         `json:"tenant_id"`
@@ -45,18 +62,6 @@ type Client struct {
 	Email     sql.NullString `json:"email"`
 	Phone     sql.NullString `json:"phone"`
 	Address   sql.NullString `json:"address"`
-	Metadata  sql.NullString `json:"metadata"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
-}
-
-type CustomItem struct {
-	ID        string         `json:"id"`
-	TenantID  string         `json:"tenant_id"`
-	Name      string         `json:"name"`
-	Rate      float64        `json:"rate"`
-	Unit      sql.NullString `json:"unit"`
-	Taxable   int64          `json:"taxable"`
 	Metadata  sql.NullString `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
@@ -84,21 +89,19 @@ type Estimate struct {
 }
 
 type EstimateLineItem struct {
-	ID                 string         `json:"id"`
-	TenantID           string         `json:"tenant_id"`
-	EstimateID         string         `json:"estimate_id"`
-	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullString `json:"custom_item_id"`
-	PriceListVersionID sql.NullString `json:"price_list_version_id"`
-	Code               sql.NullString `json:"code"`
-	Description        string         `json:"description"`
-	ServiceDate        sql.NullString `json:"service_date"`
-	Unit               sql.NullString `json:"unit"`
-	Quantity           float64        `json:"quantity"`
-	UnitPrice          float64        `json:"unit_price"`
-	Taxable            int64          `json:"taxable"`
-	LineTotal          float64        `json:"line_total"`
-	SortOrder          sql.NullInt64  `json:"sort_order"`
+	ID              string         `json:"id"`
+	TenantID        string         `json:"tenant_id"`
+	EstimateID      string         `json:"estimate_id"`
+	Code            sql.NullString `json:"code"`
+	Description     string         `json:"description"`
+	ServiceDate     sql.NullString `json:"service_date"`
+	Unit            sql.NullString `json:"unit"`
+	Quantity        float64        `json:"quantity"`
+	UnitPrice       float64        `json:"unit_price"`
+	Taxable         int64          `json:"taxable"`
+	LineTotal       float64        `json:"line_total"`
+	SortOrder       sql.NullInt64  `json:"sort_order"`
+	CatalogueItemID sql.NullString `json:"catalogue_item_id"`
 }
 
 type Invite struct {
@@ -133,38 +136,23 @@ type Invoice struct {
 	UpdatedAt        string         `json:"updated_at"`
 }
 
-type Item struct {
-	ID                 string          `json:"id"`
-	PriceListVersionID string          `json:"price_list_version_id"`
-	Code               string          `json:"code"`
-	Name               string          `json:"name"`
-	Unit               sql.NullString  `json:"unit"`
-	Category           sql.NullString  `json:"category"`
-	UnitPrice          sql.NullFloat64 `json:"unit_price"`
-	Taxable            int64           `json:"taxable"`
-	Metadata           sql.NullString  `json:"metadata"`
-	TenantID           string          `json:"tenant_id"`
-}
-
 type LineItem struct {
-	ID                 string         `json:"id"`
-	TenantID           string         `json:"tenant_id"`
-	SessionID          sql.NullString `json:"session_id"`
-	InvoiceID          sql.NullString `json:"invoice_id"`
-	ItemID             sql.NullString `json:"item_id"`
-	CustomItemID       sql.NullString `json:"custom_item_id"`
-	PriceListVersionID sql.NullString `json:"price_list_version_id"`
-	Code               sql.NullString `json:"code"`
-	Description        string         `json:"description"`
-	ServiceDate        sql.NullString `json:"service_date"`
-	Unit               sql.NullString `json:"unit"`
-	StartTime          sql.NullString `json:"start_time"`
-	EndTime            sql.NullString `json:"end_time"`
-	Quantity           float64        `json:"quantity"`
-	UnitPrice          float64        `json:"unit_price"`
-	Taxable            int64          `json:"taxable"`
-	LineTotal          float64        `json:"line_total"`
-	SortOrder          sql.NullInt64  `json:"sort_order"`
+	ID              string         `json:"id"`
+	TenantID        string         `json:"tenant_id"`
+	SessionID       sql.NullString `json:"session_id"`
+	InvoiceID       sql.NullString `json:"invoice_id"`
+	Code            sql.NullString `json:"code"`
+	Description     string         `json:"description"`
+	ServiceDate     sql.NullString `json:"service_date"`
+	Unit            sql.NullString `json:"unit"`
+	StartTime       sql.NullString `json:"start_time"`
+	EndTime         sql.NullString `json:"end_time"`
+	Quantity        float64        `json:"quantity"`
+	UnitPrice       float64        `json:"unit_price"`
+	Taxable         int64          `json:"taxable"`
+	LineTotal       float64        `json:"line_total"`
+	SortOrder       sql.NullInt64  `json:"sort_order"`
+	CatalogueItemID sql.NullString `json:"catalogue_item_id"`
 }
 
 type Payer struct {
@@ -190,16 +178,6 @@ type Payment struct {
 	Notes     sql.NullString `json:"notes"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
-}
-
-type PriceListVersion struct {
-	ID             string         `json:"id"`
-	Label          string         `json:"label"`
-	EffectiveFrom  string         `json:"effective_from"`
-	EffectiveTo    sql.NullString `json:"effective_to"`
-	SourceFilename sql.NullString `json:"source_filename"`
-	CreatedAt      string         `json:"created_at"`
-	TenantID       string         `json:"tenant_id"`
 }
 
 type RecurringTemplate struct {
