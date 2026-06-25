@@ -91,7 +91,7 @@ func TestStreamDeliversEventFrame(t *testing.T) {
 	}
 }
 
-func TestWriteFrameSkipsUnmarshalableButKeepsAlive(t *testing.T) {
+func TestWriteFrameFormat(t *testing.T) {
 	rec := httptest.NewRecorder()
 	if !writeFrame(rec, Event{Entity: "x", UUID: "1", Action: "created"}) {
 		t.Fatal("writeFrame should return true on success")
