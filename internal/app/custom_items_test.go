@@ -172,6 +172,17 @@ func TestCustomItemBulkDelete204(t *testing.T) {
 	}
 }
 
+func TestCustomItemUpdateMalformedJSON400(t *testing.T) {
+	srv, uuid := newCustomItemServer(t)
+	c := loggedInClient(t, srv.URL)
+	id := createCustomItem(t, c, srv.URL, uuid, "Widget")
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/custom-items/"+id, "{")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed JSON update: want 400 got %d", resp.StatusCode)
+	}
+}
+
 func TestCustomItemListSearchFilters(t *testing.T) {
 	srv, uuid := newCustomItemServer(t)
 	c := loggedInClient(t, srv.URL)
