@@ -27,17 +27,18 @@ type RecurringTemplate struct {
 	UpdatedAt  string           `json:"updatedAt"`
 }
 
-// RecurringLine is one line in a template's stored line_items JSON.
+// RecurringLine is one line in a template's stored line_items JSON. Recurring
+// bills the price frozen here and does not run the validator or re-resolve the
+// catalogue, so it carries no catalogue reference (the merge dropped the old
+// itemId/customItemId fields; pre-existing JSON keys are ignored on unmarshal).
 type RecurringLine struct {
-	ItemID       *string `json:"itemId"`       // tenant price-list item uuid
-	CustomItemID *string `json:"customItemId"` // tenant custom_items.uuid
-	Code         string  `json:"code"`
-	Description  string  `json:"description"`
-	Unit         string  `json:"unit"`
-	Quantity     float64 `json:"quantity"`
-	UnitPrice    float64 `json:"unitPrice"`
-	Taxable      bool    `json:"taxable"`
-	SortOrder    int64   `json:"sortOrder"`
+	Code        string  `json:"code"`
+	Description string  `json:"description"`
+	Unit        string  `json:"unit"`
+	Quantity    float64 `json:"quantity"`
+	UnitPrice   float64 `json:"unitPrice"`
+	Taxable     bool    `json:"taxable"`
+	SortOrder   int64   `json:"sortOrder"`
 }
 
 // RecurringInput is the writable subset of a recurring template. Client and

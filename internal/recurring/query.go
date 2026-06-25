@@ -132,15 +132,13 @@ func parseLines(lines []*RecurringLine) []billing.LineItemInput {
 	for i := range lines { // bounded by len(lines)
 		l := lines[i]
 		out = append(out, billing.LineItemInput{
-			ItemID:       l.ItemID,
-			CustomItemID: l.CustomItemID,
-			Code:         l.Code,
-			Description:  l.Description,
-			Unit:         l.Unit,
-			Quantity:     l.Quantity,
-			UnitPrice:    l.UnitPrice,
-			Taxable:      l.Taxable,
-			SortOrder:    l.SortOrder,
+			Code:        l.Code,
+			Description: l.Description,
+			Unit:        l.Unit,
+			Quantity:    l.Quantity,
+			UnitPrice:   l.UnitPrice,
+			Taxable:     l.Taxable,
+			SortOrder:   l.SortOrder,
 		})
 	}
 	return out
