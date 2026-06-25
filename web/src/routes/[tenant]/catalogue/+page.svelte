@@ -1,53 +1,94 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { priceList } from '$lib/stores/priceList.svelte';
-	import Sparkle from '$lib/components/Sparkle.svelte';
+	import { catalogue } from '$lib/stores/catalogue.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { apiUpload, tenantPath } from '$lib/api/client';
-	import type { PriceListVersion, Item } from '$lib/api/types';
 	import { features } from '$lib/stores/features.svelte';
 	import * as smarts from '$lib/api/smarts';
+	import { t } from '$lib/nav';
+	import DataTable from '$lib/components/DataTable.svelte';
+	import CreateModal from '$lib/components/CreateModal.svelte';
 	import Button from '$lib/components/Button.svelte';
-	import Badge from '$lib/components/Badge.svelte';
+	import Sparkle from '$lib/components/Sparkle.svelte';
+	import type { Column, RowAction } from '$lib/components/datatable';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import type { CatalogueItem, CatalogueItemInput } from '$lib/api/types';
 
-	function money(n: number): string {
-		const v = Number.isFinite(n) ? n : 0;
-		return v.toFixed(2);
-	}
-
-	// Selected version + its items.
-	let selectedVersionId = $state<string | null>(null);
-	let items = $state<Item[]>([]);
-	let itemsLoading = $state(false);
-	let itemsError = $state<string | null>(null);
-	let itemSearch = $state('');
-
-	const filteredItems = $derived.by<Item[]>(() => {
-		const q = itemSearch.trim().toLowerCase();
-		if (q === '') return items;
-		return items.filter(
-			(it) => it.code.toLowerCase().includes(q) || it.name.toLowerCase().includes(q)
-		);
+	onMount(() => {
+		catalogue.ensureSubscribed();
+		void catalogue.query({ page: 1, limit: 50 });
 	});
 
-	// Owner/admin two-step import wizard.
+	let createOpen = $state(false);
+
+	function toInput(c: CatalogueItem): CatalogueItemInput {
+		return {
+			code: c.code,
+			name: c.name,
+			unit: c.unit,
+			category: c.category,
+			unitPrice: Number(c.unitPrice),
+			taxable: c.taxable,
+			metadata: c.metadata ?? ''
+		};
+	}
+
+	function validate(key: string, value: unknown): string | null {
+		if (key === 'name' && String(value ?? '').trim() === '') return 'Name is required.';
+		return null;
+	}
+
+	// DataTable columns. Keys match CatalogueItem JSON fields (and the server
+	// allowlist), so one key drives filter, sort, display, and edit-page input kind.
+	const columns: Column<CatalogueItem>[] = [
+		{ key: 'name', label: 'Name', sortable: true, filter: 'text' },
+		{ key: 'code', label: 'Code', sortable: false, filter: 'text' },
+		{
+			key: 'unitPrice',
+			label: 'Unit price',
+			sortable: true,
+			filter: 'number',
+			input: 'number',
+			cell: (c) => c.unitPrice.toFixed(2)
+		},
+		{ key: 'unit', label: 'Unit', sortable: true, filter: 'text' },
+		{ key: 'category', label: 'Category', sortable: true, filter: 'text' },
+		{
+			key: 'taxable',
+			label: 'GST',
+			sortable: true,
+			input: 'checkbox',
+			cell: (c) => (c.taxable ? 'Taxable' : '—')
+		}
+	];
+
+	const rowActions: RowAction<CatalogueItem>[] = [
+		{
+			label: 'Delete',
+			icon: Trash2,
+			danger: true,
+			bulk: true,
+			run: async (rows) => {
+				for (const r of rows) await catalogue.crud.remove(r.id); // bounded by selection
+			}
+		}
+	];
+
+	// ── Owner/admin upload-and-map import (upserts the catalogue by code). ──
 	const TARGETS = ['name', 'code', 'unit', 'category', 'unitPrice', 'taxable'] as const;
-	let importLabel = $state('');
 	let importHeaderRow = $state(1);
 	let importFile = $state<File | null>(null);
 	let importing = $state(false);
 	let inspecting = $state(false);
 	let importError = $state<string | null>(null);
 	let importNotice = $state<string | null>(null);
-	// Inspect result + the per-header mapping selections ('' = ignore).
 	let inspectHeaders = $state<string[]>([]);
 	let inspectSample = $state<Record<string, string>[]>([]);
 	let mapping = $state<Record<string, string>>({});
 
 	type InspectResult = { headers: string[]; sampleRows: Record<string, string>[] };
+	type ImportSummary = { created: number; updated: number };
 
-	// The preview maps each sample row through the current mapping into the target
-	// fields, so the user sees what will be imported before committing.
 	const mappedPreview = $derived.by<Record<string, string>[]>(() => {
 		return inspectSample.map((row) => {
 			const out: Record<string, string> = {};
@@ -61,7 +102,6 @@
 
 	const hasNameMapped = $derived(Object.values(mapping).includes('name'));
 
-	// ── AI: auto-map detected headers to target fields. ──
 	let autoMapping = $state(false);
 	let autoMapError = $state<string | null>(null);
 	const VALID_TARGETS = new Set<string>(TARGETS);
@@ -72,8 +112,6 @@
 		autoMapping = true;
 		try {
 			const proposed = await smarts.mapImport(inspectHeaders, inspectSample);
-			// Pre-fill: keep current selections, overlaying any proposed target that is
-			// a known field. The user can still adjust every select afterwards.
 			const next = { ...mapping };
 			for (const header of inspectHeaders) {
 				const target = proposed[header];
@@ -87,34 +125,9 @@
 		}
 	}
 
-	onMount(() => {
-		priceList.ensureSubscribed();
-		void (async () => {
-			await priceList.loadVersions();
-			if (priceList.versions.length > 0) {
-				await selectVersion(priceList.versions[0]);
-			}
-		})();
-	});
-
-	async function selectVersion(v: PriceListVersion): Promise<void> {
-		selectedVersionId = v.id;
-		itemsLoading = true;
-		itemsError = null;
-		try {
-			items = await priceList.loadItems(v.id);
-		} catch (err) {
-			itemsError = err instanceof Error ? err.message : 'Failed to load items.';
-			items = [];
-		} finally {
-			itemsLoading = false;
-		}
-	}
-
 	function onFileChange(e: Event): void {
 		const input = e.currentTarget as HTMLInputElement;
 		importFile = input.files && input.files.length > 0 ? input.files[0] : null;
-		// A new file invalidates any prior inspection.
 		inspectHeaders = [];
 		inspectSample = [];
 		mapping = {};
@@ -134,10 +147,9 @@
 			const form = new FormData();
 			form.append('file', importFile);
 			form.append('headerRow', String(importHeaderRow));
-			const res = await apiUpload<InspectResult>(tenantPath('price-list/import/inspect'), form);
+			const res = await apiUpload<InspectResult>(tenantPath('catalogue/import/inspect'), form);
 			inspectHeaders = res?.headers ?? [];
 			inspectSample = res?.sampleRows ?? [];
-			// Default mapping: ignore everything until the user chooses.
 			const next: Record<string, string> = {};
 			for (const h of inspectHeaders) next[h] = '';
 			mapping = next;
@@ -157,15 +169,10 @@
 			importError = 'Please choose a file and inspect it first.';
 			return;
 		}
-		if (importLabel.trim() === '') {
-			importError = 'Please enter a label.';
-			return;
-		}
 		if (!hasNameMapped) {
 			importError = 'Map one column to "name" (required).';
 			return;
 		}
-		// Drop ignored columns from the mapping sent to the server.
 		const cleanMapping: Record<string, string> = {};
 		for (const [header, target] of Object.entries(mapping)) {
 			if (target && target !== '') cleanMapping[header] = target;
@@ -174,20 +181,15 @@
 		try {
 			const form = new FormData();
 			form.append('file', importFile);
-			form.append('label', importLabel);
 			form.append('headerRow', String(importHeaderRow));
 			form.append('mapping', JSON.stringify(cleanMapping));
-			await apiUpload<PriceListVersion>(tenantPath('price-list/import/commit'), form);
-			importNotice = 'Price-list version imported.';
-			importLabel = '';
+			const res = await apiUpload<ImportSummary>(tenantPath('catalogue/import/commit'), form);
+			importNotice = `Imported: ${res?.created ?? 0} created, ${res?.updated ?? 0} updated.`;
 			importFile = null;
 			inspectHeaders = [];
 			inspectSample = [];
 			mapping = {};
-			await priceList.loadVersions();
-			if (priceList.versions.length > 0) {
-				await selectVersion(priceList.versions[0]);
-			}
+			await catalogue.query({ page: 1, limit: 50 });
 		} catch (err) {
 			importError = err instanceof Error ? err.message : 'Import failed.';
 		} finally {
@@ -196,20 +198,23 @@
 	}
 </script>
 
-<div class="space-y-8">
+<div class="space-y-6">
 	<section>
-		<h1 class="mb-1 text-2xl font-semibold tracking-tight">Price list</h1>
-		<p class="text-sm text-gray-500">
-			Your tenant's price list. Browse versions and their items. This data is read-only.
-		</p>
+		<div class="mb-2">
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">Catalogue</h1>
+			<p class="text-sm text-gray-500">
+				Your tenant's reusable priced line items. Add them to invoices and estimates; editing a
+				priced item that an existing document already uses keeps that document's price.
+			</p>
+		</div>
 	</section>
 
 	{#if session.isManager}
 		<section class="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-			<h2 class="mb-1 text-base font-semibold">Import a new price-list version</h2>
+			<h2 class="mb-1 text-base font-semibold">Import items</h2>
 			<p class="mb-4 text-sm text-gray-600">
-				Owner/admin only. Upload a CSV or XLSX, map its columns to the price-list fields, then
-				import.
+				Owner/admin only. Upload a CSV or XLSX, map its columns to the catalogue fields, then
+				import. Existing items are matched and updated by code.
 			</p>
 
 			<form class="flex flex-wrap items-end gap-3" onsubmit={inspectFile}>
@@ -303,20 +308,7 @@
 					{/if}
 
 					<div class="flex flex-wrap items-end gap-3">
-						<label class="text-sm">
-							<span class="mb-1 block font-medium">Label</span>
-							<input
-								type="text"
-								bind:value={importLabel}
-								placeholder="2025-26 v1.1"
-								class="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-							/>
-						</label>
-						<Button
-							onclick={commitImport}
-							loading={importing}
-							disabled={importing || !hasNameMapped || importLabel.trim() === ''}
-						>
+						<Button onclick={commitImport} loading={importing} disabled={importing || !hasNameMapped}>
 							{importing ? 'Importing…' : 'Import'}
 						</Button>
 					</div>
@@ -333,90 +325,28 @@
 	{/if}
 
 	<section>
-		<h2 class="mb-2 text-base font-semibold">Versions</h2>
-		{#if priceList.loading}
-			<p class="text-sm text-gray-500">Loading versions…</p>
+		{#if catalogue.error}
+			<p class="mb-3 text-sm text-red-600">{catalogue.error}</p>
 		{/if}
-		{#if priceList.error}
-			<p class="text-sm text-red-600">{priceList.error}</p>
-		{/if}
-		{#if priceList.versions.length === 0 && !priceList.loading}
-			<p class="text-sm text-gray-500">No price-list versions loaded yet.</p>
-		{:else}
-			<div class="flex flex-wrap gap-2">
-				{#each priceList.versions as v (v.id)}
-					<button
-						type="button"
-						onclick={() => selectVersion(v)}
-						class="rounded-lg px-3 py-1 text-sm {selectedVersionId === v.id
-							? 'bg-brand-700 text-onbrand'
-							: 'border border-gray-300 hover:bg-gray-50'}"
-					>
-						{v.label}
-						<span class="opacity-70">({v.effectiveFrom ? v.effectiveFrom.slice(0, 10) : '—'})</span>
-					</button>
-				{/each}
-			</div>
-		{/if}
+
+		<DataTable
+			title="Catalogue"
+			{columns}
+			store={catalogue}
+			{rowActions}
+			rowHref={(r) => t(`/catalogue/${r.id}`)}
+			onnew={() => (createOpen = true)}
+		/>
 	</section>
-
-	{#if selectedVersionId !== null}
-		<section>
-			<label class="mb-4 block max-w-sm">
-				<span class="mb-1 block text-sm font-medium">Search items</span>
-				<input
-					type="text"
-					bind:value={itemSearch}
-					placeholder="Filter by code or name"
-					class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-				/>
-			</label>
-
-			{#if itemsLoading}
-				<p class="text-sm text-gray-500">Loading items…</p>
-			{/if}
-			{#if itemsError}
-				<p class="text-sm text-red-600">{itemsError}</p>
-			{/if}
-
-			<div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-				<table class="w-full text-sm">
-					<thead class="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
-						<tr>
-							<th class="px-3 py-2 font-medium">Code</th>
-							<th class="px-3 py-2 font-medium">Name</th>
-							<th class="px-3 py-2 font-medium">Unit</th>
-							<th class="px-3 py-2 font-medium">Category</th>
-							<th class="px-3 py-2 font-medium text-right">Unit price</th>
-							<th class="px-3 py-2 font-medium">GST</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each filteredItems as item (item.id)}
-							<tr class="border-b border-gray-100 last:border-0">
-								<td class="px-3 py-2 font-mono text-xs tabular-nums">{item.code}</td>
-								<td class="px-3 py-2 font-medium">{item.name}</td>
-								<td class="px-3 py-2 text-gray-600">{item.unit || '—'}</td>
-								<td class="px-3 py-2 text-gray-600">{item.category || '—'}</td>
-								<td class="px-3 py-2 text-right font-mono text-gray-600 tabular-nums"
-									>{item.unitPrice === null ? '—' : money(item.unitPrice)}</td
-								>
-								<td class="px-3 py-2 text-gray-600">
-									{#if item.taxable}<Badge tone="brand">Taxable</Badge>{:else}<Badge tone="gray"
-											>GST-free</Badge
-										>{/if}
-								</td>
-							</tr>
-						{:else}
-							<tr>
-								<td colspan="6" class="px-3 py-6 text-center text-gray-500">
-									No items found.
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		</section>
-	{/if}
 </div>
+
+<CreateModal
+	title="catalogue item"
+	{columns}
+	create={catalogue.crud.create}
+	{toInput}
+	{validate}
+	blank={{ taxable: false }}
+	bind:open={createOpen}
+	onsaved={() => catalogue.query({ page: 1, limit: 50 })}
+/>

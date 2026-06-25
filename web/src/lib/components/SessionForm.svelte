@@ -2,7 +2,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
-	import { priceList } from '$lib/stores/priceList.svelte';
+	import { catalogue } from '$lib/stores/catalogue.svelte';
 	import * as sessionsApi from '$lib/api/sessions';
 	import { hoursBetween, todayISO } from '$lib/sessions/format';
 	import type {
@@ -11,7 +11,7 @@
 		SessionStatus,
 		LineItem,
 		LineItemInput,
-		Item
+		CatalogueItem
 	} from '$lib/api/types';
 
 	type Props = {
@@ -136,7 +136,7 @@
 	}
 
 	let niCode = $state('');
-	let niCustomItemId = $state<string | null>(null);
+	let niCatalogueItemId = $state<string | null>(null);
 	let niDescription = $state('');
 	let niUnit = $state('');
 	let niQuantity = $state('1');
@@ -146,7 +146,7 @@
 
 	function resetDraft(): void {
 		niCode = '';
-		niCustomItemId = null;
+		niCatalogueItemId = null;
 		niDescription = '';
 		niUnit = '';
 		niQuantity = '1';
@@ -162,23 +162,20 @@
 
 	let pickerOpen = $state(false);
 	let pickerSearch = $state('');
-	let catalogItems = $state<Item[]>([]);
+	let catalogItems = $state<CatalogueItem[]>([]);
 	let catalogLoaded = $state(false);
 
 	async function ensureCatalog(): Promise<void> {
 		if (catalogLoaded) return;
 		catalogLoaded = true;
-		await priceList.loadVersions();
-		if (priceList.versions.length > 0) {
-			try {
-				catalogItems = await priceList.loadItems(priceList.versions[0].id);
-			} catch {
-				catalogItems = [];
-			}
+		try {
+			catalogItems = await catalogue.crud.list();
+		} catch {
+			catalogItems = [];
 		}
 	}
 
-	const pickerResults = $derived.by<Item[]>(() => {
+	const pickerResults = $derived.by<CatalogueItem[]>(() => {
 		const q = pickerSearch.trim().toLowerCase();
 		if (q === '') return catalogItems.slice(0, 20);
 		return catalogItems
@@ -192,9 +189,9 @@
 		if (pickerOpen) await ensureCatalog();
 	}
 
-	function pickItem(it: Item): void {
+	function pickItem(it: CatalogueItem): void {
 		niCode = it.code;
-		niCustomItemId = null;
+		niCatalogueItemId = it.id;
 		niDescription = it.name;
 		niUnit = it.unit;
 		niUnitPrice = '';
@@ -213,19 +210,19 @@
 			itemError = 'A description is required.';
 			return;
 		}
-		const coded = niCode.trim() !== '';
+		// A catalogue-backed line (picked from the catalogue) is priced by the
+		// server from its catalogue item; a free line carries the typed price.
+		const fromCatalogue = niCatalogueItemId !== null;
 		const input: LineItemInput = {
-			itemId: null,
-			customItemId: niCustomItemId,
-			priceListVersionId: null,
-			code: coded ? niCode.trim() : '',
+			catalogueItemId: niCatalogueItemId,
+			code: fromCatalogue ? niCode.trim() : '',
 			description: niDescription.trim(),
 			serviceDate: fDate,
 			unit: niUnit,
 			startTime: unitClass(niUnit) === 'time' ? niStart : '',
 			endTime: unitClass(niUnit) === 'time' ? niEnd : '',
 			quantity: qty,
-			unitPrice: coded ? 0 : Number(niUnitPrice) || 0,
+			unitPrice: fromCatalogue ? 0 : Number(niUnitPrice) || 0,
 			taxable: false,
 			sortOrder: items.length
 		};

@@ -95,48 +95,33 @@ export interface ClientInput {
 	metadata: string;
 }
 
-export interface CustomItem {
+// ---- Catalogue (tenant-owned, per-item copy-on-write versioning) ----
+
+// The catalogue is the single source of reusable priced line templates. `id` is
+// the version-row uuid (what a line item pins via `catalogueItemId`); `version`
+// and `isCurrent` describe the copy-on-write history. List endpoints return only
+// current rows.
+export interface CatalogueItem {
 	id: string;
-	name: string;
-	rate: number;
-	unit: string;
-	taxable: boolean;
-	metadata: string;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface CustomItemInput {
-	name: string;
-	rate: number;
-	unit: string;
-	taxable: boolean;
-	metadata: string;
-}
-
-// ---- Price list (tenant-owned, read-only for non-admins) ----
-
-// The price-list read endpoints address rows by their uuid: `id` is the
-// version/item uuid (string), and `priceListVersionId` on an item is the owning
-// version's uuid. A price is always fetched under its item, so it carries no id
-// of its own.
-export interface PriceListVersion {
-	id: string;
-	label: string;
-	effectiveFrom: string;
-	effectiveTo: string;
-	sourceFilename: string;
-	createdAt: string;
-}
-
-export interface Item {
-	id: string;
-	priceListVersionId: string;
 	code: string;
 	name: string;
 	unit: string;
 	category: string;
-	unitPrice: number | null;
+	unitPrice: number;
+	taxable: boolean;
+	metadata: string;
+	version: number;
+	isCurrent: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CatalogueItemInput {
+	code: string;
+	name: string;
+	unit: string;
+	category: string;
+	unitPrice: number;
 	taxable: boolean;
 	metadata: string;
 }
@@ -147,9 +132,7 @@ export interface LineItem {
 	id: string;
 	sessionId: string | null;
 	invoiceId: string | null;
-	itemId: string | null;
-	customItemId: string | null;
-	priceListVersionId: string | null;
+	catalogueItemId: string | null;
 	code: string;
 	description: string;
 	serviceDate: string;
@@ -166,9 +149,7 @@ export interface LineItem {
 // LineItemInput is the writable subset of a line item (no id/uuid/lineTotal —
 // the server's DecodeJSON rejects unknown fields, so only these are sent).
 export interface LineItemInput {
-	itemId: string | null;
-	customItemId: string | null;
-	priceListVersionId: string | null;
+	catalogueItemId: string | null;
 	code: string;
 	description: string;
 	serviceDate: string;
@@ -282,8 +263,6 @@ export interface EstimateInput {
 export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
 
 export interface RecurringLine {
-	itemId: string | null;
-	customItemId: string | null;
 	code: string;
 	description: string;
 	unit: string;

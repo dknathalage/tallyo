@@ -135,8 +135,6 @@
 	// (no re-pricing); the relational selects carry the related entity uuid.
 	function buildPayload() {
 		const items: RecurringLine[] = lines.map((row, i) => ({
-			itemId: null,
-			customItemId: null,
 			code: row.code,
 			description: row.description,
 			unit: row.unit,

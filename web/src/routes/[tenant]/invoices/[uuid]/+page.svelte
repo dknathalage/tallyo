@@ -15,7 +15,7 @@
 	import type { Column } from '$lib/components/datatable';
 	import { invoices as invoiceStore } from '$lib/stores/invoices.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
-	import { customItems } from '$lib/stores/customItems.svelte';
+	import { catalogue } from '$lib/stores/catalogue.svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
 	import { sessions } from '$lib/stores/sessions.svelte';
 	import { dowDate, statusLabel } from '$lib/sessions/format';
@@ -47,9 +47,7 @@
 	// the existing line items pass through unchanged (server re-derives totals).
 	function toInput(inv: Invoice): InvoiceInput {
 		const items: LineItemInput[] = inv.lineItems.map((li, i) => ({
-			itemId: li.itemId,
-			customItemId: li.customItemId,
-			priceListVersionId: li.priceListVersionId,
+			catalogueItemId: li.catalogueItemId,
 			code: li.code,
 			description: li.description,
 			serviceDate: li.serviceDate,
@@ -81,8 +79,8 @@
 	onMount(() => {
 		clients.ensureSubscribed();
 		void clients.load();
-		customItems.ensureSubscribed();
-		void customItems.load();
+		catalogue.ensureSubscribed();
+		void catalogue.load();
 		businessProfile.subscribe();
 		void businessProfile.load();
 		sessions.ensureSubscribed();
@@ -146,9 +144,8 @@
 		formDueDate = today;
 		lines = [
 			{
-				kind: 'support',
-				customItemId: null,
-				priceListVersionId: null,
+				kind: 'catalogue',
+				catalogueItemId: null,
 				code: '',
 				description: '',
 				serviceDate: today,
@@ -172,10 +169,8 @@
 
 	function buildCreatePayload(): InvoiceInput {
 		const items: LineItemInput[] = lines.map((row, i) => ({
-			itemId: null,
-			customItemId: row.kind === 'custom' ? row.customItemId : null,
-			priceListVersionId: row.kind === 'support' ? row.priceListVersionId : null,
-			code: row.kind === 'support' ? row.code : '',
+			catalogueItemId: row.kind === 'catalogue' ? row.catalogueItemId : null,
+			code: row.kind === 'catalogue' ? row.code : '',
 			description: row.description,
 			serviceDate: row.serviceDate,
 			unit: row.unit,

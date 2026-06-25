@@ -1,19 +1,16 @@
 <script lang="ts">
-	import { priceList } from '$lib/stores/priceList.svelte';
-	import { customItems } from '$lib/stores/customItems.svelte';
+	import { catalogue } from '$lib/stores/catalogue.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Sparkle from '$lib/components/Sparkle.svelte';
-	import type { Item, LineItem, ValidationDetail } from '$lib/api/types';
+	import type { CatalogueItem, LineItem, ValidationDetail } from '$lib/api/types';
 
-	// An editor row. `kind` distinguishes a price-list item line (code-driven,
-	// gst server-authoritative) from a custom line (free text, user gst).
+	// An editor row. `kind` distinguishes a catalogue line (priced from a
+	// catalogue item, gst server-authoritative) from a free line (manual text +
+	// user-controlled gst). A catalogue line pins `catalogueItemId` (the catalogue
+	// version-row uuid) so re-validation re-reads that exact frozen row.
 	export interface EditorLine {
-		kind: 'support' | 'custom';
-		customItemId: string | null;
-		// Pinned price-list version uuid for an EXISTING support line; null for a
-		// new line (the server then prices it from the current version). Carried on
-		// edit so re-validation never re-prices an existing line against a newer one.
-		priceListVersionId: string | null;
+		kind: 'catalogue' | 'free';
+		catalogueItemId: string | null;
 		code: string;
 		description: string;
 		serviceDate: string;
@@ -40,20 +37,17 @@
 		return v.toFixed(2);
 	}
 
-	// Latest price-list version's items (for the code picker).
-	let catalogItems = $state<Item[]>([]);
+	// Current catalogue items (for the picker), loaded once on first use.
+	let catalogItems = $state<CatalogueItem[]>([]);
 	let catalogLoaded = $state(false);
 
 	async function ensureCatalog(): Promise<void> {
 		if (catalogLoaded) return;
 		catalogLoaded = true;
-		await priceList.loadVersions();
-		if (priceList.versions.length > 0) {
-			try {
-				catalogItems = await priceList.loadItems(priceList.versions[0].id);
-			} catch {
-				catalogItems = [];
-			}
+		try {
+			catalogItems = await catalogue.crud.list();
+		} catch {
+			catalogItems = [];
 		}
 	}
 
@@ -61,7 +55,7 @@
 	let pickerOpen = $state<number | null>(null);
 	let pickerSearch = $state('');
 
-	const pickerResults = $derived.by<Item[]>(() => {
+	const pickerResults = $derived.by<CatalogueItem[]>(() => {
 		const q = pickerSearch.trim().toLowerCase();
 		if (q === '') return catalogItems.slice(0, 20);
 		return catalogItems
@@ -82,11 +76,10 @@
 		return d ? d.message : null;
 	}
 
-	export function addSupportLine(): void {
+	export function addCatalogueLine(): void {
 		lines.push({
-			kind: 'support',
-			customItemId: null,
-			priceListVersionId: null,
+			kind: 'catalogue',
+			catalogueItemId: null,
 			code: '',
 			description: '',
 			serviceDate: new Date().toISOString().slice(0, 10),
@@ -99,11 +92,10 @@
 		void ensureCatalog();
 	}
 
-	export function addCustomLine(): void {
+	export function addFreeLine(): void {
 		lines.push({
-			kind: 'custom',
-			customItemId: null,
-			priceListVersionId: null,
+			kind: 'free',
+			catalogueItemId: null,
 			code: '',
 			description: '',
 			serviceDate: '',
@@ -121,9 +113,8 @@
 		for (let i = 0; i < suggested.length; i++) {
 			const s = suggested[i];
 			lines.push({
-				kind: s.itemId !== null || s.code !== '' ? 'support' : 'custom',
-				customItemId: s.customItemId,
-				priceListVersionId: s.priceListVersionId,
+				kind: s.catalogueItemId !== null || s.code !== '' ? 'catalogue' : 'free',
+				catalogueItemId: s.catalogueItemId,
 				code: s.code,
 				description: s.description,
 				serviceDate: s.serviceDate,
@@ -147,35 +138,19 @@
 		if (pickerOpen !== null) await ensureCatalog();
 	}
 
-	function pickItem(index: number, item: Item): void {
+	function pickItem(index: number, item: CatalogueItem): void {
 		const row = lines[index];
+		row.catalogueItemId = item.id;
 		row.code = item.code;
 		row.description = item.name;
 		row.unit = item.unit;
 		row.taxable = item.taxable; // server-authoritative; shown read-only.
-		// Pre-fill the unit price from the catalogue item's generic price when the
-		// row has none yet (the server fills the same way on submit).
+		// Pre-fill the unit price from the catalogue item when the row has none yet
+		// (the server fills the same way on submit).
 		if ((Number(row.unitPrice) || 0) <= 0 && item.unitPrice != null) {
 			row.unitPrice = item.unitPrice;
 		}
 		pickerOpen = null;
-	}
-
-	function selectCustomItem(index: number, e: Event): void {
-		const id = (e.currentTarget as HTMLSelectElement).value;
-		const row = lines[index];
-		if (id === '') {
-			row.customItemId = null;
-			return;
-		}
-		const ci = customItems.items.find((c) => String(c.id) === id);
-		if (ci) {
-			row.customItemId = ci.id;
-			row.description = ci.name;
-			row.unit = ci.unit;
-			row.unitPrice = ci.rate;
-			row.taxable = ci.taxable;
-		}
 	}
 </script>
 
@@ -183,12 +158,8 @@
 	<div class="flex items-center justify-between">
 		<span class="text-sm font-medium">Line items</span>
 		<div class="flex gap-2">
-			<Button variant="secondary" size="sm" onclick={addSupportLine}>
-				Add catalogue line
-			</Button>
-			<Button variant="secondary" size="sm" onclick={addCustomLine}>
-				Add custom line
-			</Button>
+			<Button variant="secondary" size="sm" onclick={addCatalogueLine}>Add catalogue line</Button>
+			<Button variant="secondary" size="sm" onclick={addFreeLine}>Add free line</Button>
 		</div>
 	</div>
 
@@ -196,7 +167,7 @@
 		<div class="rounded-lg border border-gray-200 p-3">
 			<div class="mb-2 flex items-center justify-between">
 				<span class="flex items-center gap-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-					{line.kind === 'support' ? 'Catalogue item' : 'Custom item'}
+					{line.kind === 'catalogue' ? 'Catalogue item' : 'Free line'}
 					{#if line.aiSuggested}
 						<span class="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700 normal-case tracking-normal">
 							<Sparkle /> AI suggested · review
@@ -213,7 +184,7 @@
 				</button>
 			</div>
 
-			{#if line.kind === 'support'}
+			{#if line.kind === 'catalogue'}
 				<div class="grid grid-cols-12 gap-2">
 					<div class="col-span-12 sm:col-span-3">
 						<span class="mb-1 block text-xs font-medium text-gray-500">Code</span>
@@ -221,7 +192,7 @@
 							<input
 								type="text"
 								bind:value={line.code}
-								placeholder="e.g. 01_011_0107_1_1"
+								placeholder="catalogue code"
 								class="w-full rounded-lg border border-gray-300 px-2 py-1 font-mono tabular-nums text-xs"
 							/>
 							<button
@@ -262,13 +233,13 @@
 						<input
 							type="text"
 							bind:value={pickerSearch}
-							placeholder="Search support items by code or name"
+							placeholder="Search catalogue by code or name"
 							class="mb-2 w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
 						/>
 						{#if !catalogLoaded}
 							<p class="text-xs text-gray-500">Loading catalogue…</p>
 						{:else if catalogItems.length === 0}
-							<p class="text-xs text-gray-500">No catalogue loaded.</p>
+							<p class="text-xs text-gray-500">No catalogue items yet.</p>
 						{:else}
 							<ul class="max-h-48 overflow-auto text-sm">
 								{#each pickerResults as it (it.id)}
@@ -291,19 +262,7 @@
 				{/if}
 			{:else}
 				<div class="grid grid-cols-12 gap-2">
-					<div class="col-span-12 sm:col-span-4">
-						<span class="mb-1 block text-xs font-medium text-gray-500">From custom item</span>
-						<select
-							onchange={(e) => selectCustomItem(i, e)}
-							class="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm"
-						>
-							<option value="">— manual —</option>
-							{#each customItems.items as ci (ci.id)}
-								<option value={String(ci.id)}>{ci.name}</option>
-							{/each}
-						</select>
-					</div>
-					<div class="col-span-12 sm:col-span-8">
+					<div class="col-span-12">
 						<span class="mb-1 block text-xs font-medium text-gray-500">Description</span>
 						<input
 							type="text"
@@ -349,7 +308,7 @@
 				</div>
 				<div class="col-span-6 sm:col-span-2">
 					<span class="mb-1 block text-xs font-medium text-gray-500">GST</span>
-					{#if line.kind === 'support'}
+					{#if line.kind === 'catalogue'}
 						<p class="px-1 py-1 text-sm text-gray-700">
 							{line.taxable ? 'Taxable' : 'GST-free'}
 						</p>

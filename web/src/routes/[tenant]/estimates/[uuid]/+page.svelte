@@ -12,7 +12,7 @@
 	import type { Column } from '$lib/components/datatable';
 	import { estimates as estimateStore } from '$lib/stores/estimates.svelte';
 	import { clients } from '$lib/stores/clients.svelte';
-	import { customItems } from '$lib/stores/customItems.svelte';
+	import { catalogue } from '$lib/stores/catalogue.svelte';
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
 	import type {
 		Estimate,
@@ -42,9 +42,7 @@
 	// the existing line items pass through unchanged (server re-derives totals).
 	function toInput(est: Estimate): EstimateInput {
 		const items: EstimateLineItemInput[] = est.lineItems.map((li, i) => ({
-			itemId: li.itemId,
-			customItemId: li.customItemId,
-			priceListVersionId: li.priceListVersionId,
+			catalogueItemId: li.catalogueItemId,
 			code: li.code,
 			description: li.description,
 			serviceDate: li.serviceDate,
@@ -77,8 +75,8 @@
 	onMount(() => {
 		clients.ensureSubscribed();
 		void clients.load();
-		customItems.ensureSubscribed();
-		void customItems.load();
+		catalogue.ensureSubscribed();
+		void catalogue.load();
 		businessProfile.subscribe();
 		void businessProfile.load();
 	});
@@ -111,9 +109,8 @@
 		formValidUntil = today;
 		lines = [
 			{
-				kind: 'support',
-				customItemId: null,
-				priceListVersionId: null,
+				kind: 'catalogue',
+				catalogueItemId: null,
 				code: '',
 				description: '',
 				serviceDate: today,
@@ -137,10 +134,8 @@
 
 	function buildCreatePayload(): EstimateInput {
 		const items: EstimateLineItemInput[] = lines.map((row, i) => ({
-			itemId: null,
-			customItemId: row.kind === 'custom' ? row.customItemId : null,
-			priceListVersionId: row.kind === 'support' ? row.priceListVersionId : null,
-			code: row.kind === 'support' ? row.code : '',
+			catalogueItemId: row.kind === 'catalogue' ? row.catalogueItemId : null,
+			code: row.kind === 'catalogue' ? row.code : '',
 			description: row.description,
 			serviceDate: row.serviceDate,
 			unit: row.unit,
