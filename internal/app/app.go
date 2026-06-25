@@ -21,13 +21,12 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/client"
-	"github.com/dknathalage/tallyo/internal/customitem"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
@@ -156,9 +155,7 @@ func Run(cfg Config, version string) error {
 	payerSvc := payer.NewService(database, hub)
 	taxRateSvc := taxrate.NewService(database, hub)
 	clientSvc := client.NewService(database, hub)
-	customItemSvc := customitem.NewService(database, hub)
-	priceListSvc := pricelist.NewService(database)
-	priceListImportSvc := pricelist.NewImportService(database, hub)
+	catalogueSvc := catalogue.NewService(database, hub)
 	sessionSvc := session.NewService(database, hub, invoice.NewInvoices(database))
 	invoiceSvc := invoice.NewService(database, hub, sessionSvc)
 	estimateSvc := estimate.NewService(database, hub)
@@ -171,7 +168,7 @@ func Run(cfg Config, version string) error {
 	var smartsHandler *smarts.Handler
 	if smartsEnabled {
 		llm := smarts.NewAnthropicClient(apiKey, EnvOr("ANTHROPIC_MODEL", ""), EnvOr("ANTHROPIC_EFFORT", ""))
-		smartsSvc := smarts.NewService(llm, sessionSvc, pricelist.NewItems(database), invoiceSvc, invoiceSvc, clientSvc)
+		smartsSvc := smarts.NewService(llm, sessionSvc, catalogue.NewRepo(database), invoiceSvc, invoiceSvc, clientSvc)
 		smartsHandler = smarts.NewHandler(smartsSvc, true)
 	} else {
 		smartsHandler = smarts.NewHandler(nil, false)
@@ -199,8 +196,7 @@ func Run(cfg Config, version string) error {
 		Payers:          payer.NewHandler(payerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
 		Clients:         client.NewHandler(clientSvc),
-		CustomItems:     customitem.NewHandler(customItemSvc),
-		PriceList:       pricelist.NewHandler(priceListSvc, priceListImportSvc),
+		Catalogue:       catalogue.NewHandler(catalogueSvc),
 		Invoices:        invoice.NewHandler(invoiceSvc),
 		Sessions:        session.NewHandler(sessionSvc),
 		Estimates:       estimate.NewHandler(estimateSvc),

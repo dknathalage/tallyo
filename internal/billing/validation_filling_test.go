@@ -15,18 +15,16 @@ import (
 
 // --- ValidateFilling: unit_price fill --------------------------------------
 
-// TestValidateFillingFillsFromItemUnitPrice proves fill mode prices a coded line
-// from the item's generic unit_price when the caller supplies none.
+// TestValidateFillingFillsFromItemUnitPrice proves fill mode prices a catalogue
+// line from the item's unit_price when the caller supplies none.
 func TestValidateFillingFillsFromItemUnitPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	id := seedCatalogueItem(t, conn, tid, "01_011", true, 100)
 	v := NewLineValidator(conn)
 
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 2, 0),
-	})
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{catalogueLine(id, 2, 0)})
 	if err != nil {
 		t.Fatalf("ValidateFilling: %v", err)
 	}
@@ -41,12 +39,10 @@ func TestValidateFillingKeepsPositiveCallerPrice(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn)
 	pid := seedClient(t, conn, tid)
-	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "01_011", true, 100)
+	id := seedCatalogueItem(t, conn, tid, "01_011", true, 100)
 	v := NewLineValidator(conn)
 
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("01_011", "2026-01-15", 1, 250),
-	})
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{catalogueLine(id, 1, 250)})
 	if err != nil {
 		t.Fatalf("ValidateFilling: %v", err)
 	}
@@ -67,12 +63,10 @@ func TestValidateFillingComputesTaxOnFilledPrice(t *testing.T) {
 		t.Fatalf("seed tax rate: %v", err)
 	}
 	// Taxable item, unit_price 200; caller sends 0 → filled to 200.
-	seedUnitPricedItem(t, conn, tid, "v1", "2025-07-01", "2026-06-30", "02_022", false, 200)
+	id := seedCatalogueItem(t, conn, tid, "02_022", true, 200)
 	v := NewLineValidator(conn)
 
-	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{
-		supportLine("02_022", "2026-01-15", 1, 0),
-	})
+	res, err := v.ValidateFilling(context.Background(), tid, pid, []LineItemInput{catalogueLine(id, 1, 0)})
 	if err != nil {
 		t.Fatalf("ValidateFilling: %v", err)
 	}

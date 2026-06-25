@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 )
@@ -37,21 +37,17 @@ func (f *fakeSessions) ListUnbilledForClient(_ context.Context, _, _ string) ([]
 }
 
 type fakeCat struct {
-	ver   *pricelist.PriceListVersion
-	items map[string]*pricelist.Item // by code
+	items map[string]*catalogue.CatalogueItem // by code
 }
 
-func (f *fakeCat) ResolveVersionForDate(_ context.Context, _ string, _ string) (*pricelist.PriceListVersion, error) {
-	return f.ver, nil
-}
-func (f *fakeCat) SearchItems(_ context.Context, _, _ string, _ string) ([]*pricelist.Item, error) {
-	out := make([]*pricelist.Item, 0, len(f.items))
+func (f *fakeCat) Search(_ context.Context, _, _ string) ([]*catalogue.CatalogueItem, error) {
+	out := make([]*catalogue.CatalogueItem, 0, len(f.items))
 	for _, it := range f.items {
 		out = append(out, it)
 	}
 	return out, nil
 }
-func (f *fakeCat) GetItemByCode(_ context.Context, _, _ string, code string) (*pricelist.Item, error) {
+func (f *fakeCat) GetCurrentByCode(_ context.Context, _, code string) (*catalogue.CatalogueItem, error) {
 	return f.items[code], nil
 }
 
@@ -84,8 +80,7 @@ func price(p float64) *float64 { return &p }
 // proposal — so the invoice line is always priced from the catalogue.
 func TestDraftInvoicePricesFromCatalogue(t *testing.T) {
 	cat := &fakeCat{
-		ver:   &pricelist.PriceListVersion{ID: "ver-uuid"},
-		items: map[string]*pricelist.Item{"CONSULT": {ID: "item-uuid", Code: "CONSULT", Unit: "hour", UnitPrice: price(100), Taxable: true}},
+		items: map[string]*catalogue.CatalogueItem{"CONSULT": {ID: "item-uuid", Code: "CONSULT", Unit: "hour", UnitPrice: 100, Taxable: true}},
 	}
 	inv := &fakeInvoices{}
 	svc := NewService(
@@ -117,14 +112,14 @@ func TestDraftInvoicePricesFromCatalogue(t *testing.T) {
 	if li.Code != "CONSULT" || li.Quantity != 2 || !li.Taxable {
 		t.Fatalf("line = %+v, want CONSULT x2 taxable", li)
 	}
-	if li.ItemID == nil || *li.ItemID != "item-uuid" || li.PriceListVersionID == nil || *li.PriceListVersionID != "ver-uuid" {
-		t.Fatalf("line not pinned to catalogue item/version: %+v", li)
+	if li.CatalogueItemID == nil || *li.CatalogueItemID != "item-uuid" {
+		t.Fatalf("line not pinned to catalogue item: %+v", li)
 	}
 }
 
 // A proposed code that is not in the catalogue is dropped, not guessed.
 func TestDraftInvoiceDropsUnknownCodes(t *testing.T) {
-	cat := &fakeCat{ver: &pricelist.PriceListVersion{ID: "v"}, items: map[string]*pricelist.Item{}}
+	cat := &fakeCat{items: map[string]*catalogue.CatalogueItem{}}
 	inv := &fakeInvoices{}
 	svc := NewService(
 		&fakeProposer{grounded: json.RawMessage(`{"items":[{"code":"NOPE","quantity":1}]}`)},

@@ -172,9 +172,9 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		_, err := q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			ID:                 ids.New(),
-			TenantID:           tenantID,
-			SessionID:          sql.NullString{}, // estimate-converted lines are not session items
+			ID:              ids.New(),
+			TenantID:        tenantID,
+			SessionID:       sql.NullString{}, // estimate-converted lines are not session items
 			InvoiceID:       sql.NullString{String: invoiceID, Valid: true},
 			CatalogueItemID: db.NullStr(it.CatalogueItemID),
 			Code:            db.NzMaybe(it.Code),

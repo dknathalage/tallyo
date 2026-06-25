@@ -190,6 +190,6 @@ func itemToInput(it *billing.LineItem) billing.LineItemInput {
 		Quantity:        it.Quantity,
 		UnitPrice:       it.UnitPrice,
 		Taxable:         it.Taxable,
-		SortOrder:          it.SortOrder,
+		SortOrder:       it.SortOrder,
 	}
 }

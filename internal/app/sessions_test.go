@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/client"
-	"github.com/dknathalage/tallyo/internal/customitem"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -22,11 +22,11 @@ import (
 // server, the seeded tenant context, and the seeded client uuid. Entities
 // are addressed by uuid in the path + JSON, matching the production contract.
 type sessionFixture struct {
-	srv            *httptest.Server
-	ctx            context.Context
-	tenantID       string
-	clientUUID     string
-	customItemUUID string
+	srv               *httptest.Server
+	ctx               context.Context
+	tenantID          string
+	clientUUID        string
+	catalogueItemUUID string
 }
 
 // newSessionFixture migrates a temp DB, seeds a tenant+client, and mounts the
@@ -48,8 +48,8 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		t.Fatalf("seed client: want uuid got %+v", part)
 	}
 
-	ciSvc := customitem.NewService(conn, hub)
-	ci, err := ciSvc.Create(ctx, customitem.CustomItemInput{Name: "Mileage", Rate: 0.85, Unit: "km"})
+	ciSvc := catalogue.NewService(conn, hub)
+	ci, err := ciSvc.Create(ctx, catalogue.CatalogueItemInput{Name: "Mileage", UnitPrice: 0.85, Unit: "km"})
 	if err != nil {
 		t.Fatalf("seed custom item: %v", err)
 	}
@@ -70,11 +70,11 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	t.Cleanup(srv.Close)
 
 	return &sessionFixture{
-		srv:            srv,
-		ctx:            ctx,
-		tenantID:       tenantID,
-		clientUUID:     part.ID,
-		customItemUUID: ci.ID,
+		srv:               srv,
+		ctx:               ctx,
+		tenantID:          tenantID,
+		clientUUID:        part.ID,
+		catalogueItemUUID: ci.ID,
 	}
 }
 
@@ -359,7 +359,7 @@ func TestSessionItemCustomItemRoundTrips(t *testing.T) {
 	s := f.createSession(t, string(sessionBody))
 
 	itemBody, err := json.Marshal(map[string]any{
-		"description": "Trip", "quantity": 3, "unitPrice": 0.85, "customItemId": f.customItemUUID,
+		"description": "Trip", "quantity": 3, "unitPrice": 0.85, "catalogueItemId": f.catalogueItemUUID,
 	})
 	if err != nil {
 		t.Fatalf("marshal item: %v", err)
@@ -372,14 +372,14 @@ func TestSessionItemCustomItemRoundTrips(t *testing.T) {
 		t.Fatalf("add item: want 201 got %d (%s)", resp.StatusCode, buf.String())
 	}
 	var item struct {
-		ID           string  `json:"id"`
-		CustomItemID *string `json:"customItemId"`
+		ID              string  `json:"id"`
+		CatalogueItemID *string `json:"catalogueItemId"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&item); err != nil {
 		t.Fatalf("decode item: %v", err)
 	}
-	if item.CustomItemID == nil || *item.CustomItemID != f.customItemUUID {
-		t.Fatalf("add customItemId: want %q got %v", f.customItemUUID, item.CustomItemID)
+	if item.CatalogueItemID == nil || *item.CatalogueItemID != f.catalogueItemUUID {
+		t.Fatalf("add customItemId: want %q got %v", f.catalogueItemUUID, item.CatalogueItemID)
 	}
 
 	listResp := f.do(t, http.MethodGet, "/sessions/"+s.ID+"/items", "")
@@ -388,19 +388,19 @@ func TestSessionItemCustomItemRoundTrips(t *testing.T) {
 		t.Fatalf("list items: want 200 got %d", listResp.StatusCode)
 	}
 	var items []struct {
-		CustomItemID *string `json:"customItemId"`
+		CatalogueItemID *string `json:"catalogueItemId"`
 	}
 	if err := json.NewDecoder(listResp.Body).Decode(&items); err != nil {
 		t.Fatalf("decode items: %v", err)
 	}
-	if len(items) != 1 || items[0].CustomItemID == nil || *items[0].CustomItemID != f.customItemUUID {
-		t.Fatalf("list customItemId: want %q got %v", f.customItemUUID, items)
+	if len(items) != 1 || items[0].CatalogueItemID == nil || *items[0].CatalogueItemID != f.catalogueItemUUID {
+		t.Fatalf("list customItemId: want %q got %v", f.catalogueItemUUID, items)
 	}
 }
 
-// TestSessionItemUnknownCustomItem400 verifies an unknown custom-item uuid on a
-// session item add is rejected.
-func TestSessionItemUnknownCustomItem400(t *testing.T) {
+// TestSessionItemUnknownCatalogueItem422 verifies an unknown catalogue-item uuid
+// on a session item add is rejected by the line validator (422).
+func TestSessionItemUnknownCatalogueItem422(t *testing.T) {
 	f := newSessionFixture(t)
 	sessionBody, err := json.Marshal(map[string]any{
 		"clientId": f.clientUUID, "serviceDate": "2026-01-05", "note": "x",
@@ -411,14 +411,14 @@ func TestSessionItemUnknownCustomItem400(t *testing.T) {
 	s := f.createSession(t, string(sessionBody))
 
 	itemBody, err := json.Marshal(map[string]any{
-		"description": "Trip", "quantity": 1, "unitPrice": 5, "customItemId": uuidpkg.NewString(),
+		"description": "Trip", "quantity": 1, "unitPrice": 5, "catalogueItemId": uuidpkg.NewString(),
 	})
 	if err != nil {
 		t.Fatalf("marshal item: %v", err)
 	}
 	resp := f.do(t, http.MethodPost, "/sessions/"+s.ID+"/items", string(itemBody))
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("unknown custom item: want 400 got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown catalogue item: want 422 got %d", resp.StatusCode)
 	}
 }

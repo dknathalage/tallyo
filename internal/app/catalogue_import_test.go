@@ -9,22 +9,21 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/httpx"
-	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 )
 
-// newPriceListImportServer wires the per-tenant price-list import routes behind
-// httpx.RequireSession + httpx.RequireRole("owner","admin"). seedTenantOwner
-// creates the "o@x.com" owner; we additionally seed a non-owner/admin "member"
-// so the 403 path is exercised.
-func newPriceListImportServer(t *testing.T) (*httptest.Server, string) {
+// newCatalogueImportServer wires the per-tenant catalogue routes (CRUD + the
+// owner/admin upload-and-map import). seedTenantOwner creates the "o@x.com"
+// owner; we additionally seed a non-owner/admin "member" so the 403 path is
+// exercised.
+func newCatalogueImportServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
-	conn := openMigratedDB(t, "pricelist_import.db")
+	conn := openMigratedDB(t, "catalogue_import.db")
 	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 
-	// A non-owner/admin tenant member.
 	hash, err := auth.HashPassword("password1")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
@@ -37,10 +36,7 @@ func newPriceListImportServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	scH := pricelist.NewHandler(
-		pricelist.NewService(conn),
-		pricelist.NewImportService(conn, hub),
-	)
+	catH := catalogue.NewHandler(catalogue.NewService(conn, hub))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
@@ -48,9 +44,7 @@ func newPriceListImportServer(t *testing.T) (*httptest.Server, string) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireSession(sm))
 			pr.Use(httpx.ResolveTenant(users, tenants))
-			pr.Get("/price-list/versions", scH.ListVersions)
-			pr.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/inspect", scH.Inspect)
-			pr.With(httpx.RequireRole("owner", "admin")).Post("/price-list/import/commit", scH.Commit)
+			catH.Routes(pr)
 		})
 	})
 
@@ -94,10 +88,24 @@ func postMultipart(t *testing.T, c *http.Client, url string, csv []byte, fields 
 	return resp
 }
 
-func TestPriceListInspectOwnerReturnsHeaders(t *testing.T) {
-	srv, uuid := newPriceListImportServer(t)
+func catalogueCount(t *testing.T, c *http.Client, base, uuid string) int {
+	t.Helper()
+	vr, err := c.Get(base + "/api/t/" + uuid + "/catalogue")
+	if err != nil {
+		t.Fatalf("GET catalogue: %v", err)
+	}
+	defer func() { _ = vr.Body.Close() }()
+	var items []map[string]any
+	if err := json.NewDecoder(vr.Body).Decode(&items); err != nil {
+		t.Fatalf("decode catalogue: %v", err)
+	}
+	return len(items)
+}
+
+func TestCatalogueImportInspectOwnerReturnsHeaders(t *testing.T) {
+	srv, uuid := newCatalogueImportServer(t)
 	c := loggedInClient(t, srv.URL) // o@x.com is the tenant owner
-	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/inspect", []byte(priceCSV), nil)
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/catalogue/import/inspect", []byte(priceCSV), nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("inspect: want 200 got %d", resp.StatusCode)
@@ -115,79 +123,59 @@ func TestPriceListInspectOwnerReturnsHeaders(t *testing.T) {
 	if len(out.SampleRows) != 2 {
 		t.Fatalf("sampleRows = %d, want 2", len(out.SampleRows))
 	}
-
-	// Inspect persists nothing: versions list stays empty.
-	vr, err := c.Get(srv.URL + "/api/t/" + uuid + "/price-list/versions")
-	if err != nil {
-		t.Fatalf("GET versions: %v", err)
-	}
-	defer func() { _ = vr.Body.Close() }()
-	var versions []map[string]any
-	if err := json.NewDecoder(vr.Body).Decode(&versions); err != nil {
-		t.Fatalf("decode versions: %v", err)
-	}
-	if len(versions) != 0 {
-		t.Fatalf("inspect persisted %d versions, want 0", len(versions))
+	// Inspect persists nothing: the catalogue stays empty.
+	if n := catalogueCount(t, c, srv.URL, uuid); n != 0 {
+		t.Fatalf("inspect persisted %d items, want 0", n)
 	}
 }
 
-func TestPriceListCommitOwnerCreatesVersion(t *testing.T) {
-	srv, uuid := newPriceListImportServer(t)
+func TestCatalogueImportCommitOwnerCreatesItems(t *testing.T) {
+	srv, uuid := newCatalogueImportServer(t)
 	c := loggedInClient(t, srv.URL)
 	mapping := `{"Product":"name","SKU":"code","Price":"unitPrice"}`
-	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/commit", []byte(priceCSV), map[string]string{
-		"label": "Q1 catalogue", "mapping": mapping,
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/catalogue/import/commit", []byte(priceCSV), map[string]string{
+		"mapping": mapping,
 	})
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("commit: want 201 got %d", resp.StatusCode)
 	}
 	var out struct {
-		VersionID string `json:"versionId"`
-		ItemCount int    `json:"itemCount"`
+		Created int `json:"created"`
+		Updated int `json:"updated"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if out.VersionID == "" || out.ItemCount != 2 {
-		t.Fatalf("summary = %+v, want non-empty versionId itemCount=2", out)
+	if out.Created != 2 || out.Updated != 0 {
+		t.Fatalf("summary = %+v, want created=2 updated=0", out)
 	}
-
-	// The created version is queryable.
-	vr, err := c.Get(srv.URL + "/api/t/" + uuid + "/price-list/versions")
-	if err != nil {
-		t.Fatalf("GET versions: %v", err)
-	}
-	defer func() { _ = vr.Body.Close() }()
-	var versions []map[string]any
-	if err := json.NewDecoder(vr.Body).Decode(&versions); err != nil {
-		t.Fatalf("decode versions: %v", err)
-	}
-	if len(versions) != 1 {
-		t.Fatalf("versions = %d, want 1", len(versions))
+	// The imported items are queryable in the catalogue.
+	if n := catalogueCount(t, c, srv.URL, uuid); n != 2 {
+		t.Fatalf("catalogue items = %d, want 2", n)
 	}
 }
 
-func TestPriceListImportNonAdminForbidden(t *testing.T) {
-	srv, uuid := newPriceListImportServer(t)
+func TestCatalogueImportNonAdminForbidden(t *testing.T) {
+	srv, uuid := newCatalogueImportServer(t)
 	c := jarClient(t)
 	lr := login(t, c, srv.URL, "member@x.com", "password1")
 	_ = lr.Body.Close()
 	if lr.StatusCode != http.StatusOK {
 		t.Fatalf("member login: want 200 got %d", lr.StatusCode)
 	}
-	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/inspect", []byte(priceCSV), nil)
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/catalogue/import/inspect", []byte(priceCSV), nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("non-admin inspect: want 403 got %d", resp.StatusCode)
 	}
 }
 
-func TestPriceListImportUnauthenticated401(t *testing.T) {
-	srv, uuid := newPriceListImportServer(t)
+func TestCatalogueImportUnauthenticated401(t *testing.T) {
+	srv, uuid := newCatalogueImportServer(t)
 	c := jarClient(t)
-	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/commit", []byte(priceCSV), map[string]string{
-		"label": "x", "mapping": `{"Product":"name"}`,
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/catalogue/import/commit", []byte(priceCSV), map[string]string{
+		"mapping": `{"Product":"name"}`,
 	})
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -195,14 +183,12 @@ func TestPriceListImportUnauthenticated401(t *testing.T) {
 	}
 }
 
-func TestPriceListCommitMissingLabelRejected(t *testing.T) {
-	srv, uuid := newPriceListImportServer(t)
+func TestCatalogueImportCommitMissingMappingRejected(t *testing.T) {
+	srv, uuid := newCatalogueImportServer(t)
 	c := loggedInClient(t, srv.URL)
-	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/price-list/import/commit", []byte(priceCSV), map[string]string{
-		"mapping": `{"Product":"name"}`,
-	})
+	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/catalogue/import/commit", []byte(priceCSV), nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("missing label: want 400 got %d", resp.StatusCode)
+		t.Fatalf("missing mapping: want 400 got %d", resp.StatusCode)
 	}
 }

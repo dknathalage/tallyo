@@ -37,7 +37,6 @@ func TestWriteSmartError(t *testing.T) {
 	}{
 		{ErrNotFound, http.StatusNotFound},
 		{ErrNoData, http.StatusUnprocessableEntity},
-		{ErrNoPriceList, http.StatusUnprocessableEntity},
 		{errStub{}, http.StatusBadGateway},
 	}
 	for _, c := range cases {

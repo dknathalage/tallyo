@@ -381,6 +381,6 @@ func lineItemParams(tenantID string, sessionID *string, catalogueItemID sql.Null
 		UnitPrice:       in.UnitPrice,
 		Taxable:         db.B2i(in.Taxable),
 		LineTotal:       billing.Round2(in.Quantity * in.UnitPrice),
-		SortOrder:          sql.NullInt64{Int64: in.SortOrder, Valid: true},
+		SortOrder:       sql.NullInt64{Int64: in.SortOrder, Valid: true},
 	}
 }

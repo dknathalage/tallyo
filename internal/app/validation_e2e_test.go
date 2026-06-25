@@ -5,36 +5,33 @@ package app
 // serialize as 422 with body {error, details:[{line, field, message}, ...]} via
 // WriteValidationError. The engine logic itself is unit-tested in
 // internal/billing; this test pins the HTTP status + JSON shape the frontend
-// editor depends on.
+// editor depends on. Under the catalogue model the validation trigger is an
+// unknown catalogueItemId (an unknown code is no longer an error — code is a
+// free-text snapshot).
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
-	"github.com/dknathalage/tallyo/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/client"
-	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/estimate"
-	"github.com/dknathalage/tallyo/internal/ids"
+	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
+	uuidpkg "github.com/google/uuid"
 )
 
 // newValidationServer wires the invoice + estimate + client routes behind
-// httpx.RequireAuth and returns both the server and the underlying conn so the test
-// can seed a catalogue version directly.
-func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, string) {
+// httpx.RequireAuth.
+func newValidationServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "validation_e2e.db")
-	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
+	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
 	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
@@ -58,28 +55,7 @@ func newValidationServer(t *testing.T) (*httptest.Server, *sql.DB, string, strin
 
 	srv := httptest.NewServer(sm.LoadAndSave(router))
 	t.Cleanup(srv.Close)
-	return srv, conn, tenantUUID, tenantID
-}
-
-// seedCatalogVersion inserts a one-item catalogue version valid across the given
-// window, so a known code resolves and an unknown one fails validation.
-func seedCatalogVersion(t *testing.T, conn *sql.DB, tenantID, from, to, code string) {
-	t.Helper()
-	ctx := context.Background()
-	q := gen.New(conn)
-	now := time.Now().UTC().Format(time.RFC3339)
-	v, err := q.CreatePriceListVersion(ctx, gen.CreatePriceListVersionParams{
-		TenantID: tenantID, ID: ids.New(), Label: "v1", EffectiveFrom: from,
-		EffectiveTo: sql.NullString{String: to, Valid: true}, CreatedAt: now,
-	})
-	if err != nil {
-		t.Fatalf("CreatePriceListVersion: %v", err)
-	}
-	if _, err := q.CreateItem(ctx, gen.CreateItemParams{
-		TenantID: tenantID, ID: ids.New(), PriceListVersionID: v.ID, Code: code, Name: "Item " + code, Taxable: 0,
-	}); err != nil {
-		t.Fatalf("CreateItem: %v", err)
-	}
+	return srv, tenantUUID
 }
 
 // validationEnvelope is the 422 body shape J12 depends on.
@@ -115,16 +91,15 @@ func assertValidationEnvelope(t *testing.T, resp *http.Response) {
 	}
 }
 
-func TestInvoiceCreateUnknownCodeReturns422(t *testing.T) {
-	srv, conn, uuid, _ := newValidationServer(t)
+func TestInvoiceCreateUnknownCatalogueItemReturns422(t *testing.T) {
+	srv, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	seedCatalogVersion(t, conn, uuid, "2025-07-01", "2026-06-30", "01_011")
 	pid := createClient(t, c, srv.URL, uuid, "Plan Client")
 
 	body, err := json.Marshal(map[string]any{
 		"clientId": pid, "issueDate": "2026-01-01", "dueDate": "2026-02-01",
 		"lineItems": []map[string]any{
-			{"code": "NOPE", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
+			{"catalogueItemId": uuidpkg.NewString(), "quantity": 1, "unitPrice": 150, "sortOrder": 0},
 		},
 	})
 	if err != nil {
@@ -135,16 +110,15 @@ func TestInvoiceCreateUnknownCodeReturns422(t *testing.T) {
 	assertValidationEnvelope(t, resp)
 }
 
-func TestEstimateCreateUnknownCodeReturns422(t *testing.T) {
-	srv, conn, uuid, _ := newValidationServer(t)
+func TestEstimateCreateUnknownCatalogueItemReturns422(t *testing.T) {
+	srv, uuid := newValidationServer(t)
 	c := loggedInClient(t, srv.URL)
-	seedCatalogVersion(t, conn, uuid, "2025-07-01", "2026-06-30", "01_011")
 	pid := createClient(t, c, srv.URL, uuid, "Plan Client")
 
 	body, err := json.Marshal(map[string]any{
 		"clientId": pid, "issueDate": "2026-01-01", "validUntil": "2026-02-01",
 		"lineItems": []map[string]any{
-			{"code": "NOPE", "serviceDate": "2026-01-15", "quantity": 1, "unitPrice": 150, "sortOrder": 0},
+			{"catalogueItemId": uuidpkg.NewString(), "quantity": 1, "unitPrice": 150, "sortOrder": 0},
 		},
 	})
 	if err != nil {
