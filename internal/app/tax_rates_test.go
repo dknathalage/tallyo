@@ -195,3 +195,34 @@ func TestTaxRateListUnauthenticated401(t *testing.T) {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)
 	}
 }
+
+func TestTaxRateCreateMalformedJSON400(t *testing.T) {
+	srv, uuid := newTaxRateServer(t)
+	c := loggedInClient(t, srv.URL)
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates", "{")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed JSON: want 400 got %d", resp.StatusCode)
+	}
+}
+
+func TestTaxRateUpdateMalformedJSON400(t *testing.T) {
+	srv, uuid := newTaxRateServer(t)
+	c := loggedInClient(t, srv.URL)
+	id := createTaxRate(t, c, srv.URL, uuid, "GST", 10, false)
+	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+id, "{")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed JSON update: want 400 got %d", resp.StatusCode)
+	}
+}
+
+func TestTaxRateDeleteMissing404(t *testing.T) {
+	srv, uuid := newTaxRateServer(t)
+	c := loggedInClient(t, srv.URL)
+	resp := delete_(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+uuidpkg.NewString())
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete missing: want 404 got %d", resp.StatusCode)
+	}
+}
