@@ -185,15 +185,22 @@ func TestRequirePlatformAdminForbidsNonAdmin(t *testing.T) {
 }
 
 func TestRequireSession401WithoutSession(t *testing.T) {
-	sm := scs.New() // empty session → GetString returns ""
-	h := RequireSession(sm)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	rec := httptest.NewRecorder()
-	// scs reads session from ctx loaded by LoadAndSave; with a bare request the
-	// values are empty → 401. If scs panics without LoadAndSave, wrap with
-	// sm.LoadAndSave(h) and drive via httptest.NewServer instead.
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("want 401 got %d", rec.Code)
+	// scs's GetString PANICS on a bare request ("no session data in context"),
+	// so the handler must run inside LoadAndSave, driven through a real server.
+	// With no cookie, the loaded session is empty → userID/email "" → 401.
+	sm := scs.New()
+	h := RequireSession(sm)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // should never run
+	}))
+	srv := httptest.NewServer(sm.LoadAndSave(h))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("want 401 got %d", resp.StatusCode)
 	}
 }
 ```
