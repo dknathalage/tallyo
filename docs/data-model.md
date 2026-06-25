@@ -7,16 +7,16 @@ human-readable map. Update it whenever a migration changes a table or relationsh
 > **Single SQLite file, logical tenancy.** All tables live in one file
 > (`<data-dir>/tallyo.db`). Conceptually they still group into a **control** set
 > (`tenants, users, invites, sessions`, a global `audit_log`) and **tenant**
-> business tables below — including the **tenant-owned price list**
-> (`price_list_versions, items`, each tenant populates its own) — but that split
+> business tables below — including the **tenant-owned catalogue**
+> (`catalogue_items`, each tenant populates its own) — but that split
 > is logical only; there is one physical database. Tenancy is enforced by a
 > `tenant_id` column on every business row plus a `WHERE tenant_id = ?` guard on
 > every query. `tenant_id` (→ `tenants`) and `author_user_id` / `user_id` (→
 > `users`) are **logical references — NOT foreign keys** (validated in app).
 > Every id is a **UUIDv7 string** (`id TEXT PRIMARY KEY`, minted by
 > `internal/ids.New()`); there is no int PK and no separate `uuid` column — the
-> uuid id is used end to end. `item_id` / `price_list_version_id` likewise
-> reference the price list by uuid id without a FK (pinned per line so old
+> uuid id is used end to end. `line_items.catalogue_item_id` is a real FK to the
+> exact `catalogue_items` version row a line priced from (pinned per line so old
 > invoices never re-price). (The model was simplified from an earlier
 > DB-per-tenant design; that historical spec lives under
 > `docs/superpowers/specs/`.)
@@ -45,14 +45,10 @@ erDiagram
     clients ||--o{ work_sessions : "supported in"
     clients ||--o{ invoices : "billed for"
 
-    price_list_versions ||--o{ items : contains
-
     invoices ||--o{ line_items : "lines (invoice_id)"
     work_sessions ||--o{ line_items : "items (session_id)"
     work_sessions }o--o| invoices : "drafted into"
-    items |o--o{ line_items : "price-list source"
-    custom_items  |o--o{ line_items : "custom source"
-    price_list_versions |o--o{ line_items : "pinned version"
+    catalogue_items |o--o{ line_items : "pinned version (catalogue_item_id)"
 
     invoices ||--o{ payments : "paid by"
     invoices ||--o{ estimates : "converted from"
@@ -64,9 +60,7 @@ erDiagram
         text    tenant_id FK
         text    session_id FK "→ work_sessions; ON DELETE CASCADE; NULL for manual/recurring lines"
         text    invoice_id FK "NULL = unbilled session item"
-        text    item_id "tenant items.id (uuid, no FK)"
-        text    custom_item_id  FK "custom item (tenant-local, nullable)"
-        text    price_list_version_id "tenant price_list_versions.id (uuid, no FK), pinned"
+        text    catalogue_item_id FK "→ catalogue_items.id (exact version row, nullable); NULL for free-text lines"
         text    code "item code snapshot"
         text    description "what was done (from session note)"
         text    service_date
@@ -74,7 +68,7 @@ erDiagram
         text    start_time "time-class units only"
         text    end_time   "time-class units only"
         real    quantity "derived (time/distance) or typed"
-        real    unit_price "resolved from price list (items.unit_price)"
+        real    unit_price "resolved from catalogue_items.unit_price"
         int     taxable "1 = taxable"
         real    line_total "quantity * unit_price"
         int     sort_order
@@ -108,21 +102,18 @@ erDiagram
         text payer_id FK "NULL = self-billed"
     }
 
-    price_list_versions {
-        text id PK "UUIDv7"
+    catalogue_items {
+        text id PK "UUIDv7 — the version row; line_items.catalogue_item_id FKs here"
+        text logical_id "stable identity across an item's versions"
         text tenant_id FK
-    }
-
-    items {
-        text id PK "UUIDv7"
-        text tenant_id FK
-        text price_list_version_id FK "→ price_list_versions"
-        text code
+        text code "nullable; import upsert key"
         text name
         text unit
         text category "nullable"
         real unit_price "generic base price"
         int  taxable
+        int  version "1,2,3… per logical_id"
+        int  is_current "1 = live catalogue row"
     }
 ```
 
@@ -137,15 +128,17 @@ erDiagram
   key (validated in app).
 - `line_items` and `estimate_line_items` are near-identical shapes (invoice vs
   estimate); they are deliberately separate tables, not unified.
-- The price list (`price_list_versions`, `items`)
-  is **tenant-owned** — scoped per tenant by `tenant_id` in the single DB, each
-  tenant populating its own rows. `items` carries a
-  nullable `category` and a generic `unit_price REAL`. `line_items` and
-  `estimate_line_items` reference it by uuid id
-  (`price_list_version_id` + `item_id`), not by FK.
-- Prices are pinned per line via `price_list_version_id` + `item_id` (tenant
-  price-list uuid ids) plus the snapshotted `code`/`unit_price`, so an existing invoice
-  is never re-priced when a newer price-list version loads.
+- The catalogue (`catalogue_items`) is **tenant-owned** — scoped per tenant by
+  `tenant_id` in the single DB, each tenant populating its own rows. It is one
+  append-only table with **per-item copy-on-write versioning**: rows sharing a
+  `logical_id` are one item's history; `is_current = 1` is the live row. Editing
+  mutates the current row in place unless it is referenced by a line, in which
+  case a new version row forks (old stays frozen). `category` is nullable,
+  `unit_price` a generic `REAL`.
+- Prices are pinned per line via a real FK `line_items.catalogue_item_id`
+  (`ON DELETE SET NULL`) pointing at the exact version row, plus the snapshotted
+  `code`/`unit_price`, so an existing invoice is never re-priced when the
+  catalogue item is later edited (the edit forks a new version).
 - The `smarts` slice has **no persistent tables** (Smarts are one-shot
   `gather → propose → apply` drafts — no chat or conversation/step state). The
   `notes` table and all `agent_*` chat tables were dropped (migrations `00005`,
@@ -154,5 +147,5 @@ erDiagram
 ## Tables not shown
 
 Auth/infra and supporting tables omitted from the diagram for clarity:
-`invites`, `sessions`, `business_profile`, `custom_items`, `tax_rates`,
+`invites`, `sessions`, `business_profile`, `tax_rates`,
 `recurring_templates` (shown), `audit_log`.

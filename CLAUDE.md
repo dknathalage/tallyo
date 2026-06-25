@@ -59,12 +59,14 @@ interfaces declared by the consumer and wired in `internal/app`.
     parse/map: `ApplyMapping` turns header→field column mappings into typed rows).
 - `internal/billing/` — the shared **billing-document core**: `LineItem(Input)`
   types, `ComputeTotals`/`Round2`, `SnapshotBuilder` (reads gen), and the
-  `LineValidator`. Catalogue lines price from `items.unit_price`; the validator
-  applies tax (per-line `taxable` × the tenant default rate) and non-negativity —
-  there are no pricing zones, price caps, or plan windows. The
-  invoice/estimate/recurring slices compose it.
+  `LineValidator`. A catalogue line carries a `catalogueItemId`; the validator
+  reads that exact `catalogue_items` row (no version-by-date, no code lookup),
+  prices from its `unit_price`, snapshots code/name/taxable, then applies tax
+  (per-line `taxable` × the tenant default rate) and non-negativity — there are
+  no pricing zones, price caps, or plan windows. The invoice/estimate/recurring
+  slices compose it.
 - **Domain slices:** `internal/{invoice,estimate,recurring,session,client,
-  payer,taxrate,businessprofile,customitem,pricelist,auth,smarts,export}`.
+  payer,taxrate,businessprofile,catalogue,auth,smarts,export}`.
   `invoice` includes payment. `invoice` declares `SessionLinker`; `session`
   declares `InvoiceChecker` — these break the invoice↔session cycle. `smarts` is the
   curated AI layer: a small set of user-initiated, button-triggered **Smarts**, each
@@ -129,29 +131,35 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 - Migrations are embedded in **two goose sequences** (distinct version tables): `internal/db/migrations/control/*.sql` and `internal/db/migrations/tenant/*.sql`. `appdb.Migrate(db)` runs both sequences into the one file at startup. sqlc reads the control dir + the tenant business-table file (the tenant `audit_log` migration is excluded to avoid a duplicate-table; goose still applies it). Add a migration to the right dir then `sqlc generate`.
 - `DATA_DIR` / `--data-dir` override the data dir (default `./data`).
 
-### Price list (versioned, tenant-owned)
+### Catalogue (per-item versioned, tenant-owned)
 
-- The catalogue is a generic, **tenant-owned price list** — the two tables
-  (`price_list_versions`, `items`) live in the single DB under the tenant goose
-  sequence (`internal/db/migrations/tenant/`). Both carry a `tenant_id` column
-  (added in `00004_catalogue_tenant.sql`); every catalogue query guards
-  `WHERE tenant_id = ?` and the `pricelist` repo threads `tenantID`, so the
-  catalogue is genuinely scoped per tenant and every tenant populates its own. An
-  `items` row carries `code`, `name`, `unit`, a nullable `category`, a generic
-  `unit_price` (base per-unit price), and `taxable`. Each release is its own
-  `price_list_versions` row; loading a newer one never mutates prior versions, and
-  prices are pinned per invoice line (`price_list_version_id` + `item_id` on
-  `line_items`, stored as tenant price-list UUIDs) so existing invoices are never
-  re-priced. There are no pricing zones, price caps, plan windows, or client types.
-- Read endpoints (`GET …/price-list/versions`, `…/versions/{versionUUID}/items`)
-  serve the tenant-scoped tables.
+- The catalogue is a generic, **tenant-owned** list of priced line templates in
+  one append-only table, `catalogue_items` (tenant goose sequence,
+  `internal/db/migrations/tenant/`). Every row carries `tenant_id` and every
+  query guards `WHERE tenant_id = ?`, so each tenant populates its own. A row
+  carries `code` (optional, the import upsert key), `name`, `unit`, nullable
+  `category`, a generic `unit_price`, `taxable`, plus the versioning columns
+  `logical_id` + `version` + `is_current`. The live catalogue is
+  `WHERE is_current = 1`.
+- **Per-item copy-on-write versioning.** Rows sharing a `logical_id` are the
+  version history of one item. Editing an item mutates its current row **in
+  place** UNLESS that row is already referenced by an invoice/estimate line, in
+  which case it **forks** a new version (the old row stays frozen, still
+  referenced). Delete tombstones the `logical_id` (all rows `is_current = 0`).
+  Invoice lines pin the exact version via a single `line_items.catalogue_item_id`
+  FK, so existing invoices are never re-priced. There are no pricing zones, price
+  caps, plan windows, release snapshots, or client types. (Replaced the earlier
+  `custom_items` + `price_list_versions`/`items` split; see
+  `docs/superpowers/specs/2026-06-25-catalogue-merge-design.md`.)
+- CRUD endpoints: `GET/POST …/catalogue`, `GET/PUT/DELETE …/catalogue/{uuid}`,
+  `POST …/catalogue/bulk-delete` (serve the current rows).
 - **Generic upload-and-map import.** Ingest is a two-step, file-format-agnostic
-  flow (CSV/XLSX), both gated by **owner/admin**: `POST …/price-list/import/inspect`
+  flow (CSV/XLSX), both gated by **owner/admin**: `POST …/catalogue/import/inspect`
   returns the detected headers + a row sample; the SPA mapping wizard maps each
-  source header to a target field; `POST …/price-list/import/commit` applies it.
-  The pipeline is `importer.ApplyMapping` (header→field → typed rows) feeding the
-  `pricelist` slice's `Inspect` / `ImportMapped`. Each item gets a single
-  `unit_price`.
+  source header to a target field; `POST …/catalogue/import/commit` applies it,
+  upserting by `code` through the copy-on-write rules. The pipeline is
+  `importer.ApplyMapping` (header→field → typed rows) feeding the `catalogue`
+  slice's `Inspect` / `ImportMapped`.
 
 ## Coding Rules (NASA Power of 10, adapted)
 

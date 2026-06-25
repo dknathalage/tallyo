@@ -125,18 +125,15 @@ func (s *Service) GenerateOne(ctx context.Context, uuid string) (*GeneratedInvoi
 // single sweep event SCOPED to that tenant so only its subscribers resync. ctx
 // must carry the tenant (the sweep driver attaches it via reqctx.WithTenant).
 //
-// Validation-engine note (J10/J11 decision): generated invoices are produced
-// DB-side in the repository (tx-scoped numbering + idempotent next_due advance
-// in one transaction) and do NOT pass through the J10 LineValidator. Routing
-// them through it was DEFERRED because recurring template lines carry no
-// per-line service_date — the validator's version-resolution and plan-window
-// checks are keyed on service_date, so they have nothing to validate against
-// without first defining a service-date policy for generated lines. RISK: a
-// generated line whose template unit_price exceeds the current price cap, or
-// whose client plan window has lapsed, is NOT blocked at generation time;
-// it surfaces only when the invoice is next edited (which re-validates). This is
-// acceptable for this scope: generated invoices are drafts, reviewed before
-// being sent. Revisit when adding a service-date policy for recurring lines.
+// Validation-engine note: generated invoices are produced DB-side in the
+// repository (tx-scoped numbering + idempotent next_due advance in one
+// transaction) and bill the price frozen in the template's line JSON; they do
+// NOT pass through the LineValidator. Recurring template lines carry no
+// catalogue reference (the merge dropped it) — they are self-contained frozen
+// snapshots, so there is nothing to re-resolve at generation time. A future
+// "recurring tracks current catalogue prices" feature would route generated
+// lines through the validator; until then generated invoices are drafts,
+// reviewed before being sent.
 func (s *Service) GenerateDueForTenant(ctx context.Context, tenantID string) ([]GeneratedInvoice, error) {
 	gens, err := s.repo.GenerateDueForTenant(ctx, tenantID)
 	if err != nil {
