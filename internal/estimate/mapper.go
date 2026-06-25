@@ -96,20 +96,17 @@ func mapEstimateLineItems(rows []gen.ListEstimateLineItemsRow) []*billing.LineIt
 // LineItem domain shape.
 func toEstimateLineItem(row gen.ListEstimateLineItemsRow) *billing.LineItem {
 	return &billing.LineItem{
-		ID:                 row.ID,
-		ItemID:             db.PtrStr(row.ItemID),
-		CustomItemID:       db.PtrStr(row.CustomItemID),
-		CustomItemUUID:     db.PtrStr(row.CustomItemUuid),
-		PriceListVersionID: db.PtrStr(row.PriceListVersionID),
-		Code:               row.Code.String,
-		Description:        row.Description,
-		ServiceDate:        row.ServiceDate.String,
-		Unit:               row.Unit.String,
-		Quantity:           row.Quantity,
-		UnitPrice:          row.UnitPrice,
-		Taxable:            row.Taxable == 1,
-		LineTotal:          row.LineTotal,
-		SortOrder:          row.SortOrder.Int64,
+		ID:              row.ID,
+		CatalogueItemID: db.PtrStr(row.CatalogueItemUuid),
+		Code:            row.Code.String,
+		Description:     row.Description,
+		ServiceDate:     row.ServiceDate.String,
+		Unit:            row.Unit.String,
+		Quantity:        row.Quantity,
+		UnitPrice:       row.UnitPrice,
+		Taxable:         row.Taxable == 1,
+		LineTotal:       row.LineTotal,
+		SortOrder:       row.SortOrder.Int64,
 	}
 }
 

@@ -175,19 +175,17 @@ func copyEstimateItemsToInvoice(ctx context.Context, q *gen.Queries, tenantID, i
 			ID:                 ids.New(),
 			TenantID:           tenantID,
 			SessionID:          sql.NullString{}, // estimate-converted lines are not session items
-			InvoiceID:          sql.NullString{String: invoiceID, Valid: true},
-			ItemID:             db.NullStr(it.ItemID),
-			CustomItemID:       db.NullStr(it.CustomItemID),
-			PriceListVersionID: db.NullStr(it.PriceListVersionID),
-			Code:               db.NzMaybe(it.Code),
-			Description:        it.Description,
-			ServiceDate:        db.NzMaybe(it.ServiceDate),
-			Unit:               db.NzMaybe(it.Unit),
-			Quantity:           it.Quantity,
-			UnitPrice:          it.UnitPrice,
-			Taxable:            db.B2i(it.Taxable),
-			LineTotal:          it.LineTotal,
-			SortOrder:          sql.NullInt64{Int64: it.SortOrder, Valid: true},
+			InvoiceID:       sql.NullString{String: invoiceID, Valid: true},
+			CatalogueItemID: db.NullStr(it.CatalogueItemID),
+			Code:            db.NzMaybe(it.Code),
+			Description:     it.Description,
+			ServiceDate:     db.NzMaybe(it.ServiceDate),
+			Unit:            db.NzMaybe(it.Unit),
+			Quantity:        it.Quantity,
+			UnitPrice:       it.UnitPrice,
+			Taxable:         db.B2i(it.Taxable),
+			LineTotal:       it.LineTotal,
+			SortOrder:       sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("copy estimate item %d: %w", i, err)
@@ -202,17 +200,15 @@ func lineItemsToInput(items []*billing.LineItem) []billing.LineItemInput {
 	for i := range items { // bounded by len(items)
 		it := items[i]
 		out = append(out, billing.LineItemInput{
-			ItemID:             it.ItemID,
-			CustomItemID:       it.CustomItemUUID,
-			PriceListVersionID: it.PriceListVersionID,
-			Code:               it.Code,
-			Description:        it.Description,
-			ServiceDate:        it.ServiceDate,
-			Unit:               it.Unit,
-			Quantity:           it.Quantity,
-			UnitPrice:          it.UnitPrice,
-			Taxable:            it.Taxable,
-			SortOrder:          it.SortOrder,
+			CatalogueItemID: it.CatalogueItemID,
+			Code:            it.Code,
+			Description:     it.Description,
+			ServiceDate:     it.ServiceDate,
+			Unit:            it.Unit,
+			Quantity:        it.Quantity,
+			UnitPrice:       it.UnitPrice,
+			Taxable:         it.Taxable,
+			SortOrder:       it.SortOrder,
 		})
 	}
 	return out

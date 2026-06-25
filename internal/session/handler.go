@@ -239,7 +239,7 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := h.svc.AddItemBySessionUUID(r.Context(), sessionUUID, in)
-	if writeUnknownCustomItem(w, err) {
+	if writeUnknownCatalogueItem(w, err) {
 		return
 	}
 	if httpx.WriteServiceError(w, err) {
@@ -270,7 +270,7 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := h.svc.UpdateItemBySessionUUID(r.Context(), sessionUUID, itemUUID, in)
-	if writeUnknownCustomItem(w, err) {
+	if writeUnknownCatalogueItem(w, err) {
 		return
 	}
 	if httpx.WriteServiceError(w, err) {
@@ -315,21 +315,17 @@ func decodeItem(w http.ResponseWriter, r *http.Request) (billing.LineItemInput, 
 		httpx.WriteError(w, http.StatusBadRequest, "quantity must not be negative")
 		return in, false
 	}
-	if in.Code != "" && in.CustomItemID != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "a line is either catalogue-coded or custom, not both")
-		return in, false
-	}
 	return in, true
 }
 
-// writeUnknownCustomItem maps the unknown-custom-item billing sentinel to a 400
-// and returns true; otherwise it writes nothing and returns false so the caller
-// falls through to httpx.WriteServiceError. httpx cannot import billing, so this
-// one domain sentinel is mapped here at the slice (mirroring invoice's identical
-// pre-check); the rest is handled uniformly by WriteServiceError.
-func writeUnknownCustomItem(w http.ResponseWriter, err error) bool {
-	if errors.Is(err, billing.ErrUnknownCustomItem) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
+// writeUnknownCatalogueItem maps the unknown-catalogue-item billing sentinel to a
+// 400 and returns true; otherwise it writes nothing and returns false so the
+// caller falls through to httpx.WriteServiceError. httpx cannot import billing, so
+// this one domain sentinel is mapped here at the slice (mirroring invoice's
+// identical pre-check); the rest is handled uniformly by WriteServiceError.
+func writeUnknownCatalogueItem(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, billing.ErrUnknownCatalogueItem) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown catalogue item")
 		return true
 	}
 	return false

@@ -107,15 +107,15 @@ func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req invoi
 	}, true
 }
 
-// writeUnknownCustomItem maps the unknown-custom-item billing sentinel to a 400
-// and returns true; otherwise it writes nothing and returns false so the caller
-// falls through to httpx.WriteServiceError. httpx cannot import billing, so this
-// one domain sentinel is mapped here at the slice (mirroring client's
+// writeUnknownCatalogueItem maps the unknown-catalogue-item billing sentinel to a
+// 400 and returns true; otherwise it writes nothing and returns false so the
+// caller falls through to httpx.WriteServiceError. httpx cannot import billing, so
+// this one domain sentinel is mapped here at the slice (mirroring client's
 // errPayerNotFound→400 pre-check); the rest (*billing.ValidationError→422,
 // ErrNotFound→404, else 500) is handled uniformly by WriteServiceError.
-func writeUnknownCustomItem(w http.ResponseWriter, err error) bool {
-	if errors.Is(err, billing.ErrUnknownCustomItem) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
+func writeUnknownCatalogueItem(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, billing.ErrUnknownCatalogueItem) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown catalogue item")
 		return true
 	}
 	return false
@@ -213,7 +213,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inv, err := h.svc.Create(r.Context(), in, req.LineItems)
-	if writeUnknownCustomItem(w, err) {
+	if writeUnknownCatalogueItem(w, err) {
 		return
 	}
 	if httpx.WriteServiceError(w, err) {
@@ -267,7 +267,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inv, err := h.svc.UpdateByUUID(r.Context(), uid, in, req.LineItems)
-	if writeUnknownCustomItem(w, err) {
+	if writeUnknownCatalogueItem(w, err) {
 		return
 	}
 	if httpx.WriteServiceError(w, err) {

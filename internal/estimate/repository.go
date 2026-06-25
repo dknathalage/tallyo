@@ -205,26 +205,24 @@ func createEstimateParams(tenantID string, in EstimateInput, items []billing.Lin
 func insertEstimateItems(ctx context.Context, q *gen.Queries, tenantID, estimateID string, items []billing.LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
-		customItemID, err := billing.ResolveCustomItemID(ctx, q, tenantID, it.CustomItemID)
+		catalogueItemID, err := billing.ResolveCatalogueItemID(ctx, q, tenantID, it.CatalogueItemID)
 		if err != nil {
 			return fmt.Errorf("insert estimate line item %d: %w", i, err)
 		}
 		_, err = q.CreateEstimateLineItem(ctx, gen.CreateEstimateLineItemParams{
-			ID:                 ids.New(),
-			TenantID:           tenantID,
-			EstimateID:         estimateID,
-			ItemID:             db.NullStr(it.ItemID),
-			CustomItemID:       customItemID,
-			PriceListVersionID: db.NullStr(it.PriceListVersionID),
-			Code:               db.NzMaybe(it.Code),
-			Description:        it.Description,
-			ServiceDate:        db.NzMaybe(it.ServiceDate),
-			Unit:               db.NzMaybe(it.Unit),
-			Quantity:           it.Quantity,
-			UnitPrice:          it.UnitPrice,
-			Taxable:            db.B2i(it.Taxable),
-			LineTotal:          billing.Round2(it.Quantity * it.UnitPrice),
-			SortOrder:          sql.NullInt64{Int64: it.SortOrder, Valid: true},
+			ID:              ids.New(),
+			TenantID:        tenantID,
+			EstimateID:      estimateID,
+			CatalogueItemID: catalogueItemID,
+			Code:            db.NzMaybe(it.Code),
+			Description:     it.Description,
+			ServiceDate:     db.NzMaybe(it.ServiceDate),
+			Unit:            db.NzMaybe(it.Unit),
+			Quantity:        it.Quantity,
+			UnitPrice:       it.UnitPrice,
+			Taxable:         db.B2i(it.Taxable),
+			LineTotal:       billing.Round2(it.Quantity * it.UnitPrice),
+			SortOrder:       sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("insert estimate line item %d: %w", i, err)

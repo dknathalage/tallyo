@@ -143,11 +143,11 @@ func (r *SessionsRepo) CreateItem(ctx context.Context, tenantID, sessionID strin
 		EntityType: "line_item", EntityID: sessionID, Action: "create",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
+		catalogueItemID, e := billing.ResolveCatalogueItemID(ctx, q, tenantID, in.CatalogueItemID)
 		if e != nil {
 			return e
 		}
-		row, e := q.CreateLineItem(ctx, lineItemParams(tenantID, &sessionID, customItemID, in))
+		row, e := q.CreateLineItem(ctx, lineItemParams(tenantID, &sessionID, catalogueItemID, in))
 		if e != nil {
 			return fmt.Errorf("insert: %w", e)
 		}
@@ -175,26 +175,24 @@ func (r *SessionsRepo) UpdateItem(ctx context.Context, tenantID, itemID string, 
 		EntityType: "line_item", EntityID: itemID, Action: "update",
 	}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
+		catalogueItemID, e := billing.ResolveCatalogueItemID(ctx, q, tenantID, in.CatalogueItemID)
 		if e != nil {
 			return e
 		}
 		_, e = q.UpdateSessionLineItem(ctx, gen.UpdateSessionLineItemParams{
-			ItemID:             db.NullStr(in.ItemID),
-			CustomItemID:       customItemID,
-			PriceListVersionID: db.NullStr(in.PriceListVersionID),
-			Code:               db.NzMaybe(in.Code),
-			Description:        in.Description,
-			ServiceDate:        db.NzMaybe(in.ServiceDate),
-			Unit:               db.NzMaybe(in.Unit),
-			StartTime:          db.NzMaybe(in.StartTime),
-			EndTime:            db.NzMaybe(in.EndTime),
-			Quantity:           in.Quantity,
-			UnitPrice:          in.UnitPrice,
-			Taxable:            db.B2i(in.Taxable),
-			LineTotal:          billing.Round2(in.Quantity * in.UnitPrice),
-			TenantID:           tenantID,
-			ID:                 itemID,
+			CatalogueItemID: catalogueItemID,
+			Code:            db.NzMaybe(in.Code),
+			Description:     in.Description,
+			ServiceDate:     db.NzMaybe(in.ServiceDate),
+			Unit:            db.NzMaybe(in.Unit),
+			StartTime:       db.NzMaybe(in.StartTime),
+			EndTime:         db.NzMaybe(in.EndTime),
+			Quantity:        in.Quantity,
+			UnitPrice:       in.UnitPrice,
+			Taxable:         db.B2i(in.Taxable),
+			LineTotal:       billing.Round2(in.Quantity * in.UnitPrice),
+			TenantID:        tenantID,
+			ID:              itemID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -282,27 +280,25 @@ func (r *SessionsRepo) UpdateItemByUUID(ctx context.Context, tenantID, sessionID
 	var missing bool
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
-		customItemID, e := billing.ResolveCustomItemID(ctx, q, tenantID, in.CustomItemID)
+		catalogueItemID, e := billing.ResolveCatalogueItemID(ctx, q, tenantID, in.CatalogueItemID)
 		if e != nil {
 			return e
 		}
 		row, e := q.UpdateSessionLineItemByUUID(ctx, gen.UpdateSessionLineItemByUUIDParams{
-			ItemID:             db.NullStr(in.ItemID),
-			CustomItemID:       customItemID,
-			PriceListVersionID: db.NullStr(in.PriceListVersionID),
-			Code:               db.NzMaybe(in.Code),
-			Description:        in.Description,
-			ServiceDate:        db.NzMaybe(in.ServiceDate),
-			Unit:               db.NzMaybe(in.Unit),
-			StartTime:          db.NzMaybe(in.StartTime),
-			EndTime:            db.NzMaybe(in.EndTime),
-			Quantity:           in.Quantity,
-			UnitPrice:          in.UnitPrice,
-			Taxable:            db.B2i(in.Taxable),
-			LineTotal:          billing.Round2(in.Quantity * in.UnitPrice),
-			TenantID:           tenantID,
-			SessionID:          sql.NullString{String: sessionID, Valid: true},
-			ID:                 itemUUID,
+			CatalogueItemID: catalogueItemID,
+			Code:            db.NzMaybe(in.Code),
+			Description:     in.Description,
+			ServiceDate:     db.NzMaybe(in.ServiceDate),
+			Unit:            db.NzMaybe(in.Unit),
+			StartTime:       db.NzMaybe(in.StartTime),
+			EndTime:         db.NzMaybe(in.EndTime),
+			Quantity:        in.Quantity,
+			UnitPrice:       in.UnitPrice,
+			Taxable:         db.B2i(in.Taxable),
+			LineTotal:       billing.Round2(in.Quantity * in.UnitPrice),
+			TenantID:        tenantID,
+			SessionID:       sql.NullString{String: sessionID, Valid: true},
+			ID:              itemUUID,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
 			missing = true
@@ -311,7 +307,7 @@ func (r *SessionsRepo) UpdateItemByUUID(ctx context.Context, tenantID, sessionID
 		if e != nil {
 			return fmt.Errorf("update: %w", e)
 		}
-		item = billing.LineItemFromRow(lineItemRowFromGen(row, in.CustomItemID))
+		item = billing.LineItemFromRow(lineItemRowFromGen(row, in.CatalogueItemID))
 		return audit.Log(ctx, tx, audit.Entry{EntityType: "line_item", EntityID: row.ID, Action: "update"})
 	})
 	if missing {
@@ -352,14 +348,14 @@ func (r *SessionsRepo) DeleteItemByUUID(ctx context.Context, tenantID, sessionID
 }
 
 // lineItemRowFromGen adapts a bare gen.LineItem (an UPDATE/INSERT RETURNING *
-// row, which carries no custom-item join) into a billing.LineItemRow, stamping
-// the custom-item uuid from the resolved inbound value so customItemId
-// round-trips without a re-read.
-func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItemRow {
+// row, which carries no catalogue join) into a billing.LineItemRow, stamping the
+// catalogue uuid from the resolved inbound value so catalogueItemId round-trips
+// without a re-read.
+func lineItemRowFromGen(r gen.LineItem, catalogueItemUUID *string) billing.LineItemRow {
 	return billing.LineItemRow{
 		ID: r.ID, SessionID: r.SessionID, InvoiceID: r.InvoiceID,
-		ItemID: r.ItemID, CustomItemID: r.CustomItemID, CustomItemUuid: db.NullStr(customItemUUID),
-		PriceListVersionID: r.PriceListVersionID, Code: r.Code, Description: r.Description,
+		CatalogueItemID: r.CatalogueItemID, CatalogueItemUuid: db.NullStr(catalogueItemUUID),
+		Code: r.Code, Description: r.Description,
 		ServiceDate: r.ServiceDate, Unit: r.Unit, StartTime: r.StartTime, EndTime: r.EndTime,
 		Quantity: r.Quantity, UnitPrice: r.UnitPrice, Taxable: r.Taxable, LineTotal: r.LineTotal, SortOrder: r.SortOrder,
 	}
@@ -368,25 +364,23 @@ func lineItemRowFromGen(r gen.LineItem, customItemUUID *string) billing.LineItem
 // lineItemParams builds the gen insert params for a line item. sessionID nil = an
 // invoice-only line; here it is always set (session item, invoice_id NULL). The
 // inbound custom-item uuid is resolved to the row id (uuid) by the caller and passed in.
-func lineItemParams(tenantID string, sessionID *string, customItemID sql.NullString, in billing.LineItemInput) gen.CreateLineItemParams {
+func lineItemParams(tenantID string, sessionID *string, catalogueItemID sql.NullString, in billing.LineItemInput) gen.CreateLineItemParams {
 	return gen.CreateLineItemParams{
-		ID:                 ids.New(),
-		TenantID:           tenantID,
-		SessionID:          db.NullStr(sessionID),
-		InvoiceID:          sql.NullString{}, // unbilled session item
-		ItemID:             db.NullStr(in.ItemID),
-		CustomItemID:       customItemID,
-		PriceListVersionID: db.NullStr(in.PriceListVersionID),
-		Code:               db.NzMaybe(in.Code),
-		Description:        in.Description,
-		ServiceDate:        db.NzMaybe(in.ServiceDate),
-		Unit:               db.NzMaybe(in.Unit),
-		StartTime:          db.NzMaybe(in.StartTime),
-		EndTime:            db.NzMaybe(in.EndTime),
-		Quantity:           in.Quantity,
-		UnitPrice:          in.UnitPrice,
-		Taxable:            db.B2i(in.Taxable),
-		LineTotal:          billing.Round2(in.Quantity * in.UnitPrice),
+		ID:              ids.New(),
+		TenantID:        tenantID,
+		SessionID:       db.NullStr(sessionID),
+		InvoiceID:       sql.NullString{}, // unbilled session item
+		CatalogueItemID: catalogueItemID,
+		Code:            db.NzMaybe(in.Code),
+		Description:     in.Description,
+		ServiceDate:     db.NzMaybe(in.ServiceDate),
+		Unit:            db.NzMaybe(in.Unit),
+		StartTime:       db.NzMaybe(in.StartTime),
+		EndTime:         db.NzMaybe(in.EndTime),
+		Quantity:        in.Quantity,
+		UnitPrice:       in.UnitPrice,
+		Taxable:         db.B2i(in.Taxable),
+		LineTotal:       billing.Round2(in.Quantity * in.UnitPrice),
 		SortOrder:          sql.NullInt64{Int64: in.SortOrder, Valid: true},
 	}
 }
