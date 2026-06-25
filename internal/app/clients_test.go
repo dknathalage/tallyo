@@ -170,8 +170,10 @@ func TestClientCreateEmptyName400(t *testing.T) {
 	c := loggedInClient(t, srv.URL)
 	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients", `{"name":""}`)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("empty name: want 400 got %d", resp.StatusCode)
+	// Required-field validation moved into the service, so an empty name is now
+	// a 422 (validation failed) rather than the old handler-level 400.
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("empty name: want 422 got %d", resp.StatusCode)
 	}
 }
 
@@ -202,8 +204,10 @@ func TestClientUpdateEmptyName400(t *testing.T) {
 	id := createClient(t, c, srv.URL, uuid, "Stark")
 	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/clients/"+id, `{"name":""}`)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("update empty name: want 400 got %d", resp.StatusCode)
+	// Required-field validation moved into the service, so an empty name is now
+	// a 422 (validation failed) rather than the old handler-level 400.
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("update empty name: want 422 got %d", resp.StatusCode)
 	}
 }
 

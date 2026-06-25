@@ -57,10 +57,11 @@ func TestBusinessProfileGetMissing(t *testing.T) {
 }
 
 func TestBusinessProfileRejectsEmptyName(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "T")
-	if err := NewBusinessProfile(conn).Save(context.Background(), tid, BusinessProfileInput{Name: ""}); err == nil {
-		t.Fatal("Save empty name: want error, got nil")
+	// Required-field validation moved from the repository to the service/input
+	// (BusinessProfileInput.Validate), so assert it there — the repo now trusts
+	// its input.
+	if err := (BusinessProfileInput{Name: ""}).Validate(); err == nil {
+		t.Fatal("Validate empty name: want error, got nil")
 	}
 }
 

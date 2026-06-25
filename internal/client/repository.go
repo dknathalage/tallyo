@@ -13,6 +13,7 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/db"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
@@ -70,6 +71,22 @@ type ClientInput struct {
 	Phone     string  `json:"phone"`
 	Address   string  `json:"address"`
 	Metadata  string  `json:"metadata"`
+}
+
+// Validate checks the cheap required-field rules the service enforces before the
+// repository runs. A failure is returned as an *apperr.ValidationError so the
+// HTTP layer responds 422 with per-field detail. (client cannot import billing —
+// billing's tests import client — so it uses the equivalent apperr type.) The
+// unknown-payer rule is a DB-resolved domain rule and stays in the repository.
+func (in ClientInput) Validate() error {
+	ve := &apperr.ValidationError{}
+	if in.Name == "" {
+		ve.Errors = append(ve.Errors, apperr.FieldError{Line: 0, Field: "name", Message: "required"})
+	}
+	if len(ve.Errors) > 0 {
+		return ve
+	}
+	return nil
 }
 
 // ClientsRepo reads and writes the clients table (tenant-scoped) with audited
@@ -206,9 +223,6 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID string, in ClientInpu
 	if tenantID == "" {
 		return nil, errors.New("create client: tenant id required")
 	}
-	if in.Name == "" {
-		return nil, errors.New("create client: name is required")
-	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
@@ -256,18 +270,14 @@ func (r *ClientsRepo) Create(ctx context.Context, tenantID string, in ClientInpu
 }
 
 // Update writes the client's fields and one audit row, atomically, then
-// re-reads. Returns (nil, nil) when the client does not exist. The audit entry
-// records the row's id (uuid), resolved by-uuid in the same tx.
+// re-reads. Returns apperr.ErrNotFound when the client does not exist. The audit
+// entry records the row's id (uuid), resolved by-uuid in the same tx.
 func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, in ClientInput) (*Client, error) {
-	if in.Name == "" {
-		return nil, errors.New("update client: name is required")
-	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
 	}
 
-	var missing bool
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		pmID, e := r.resolvePayer(ctx, q, tenantID, in.PayerUUID)
@@ -288,8 +298,7 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, 
 			ID:        uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
-			missing = true
-			return e
+			return apperr.ErrNotFound
 		}
 		if e != nil {
 			return fmt.Errorf("update: %w", e)
@@ -304,8 +313,8 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, 
 	if errors.Is(err, errPayerNotFound) {
 		return nil, errPayerNotFound
 	}
-	if missing {
-		return nil, nil
+	if errors.Is(err, apperr.ErrNotFound) {
+		return nil, apperr.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("update client: %w", err)
@@ -315,13 +324,13 @@ func (r *ClientsRepo) Update(ctx context.Context, tenantID string, uuid string, 
 
 // Delete removes a client by uuid and writes one audit row, atomically. The
 // audit entry records the row's id (uuid), resolved by-uuid in the same tx. A
-// missing row is a silent no-op.
+// missing row returns apperr.ErrNotFound so the caller can 404.
 func (r *ClientsRepo) Delete(ctx context.Context, tenantID string, uuid string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		q := gen.New(tx)
 		row, e := q.GetClient(ctx, gen.GetClientParams{TenantID: tenantID, ID: uuid})
 		if errors.Is(e, sql.ErrNoRows) {
-			return nil
+			return apperr.ErrNotFound
 		}
 		if e != nil {
 			return fmt.Errorf("lookup: %w", e)

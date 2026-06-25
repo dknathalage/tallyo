@@ -79,40 +79,31 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Get(r.Context(), id)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if p == nil {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Create inserts a client. An empty name is rejected with 400.
+// Create inserts a client. An empty name is rejected with 422; an unknown
+// inbound payer uuid with 400.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in ClientInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
 	p, err := h.svc.Create(r.Context(), in)
 	if writeClientInputError(w, err) {
 		return
 	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
-// Update mutates a client. Empty name → 400; unknown id → 404; unknown
+// Update mutates a client. Empty name → 422; unknown id → 404; unknown
 // payer uuid → 400.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "clientUUID")
@@ -125,29 +116,21 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
 	p, err := h.svc.Update(r.Context(), id, in)
 	if writeClientInputError(w, err) {
 		return
 	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if p == nil {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// writeClientInputError maps a client-input failure to a 400 and returns true;
-// on any other error (or nil) it writes nothing and returns false so the caller
-// falls through to its generic handling. It covers the payer sentinel (an
-// unknown inbound payer uuid).
+// writeClientInputError maps the unknown-inbound-payer domain sentinel to a 400
+// and returns true; on any other error (or nil) it writes nothing and returns
+// false so the caller falls through to httpx.WriteServiceError. This is the one
+// slice-specific status (payer resolution is a DB-resolved domain rule, not a
+// cheap field check), so it stays a small explicit helper.
 func writeClientInputError(w http.ResponseWriter, err error) bool {
 	if errors.Is(err, errPayerNotFound) {
 		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
@@ -156,15 +139,14 @@ func writeClientInputError(w http.ResponseWriter, err error) bool {
 	return false
 }
 
-// Delete removes a client by uuid.
+// Delete removes a client by uuid. Unknown uuid → 404.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "clientUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.Delete(r.Context(), id); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

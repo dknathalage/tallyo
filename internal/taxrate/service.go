@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/dknathalage/tallyo/internal/db"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
+	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -12,8 +14,8 @@ import (
 // Service orchestrates tax-rate reads/writes and publishes change events after
 // a successful commit.
 type Service struct {
-	repo *TaxRatesRepo
-	hub  *realtime.Hub
+	repo   *TaxRatesRepo
+	events events.Notifier
 }
 
 // NewService constructs the tax-rate service. A nil hub is a programmer error.
@@ -21,7 +23,7 @@ func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("taxrate.NewService: nil hub")
 	}
-	return &Service{repo: NewTaxRates(db), hub: hub}
+	return &Service{repo: NewTaxRates(db), events: events.New(hub, "tax_rate")}
 }
 
 func (s *Service) List(ctx context.Context) ([]*TaxRate, error) {
@@ -45,7 +47,14 @@ func (s *Service) Query(ctx context.Context, c listquery.Clause) (listquery.Resu
 
 func (s *Service) Get(ctx context.Context, uuid string) (*TaxRate, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.Get(ctx, tenantID, uuid)
+	t, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
+		return nil, err
+	}
+	if t == nil {
+		return nil, apperr.ErrNotFound
+	}
+	return t, nil
 }
 
 func (s *Service) GetDefault(ctx context.Context) (*TaxRate, error) {
@@ -55,44 +64,40 @@ func (s *Service) GetDefault(ctx context.Context) (*TaxRate, error) {
 
 // Create inserts a tax rate, then broadcasts AFTER the commit succeeds.
 func (s *Service) Create(ctx context.Context, in TaxRateInput) (*TaxRate, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
 	tenantID := reqctx.MustTenant(ctx)
 	t, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", UUID: t.ID, Action: "create"})
+	s.events.Created(tenantID, t.ID)
 	return t, nil
 }
 
-// Update mutates a tax rate, then broadcasts on success. A nil result means the
-// row was not found, in which case no event is published.
+// Update mutates a tax rate, then broadcasts on success. A missing row surfaces
+// as apperr.ErrNotFound from the repo and is propagated (no event published).
 func (s *Service) Update(ctx context.Context, uuid string, in TaxRateInput) (*TaxRate, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
 	tenantID := reqctx.MustTenant(ctx)
 	t, err := s.repo.Update(ctx, tenantID, uuid, in)
 	if err != nil {
 		return nil, err
 	}
-	if t == nil {
-		return nil, nil
-	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", UUID: t.ID, Action: "update"})
+	s.events.Updated(tenantID, t.ID)
 	return t, nil
 }
 
-// Delete removes a tax rate by uuid, then broadcasts on success. The row is
-// resolved first so the post-commit event still carries the uuid.
+// Delete removes a tax rate by uuid, then broadcasts on success. A missing row
+// surfaces as apperr.ErrNotFound from the repo and is propagated.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	t, err := s.repo.Get(ctx, tenantID, uuid)
-	if err != nil {
-		return err
-	}
-	if t == nil {
-		return nil
-	}
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "tax_rate", UUID: t.ID, Action: "delete"})
+	s.events.Deleted(tenantID, uuid)
 	return nil
 }

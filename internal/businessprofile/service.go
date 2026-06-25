@@ -31,6 +31,9 @@ func (s *Service) Get(ctx context.Context) (*BusinessProfile, error) {
 
 // Save upserts the profile, then broadcasts AFTER the commit succeeds.
 func (s *Service) Save(ctx context.Context, in BusinessProfileInput) error {
+	if err := in.Validate(); err != nil {
+		return err
+	}
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Save(ctx, tenantID, in); err != nil {
 		return err

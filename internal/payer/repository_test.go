@@ -25,10 +25,10 @@ func TestPayerCreateGet(t *testing.T) {
 }
 
 func TestPayerRejectsEmptyName(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "T")
-	if _, err := NewPayers(conn).Create(context.Background(), tid, PayerInput{Name: ""}); err == nil {
-		t.Fatal("Create empty name: want error, got nil")
+	// Required-field validation moved from the repository to the service/input
+	// (PayerInput.Validate), so assert it there — the repo now trusts its input.
+	if err := (PayerInput{Name: ""}).Validate(); err == nil {
+		t.Fatal("Validate empty name: want error, got nil")
 	}
 }
 

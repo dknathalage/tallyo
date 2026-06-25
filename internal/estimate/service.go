@@ -5,6 +5,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -17,6 +18,7 @@ type Service struct {
 	repo      *EstimatesRepo
 	validator *billing.LineValidator
 	hub       *realtime.Hub
+	events    events.Notifier
 }
 
 // NewService constructs the estimate service. A nil hub is a programmer error.
@@ -24,7 +26,7 @@ func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("estimate.NewService: nil hub")
 	}
-	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub}
+	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub, events: events.New(hub, "estimate")}
 }
 
 func (s *Service) List(ctx context.Context) ([]*Estimate, error) {
@@ -172,7 +174,7 @@ func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "create"})
+	s.events.Created(tenantID, est.ID)
 	return est, nil
 }
 
@@ -192,7 +194,7 @@ func (s *Service) Update(ctx context.Context, id string, in EstimateInput, items
 	if est == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "update"})
+	s.events.Updated(tenantID, est.ID)
 	return est, nil
 }
 
@@ -228,7 +230,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "delete"})
+	s.events.Deleted(tenantID, est.ID)
 	return nil
 }
 

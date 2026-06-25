@@ -42,9 +42,19 @@ interfaces declared by the consumer and wired in `internal/app`.
   - `internal/reqctx/` — tenant/user request context.
   - `internal/realtime/` — SSE hub + the `/api/events` stream handler.
   - `internal/httpx/` — domain-agnostic HTTP helpers: `WriteJSON`/`WriteError`/
-    `WriteValidationError`/`DecodeJSON`/`ParseUUID`, middleware (`Recover`,
-    `RequestLogger`, `RequireAuth`, `RequireRole`, `RequirePlatformAdmin`), logging,
-    `SPAHandler`.
+    `WriteValidationError`/`WriteServiceError`/`DecodeJSON`/`ParseUUID`, middleware
+    (`Recover`, `RequestLogger`, `RequireAuth`, `RequireRole`,
+    `RequirePlatformAdmin`), logging, `SPAHandler`. `WriteServiceError(w, err)`
+    maps a service's typed/sentinel error to HTTP (404/409/422/500) and returns
+    whether it wrote — the single error-mapping home for every handler.
+  - `internal/apperr/` — shared outcome sentinels (`ErrNotFound`, `ErrConflict`)
+    services return and `httpx.WriteServiceError` maps, plus the `Validation`
+    interface and a stdlib-only `ValidationError`/`FieldError` the simple CRUD
+    slices use for cheap field checks (they can't import `billing` —
+    `billing`'s tests import `taxrate`/`client`, so that would cycle). Kept
+    separate so `httpx` need not import `billing`.
+  - `internal/events/` — `Notifier{hub, entity}` with `Created/Updated/Deleted(ctx,
+    id)`; one per service, replaces inline `realtime.Event{...}` literals.
   - `internal/pdf/` (maroto render), `internal/importer/` (generic price-list
     parse/map: `ApplyMapping` turns header→field column mappings into typed rows).
 - `internal/billing/` — the shared **billing-document core**: `LineItem(Input)`
@@ -92,9 +102,19 @@ Flags: `--port`, `--data-dir` (else `DATA_DIR` env, else `./data`), `--secure-co
 ## Conventions
 
 - sqlc source SQL in `internal/db/queries/`; never hand-edit `internal/db/gen/`.
-- Each domain is a **vertical slice** (`internal/<domain>/`): handler → service → repository → sqlc gen, all in one package. Within a slice, handlers call its service, the service calls its repository, the repository calls gen — never skip a layer.
-- **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.SessionLinker`, `session.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` (line items, totals, snapshots, validator).
-- Every DB mutation is audited (via `audit.WithTx`) and broadcasts an SSE event from the service after commit.
+- **Slice anatomy — every slice has the same shape (learn one, know them all).** Each
+  domain is a **vertical slice** (`internal/<domain>/`), **one flat Go package**,
+  organized by file (never by layer-subpackage — that forces export-everything and
+  invites import cycles). The canonical files + layer contract:
+  - `handler.go` — **HTTP only**: `DecodeJSON` → call service → `httpx.WriteServiceError(w, err)` → `WriteJSON`. No field validation here.
+  - `service.go` — **the brain**: validates input (`in.Validate()`), reads tenant from `reqctx`, orchestrates the repo, broadcasts via `events.Notifier`. Returns typed/sentinel errors (`apperr.ErrNotFound`, `*billing.ValidationError`, slice-local conflict sentinels) — never `(nil, nil)` for not-found.
+  - `repository.go` — **thin**: `audit.WithTx` + `gen` call + row→domain map; trusts its input (no re-validation); translates `sql.ErrNoRows` → `apperr.ErrNotFound`.
+  - `query.go` (optional, list/filter read SQL) + `types.go` (domain struct + `Input` struct + `Input.Validate() error`).
+  Within a slice never skip a layer (handler → service → repository → gen). **All CRUD/billing slices conform to this shape (the conformance pass: `docs/superpowers/specs/2026-06-25-slice-consistency-design.md`); new slices copy it. `smarts` is the AI-orchestration exception — it composes other slices.**
+- **Flat layout, predictable names.** Keep `internal/<slice>/` flat — no `domain/`/`platform/` grouping folders (longer paths cost navigation, buy nothing). Use the **identical filenames** above in every slice. Split any file over ~400 lines on a predictable seam (`query.go`, `payment_repository.go`) so each file is one focused concept. Symbol names unique + greppable.
+- **Validation lives in the service**, once, before the repo — testable without HTTP. **Error mapping lives once** in `httpx.WriteServiceError`; handlers don't hand-roll `errors.Is` chains.
+- **No slice imports another slice.** Cross-domain reads use the central `db/gen` (enrichment joins live in SQL); cross-domain writes/behaviour use a small interface declared by the consumer slice and wired in `internal/app` (e.g. `invoice.SessionLinker`, `session.InvoiceChecker`). The invoice/estimate/recurring slices share `internal/billing` — line items, totals, snapshots, validator, **and the shared billing-document mechanics `billing.NextNumber(…, prefix)` + `billing.InsertLineItems(…)`** (these live in `billing`, not the `invoice` slice, so estimate/recurring build their invoices inline via shared `gen` without importing `invoice`).
+- Every DB mutation is audited (via `audit.WithTx`) and broadcasts an SSE event from the service after commit — via the slice's `events.Notifier` (`s.events.Created/Updated/Deleted(ctx, id)`), not an inline `realtime.Event{...}` literal.
 - JSON is camelCase (Go struct json tags); list endpoints return `[]` (non-nil) when empty.
 - **UUIDv7 ids, end to end.** Every row's primary key **is** a UUIDv7 string (`id`) — the same value in the URL, the JSON, and as the DB key. There is no separate int PK and no `uuid → int` resolution step: handlers parse the uuid (`httpx.ParseUUID`) and query by it directly as the PK, and inbound FK uuids are stored as-is. JSON `id` / `*Id` fields are uuid strings; paths are `/{...UUID}` (e.g. `/invoices/{invoiceUUID}`); SvelteKit routes use `[uuid]` params. All ids are minted by `internal/ids.New()` (UUIDv7, time-ordered) — never `uuid.NewString()` (v4).
 - Clean-break data model (fresh goose schema; no migration from the old Electron `tallyo.db`).

@@ -106,23 +106,18 @@ func (h *Handler) resolveInput(w http.ResponseWriter, r *http.Request, req estim
 	}, true
 }
 
-// writeValidationError, when err is (or wraps) a *billing.ValidationError,
-// writes a 422 envelope and returns true. Otherwise it writes nothing and
-// returns false so callers can fall through to generic error handling.
-func writeValidationError(w http.ResponseWriter, err error) bool {
+// writeUnknownCustomItem maps the unknown-custom-item billing sentinel to a 400
+// and returns true; otherwise it writes nothing and returns false so the caller
+// falls through to httpx.WriteServiceError. httpx cannot import billing, so this
+// one domain sentinel is mapped here at the slice (mirroring client's
+// errPayerNotFound→400 pre-check); the rest (*billing.ValidationError→422,
+// ErrNotFound→404, else 500) is handled uniformly by WriteServiceError.
+func writeUnknownCustomItem(w http.ResponseWriter, err error) bool {
 	if errors.Is(err, billing.ErrUnknownCustomItem) {
 		httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
 		return true
 	}
-	ve, ok := billing.AsValidationError(err)
-	if !ok || ve == nil {
-		return false
-	}
-	httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
-		"error":   "validation failed",
-		"details": ve.Errors,
-	})
-	return true
+	return false
 }
 
 // clientFilter returns the client uuid filter from the query, accepting
@@ -215,11 +210,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	est, err := h.svc.Create(r.Context(), in, req.LineItems)
-	if err != nil {
-		if writeValidationError(w, err) {
-			return
-		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if writeUnknownCustomItem(w, err) {
+		return
+	}
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, est)
@@ -242,11 +236,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	est, err := h.svc.UpdateByUUID(r.Context(), uid, in, req.LineItems)
-	if err != nil {
-		if writeValidationError(w, err) {
-			return
-		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if writeUnknownCustomItem(w, err) {
+		return
+	}
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if est == nil {

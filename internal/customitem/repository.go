@@ -8,6 +8,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
@@ -47,6 +48,20 @@ type CustomItemInput struct {
 	Unit     string  `json:"unit"`
 	Taxable  bool    `json:"taxable"`
 	Metadata string  `json:"metadata"`
+}
+
+// Validate checks the cheap required-field rules the service enforces before the
+// repository runs. A failure is returned as an *apperr.ValidationError so the
+// HTTP layer responds 422 with per-field detail.
+func (in CustomItemInput) Validate() error {
+	ve := &apperr.ValidationError{}
+	if in.Name == "" {
+		ve.Errors = append(ve.Errors, apperr.FieldError{Line: 0, Field: "name", Message: "required"})
+	}
+	if len(ve.Errors) > 0 {
+		return ve
+	}
+	return nil
 }
 
 // Repo reads and writes the custom_items table (tenant-scoped) with
@@ -160,9 +175,6 @@ func (r *Repo) Create(ctx context.Context, tenantID string, in CustomItemInput) 
 	if tenantID == "" {
 		return nil, errors.New("create custom item: tenant id required")
 	}
-	if in.Name == "" {
-		return nil, errors.New("create custom item: name is required")
-	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
@@ -201,18 +213,14 @@ func (r *Repo) Create(ctx context.Context, tenantID string, in CustomItemInput) 
 
 // Update writes the custom item's fields and one audit row, atomically. The
 // audit entry records the row's id, looked up by-uuid inside the tx. Returns
-// (nil, nil) when the item does not exist so the caller can 404.
+// apperr.ErrNotFound when the item does not exist so the caller can 404.
 func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in CustomItemInput) (*CustomItem, error) {
-	if in.Name == "" {
-		return nil, errors.New("update custom item: name is required")
-	}
 	metadata := in.Metadata
 	if metadata == "" {
 		metadata = "{}"
 	}
 
 	var updated gen.CustomItem
-	var missing bool
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		c, e := gen.New(tx).UpdateCustomItem(ctx, gen.UpdateCustomItemParams{
@@ -226,8 +234,7 @@ func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in Cust
 			ID:        uuid,
 		})
 		if errors.Is(e, sql.ErrNoRows) {
-			missing = true
-			return e
+			return apperr.ErrNotFound
 		}
 		if e != nil {
 			return fmt.Errorf("update: %w", e)
@@ -240,8 +247,8 @@ func (r *Repo) Update(ctx context.Context, tenantID string, uuid string, in Cust
 			Changes:    audit.Changes(map[string]any{"name": in.Name}),
 		})
 	})
-	if missing {
-		return nil, nil
+	if errors.Is(err, apperr.ErrNotFound) {
+		return nil, apperr.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("update custom item: %w", err)
@@ -256,7 +263,7 @@ func (r *Repo) Delete(ctx context.Context, tenantID string, uuid string) error {
 		q := gen.New(tx)
 		row, e := q.GetCustomItem(ctx, gen.GetCustomItemParams{TenantID: tenantID, ID: uuid})
 		if errors.Is(e, sql.ErrNoRows) {
-			return nil
+			return apperr.ErrNotFound
 		}
 		if e != nil {
 			return fmt.Errorf("lookup: %w", e)

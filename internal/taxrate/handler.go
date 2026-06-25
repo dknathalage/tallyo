@@ -61,37 +61,27 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.svc.Get(r.Context(), id)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if t == nil {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, t)
 }
 
-// Create inserts a tax rate. An empty name is rejected with 400.
+// Create inserts a tax rate. An empty name is rejected with 422.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in TaxRateInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
 	t, err := h.svc.Create(r.Context(), in)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, t)
 }
 
-// Update mutates a tax rate. Empty name → 400; unknown uuid → 404.
+// Update mutates a tax rate. Empty name → 422; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
@@ -103,31 +93,21 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
 	t, err := h.svc.Update(r.Context(), id, in)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if t == nil {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, t)
 }
 
-// Delete removes a tax rate by uuid.
+// Delete removes a tax rate by uuid. Unknown uuid → 404.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.Delete(r.Context(), id); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

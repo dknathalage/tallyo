@@ -104,8 +104,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh, err := h.svc.GetByUUID(r.Context(), sessionUUID)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if sh == nil {
@@ -135,8 +134,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh, err := h.svc.Create(r.Context(), in)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, sh)
@@ -186,8 +184,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh, err := h.svc.Update(r.Context(), sessionUUID, in)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if sh == nil {
@@ -197,19 +194,15 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sh)
 }
 
-// Delete removes a session by uuid.
+// Delete removes a session by uuid. A billed session → 409 (mapped from
+// ErrSessionBilled, which wraps apperr.ErrConflict).
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	sessionUUID, ok := httpx.ParseUUID(r, "sessionUUID")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), sessionUUID); err != nil {
-		if errors.Is(err, ErrSessionBilled) {
-			httpx.WriteError(w, http.StatusConflict, "cannot delete a billed session")
-			return
-		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.Delete(r.Context(), sessionUUID); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -224,8 +217,7 @@ func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items, err := h.svc.ListItemsBySessionUUID(r.Context(), sessionUUID)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if items == nil {
@@ -247,12 +239,10 @@ func (h *Handler) AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := h.svc.AddItemBySessionUUID(r.Context(), sessionUUID, in)
-	if err != nil {
-		if errors.Is(err, billing.ErrUnknownCustomItem) {
-			httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
-			return
-		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if writeUnknownCustomItem(w, err) {
+		return
+	}
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if item == nil {
@@ -280,12 +270,10 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := h.svc.UpdateItemBySessionUUID(r.Context(), sessionUUID, itemUUID, in)
-	if err != nil {
-		if errors.Is(err, billing.ErrUnknownCustomItem) {
-			httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
-			return
-		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if writeUnknownCustomItem(w, err) {
+		return
+	}
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if item == nil {
@@ -308,8 +296,7 @@ func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
-	if err := h.svc.DeleteItemBySessionUUID(r.Context(), sessionUUID, itemUUID); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.DeleteItemBySessionUUID(r.Context(), sessionUUID, itemUUID); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -335,6 +322,19 @@ func decodeItem(w http.ResponseWriter, r *http.Request) (billing.LineItemInput, 
 	return in, true
 }
 
+// writeUnknownCustomItem maps the unknown-custom-item billing sentinel to a 400
+// and returns true; otherwise it writes nothing and returns false so the caller
+// falls through to httpx.WriteServiceError. httpx cannot import billing, so this
+// one domain sentinel is mapped here at the slice (mirroring invoice's identical
+// pre-check); the rest is handled uniformly by WriteServiceError.
+func writeUnknownCustomItem(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, billing.ErrUnknownCustomItem) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown custom item")
+		return true
+	}
+	return false
+}
+
 // statusRequest is the body of UpdateStatus: the target lifecycle status.
 type statusRequest struct {
 	Status string `json:"status"`
@@ -356,8 +356,7 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	if err := h.svc.UpdateStatus(r.Context(), sessionUUID, req.Status); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.UpdateStatus(r.Context(), sessionUUID, req.Status); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

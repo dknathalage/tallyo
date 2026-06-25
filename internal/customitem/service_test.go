@@ -3,10 +3,12 @@ package customitem
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
@@ -159,9 +161,11 @@ func TestCustomItemListSearchGet(t *testing.T) {
 func TestCustomItemGetNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID := newSvc(t)
 
+	// A missing row now surfaces apperr.ErrNotFound from the service (the handler
+	// 404s) instead of the old ambiguous (nil, nil).
 	got, err := svc.Get(tctx(tenantID), "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c")
-	if err != nil {
-		t.Fatalf("Get missing: unexpected err %v", err)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Get missing: err = %v, want apperr.ErrNotFound", err)
 	}
 	if got != nil {
 		t.Fatalf("Get missing = %+v, want nil", got)
@@ -200,9 +204,11 @@ func TestCustomItemUpdateBroadcasts(t *testing.T) {
 func TestCustomItemUpdateNotFoundReturnsNil(t *testing.T) {
 	svc, _, tenantID := newSvc(t)
 
+	// Updating a missing row now surfaces apperr.ErrNotFound (the handler 404s)
+	// instead of the old ambiguous (nil, nil).
 	got, err := svc.Update(tctx(tenantID), "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c", CustomItemInput{Name: "X", Rate: 1})
-	if err != nil {
-		t.Fatalf("Update missing: unexpected err %v", err)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Update missing: err = %v, want apperr.ErrNotFound", err)
 	}
 	if got != nil {
 		t.Fatalf("Update missing = %+v, want nil", got)
@@ -233,9 +239,10 @@ func TestCustomItemDeleteBroadcasts(t *testing.T) {
 		t.Fatal("no broadcast after Delete")
 	}
 
+	// After delete the row is gone, so Get now returns apperr.ErrNotFound.
 	got, err := svc.Get(ctx, item.ID)
-	if err != nil {
-		t.Fatalf("Get after delete: %v", err)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Get after delete: err = %v, want apperr.ErrNotFound", err)
 	}
 	if got != nil {
 		t.Fatalf("custom item %s still present after delete", item.ID)
@@ -263,9 +270,10 @@ func TestCustomItemTenantScoping(t *testing.T) {
 		t.Fatalf("tenant B sees %d custom items, want 0", len(listB))
 	}
 
+	// Tenant B's Get of tenant A's row is a miss, now apperr.ErrNotFound.
 	gotB, err := svc.Get(tctx(tenantB), item.ID)
-	if err != nil {
-		t.Fatalf("Get B: %v", err)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Get B: err = %v, want apperr.ErrNotFound", err)
 	}
 	if gotB != nil {
 		t.Fatalf("tenant B fetched tenant A custom item %s", item.ID)

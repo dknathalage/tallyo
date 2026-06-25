@@ -12,6 +12,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
@@ -38,6 +39,20 @@ type BusinessProfileInput struct {
 	Logo            string `json:"logo"`
 	Metadata        string `json:"metadata"`
 	DefaultCurrency string `json:"defaultCurrency"`
+}
+
+// Validate checks the cheap required-field rules the service enforces before the
+// repository runs. A failure is returned as an *apperr.ValidationError so the
+// HTTP layer responds 422 with per-field detail.
+func (in BusinessProfileInput) Validate() error {
+	ve := &apperr.ValidationError{}
+	if in.Name == "" {
+		ve.Errors = append(ve.Errors, apperr.FieldError{Line: 0, Field: "name", Message: "required"})
+	}
+	if len(ve.Errors) > 0 {
+		return ve
+	}
+	return nil
 }
 
 // BusinessProfileRepo reads and writes the per-tenant business profile (1:1).
@@ -80,9 +95,6 @@ func (r *BusinessProfileRepo) Get(ctx context.Context, tenantID string) (*Busine
 func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID string, in BusinessProfileInput) error {
 	if tenantID == "" {
 		return errors.New("save business profile: tenant id required")
-	}
-	if in.Name == "" {
-		return errors.New("save business profile: name is required")
 	}
 
 	return audit.WithTx(ctx, r.db, audit.Entry{

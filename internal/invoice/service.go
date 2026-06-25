@@ -5,6 +5,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -31,6 +32,7 @@ type Service struct {
 	sessions  SessionLinker
 	validator *billing.LineValidator
 	hub       *realtime.Hub
+	events    events.Notifier
 }
 
 // NewService constructs the invoice service. A nil hub is a programmer error.
@@ -44,6 +46,7 @@ func NewService(db db.Executor, hub *realtime.Hub, sessions SessionLinker) *Serv
 		sessions:  sessions,
 		validator: billing.NewLineValidator(db),
 		hub:       hub,
+		events:    events.New(hub, "invoice"),
 	}
 }
 
@@ -149,7 +152,7 @@ func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.L
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
+	s.events.Created(tenantID, inv.ID)
 	return inv, nil
 }
 
@@ -169,7 +172,7 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
+	s.events.Created(tenantID, inv.ID)
 	return inv, nil
 }
 
@@ -215,7 +218,7 @@ func (s *Service) Update(ctx context.Context, id string, in InvoiceInput, items 
 	if inv == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "update"})
+	s.events.Updated(tenantID, inv.ID)
 	return inv, nil
 }
 

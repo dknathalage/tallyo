@@ -38,20 +38,15 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, p) // p may be nil → JSON null
 }
 
-// Put upserts the profile. An empty name is rejected with 400 before the save;
-// any other save failure is an internal error (500).
+// Put upserts the profile. An empty name is rejected with 422 (the input's
+// Validate); any other save failure is an internal error (500).
 func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	var in BusinessProfileInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
-	if err := h.svc.Save(r.Context(), in); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.Save(r.Context(), in); httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})

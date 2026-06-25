@@ -128,8 +128,10 @@ func TestTaxRateUpdateEmptyName400(t *testing.T) {
 	id := createTaxRate(t, c, srv.URL, uuid, "GST", 10, false)
 	resp := putJSON(t, c, srv.URL+"/api/t/"+uuid+"/tax-rates/"+id, `{"name":"","rate":1}`)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("empty name: want 400 got %d", resp.StatusCode)
+	// Required-field validation moved into the service, so an empty name is now
+	// a 422 (validation failed) rather than the old handler-level 400.
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("empty name: want 422 got %d", resp.StatusCode)
 	}
 }
 

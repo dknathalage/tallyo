@@ -66,8 +66,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Get(r.Context(), id)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if tpl == nil {
@@ -75,6 +74,23 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, tpl)
+}
+
+// writeRecurringInputError maps the unknown-inbound-client/payer domain sentinels
+// to a 400 and returns true; on any other error (or nil) it writes nothing and
+// returns false so the caller falls through to httpx.WriteServiceError. These are
+// DB-resolved domain rules (not cheap field checks), so they stay an explicit
+// pre-check here at the slice (mirroring client's errPayerNotFound→400 helper).
+func writeRecurringInputError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, errClientNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
+		return true
+	}
+	if errors.Is(err, errPayerNotFound) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
+		return true
+	}
+	return false
 }
 
 // validateRecurring checks the writable fields at the request boundary.
@@ -103,16 +119,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Create(r.Context(), in)
-	if errors.Is(err, errClientNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
+	if writeRecurringInputError(w, err) {
 		return
 	}
-	if errors.Is(err, errPayerNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
-		return
-	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, tpl)
@@ -136,16 +146,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tpl, err := h.svc.Update(r.Context(), id, in)
-	if errors.Is(err, errClientNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown client")
+	if writeRecurringInputError(w, err) {
 		return
 	}
-	if errors.Is(err, errPayerNotFound) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown payer")
-		return
-	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if tpl == nil {
@@ -162,8 +166,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.Delete(r.Context(), id); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -178,8 +181,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inv, err := h.svc.GenerateOne(r.Context(), id)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	if inv == nil {

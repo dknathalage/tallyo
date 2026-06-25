@@ -2,9 +2,9 @@ package recurring
 
 import (
 	"context"
-	"github.com/dknathalage/tallyo/internal/db"
 
-	"github.com/dknathalage/tallyo/internal/invoice"
+	"github.com/dknathalage/tallyo/internal/db"
+	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -13,8 +13,9 @@ import (
 // Service orchestrates recurring-template reads/writes and invoice
 // generation, publishing change events after a successful commit.
 type Service struct {
-	repo *Repo
-	hub  *realtime.Hub
+	repo   *Repo
+	hub    *realtime.Hub
+	events events.Notifier
 }
 
 // NewService constructs the service. A nil hub is a programmer error.
@@ -22,7 +23,7 @@ func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("recurring.NewService: nil hub")
 	}
-	return &Service{repo: NewRepo(db), hub: hub}
+	return &Service{repo: NewRepo(db), hub: hub, events: events.New(hub, "recurring_template")}
 }
 
 // List returns templates (all, or active only).
@@ -58,7 +59,7 @@ func (s *Service) Create(ctx context.Context, in RecurringInput) (*RecurringTemp
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "create"})
+	s.events.Created(tenantID, tpl.ID)
 	return tpl, nil
 }
 
@@ -73,7 +74,7 @@ func (s *Service) Update(ctx context.Context, uuid string, in RecurringInput) (*
 	if tpl == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "update"})
+	s.events.Updated(tenantID, tpl.ID)
 	return tpl, nil
 }
 
@@ -91,14 +92,14 @@ func (s *Service) Delete(ctx context.Context, uuid string) error {
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "recurring_template", UUID: tpl.ID, Action: "delete"})
+	s.events.Deleted(tenantID, tpl.ID)
 	return nil
 }
 
 // GenerateOne creates a draft invoice from the template and advances its
 // next_due. A nil invoice means the template was missing (no events). On
 // success it broadcasts both a template "generate" and an invoice "create".
-func (s *Service) GenerateOne(ctx context.Context, uuid string) (*invoice.Invoice, error) {
+func (s *Service) GenerateOne(ctx context.Context, uuid string) (*GeneratedInvoiceDoc, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	tpl, err := s.repo.Get(ctx, tenantID, uuid)
 	if err != nil {

@@ -63,6 +63,11 @@ type ValidationError struct {
 	Errors []FieldError `json:"errors"`
 }
 
+// ValidationDetails returns the structured per-field failures, letting
+// *ValidationError structurally satisfy apperr.Validation (the HTTP layer's 422
+// mapper) without billing importing apperr.
+func (e *ValidationError) ValidationDetails() any { return e.Errors }
+
 // Error renders the aggregated failures as a single string (the error
 // interface). The structured slice in Errors is what callers should surface.
 func (e *ValidationError) Error() string {

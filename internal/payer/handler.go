@@ -63,37 +63,27 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Get(r.Context(), id)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if p == nil {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Create inserts a payer. An empty name is rejected with 400.
+// Create inserts a payer. An empty name is rejected with 422.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in PayerInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
 	p, err := h.svc.Create(r.Context(), in)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
-// Update mutates a payer. Empty name → 400; unknown uuid → 404.
+// Update mutates a payer. Empty name → 422; unknown uuid → 404.
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
@@ -105,31 +95,21 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if in.Name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
 	p, err := h.svc.Update(r.Context(), id, in)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if p == nil {
-		httpx.WriteError(w, http.StatusNotFound, "not found")
+	if httpx.WriteServiceError(w, err) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
-// Delete removes a payer by uuid.
+// Delete removes a payer by uuid. Unknown uuid → 404.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.ParseUUID(r, "uuid")
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+	if err := h.svc.Delete(r.Context(), id); httpx.WriteServiceError(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

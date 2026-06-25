@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/dknathalage/tallyo/internal/db"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
+	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -12,8 +14,9 @@ import (
 // Service orchestrates per-tenant custom line-item reads/writes and
 // publishes change events after a successful commit.
 type Service struct {
-	repo *Repo
-	hub  *realtime.Hub
+	repo   *Repo
+	hub    *realtime.Hub
+	events events.Notifier
 }
 
 // NewService constructs a Service. A nil hub is a programmer error.
@@ -21,7 +24,7 @@ func NewService(db db.Executor, hub *realtime.Hub) *Service {
 	if hub == nil {
 		panic("customitem.NewService: nil hub")
 	}
-	return &Service{repo: NewRepo(db), hub: hub}
+	return &Service{repo: NewRepo(db), hub: hub, events: events.New(hub, "custom_item")}
 }
 
 func (s *Service) List(ctx context.Context) ([]*CustomItem, error) {
@@ -50,50 +53,53 @@ func (s *Service) Search(ctx context.Context, q string) ([]*CustomItem, error) {
 
 func (s *Service) Get(ctx context.Context, uuid string) (*CustomItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
-	return s.repo.Get(ctx, tenantID, uuid)
+	item, err := s.repo.Get(ctx, tenantID, uuid)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, apperr.ErrNotFound
+	}
+	return item, nil
 }
 
 // Create inserts a custom item, then broadcasts AFTER the commit succeeds.
 func (s *Service) Create(ctx context.Context, in CustomItemInput) (*CustomItem, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
 	tenantID := reqctx.MustTenant(ctx)
 	item, err := s.repo.Create(ctx, tenantID, in)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.ID, Action: "create"})
+	s.events.Created(tenantID, item.ID)
 	return item, nil
 }
 
-// Update mutates a custom item, then broadcasts on success. A nil result means
-// the row was not found, in which case no event is published.
+// Update mutates a custom item, then broadcasts on success. A missing row
+// surfaces as apperr.ErrNotFound from the repo and is propagated.
 func (s *Service) Update(ctx context.Context, uuid string, in CustomItemInput) (*CustomItem, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
 	tenantID := reqctx.MustTenant(ctx)
 	item, err := s.repo.Update(ctx, tenantID, uuid, in)
 	if err != nil {
 		return nil, err
 	}
-	if item == nil {
-		return nil, nil
-	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.ID, Action: "update"})
+	s.events.Updated(tenantID, item.ID)
 	return item, nil
 }
 
-// Delete removes a custom item by uuid, then broadcasts on success. The row is
-// resolved first so the post-commit event still carries the uuid.
+// Delete removes a custom item by uuid, then broadcasts on success. A missing
+// row surfaces as apperr.ErrNotFound from the repo and is propagated.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	item, err := s.repo.Get(ctx, tenantID, uuid)
-	if err != nil {
-		return err
-	}
-	if item == nil {
-		return nil
-	}
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "custom_item", UUID: item.ID, Action: "delete"})
+	s.events.Deleted(tenantID, uuid)
 	return nil
 }
 
