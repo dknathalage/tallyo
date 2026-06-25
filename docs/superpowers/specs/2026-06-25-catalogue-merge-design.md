@@ -67,21 +67,41 @@ rows that share a `logical_id` are the version history of one item.
 Indexes:
 - `(tenant_id, is_current)` — list the current catalogue.
 - `(logical_id)` — fetch an item's version history.
-- Partial unique `(logical_id) WHERE is_current = 1` — at most one current
-  version per item.
+- Partial unique `(logical_id) WHERE is_current = 1` — **at most one** current
+  version per item. This permits the Delete-tombstone case where *all* rows of a
+  `logical_id` are `is_current = 0`; do not add a "must have exactly one current"
+  constraint, which would break Delete.
 
 ### Line-item references
 
-Both `line_items` and `estimate_line_items` today carry **two** reference
-paths to the catalogue. Collapse them:
+Both `line_items` and `estimate_line_items` today carry **three** reference
+columns to the catalogue: `item_id` (price-list item uuid), `custom_item_id`
+(FK to `custom_items`), and `price_list_version_id` (pinned release). Collapse
+all three into one:
 
-- **Drop** `custom_item_id`, `item_id`, `price_list_version_id`.
+- **Drop** `item_id`, `custom_item_id`, `price_list_version_id`.
 - **Add** `catalogue_item_id` TEXT NULL, FK → `catalogue_items.id`,
   `ON DELETE SET NULL`.
 
 A line references the exact **version row** it priced from. Free-text lines
 leave it NULL. Copy-on-write guarantees a referenced version row is never
 mutated or hard-deleted, so `ON DELETE SET NULL` is only a backstop.
+
+#### `billing` public line-item fields collapse too
+
+`billing.LineItem` / `LineItemInput` currently expose three distinct public
+JSON fields mirroring those columns: `itemId` (`ItemID`), `customItemId`
+(`CustomItemUUID`), and `priceListVersionId` (`PriceListVersionID`). These
+collapse into a **single** field:
+
+- **Remove** `itemId`, `customItemId`, `priceListVersionId`.
+- **Add** `catalogueItemId` (`CatalogueItemID *string`) — the catalogue
+  version-row uuid the line priced from, or null for a free-text line.
+
+All consumers of the old three fields — estimate `convert.go` / `mapper.go` /
+`repository.go`, the invoice/recurring snapshot/insert paths, and the SPA
+`LineItemsEditor` + types — move to the one `catalogueItemId`. This is the
+breaking API change the merge implies; there is no compatibility shim.
 
 ## Slice behaviour (`internal/catalogue/`)
 
@@ -153,6 +173,15 @@ two `EXISTS` queries against `line_items` and `estimate_line_items`. This is the
 only cross-table read the slice needs and goes through the central `db/gen`
 (no slice-to-slice import).
 
+**Recurring templates are deliberately NOT in this check.** `recurring_templates`
+store their line template as JSON; they reference catalogue items by
+`logical_id` (the stable item), not by a pinned version row — see the Recurring
+section below. So a recurring template never pins a version, never blocks an
+in-place edit, and the reference check stays two `EXISTS` queries over the two
+line-item tables. (If recurring stored version-row refs instead, an in-place
+edit could silently re-price a template; the `logical_id` model is what avoids
+that.)
+
 ## Import (folded in)
 
 The `pricelist` upload-and-map flow moves into the catalogue slice unchanged in
@@ -167,19 +196,82 @@ spirit:
 
 `importer.ApplyMapping` is reused as-is.
 
-## Billing layer (`internal/billing`)
+Note the copy-on-write consequence for bulk re-import: a re-imported `code`
+whose current version is **unreferenced** updates in place; one whose current
+version is **referenced** by an existing document forks a new version. So a
+large re-import is a mix of in-place updates and forks — old documents keep
+their pinned versions either way.
 
-Rename, no behaviour change:
-- `ResolveCustomItemID` → `ResolveCatalogueItemID`.
-- `LineItem.CustomItemID` / `CustomItemUUID` → `CatalogueItemID` /
-  `CatalogueItemUUID`.
-- `isSupportItemLine` → `isCatalogueLine`.
-- Catalogue lines price from `catalogue_items.unit_price`. The `LineValidator`
-  is unchanged (per-line `taxable` × tenant default rate; non-negativity).
+## Billing layer (`internal/billing`) — validator REDESIGN
 
-The shared billing mechanics (`NextNumber`, `InsertLineItems`,
-`SnapshotBuilder`) keep storing the frozen description/quantity/rate on the
-line; `catalogue_item_id` is provenance only.
+This is **not** a rename. `LineValidator` (`internal/billing/validation.go`)
+today implements the *release-snapshot* pricing pipeline the merge removes:
+`resolveVersion` resolves a price-list version **by service date**
+(`ResolveVersionForDate`) or honours a pinned `PriceListVersionID`;
+`validateSupportLine` looks up the item **by `code` within that version**
+(`GetItemByCode`); `snapshotSupportItem` pins `item_id` + `price_list_version_id`.
+Per-item copy-on-write has no per-release versions and no version-by-date
+resolution, so that whole path is replaced.
+
+### New catalogue-line validation
+
+A line is a **catalogue line** iff it carries `catalogueItemId`
+(`isCatalogueLine` replaces `isSupportItemLine` — the new test is "has a
+catalogue item id", not "has a code and no custom-item id"). For such a line:
+
+1. Fetch the referenced catalogue row directly by id:
+   `catalogue.Repo.GetByID(ctx, tenantID, catalogueItemId)` → 422 field error
+   if absent. The line already names the exact version row, so there is **no
+   version-by-date step and no `code` lookup**. Re-validating an existing
+   document re-reads the same frozen row (copy-on-write guarantees it is
+   unchanged), so prices never drift — replacing the old "honour the pinned
+   version" branch.
+2. Snapshot from the row: fill `code`, fill `description` from `name` when the
+   caller left it blank, set `taxable` from the row (catalogue is authoritative).
+3. Fill `unitPrice` from the row's `unit_price` when the caller supplied none
+   (`applyItemUnitPrice`, unchanged in spirit — now reads `catalogue_items`).
+
+The **service-date-required rule for catalogue lines is dropped** — pricing no
+longer needs it. `serviceDate` stays as optional line metadata.
+
+A free-text line (no `catalogueItemId`) keeps the existing non-negativity-only
+path with caller-controlled price/taxable.
+
+### Dependency swap
+
+`LineValidator.cat` changes from `*pricelist.ItemsRepo` to the catalogue repo
+(an interface the validator declares: `GetByID(ctx, tenantID, id) (*CatalogueItem, error)`),
+wired in `internal/app`. Removed from the validator's surface:
+`ResolveVersionForDate`, `GetVersionByUUID`, `GetItemByCode`, `resolveVersion`,
+the version label/UUID plumbing.
+
+Unchanged: the tax contract (`computeLineTax` — taxable lines ×
+tenant-default rate, `Round2`), `defaultTaxRate`, `ValidationError`/`FieldError`,
+the `Validate` / `ValidateFilling` signatures (callers untouched).
+
+`ResolveCustomItemID` → `ResolveCatalogueItemID` in `lineitem.go`; the shared
+mechanics (`NextNumber`, `InsertLineItems`, `SnapshotBuilder`) keep storing the
+frozen description/quantity/rate on the line — `catalogue_item_id` is provenance.
+
+## Recurring templates (`internal/recurring`)
+
+`recurring_templates.line_items` is a JSON line template. To keep the current
+"a recurring run bills at current catalogue prices" behaviour (today the
+generated invoice re-resolves by service date each run) **and** to keep the
+copy-on-write reference check simple, recurring templates reference the
+catalogue by **`logical_id`**, not by a version row:
+
+- A template line stores the item's `logical_id` (plus the usual snapshot
+  fields for display). When the SPA picker yields a current version-row id, the
+  recurring service translates it to that row's `logical_id` on save.
+- At each run, the recurring service resolves the **current** version of each
+  `logical_id`, pins that version's `catalogue_item_id` onto the generated
+  invoice/estimate line, and that line then flows through the normal validator.
+
+Consequence: recurring always uses current prices (matches today), and a
+template never pins a version row — so it correctly does **not** appear in
+`IsVersionReferenced`, and editing an unreferenced catalogue item in place does
+not silently corrupt a template (the template re-resolves on the next run).
 
 ## HTTP routes
 
@@ -208,7 +300,10 @@ Removed: all `/custom-items*` and `/price-list/*` routes. `// ponytail:` no
   endpoint `'catalogue'`, event channel `'catalogue_item'`. Delete
   `customItems.svelte.ts`.
 - Types: `CatalogueItem` / `CatalogueItemInput` in `src/lib/api/types.ts`
-  (replace `CustomItem` / `CustomItemInput`).
+  (replace `CustomItem` / `CustomItemInput`). Note the field remap from the old
+  custom-item shape: `rate` → `unitPrice`, and the catalogue adds `code` +
+  `category` (the flat custom item had neither). The detail/edit form gains
+  those two optional fields.
 - Components: `LineItemsEditor.svelte` picker label "From catalogue", searches
   `catalogue`; sidebar nav label "Catalogue" in `+layout.svelte`.
 
