@@ -41,9 +41,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/db"
-
-	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 )
 
@@ -99,19 +98,19 @@ func AsValidationError(err error) (*ValidationError, bool) {
 // tenant price catalogue and the tenant's tax rates (for the computed tax).
 // It holds no mutable state beyond those repositories.
 type LineValidator struct {
-	cat      *pricelist.ItemsRepo
+	cat      *catalogue.Repo
 	taxRates *taxrate.TaxRatesRepo
 }
 
-// NewLineValidator constructs the engine. ALL reads — catalogue/price list and
-// tax rates — come from the TENANT DB (the price list is tenant-owned). A nil
-// handle is a programmer error.
+// NewLineValidator constructs the engine. ALL reads — the catalogue and tax
+// rates — come from the TENANT DB (the catalogue is tenant-owned). A nil handle
+// is a programmer error.
 func NewLineValidator(tenant db.Executor) *LineValidator {
 	if tenant == nil {
 		panic("NewLineValidator: nil db")
 	}
 	return &LineValidator{
-		cat:      pricelist.NewItems(tenant),
+		cat:      catalogue.NewRepo(tenant),
 		taxRates: taxrate.NewTaxRates(tenant),
 	}
 }
@@ -174,9 +173,10 @@ func (v *LineValidator) validate(ctx context.Context, tenantID, clientID string,
 }
 
 // validateLine validates and normalises a single line in place, appending any
-// failures to ve. Support-item lines run the full catalogue flow; custom-item
-// lines run only the non-negativity checks. Errors are accumulated, not thrown,
-// so the caller collects every problem in one pass.
+// failures to ve. Catalogue lines (those carrying a catalogueItemId) snapshot
+// from the referenced version row; free-text lines run only the non-negativity
+// checks. Errors are accumulated, not thrown, so the caller collects every
+// problem in one pass.
 func (v *LineValidator) validateLine(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) {
 	if line == nil {
 		return
@@ -188,111 +188,51 @@ func (v *LineValidator) validateLine(ctx context.Context, tenantID string, idx i
 		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "unitPrice", Message: "unit price must not be negative"})
 	}
 
-	if !isSupportItemLine(line) {
-		// Custom-item line: skip the catalogue checks entirely. The repository
-		// recomputes line_total = Round2(qty*unitPrice) on write.
+	if !isCatalogueLine(line) {
+		// Free-text line: caller controls price/taxable. The repository recomputes
+		// line_total = Round2(qty*unitPrice) on write.
 		return
 	}
 
-	v.validateSupportLine(ctx, tenantID, idx, line, ve)
+	v.validateCatalogueLine(ctx, tenantID, idx, line, ve)
 }
 
-// validateSupportLine runs the catalogue steps for a support-item line, mutating
-// the line (snapshots, pinned version, filled price, set taxable) and appending
-// failures to ve.
-func (v *LineValidator) validateSupportLine(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) {
-	if line.ServiceDate == "" {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "service date is required for a catalogue item"})
+// validateCatalogueLine prices a catalogue line from its pinned catalogue
+// version row (line.CatalogueItemID). It reads the exact version row by id —
+// copy-on-write guarantees a referenced version is frozen, so re-validating an
+// existing document never re-prices it. There is no version-by-date resolution
+// and no code lookup. The line is mutated (code + description snapshot, taxable
+// set, price filled) and failures appended to ve.
+func (v *LineValidator) validateCatalogueLine(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) {
+	item, err := v.cat.GetByID(ctx, tenantID, *line.CatalogueItemID)
+	if err != nil || item == nil {
+		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "catalogueItemId", Message: "the catalogue item for this line could not be found"})
 		return
 	}
-
-	// Step 1: resolve the catalogue version. A line that already carries a pinned
-	// CatalogVersionID is an EXISTING (edited) line — honour its pinned version so
-	// re-validating an already-priced invoice/estimate never re-prices it against a
-	// newer catalogue version (prices are frozen at create time). Only a NEW line
-	// (no pinned version) resolves by service date and gets pinned.
-	versionID, versionUUID, versionLabel, ok := v.resolveVersion(ctx, tenantID, idx, line, ve)
-	if !ok {
-		return
-	}
-
-	// Step 2: find the item by code within that version; snapshot.
-	item, err := v.cat.GetItemByCode(ctx, tenantID, versionID, line.Code)
-	if err != nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "could not look up that support item code"})
-		return
-	}
-	if item == nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: fmt.Sprintf("support item code %q is not in the %s price catalogue", line.Code, versionLabel)})
-		return
-	}
-	snapshotSupportItem(line, versionUUID, item)
-
-	// Step 3: fill the unit price from the catalogue item's generic unit_price
-	// when the caller supplied no positive price. A positive caller price is
-	// always kept; an item with no unit_price keeps the caller's price (free-form).
+	snapshotCatalogueItem(line, item)
 	applyItemUnitPrice(line, item)
 }
 
-// resolveVersion picks the catalogue version a support line validates against.
-// A pinned line (CatalogVersionID set — an existing/edited line) resolves to that
-// exact version so its price never shifts under a newer catalogue; a fresh
-// line resolves by service date. Returns (versionID, label, ok); on failure it
-// has already appended the field error.
-// Returns (versionID for downstream control-DB lookups, versionUUID to pin onto
-// the tenant line, label, ok).
-func (v *LineValidator) resolveVersion(ctx context.Context, tenantID string, idx int, line *LineItemInput, ve *ValidationError) (string, string, string, bool) {
-	if line.PriceListVersionID != nil && *line.PriceListVersionID != "" {
-		ver, err := v.cat.GetVersionByUUID(ctx, tenantID, *line.PriceListVersionID)
-		if err != nil || ver == nil {
-			ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "code", Message: "the price-catalogue version pinned to this line could not be found"})
-			return "", "", "", false
-		}
-		return ver.ID, ver.ID, ver.Label, true
-	}
-	ver, err := v.cat.ResolveVersionForDate(ctx, tenantID, line.ServiceDate)
-	if err != nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: "could not resolve a price catalogue for that service date"})
-		return "", "", "", false
-	}
-	if ver == nil {
-		ve.Errors = append(ve.Errors, FieldError{Line: idx, Field: "serviceDate", Message: fmt.Sprintf("no price list is in effect for service date %s", line.ServiceDate)})
-		return "", "", "", false
-	}
-	return ver.ID, ver.ID, ver.Label, true
-}
-
-// applyItemUnitPrice fills a coded line's unit price from the catalogue item's
-// generic unit_price. It only fills when the item carries a positive unit_price
-// AND the caller supplied none (UnitPrice ≤ 0); a caller-supplied positive price
-// is kept, and an item with no unit_price leaves the line untouched (free-form).
-func applyItemUnitPrice(line *LineItemInput, item *pricelist.Item) {
+// applyItemUnitPrice fills a catalogue line's unit price from the catalogue
+// item's unit_price when the caller supplied no positive price. A positive
+// caller price is always kept.
+func applyItemUnitPrice(line *LineItemInput, item *catalogue.CatalogueItem) {
 	if line == nil || item == nil {
-		return
-	}
-	if item.UnitPrice == nil {
 		return
 	}
 	if Round2(line.UnitPrice) > 0 {
 		return
 	}
-	line.UnitPrice = Round2(*item.UnitPrice)
+	line.UnitPrice = Round2(item.UnitPrice)
 }
 
-// snapshotSupportItem pins the resolved version and snapshots the support item's
-// identity onto the line (spec §6 step 2 + step 6). The description is filled
-// from the item name only when the caller left it blank.
-//
-// taxable is set UNCONDITIONALLY from the catalogue item: the price catalogue is
-// authoritative for a catalogue item's tax status (spec §6 step 6). A client must
-// not be able to flip a taxable item to non-taxable (or vice versa) by sending
-// its own taxable flag, which would corrupt the computed tax. Custom-item lines
-// keep their client-controlled taxable (they never reach this function).
-func snapshotSupportItem(line *LineItemInput, versionUUID string, item *pricelist.Item) {
-	id := item.ID
-	line.ItemID = &id
-	vid := versionUUID
-	line.PriceListVersionID = &vid
+// snapshotCatalogueItem snapshots the catalogue item's identity onto the line.
+// The description is filled from the item name only when the caller left it
+// blank. taxable is set UNCONDITIONALLY from the catalogue item: the catalogue
+// is authoritative for a catalogue line's tax status, so a client cannot flip a
+// taxable item by sending its own flag (which would corrupt the computed tax).
+// Free-text lines keep their client-controlled taxable (they never reach here).
+func snapshotCatalogueItem(line *LineItemInput, item *catalogue.CatalogueItem) {
 	line.Code = item.Code
 	if line.Description == "" {
 		line.Description = item.Name
@@ -300,14 +240,10 @@ func snapshotSupportItem(line *LineItemInput, versionUUID string, item *pricelis
 	line.Taxable = item.Taxable
 }
 
-// isSupportItemLine reports whether a line is a catalogue line (it
-// carries a code and is not a custom item). Custom-item lines carry a
-// CustomItemID and no catalogue code.
-func isSupportItemLine(line *LineItemInput) bool {
-	if line.CustomItemID != nil {
-		return false
-	}
-	return strings.TrimSpace(line.Code) != ""
+// isCatalogueLine reports whether a line is a catalogue line (it carries a
+// catalogue-item uuid). Free-text lines carry none.
+func isCatalogueLine(line *LineItemInput) bool {
+	return line.CatalogueItemID != nil && strings.TrimSpace(*line.CatalogueItemID) != ""
 }
 
 // computeLineTax sums Round2(line_total * rate) over the taxable lines,

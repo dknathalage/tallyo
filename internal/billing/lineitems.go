@@ -21,29 +21,27 @@ import (
 func InsertLineItems(ctx context.Context, q *gen.Queries, tenantID, invoiceID string, items []LineItemInput) error {
 	for i := range items { // bounded by len(items)
 		it := items[i]
-		customItemID, err := ResolveCustomItemID(ctx, q, tenantID, it.CustomItemID)
+		catalogueItemID, err := ResolveCatalogueItemID(ctx, q, tenantID, it.CatalogueItemID)
 		if err != nil {
 			return fmt.Errorf("insert line item %d: %w", i, err)
 		}
 		_, err = q.CreateLineItem(ctx, gen.CreateLineItemParams{
-			ID:                 ids.New(),
-			TenantID:           tenantID,
-			SessionID:          sql.NullString{}, // invoice lines from this path are not session items
-			InvoiceID:          sql.NullString{String: invoiceID, Valid: true},
-			ItemID:             db.NullStr(it.ItemID),
-			CustomItemID:       customItemID,
-			PriceListVersionID: db.NullStr(it.PriceListVersionID),
-			Code:               db.NzMaybe(it.Code),
-			Description:        it.Description,
-			ServiceDate:        db.NzMaybe(it.ServiceDate),
-			Unit:               db.NzMaybe(it.Unit),
-			StartTime:          db.NzMaybe(it.StartTime),
-			EndTime:            db.NzMaybe(it.EndTime),
-			Quantity:           it.Quantity,
-			UnitPrice:          it.UnitPrice,
-			Taxable:            db.B2i(it.Taxable),
-			LineTotal:          Round2(it.Quantity * it.UnitPrice),
-			SortOrder:          sql.NullInt64{Int64: it.SortOrder, Valid: true},
+			ID:              ids.New(),
+			TenantID:        tenantID,
+			SessionID:       sql.NullString{}, // invoice lines from this path are not session items
+			InvoiceID:       sql.NullString{String: invoiceID, Valid: true},
+			CatalogueItemID: catalogueItemID,
+			Code:            db.NzMaybe(it.Code),
+			Description:     it.Description,
+			ServiceDate:     db.NzMaybe(it.ServiceDate),
+			Unit:            db.NzMaybe(it.Unit),
+			StartTime:       db.NzMaybe(it.StartTime),
+			EndTime:         db.NzMaybe(it.EndTime),
+			Quantity:        it.Quantity,
+			UnitPrice:       it.UnitPrice,
+			Taxable:         db.B2i(it.Taxable),
+			LineTotal:       Round2(it.Quantity * it.UnitPrice),
+			SortOrder:       sql.NullInt64{Int64: it.SortOrder, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("insert line item %d: %w", i, err)
