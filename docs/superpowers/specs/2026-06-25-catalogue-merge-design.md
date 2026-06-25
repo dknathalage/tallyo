@@ -344,6 +344,10 @@ queries) and the rewritten `line_items.sql` / `estimate_line_items.sql` joins.
   the "Price list" section becomes the "Catalogue" section.
 - `docs/data-model.md` — ERD: drop `custom_items`, `items`,
   `price_list_versions`; add `catalogue_items`; update line-item FKs.
+- `internal/recurring/service.go` — the J10/J11 deferral comment still names
+  "price cap" / "client plan window" checks; the merge removes those from the
+  validator entirely. Trim the comment to match the post-merge validator
+  (frozen price, no caps/windows).
 
 ## Out of scope / YAGNI
 
