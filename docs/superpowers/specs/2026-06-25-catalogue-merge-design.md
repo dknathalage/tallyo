@@ -174,13 +174,10 @@ only cross-table read the slice needs and goes through the central `db/gen`
 (no slice-to-slice import).
 
 **Recurring templates are deliberately NOT in this check.** `recurring_templates`
-store their line template as JSON; they reference catalogue items by
-`logical_id` (the stable item), not by a pinned version row — see the Recurring
-section below. So a recurring template never pins a version, never blocks an
-in-place edit, and the reference check stays two `EXISTS` queries over the two
-line-item tables. (If recurring stored version-row refs instead, an in-place
-edit could silently re-price a template; the `logical_id` model is what avoids
-that.)
+store frozen line snapshots in JSON and carry **no** catalogue reference at all
+(see the Recurring section) — they bill the price frozen in the template and
+never run the validator. So a template never pins a version row, and the
+reference check stays two `EXISTS` queries over the two line-item tables.
 
 ## Import (folded in)
 
@@ -255,23 +252,32 @@ frozen description/quantity/rate on the line — `catalogue_item_id` is provenan
 
 ## Recurring templates (`internal/recurring`)
 
-`recurring_templates.line_items` is a JSON line template. To keep the current
-"a recurring run bills at current catalogue prices" behaviour (today the
-generated invoice re-resolves by service date each run) **and** to keep the
-copy-on-write reference check simple, recurring templates reference the
-catalogue by **`logical_id`**, not by a version row:
+**Current behaviour (verified):** `recurring_templates.line_items` is a JSON
+line template. `generate.go` (`parseLines` → `generateTx` → `InsertLineItems`)
+bills the **price frozen in the template JSON** (`RecurringLine.UnitPrice`); it
+does **not** run the `LineValidator` and does **not** re-resolve against the
+catalogue (`service.go` documents this as the J10/J11 deferral). The merge keeps
+that behaviour — recurring stays frozen-price, the validator stays deferred.
 
-- A template line stores the item's `logical_id` (plus the usual snapshot
-  fields for display). When the SPA picker yields a current version-row id, the
-  recurring service translates it to that row's `logical_id` on save.
-- At each run, the recurring service resolves the **current** version of each
-  `logical_id`, pins that version's `catalogue_item_id` onto the generated
-  invoice/estimate line, and that line then flows through the normal validator.
+So recurring needs **no catalogue link at all**. The only change is to drop the
+two now-dead reference fields from `RecurringLine`:
 
-Consequence: recurring always uses current prices (matches today), and a
-template never pins a version row — so it correctly does **not** appear in
-`IsVersionReferenced`, and editing an unreferenced catalogue item in place does
-not silently corrupt a template (the template re-resolves on the next run).
+- **Remove** `ItemID` (`itemId`) and `CustomItemID` (`customItemId`) from the
+  `RecurringLine` JSON shape. The template line keeps its frozen snapshot
+  fields (`description`, `quantity`, `unitPrice`, `unit`, `taxable`, `code`).
+- Generated invoice/estimate lines therefore have `catalogue_item_id = NULL`
+  (frozen snapshots, no provenance link) — consistent with the rest of the
+  clean break, where existing documents keep their frozen line data and lose
+  only the catalogue provenance link.
+- Clean break: pre-existing `recurring_templates.line_items` JSON carrying
+  `itemId` / `customItemId` keys is **abandoned** — the new `parseLines` ignores
+  unknown keys; templates re-saved through the new picker repopulate cleanly.
+
+Consequence: templates never reference a catalogue version row, so they are
+correctly absent from `IsVersionReferenced`, and editing a catalogue item in
+place can never corrupt a template (the template carries its own frozen price).
+A future "recurring tracks current catalogue prices" feature is explicitly out
+of scope — it would un-defer J10/J11 and is not part of this merge.
 
 ## HTTP routes
 
