@@ -34,7 +34,7 @@ func TestMigrateCreatesTenantBusinessTables(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	for _, tbl := range []string{
-		"payers", "clients", "custom_items", "tax_rates",
+		"payers", "clients", "catalogue_items", "tax_rates",
 		"invoices", "line_items", "estimates", "estimate_line_items",
 		"payments", "recurring_templates", "audit_log",
 	} {
@@ -47,7 +47,7 @@ func TestMigrateCreatesTenantBusinessTables(t *testing.T) {
 	}
 }
 
-func TestMigrateCreatesPriceListTables(t *testing.T) {
+func TestMigrateCreatesCatalogueTable(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "cat.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -56,12 +56,50 @@ func TestMigrateCreatesPriceListTables(t *testing.T) {
 	if err := Migrate(conn); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	for _, tbl := range []string{"price_list_versions", "items"} {
-		var n string
+	// The merged catalogue table is present.
+	var n string
+	if err := conn.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", "catalogue_items",
+	).Scan(&n); err != nil {
+		t.Fatalf("table catalogue_items missing: %v", err)
+	}
+	// The old catalogue tables are gone.
+	for _, tbl := range []string{"custom_items", "price_list_versions", "items"} {
+		var count int
 		if err := conn.QueryRow(
-			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", tbl,
-		).Scan(&n); err != nil {
-			t.Fatalf("table %s missing: %v", tbl, err)
+			"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tbl,
+		).Scan(&count); err != nil {
+			t.Fatalf("query sqlite_master for %s: %v", tbl, err)
+		}
+		if count != 0 {
+			t.Fatalf("table %s should be absent after merge, got count=%d", tbl, count)
+		}
+	}
+	// line_items collapsed the three catalogue refs into one catalogue_item_id.
+	cols := map[string]bool{}
+	rows, err := conn.Query("PRAGMA table_info(line_items)")
+	if err != nil {
+		t.Fatalf("PRAGMA table_info: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, pk int
+		var colName, colType string
+		var dflt any
+		if err := rows.Scan(&cid, &colName, &colType, &notNull, &dflt, &pk); err != nil {
+			t.Fatalf("scan table_info: %v", err)
+		}
+		cols[colName] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows.Err: %v", err)
+	}
+	if !cols["catalogue_item_id"] {
+		t.Fatalf("line_items must have catalogue_item_id column")
+	}
+	for _, old := range []string{"item_id", "custom_item_id", "price_list_version_id"} {
+		if cols[old] {
+			t.Fatalf("line_items must not have %s column after merge", old)
 		}
 	}
 }
