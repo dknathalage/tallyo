@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -17,8 +17,6 @@ import (
 var (
 	// ErrNoData — the Smart had nothing to work with (e.g. no unbilled sessions).
 	ErrNoData = errors.New("nothing to work with")
-	// ErrNoPriceList — no price-list version is in effect for the service date.
-	ErrNoPriceList = errors.New("no price list in effect for that date")
 	// ErrNotFound — a referenced entity (client/invoice) does not exist.
 	ErrNotFound = errors.New("not found")
 )
@@ -34,12 +32,11 @@ type SessionReader interface {
 	ListUnbilledForClient(ctx context.Context, tenantID, clientID string) ([]*session.Session, error)
 }
 
-// CatalogueSearcher is the tenant-scoped, all-fields grounding capability plus
-// version resolution. Satisfied by *pricelist.ItemsRepo.
+// CatalogueSearcher is the tenant-scoped, all-fields grounding capability over
+// the current catalogue. Satisfied by *catalogue.Repo.
 type CatalogueSearcher interface {
-	ResolveVersionForDate(ctx context.Context, tenantID string, serviceDate string) (*pricelist.PriceListVersion, error)
-	SearchItems(ctx context.Context, tenantID, versionID string, query string) ([]*pricelist.Item, error)
-	GetItemByCode(ctx context.Context, tenantID, versionID string, code string) (*pricelist.Item, error)
+	Search(ctx context.Context, tenantID, query string) ([]*catalogue.CatalogueItem, error)
+	GetCurrentByCode(ctx context.Context, tenantID, code string) (*catalogue.CatalogueItem, error)
 }
 
 // InvoiceDrafter creates an invoice through the trusted, self-validating service

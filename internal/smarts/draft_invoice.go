@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
+	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/pricelist"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 )
@@ -78,23 +77,13 @@ func (s *Service) DraftInvoiceFromSessions(ctx context.Context, clientUUID strin
 		return "", fmt.Errorf("%w: no unbilled sessions for this client", ErrNoData)
 	}
 
-	// Resolve the catalogue version effective on the latest service date.
-	latest := latestServiceDate(sessions)
-	ver, err := s.cat.ResolveVersionForDate(ctx, tenantID, latest)
-	if err != nil {
-		return "", err
-	}
-	if ver == nil {
-		return "", fmt.Errorf("%w: %s", ErrNoPriceList, latest)
-	}
-
-	// Grounding search closure — tenant-scoped, all-fields, version-pinned.
+	// Grounding search closure — tenant-scoped, all-fields, current catalogue.
 	search := func(ctx context.Context, raw json.RawMessage) (string, error) {
 		var in searchInput
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return "", err
 		}
-		items, err := s.cat.SearchItems(ctx, tenantID, ver.ID, in.Query)
+		items, err := s.cat.Search(ctx, tenantID, in.Query)
 		if err != nil {
 			return "", err
 		}
@@ -118,7 +107,7 @@ func (s *Service) DraftInvoiceFromSessions(ctx context.Context, clientUUID strin
 		return "", fmt.Errorf("smarts: parse draft: %w", err)
 	}
 
-	items := s.resolveLines(ctx, tenantID, ver, commit.Items)
+	items := s.resolveLines(ctx, tenantID, commit.Items)
 	if len(items) == 0 {
 		return "", fmt.Errorf("%w: no catalogue lines could be drafted from these sessions", ErrNoData)
 	}
@@ -138,17 +127,18 @@ func (s *Service) DraftInvoiceFromSessions(ctx context.Context, clientUUID strin
 }
 
 // resolveLines turns the model's proposed lines into priced LineItemInputs.
-// Pricing is deterministic: each code is resolved against the catalogue and the
-// catalogue's unit_price/taxable are used. Unknown codes are dropped (the model
-// was told to skip unmatched work). The model never sets a price.
-func (s *Service) resolveLines(ctx context.Context, tenantID string, ver *pricelist.PriceListVersion, proposed []proposedLine) []billing.LineItemInput {
+// Pricing is deterministic: each code is resolved against the current catalogue
+// and the catalogue's unit_price/taxable are used; the line pins the catalogue
+// version row via catalogueItemId. Unknown codes are dropped (the model was told
+// to skip unmatched work). The model never sets a price.
+func (s *Service) resolveLines(ctx context.Context, tenantID string, proposed []proposedLine) []billing.LineItemInput {
 	out := make([]billing.LineItemInput, 0, len(proposed))
 	for i := range proposed { // bounded by len(proposed)
 		p := proposed[i]
 		if p.Code == "" || p.Quantity <= 0 {
 			continue
 		}
-		item, err := s.cat.GetItemByCode(ctx, tenantID, ver.ID, p.Code)
+		item, err := s.cat.GetCurrentByCode(ctx, tenantID, p.Code)
 		if err != nil || item == nil {
 			continue // unknown code — skip rather than guess
 		}
@@ -156,42 +146,20 @@ func (s *Service) resolveLines(ctx context.Context, tenantID string, ver *pricel
 		if unit == "" {
 			unit = item.Unit
 		}
-		price := 0.0
-		if item.UnitPrice != nil {
-			price = *item.UnitPrice
-		}
-		verUUID := ver.ID
 		itemUUID := item.ID
 		out = append(out, billing.LineItemInput{
-			ItemID:             &itemUUID,
-			PriceListVersionID: &verUUID,
-			Code:               item.Code,
-			Description:        p.Description,
-			ServiceDate:        p.ServiceDate,
-			Unit:               unit,
-			Quantity:           p.Quantity,
-			UnitPrice:          price,
-			Taxable:            item.Taxable,
-			SortOrder:          int64(i),
+			CatalogueItemID: &itemUUID,
+			Code:            item.Code,
+			Description:     p.Description,
+			ServiceDate:     p.ServiceDate,
+			Unit:            unit,
+			Quantity:        p.Quantity,
+			UnitPrice:       item.UnitPrice,
+			Taxable:         item.Taxable,
+			SortOrder:       int64(i),
 		})
 	}
 	return out
-}
-
-// latestServiceDate returns the most recent service date among the sessions
-// (ISO YYYY-MM-DD sorts lexically), defaulting to today when none is set.
-func latestServiceDate(sessions []*session.Session) string {
-	dates := make([]string, 0, len(sessions))
-	for i := range sessions { // bounded by len(sessions)
-		if sessions[i].ServiceDate != "" {
-			dates = append(dates, sessions[i].ServiceDate)
-		}
-	}
-	if len(dates) == 0 {
-		return time.Now().UTC().Format("2006-01-02")
-	}
-	sort.Strings(dates)
-	return dates[len(dates)-1]
 }
 
 // buildDraftUser renders the sessions into the user turn, fencing each note as
@@ -209,7 +177,7 @@ func buildDraftUser(sessions []*session.Session) string {
 
 // encodeMatches renders catalogue search results for the model (code/name/unit/
 // category only — no internal ids). Capped to keep the tool result small.
-func encodeMatches(items []*pricelist.Item) string {
+func encodeMatches(items []*catalogue.CatalogueItem) string {
 	const limit = 25
 	type m struct {
 		Code     string `json:"code"`

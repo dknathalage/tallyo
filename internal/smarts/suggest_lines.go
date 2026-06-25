@@ -42,20 +42,12 @@ func (s *Service) SuggestLines(ctx context.Context, in SuggestInput) ([]billing.
 		date = time.Now().UTC().Format("2006-01-02")
 	}
 
-	ver, err := s.cat.ResolveVersionForDate(ctx, tenantID, date)
-	if err != nil {
-		return nil, err
-	}
-	if ver == nil {
-		return nil, fmt.Errorf("%w: %s", ErrNoPriceList, date)
-	}
-
 	search := func(ctx context.Context, raw json.RawMessage) (string, error) {
 		var si searchInput
 		if err := json.Unmarshal(raw, &si); err != nil {
 			return "", err
 		}
-		items, err := s.cat.SearchItems(ctx, tenantID, ver.ID, si.Query)
+		items, err := s.cat.Search(ctx, tenantID, si.Query)
 		if err != nil {
 			return "", err
 		}
@@ -87,7 +79,7 @@ func (s *Service) SuggestLines(ctx context.Context, in SuggestInput) ([]billing.
 			commit.Items[i].ServiceDate = date
 		}
 	}
-	lines := s.resolveLines(ctx, tenantID, ver, commit.Items)
+	lines := s.resolveLines(ctx, tenantID, commit.Items)
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("%w: nothing in the note matched the catalogue", ErrNoData)
 	}

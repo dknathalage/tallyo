@@ -94,6 +94,23 @@ func (r *Repo) GetByID(ctx context.Context, tenantID, id string) (*CatalogueItem
 	return toCatalogueItem(row), nil
 }
 
+// GetCurrentByCode returns the current catalogue item for a code, or (nil, nil)
+// when none matches (empty code never matches). Used by the smarts grounding to
+// resolve a model-proposed code to a catalogue item.
+func (r *Repo) GetCurrentByCode(ctx context.Context, tenantID, code string) (*CatalogueItem, error) {
+	if code == "" {
+		return nil, nil
+	}
+	row, err := gen.New(r.db).GetCurrentCatalogueByCode(ctx, gen.GetCurrentCatalogueByCodeParams{TenantID: tenantID, Code: nz(code)})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get catalogue by code: %w", err)
+	}
+	return toCatalogueItem(row), nil
+}
+
 // Create inserts a new catalogue item (new logical_id, version 1, current) and
 // one audit row, atomically.
 func (r *Repo) Create(ctx context.Context, tenantID string, in CatalogueItemInput) (*CatalogueItem, error) {

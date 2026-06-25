@@ -129,8 +129,6 @@ func writeSmartError(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, ErrNoData):
 		httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
-	case errors.Is(err, ErrNoPriceList):
-		httpx.WriteError(w, http.StatusUnprocessableEntity, "no price list is in effect for that date")
 	default:
 		httpx.WriteError(w, http.StatusBadGateway, "the AI couldn't complete this — try again")
 	}
