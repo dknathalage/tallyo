@@ -57,8 +57,9 @@ re-tested. New tests target only the uncovered branches enumerated below.
 Add the missing branches per slice. Each test asserts the **status code** (and,
 where relevant, that the mutation did/didn't happen). Concrete targets:
 
-- **taxrate:** `BulkDelete` (no handler test exists); `Create` empty-name → 422;
-  `Create`/`Update` malformed JSON → 400.
+- **taxrate:** `Create`/`Update` malformed JSON → 400; cross-tenant or
+  non-existent id on `Delete` → 404. (No `BulkDelete` route exists on this slice —
+  do not add one.)
 - **payer:** `List` with filter/sort query params (the uncovered List branch);
   `BulkDelete` with a mix of valid + missing ids; cross-tenant GET → 404.
 - **customitem:** `BulkDelete`; `Update` malformed JSON → 400;
