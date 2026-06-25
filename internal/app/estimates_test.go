@@ -276,6 +276,36 @@ func TestEstimateConvert(t *testing.T) {
 	}
 }
 
+// TestEstimateConvertTwiceConflicts verifies that converting an already-
+// converted estimate returns 409 (ErrAlreadyConverted → conflict in handler).
+func TestEstimateConvertTwiceConflicts(t *testing.T) {
+	srv, uuid := newEstimateServer(t)
+	c := loggedInClient(t, srv.URL)
+	clientID := createClient(t, c, srv.URL, uuid, "Acme")
+	id := createEstimate(t, c, srv.URL, uuid, clientID)
+
+	// Accept the estimate so it is eligible for conversion.
+	sr := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/status", `{"status":"accepted"}`)
+	_ = sr.Body.Close()
+	if sr.StatusCode != http.StatusOK {
+		t.Fatalf("accept: want 200 got %d", sr.StatusCode)
+	}
+
+	// First convert succeeds.
+	r1 := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/convert", `{}`)
+	_ = r1.Body.Close()
+	if r1.StatusCode != http.StatusOK {
+		t.Fatalf("first convert: want 200 got %d", r1.StatusCode)
+	}
+
+	// Second convert must be 409 (ErrAlreadyConverted → handler writes 409).
+	r2 := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/estimates/"+id+"/convert", `{}`)
+	_ = r2.Body.Close()
+	if r2.StatusCode != http.StatusConflict {
+		t.Fatalf("second convert: want 409 got %d", r2.StatusCode)
+	}
+}
+
 func TestEstimateCreateNoItems400(t *testing.T) {
 	srv, uuid := newEstimateServer(t)
 	c := loggedInClient(t, srv.URL)
