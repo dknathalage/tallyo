@@ -208,3 +208,39 @@ func TestPayerListUnauthenticated401(t *testing.T) {
 		t.Fatalf("anon list: want 401 got %d", resp.StatusCode)
 	}
 }
+
+// TestPayerBulkDeleteMixedIDs creates one real payer, then bulk-deletes
+// [realID, randomUUID]. ResolvePayerIDs rejects unknown uuids with 400 before
+// any delete occurs.
+func TestPayerBulkDeleteMixedIDs(t *testing.T) {
+	srv, uuid := newPayerServer(t)
+	c := loggedInClient(t, srv.URL)
+	id := createPayer(t, c, srv.URL, uuid, "Kept")
+
+	resp := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/payers/bulk-delete",
+		`{"ids":["`+id+`","`+uuidpkg.NewString()+`"]}`)
+	defer func() { _ = resp.Body.Close() }()
+	// ResolvePayerIDs 400s when any uuid is unknown to the tenant.
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bulk-delete mixed ids: want 400 got %d", resp.StatusCode)
+	}
+
+	// The real payer was not deleted because the request was rejected.
+	getResp := get(t, c, srv.URL+"/api/t/"+uuid+"/payers/"+id)
+	defer func() { _ = getResp.Body.Close() }()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("payer should still exist after rejected bulk-delete: got %d", getResp.StatusCode)
+	}
+}
+
+// TestPayerGetCrossTenant404 confirms that a uuid from a different (or
+// nonexistent) tenant resolves to 404 rather than leaking data.
+func TestPayerGetCrossTenant404(t *testing.T) {
+	srv, uuid := newPayerServer(t)
+	c := loggedInClient(t, srv.URL)
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/payers/"+uuidpkg.NewString())
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("cross-tenant uuid: want 404 got %d", resp.StatusCode)
+	}
+}
