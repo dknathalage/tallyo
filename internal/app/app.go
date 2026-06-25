@@ -40,13 +40,14 @@ import (
 // Tallyo server. All fields are already validated/defaulted by main before Run
 // is called.
 type Config struct {
-	Port           int
-	DataDir        string // empty → DATA_DIR env, else ./data
-	SecureCookie   bool
-	LogLevel       string
-	LogFormat      string
-	FeatureSmarts  bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
-	FeatureInvites bool // gates inviting new users (create/revoke invites + UI)
+	Port             int
+	DataDir          string // empty → DATA_DIR env, else ./data
+	SecureCookie     bool
+	LogLevel         string
+	LogFormat        string
+	FeatureSmarts    bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
+	FeatureInvites   bool // gates inviting new users (create/revoke invites + UI)
+	FeatureRecurring bool // gates recurring-template routes, sweep generation, and UI
 }
 
 // EnvOr returns the value of env var key, or def when it is unset/empty. Used
@@ -209,8 +210,9 @@ func Run(cfg Config, version string) error {
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
-			"smarts":  smartsEnabled,
-			"invites": cfg.FeatureInvites,
+			"smarts":    smartsEnabled,
+			"invites":   cfg.FeatureInvites,
+			"recurring": cfg.FeatureRecurring,
 		},
 	}
 
@@ -230,9 +232,15 @@ func Run(cfg Config, version string) error {
 	// Run one per-tenant sweep at startup, then keep a background sweeper running
 	// on an hourly tick. The done channel stops the goroutine on shutdown so it
 	// does not leak.
-	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, recurringSvc, logger)
+	// recForSweep is nil when the recurring feature is gated off, so the sweep
+	// skips generation (routes are unmounted too — the feature is fully dark).
+	recForSweep := recurringSvc
+	if !cfg.FeatureRecurring {
+		recForSweep = nil
+	}
+	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, recForSweep, logger)
 	overdueDone := make(chan struct{})
-	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, recurringSvc, logger, overdueDone)
+	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, recForSweep, logger, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)

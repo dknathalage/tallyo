@@ -158,7 +158,7 @@ func NewServer(deps Deps) *Server {
 			if deps.Payments != nil {
 				deps.Payments.Routes(pr)
 			}
-			if deps.Recurring != nil {
+			if deps.Recurring != nil && deps.Features["recurring"] {
 				deps.Recurring.Routes(pr)
 			}
 			if deps.Smarts != nil {

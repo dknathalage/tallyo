@@ -36,6 +36,9 @@ func runSweepOnce(activeTenants func(context.Context) ([]string, error), inv *in
 		} else if len(rows) > 0 {
 			logger.Info("overdue sweep", slog.String("tenant_id", tid), slog.Int("flipped", len(rows)))
 		}
+		if rec == nil { // recurring feature gated off → skip generation
+			continue
+		}
 		if gens, err := rec.GenerateDueForTenant(ctx, tid); err != nil {
 			logger.Error("recurring sweep failed", slog.String("tenant_id", tid), slog.Any("error", err))
 		} else if len(gens) > 0 {

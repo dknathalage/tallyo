@@ -107,7 +107,7 @@
 			children: [
 				{ href: '/invoices', label: 'Invoices' },
 				{ href: '/estimates', label: 'Estimates' },
-				{ href: '/recurring', label: 'Recurring' }
+				...(features.recurring ? [{ href: '/recurring', label: 'Recurring' }] : [])
 			]
 		},
 		{
