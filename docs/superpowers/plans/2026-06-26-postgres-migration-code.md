@@ -108,7 +108,7 @@ Runs on the current SQLite baseline. Order: (1) unwire backend + delete slice + 
 **Files:** Delete `web/src/lib/stores/recurring.svelte.ts`, `web/src/routes/[tenant]/recurring/`; modify `web/src/lib/stores/features.svelte.ts` (recurring getter), `web/src/routes/[tenant]/+layout.svelte` (nav link), `web/src/lib/api/types.ts` (recurring types).
 
 - [ ] **Step 1:** `rm web/src/lib/stores/recurring.svelte.ts` and `rm -rf "web/src/routes/[tenant]/recurring"`.
-- [ ] **Step 2:** `features.svelte.ts` — remove the `recurring` getter; fix the preceding getter's trailing comma so the object stays valid.
+- [ ] **Step 2:** `features.svelte.ts` — remove the `recurring` getter (it is the last getter; no trailing-comma fix needed).
 - [ ] **Step 3:** `+layout.svelte` — remove the recurring nav-link entry (`...(features.recurring ? [{ href: '/recurring', label: 'Recurring' }] : [])`) and its array seam.
 - [ ] **Step 4:** `api/types.ts` — delete `RecurringFrequency`, `RecurringLine`, `RecurringTemplate`, `RecurringInput`.
 - [ ] **Step 5:** `grep -rni "recurring" web/src` → no output.
@@ -217,30 +217,38 @@ Runs on SQLite baseline. **Recurring is already removed (Phase 1), so use Varian
 
 **Files:** `internal/invoice/service.go` (`MarkOverdueForTenant` ~:357-371); `internal/invoice/status.go` (repo `MarkOverdueForTenant` ~:80-111, `flipOverdue` ~:123-134); `internal/invoice/repository.go` (`OverdueInvoice` ~:77-82); `internal/db/queries/invoices.sql` (`SelectOverdueInvoicesForTenant` ~:77-79); regenerate `internal/db/gen/`.
 
-- [ ] **Step 1:** Delete `MarkOverdueForTenant` from `service.go` (keep `ActiveTenantIDs` for now — sweep driver uses it until Task 5).
-- [ ] **Step 2:** Delete `MarkOverdueForTenant` + `flipOverdue` (incl. the sent→overdue audit write) from `status.go`; keep `ActiveTenantIDs`; remove now-unused `errors` import if applicable; update the file-top comment.
+> **Note (corrected from review):** `ActiveTenantIDs` is NOT kept "because the sweep needs it." The sweep driver uses **`auth`'s** `tenants.ActiveTenantIDs` (`app.go:237/239`), not the invoice copy. The invoice `Service.ActiveTenantIDs` + `InvoicesRepo.ActiveTenantIDs` are referenced only by their own tests. Since the sweep (the sole production consumer of *either* copy) is removed in Task 5, **all** `ActiveTenantIDs` + the shared `ListActiveTenantIDs` query are removed in Task 5. This task removes the overdue-flip machinery + the overdue tests; Task 5 removes the sweep + `ActiveTenantIDs`.
+
+- [ ] **Step 1:** Delete `MarkOverdueForTenant` from `internal/invoice/service.go`.
+- [ ] **Step 2:** Delete `MarkOverdueForTenant` + `flipOverdue` (incl. the sent→overdue audit write) from `status.go`; remove now-unused `errors` import if applicable; update the file-top comment. (Leave `ActiveTenantIDs` in both `service.go` and `status.go` for Task 5.)
 - [ ] **Step 3:** Delete the `OverdueInvoice` struct from `repository.go`.
-- [ ] **Step 4:** Delete the `SelectOverdueInvoicesForTenant` block from `invoices.sql` (this removes the only `date('now')` use).
-- [ ] **Step 5:** `"$(go env GOPATH)/bin/sqlc" generate` → success; `git diff internal/db/gen/` shows only the removed method.
-- [ ] **Step 6:** Verify: `go build ./... && go vet ./...` clean; `gofmt -l internal/` empty; `grep -rn "MarkOverdueForTenant\|flipOverdue\|SelectOverdueInvoicesForTenant\|OverdueInvoice" internal/` → only `internal/app/sweep.go`/`app.go` (removed next task); `go test ./...` PASS (delete/adjust any overdue-flip test).
-- [ ] **Step 7:** Commit: `refactor(invoice): remove overdue flip machinery (service/repo/query/type)`
+- [ ] **Step 4:** Delete the `SelectOverdueInvoicesForTenant` block from `invoices.sql` (this removes the only `date('now')` use). **Do NOT delete `ListActiveTenantIDs` yet** (still referenced by `auth` + invoice `ActiveTenantIDs`).
+- [ ] **Step 5:** Delete the overdue tests that reference the removed symbols: `TestSweepSkipsSuspendedAndScopesBroadcast` (`internal/invoice/service_test.go`, calls `MarkOverdueForTenant` + asserts the `overdue_sweep` broadcast) and `TestInvoiceMarkOverdueRequiresTenant` (`internal/invoice/repository_extra_test.go`). Keep `TestInvoiceActiveTenantIDs` / the `ActiveTenantIDs` assertion for now — Task 5 removes them with the method.
+- [ ] **Step 6:** `"$(go env GOPATH)/bin/sqlc" generate` → success; `git diff internal/db/gen/` shows only the removed `SelectOverdueInvoicesForTenant` method.
+- [ ] **Step 7:** Verify: `go build ./... && go vet ./...` clean; `gofmt -l internal/` empty; `grep -rn "MarkOverdueForTenant\|flipOverdue\|SelectOverdueInvoicesForTenant\|OverdueInvoice" internal/` → only `internal/app/sweep.go` + `app.go` (removed next task); `go test ./...` PASS.
+- [ ] **Step 8:** Commit: `refactor(invoice): remove overdue flip machinery (service/repo/query/type)`
 
-### Task 5 — Delete the sweep driver (Variant A — recurring already gone)
+### Task 5 — Delete the sweep driver + all `ActiveTenantIDs` (recurring already gone)
 
-**Files:** delete `internal/app/sweep.go`; `internal/app/app.go` (sweep launch block ~:237-240 + preceding comment).
+**Files:** delete `internal/app/sweep.go`; `internal/app/app.go` (sweep launch block ~:237-240 + preceding comment — **but keep `tenants := auth.NewTenants(database)` at :152, it is still used by `Deps.Tenants`/`Signup`/`Auth` at :189/:191/:192**); `internal/auth/tenants.go` (`ActiveTenantIDs` ~:56-62); `internal/invoice/service.go` (`ActiveTenantIDs` ~:351-355) + `internal/invoice/status.go` (`ActiveTenantIDs` ~:113-121); `internal/db/queries/invoices.sql` (`ListActiveTenantIDs`); `internal/invoice/{service_test.go,repository_extra_test.go}` (the `ActiveTenantIDs` test + assertion).
 
 - [ ] **Step 1:** `rm internal/app/sweep.go`.
-- [ ] **Step 2:** In `app.go`, delete the launch block:
+- [ ] **Step 2:** In `app.go`, delete the launch block (and preceding sweep comment):
   ```go
   	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, logger)
   	overdueDone := make(chan struct{})
   	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, logger, overdueDone)
   	defer close(overdueDone)
   ```
-  and the preceding sweep comment.
-- [ ] **Step 3:** If no other caller remains, drop `invoice.Service.ActiveTenantIDs` + repo `ActiveTenantIDs` + the `ListActiveTenantIDs` sqlc query (grep first; regenerate sqlc if removed). Prune now-unused `time`/`reqctx` imports in `app.go`.
-- [ ] **Step 4:** Verify: `go build ./... && go vet ./...` clean; `gofmt -l internal/app/` empty; `CGO_ENABLED=0 go build ./cmd/tallyo` builds; `grep -rn "MarkOverdueForTenant\|flipOverdue\|SelectOverdueInvoicesForTenant\|OverdueInvoice\|overdueSweepInterval\|runSweeper" internal/ cmd/` → no matches; `grep -rni "overdue" internal/invoice/` → none (status returned raw); `go test ./...` PASS (delete any sweep test referencing `runSweeper`).
-- [ ] **Step 5:** Commit: `refactor(app): remove overdue sweep; overdue is now UI-derived`
+  **Do NOT remove `tenants := auth.NewTenants(database)`** — it stays (used by the Deps wiring). Prune any now-unused `time`/`reqctx` imports in `app.go` (grep first).
+- [ ] **Step 3:** The sweep was the only production caller of `ActiveTenantIDs` (both copies). Remove them all:
+  - `internal/auth/tenants.go`: delete `TenantsRepo.ActiveTenantIDs` (~:56-62).
+  - `internal/invoice/service.go`: delete `Service.ActiveTenantIDs` (~:351-355).
+  - `internal/invoice/status.go`: delete `InvoicesRepo.ActiveTenantIDs` (~:113-121).
+  - `internal/db/queries/invoices.sql`: delete the `ListActiveTenantIDs` query (now unreferenced by both), then `"$(go env GOPATH)/bin/sqlc" generate`.
+  - Delete `TestInvoiceActiveTenantIDs` (`repository_extra_test.go:153`) and the `ActiveTenantIDs` assertion block in `service_test.go` (~:83-88, if that test wasn't already removed in Task 4).
+- [ ] **Step 4:** Verify: `go build ./... && go vet ./...` clean (confirms no dangling `ActiveTenantIDs`/`ListActiveTenantIDs` refs in `auth`, `invoice`, `gen`); `gofmt -l internal/` empty; `CGO_ENABLED=0 go build ./cmd/tallyo` builds; `grep -rn "MarkOverdueForTenant\|flipOverdue\|SelectOverdueInvoicesForTenant\|OverdueInvoice\|overdueSweepInterval\|runSweeper\|ActiveTenantIDs\|ListActiveTenantIDs" internal/ cmd/` → no matches; `grep -rni "overdue" internal/invoice/` → none; `go test ./...` PASS.
+- [ ] **Step 5:** Commit: `refactor(app): remove overdue sweep + ActiveTenantIDs; overdue is now UI-derived`
 
 **Phase 2 exit:** no `MarkOverdueForTenant`/`flipOverdue`/`SelectOverdueInvoicesForTenant`/`OverdueInvoice` in Go; invoice API returns raw status; SPA shows computed overdue at list cell + detail badge + ClientEditor; dashboard `+page.svelte:29` untouched. Full gate green.
 
@@ -270,7 +278,7 @@ Runs on SQLite baseline. Strip broadcasts from each slice *while* `internal/real
 **Files:** `internal/invoice/service.go` (fields/ctor/panic + notifier + remaining direct broadcasts — `overdue_sweep` already gone), `internal/invoice/payment_service.go` (field/ctor/panic + 6 broadcasts), `internal/estimate/service.go`, `internal/session/service.go` + `service_items.go`; their `*_test.go` helpers + assertions.
 
 - [ ] **Step 1:** Remove from each: `events`/`realtime` imports, fields, nil-hub panic, the `hub` ctor param, every `s.events.*` and `s.hub.Broadcast(...)`. New signatures: `invoice.NewService(db, sessions SessionLinker)`, `invoice.NewPaymentService(db)`, `estimate.NewService(db)`, `session.NewService(db, invoices InvoiceChecker)`. Keep all non-broadcast logic.
-- [ ] **Step 2:** Update test helpers to new signatures; delete `hub.Subscribe`/event-assertion blocks; remove `realtime` imports; fix call sites.
+- [ ] **Step 2:** Update test helpers to new signatures; delete `hub.Subscribe`/event-assertion blocks; remove `realtime` imports; fix call sites. **Note the nested constructors:** `invoice/service_test.go:72` builds `NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))` → `NewService(conn, session.NewService(conn, NewInvoices(conn)))`; `session/service_test.go` (`:18,:57,:170,:211,:248`) builds `NewService(conn, hub, invoice.NewInvoices(conn))` → `NewService(conn, invoice.NewInvoices(conn))`. Drop the `hub`/`realtime.NewHub()` from the inner *and* outer calls.
 - [ ] **Step 3:** Verify: `go test ./internal/invoice/... ./internal/estimate/... ./internal/session/...` → `ok`; `gofmt -l` empty.
 - [ ] **Step 4:** Commit: `refactor(billing): drop SSE broadcasts from invoice/estimate/session/payment services`
 
@@ -389,7 +397,7 @@ Runs on SQLite baseline. Strip broadcasts from each slice *while* `internal/real
 
 ### Task 5 — Swap stores to polling; delete `events.ts`; clean layout
 
-**Files:** `web/src/lib/stores/{collection,sessions,businessProfile}.svelte.ts`; delete `web/src/lib/realtime/events.ts`; `web/src/routes/[tenant]/+layout.svelte`. Keep public method names (`ensureSubscribed`, `subscribe`) so the ~15 call sites need no edits — only the bodies change.
+**Files:** `web/src/lib/stores/{collection,sessions,businessProfile}.svelte.ts`; delete `web/src/lib/realtime/events.ts`; `web/src/routes/[tenant]/+layout.svelte`. Keep the public method names (`ensureSubscribed`, `subscribe`) so existing call sites across components/routes need no edits — only the method *bodies* change.
 
 - [ ] **Step 1:** `collection.svelte.ts` — swap `import { onEntity }` → `import { startPolling } from '$lib/realtime/poll';`; rewrite `ensureSubscribed` (idempotent guard on `registered`):
   ```ts
@@ -528,7 +536,7 @@ Runs on SQLite baseline. Strip broadcasts from each slice *while* `internal/real
   CREATE INDEX sessions_expiry_idx ON sessions (expiry);
   ```
 - [ ] **Step 2:** Convert every money/quantity `REAL` → `double precision` across the live tenant migrations (tax_rates.rate, invoices/estimates subtotal/tax/total, line_items/estimate_line_items quantity/unit_price/line_total, payments.amount, catalogue_items.unit_price). Then `grep -rni "REAL" internal/db/migrations/` → 0 and `grep -rni "BLOB" internal/db/migrations/` → 0.
-- [ ] **Step 3:** Leave `INTEGER`-as-bool columns (`is_current`, `taxable`) as `INTEGER`; confirm no slice expects `bool`.
+- [ ] **Step 3:** Leave `INTEGER`-as-bool columns as `INTEGER` (`is_current`, `taxable`, `tax_rates.is_default`, `users.is_platform_admin`, any `0/1` flag); confirm no slice expects `bool` and sqlc keeps generating `int32`/`int64`.
 - [ ] **Step 4:** Commit: `refactor(db): port migration DDL to Postgres types (bytea, double precision, timestamptz)`
 
 ### Task 3 — sqlc engine + placeholders + casts; regenerate
@@ -590,7 +598,7 @@ Runs on SQLite baseline. Strip broadcasts from each slice *while* `internal/real
   ```go
   err := conn.QueryRow(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)`, tbl).Scan(&ok)
   ```
-- [ ] **Step 3:** Remove `"recurring_templates"` from the expected-tables list (already deleted Phase 1; this file was rewritten — confirm it's gone).
+- [ ] **Step 3:** Confirm `"recurring_templates"` is absent from the expected-tables list (it was removed in Phase 1 Task 3; this task is the SQLite→PG rewrite of the rest of the file).
 - [ ] **Step 4:** Column checks → `information_schema.columns` (replace `PRAGMA table_info(...)`); keep assertions (`catalogue_item_id` present; `item_id`/`custom_item_id`/`price_list_version_id`/`clients.pricing_tier_id` absent).
 - [ ] **Step 5:** Convert insert/constraint `?` → `$n`; FK/CHECK/CASCADE tests pass natively under Postgres.
 - [ ] **Step 6:** `TEST_DATABASE_URL=... go test ./internal/db/ -count=1` → all PASS.
