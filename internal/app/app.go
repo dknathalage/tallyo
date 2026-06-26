@@ -28,7 +28,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -39,14 +38,13 @@ import (
 // Tallyo server. All fields are already validated/defaulted by main before Run
 // is called.
 type Config struct {
-	Port             int
-	DataDir          string // empty → DATA_DIR env, else ./data
-	SecureCookie     bool
-	LogLevel         string
-	LogFormat        string
-	FeatureSmarts    bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
-	FeatureInvites   bool // gates inviting new users (create/revoke invites + UI)
-	FeatureRecurring bool // gates recurring-template routes, sweep generation, and UI
+	Port           int
+	DataDir        string // empty → DATA_DIR env, else ./data
+	SecureCookie   bool
+	LogLevel       string
+	LogFormat      string
+	FeatureSmarts  bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
+	FeatureInvites bool // gates inviting new users (create/revoke invites + UI)
 }
 
 // EnvOr returns the value of env var key, or def when it is unset/empty. Used
@@ -160,7 +158,6 @@ func Run(cfg Config, version string) error {
 	invoiceSvc := invoice.NewService(database, hub, sessionSvc)
 	estimateSvc := estimate.NewService(database, hub)
 	paymentSvc := invoice.NewPaymentService(database, hub)
-	recurringSvc := recurring.NewService(database, hub)
 
 	// AI "Smarts" (optional): construct the service only when ANTHROPIC_API_KEY is
 	// set. The handler is always wired — when disabled it is a guard-only handler
@@ -201,14 +198,12 @@ func Run(cfg Config, version string) error {
 		Sessions:        session.NewHandler(sessionSvc),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
-		Recurring:       recurring.NewHandler(recurringSvc),
 		Smarts:          smartsHandler,
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
-			"smarts":    smartsEnabled,
-			"invites":   cfg.FeatureInvites,
-			"recurring": cfg.FeatureRecurring,
+			"smarts":  smartsEnabled,
+			"invites": cfg.FeatureInvites,
 		},
 	}
 
@@ -228,15 +223,9 @@ func Run(cfg Config, version string) error {
 	// Run one per-tenant sweep at startup, then keep a background sweeper running
 	// on an hourly tick. The done channel stops the goroutine on shutdown so it
 	// does not leak.
-	// recForSweep is nil when the recurring feature is gated off, so the sweep
-	// skips generation (routes are unmounted too — the feature is fully dark).
-	recForSweep := recurringSvc
-	if !cfg.FeatureRecurring {
-		recForSweep = nil
-	}
-	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, recForSweep, logger)
+	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, logger)
 	overdueDone := make(chan struct{})
-	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, recForSweep, logger, overdueDone)
+	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, logger, overdueDone)
 	defer close(overdueDone)
 
 	errCh := make(chan error, 1)
