@@ -110,6 +110,12 @@ to Postgres (its test harness builds a table with SQLite-only
   - `CAST(... AS REAL)` → `CAST(... AS double precision)` —
     `internal/db/queries/payments.sql:5`, `invoices.sql:84`, and any other
     `AS REAL` cast. (`AS INTEGER` casts are valid Postgres and stay.)
+  - `date('now')` (SQLite) → Postgres. `invoices.sql:79`
+    (`SelectOverdueInvoicesForTenant`, on the live sweep path
+    `internal/invoice/status.go`) compares `due_date < date('now')`. `date('now')`
+    is invalid in Postgres. `due_date` is `TEXT` (ISO-8601), so preserve the
+    string-ordering semantics with `due_date < CURRENT_DATE::text` (equivalently
+    `due_date::date < CURRENT_DATE`).
   - The numbering MAX queries `invoices.sql:73` / `estimates.sql:74` use
     `CAST(COALESCE(MAX(CAST(substr(number, CAST(sqlc.arg(prefix_len) AS INTEGER)
     + 1) AS INTEGER)), 0) AS INTEGER)`. Postgres `substr` is 1-indexed like
@@ -385,7 +391,8 @@ infra/
   ./cmd/tallyo` succeeds; `cd web && npm run check` clean.
 - No `modernc.org/sqlite` (incl. the blank import and the `go.mod` require),
   `sqlite3store`, or SQLite pragma/`_txlock` references remain. No `BLOB` /
-  `CAST(... AS REAL)` / `_pragma` strings remain in migrations or queries.
+  `CAST(... AS REAL)` / `date('now')` / `_pragma` strings remain in migrations
+  or queries.
 - `isRetryable` matches pgconn SQLSTATEs (`23505`/`40001`), and the numbering
   concurrency test passes against Postgres.
 - `docker compose up` brings up Postgres + app; the app migrates and serves.
