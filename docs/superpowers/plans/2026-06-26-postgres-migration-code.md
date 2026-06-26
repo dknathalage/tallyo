@@ -222,15 +222,15 @@ Runs on SQLite baseline. **Recurring is already removed (Phase 1), so use Varian
 - [ ] **Step 1:** Delete `MarkOverdueForTenant` from `internal/invoice/service.go`.
 - [ ] **Step 2:** Delete `MarkOverdueForTenant` + `flipOverdue` (incl. the sent→overdue audit write) from `status.go`; remove now-unused `errors` import if applicable; update the file-top comment. (Leave `ActiveTenantIDs` in both `service.go` and `status.go` for Task 5.)
 - [ ] **Step 3:** Delete the `OverdueInvoice` struct from `repository.go`.
-- [ ] **Step 4:** Delete the `SelectOverdueInvoicesForTenant` block from `invoices.sql` (this removes the only `date('now')` use). **Do NOT delete `ListActiveTenantIDs` yet** (still referenced by `auth` + invoice `ActiveTenantIDs`).
-- [ ] **Step 5:** Delete the overdue tests that reference the removed symbols: `TestSweepSkipsSuspendedAndScopesBroadcast` (`internal/invoice/service_test.go`, calls `MarkOverdueForTenant` + asserts the `overdue_sweep` broadcast) and `TestInvoiceMarkOverdueRequiresTenant` (`internal/invoice/repository_extra_test.go`). Keep `TestInvoiceActiveTenantIDs` / the `ActiveTenantIDs` assertion for now — Task 5 removes them with the method.
+- [ ] **Step 4:** Delete the `SelectOverdueInvoicesForTenant` block from `invoices.sql` (this removes the only `date('now')` use). **Do NOT delete `ListActiveTenantIDs` yet** — it lives in `internal/db/queries/tenants.sql:15` and is still referenced by `auth` + invoice `ActiveTenantIDs` (removed in Task 5).
+- [ ] **Step 5:** Delete the overdue tests that reference the removed symbols: `TestSweepSkipsSuspendedAndScopesBroadcast` (`internal/invoice/service_test.go:69`, calls `MarkOverdueForTenant` + asserts the `overdue_sweep` broadcast), `TestInvoiceMarkOverdueForTenant` (`internal/invoice/repository_extra_test.go:102`), and `TestInvoiceMarkOverdueRequiresTenant` (`internal/invoice/repository_extra_test.go:145`). Keep `TestInvoiceActiveTenantIDs` (:153) / the `ActiveTenantIDs` assertion for now — Task 5 removes them with the method.
 - [ ] **Step 6:** `"$(go env GOPATH)/bin/sqlc" generate` → success; `git diff internal/db/gen/` shows only the removed `SelectOverdueInvoicesForTenant` method.
 - [ ] **Step 7:** Verify: `go build ./... && go vet ./...` clean; `gofmt -l internal/` empty; `grep -rn "MarkOverdueForTenant\|flipOverdue\|SelectOverdueInvoicesForTenant\|OverdueInvoice" internal/` → only `internal/app/sweep.go` + `app.go` (removed next task); `go test ./...` PASS.
 - [ ] **Step 8:** Commit: `refactor(invoice): remove overdue flip machinery (service/repo/query/type)`
 
 ### Task 5 — Delete the sweep driver + all `ActiveTenantIDs` (recurring already gone)
 
-**Files:** delete `internal/app/sweep.go`; `internal/app/app.go` (sweep launch block ~:237-240 + preceding comment — **but keep `tenants := auth.NewTenants(database)` at :152, it is still used by `Deps.Tenants`/`Signup`/`Auth` at :189/:191/:192**); `internal/auth/tenants.go` (`ActiveTenantIDs` ~:56-62); `internal/invoice/service.go` (`ActiveTenantIDs` ~:351-355) + `internal/invoice/status.go` (`ActiveTenantIDs` ~:113-121); `internal/db/queries/invoices.sql` (`ListActiveTenantIDs`); `internal/invoice/{service_test.go,repository_extra_test.go}` (the `ActiveTenantIDs` test + assertion).
+**Files:** delete `internal/app/sweep.go`; `internal/app/app.go` (sweep launch block ~:237-240 + preceding comment — **but keep `tenants := auth.NewTenants(database)` at :152, it is still used by `Deps.Tenants`/`Signup`/`Auth` at :189/:191/:192**); `internal/auth/tenants.go` (`ActiveTenantIDs` ~:56-62); `internal/invoice/service.go` (`ActiveTenantIDs` ~:351-355) + `internal/invoice/status.go` (`ActiveTenantIDs` ~:113-121); `internal/db/queries/tenants.sql:15` (`ListActiveTenantIDs`); `internal/invoice/{service_test.go,repository_extra_test.go}` (the `ActiveTenantIDs` test + assertion).
 
 - [ ] **Step 1:** `rm internal/app/sweep.go`.
 - [ ] **Step 2:** In `app.go`, delete the launch block (and preceding sweep comment):
@@ -245,7 +245,7 @@ Runs on SQLite baseline. **Recurring is already removed (Phase 1), so use Varian
   - `internal/auth/tenants.go`: delete `TenantsRepo.ActiveTenantIDs` (~:56-62).
   - `internal/invoice/service.go`: delete `Service.ActiveTenantIDs` (~:351-355).
   - `internal/invoice/status.go`: delete `InvoicesRepo.ActiveTenantIDs` (~:113-121).
-  - `internal/db/queries/invoices.sql`: delete the `ListActiveTenantIDs` query (now unreferenced by both), then `"$(go env GOPATH)/bin/sqlc" generate`.
+  - `internal/db/queries/tenants.sql`: delete the `ListActiveTenantIDs` query (~:15, now unreferenced by both), then `"$(go env GOPATH)/bin/sqlc" generate`.
   - Delete `TestInvoiceActiveTenantIDs` (`repository_extra_test.go:153`) and the `ActiveTenantIDs` assertion block in `service_test.go` (~:83-88, if that test wasn't already removed in Task 4).
 - [ ] **Step 4:** Verify: `go build ./... && go vet ./...` clean (confirms no dangling `ActiveTenantIDs`/`ListActiveTenantIDs` refs in `auth`, `invoice`, `gen`); `gofmt -l internal/` empty; `CGO_ENABLED=0 go build ./cmd/tallyo` builds; `grep -rn "MarkOverdueForTenant\|flipOverdue\|SelectOverdueInvoicesForTenant\|OverdueInvoice\|overdueSweepInterval\|runSweeper\|ActiveTenantIDs\|ListActiveTenantIDs" internal/ cmd/` → no matches; `grep -rni "overdue" internal/invoice/` → none; `go test ./...` PASS.
 - [ ] **Step 5:** Commit: `refactor(app): remove overdue sweep + ActiveTenantIDs; overdue is now UI-derived`
