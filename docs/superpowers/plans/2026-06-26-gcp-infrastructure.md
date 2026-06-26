@@ -72,8 +72,8 @@ infra/
   override.tf.json
   *_override.tf
   *_override.tf.json
-  .terraform.lock.hcl
   ```
+  Note: do NOT ignore `.terraform.lock.hcl` — commit provider lock files for reproducible provider versions across machines/CI.
 - [ ] **Step 2:** `infra/bootstrap/variables.tf`:
   ```hcl
   variable "project_id" { type = string }
@@ -287,7 +287,7 @@ One scale-to-zero gen2 service per env: least-privilege runtime SA (`roles/cloud
     region       = read_terragrunt_config(find_in_parent_folders("region.hcl"))
     project_id   = local.project.locals.project_id
     region_id    = local.region.locals.region
-    state_bucket = "tallyo-tofu-state" # the bucket from infra/bootstrap
+    state_bucket = "tallyo-tofu-state" # MUST equal the bucket created in Task 1 (bootstrap state_bucket_name). GCS bucket names are globally unique — if "tallyo-tofu-state" is taken, pick another and use the SAME value in both infra/bootstrap/terraform.tfvars AND here.
   }
   remote_state {
     backend = "gcs"
@@ -337,7 +337,11 @@ Each fragment sets `terraform.source` (module) + common inputs + Terragrunt `dep
 - [ ] **Step 2:** `cloud-sql.hcl`: source `//cloud-sql` + `inputs = { instance_name = "tallyo-pg", tier = "db-f1-micro" }`.
 - [ ] **Step 3:** `database.hcl`: source `//database`; `dependency "cloud_sql"` (`config_path = "${dirname(dirname(get_terragrunt_dir()))}/cloud-sql"`, `mock_outputs = { instance_name = "tallyo-pg-mock", connection_name = "mock:mock:mock" }`, `mock_outputs_allowed_terraform_commands = ["validate","plan","init"]`); `inputs = { instance_name = dependency.cloud_sql.outputs.instance_name }`.
 - [ ] **Step 4:** `secrets.hcl`: source `//secrets` (anthropic empty by default).
-- [ ] **Step 5:** `cloud-run.hcl`: source `//cloud-run`; locals compute `image = "${region_id}-docker.pkg.dev/${project_id}/tallyo/tallyo:latest"` (read project/region hcl); three `dependency` blocks — `cloud_sql` (region-level), `database` + `secrets` (env-level, `config_path = "${dirname(get_terragrunt_dir())}/{database,secrets}"`) each with `mock_outputs` + the allowed-commands list; `inputs` wiring `image`, `cloudsql_connection_name`, `db_name`, `db_user`, `db_password`, `anthropic_secret_id`, `db_password_secret_id` from the dependency outputs.
+- [ ] **Step 5:** `cloud-run.hcl`: source `//cloud-run`; locals compute `image = "${region_id}-docker.pkg.dev/${project_id}/tallyo/tallyo:latest"` (read project/region hcl). Three `dependency` blocks, each with `mock_outputs` + `mock_outputs_allowed_terraform_commands = ["validate","plan","init"]`:
+  - `cloud_sql` — **region-level**, `config_path = "${dirname(dirname(get_terragrunt_dir()))}/cloud-sql"` (from `.../<env>/cloud-run` up to `.../<region>/cloud-sql`); `mock_outputs = { instance_name = "tallyo-pg-mock", connection_name = "mock:mock:mock" }`.
+  - `database` — **env-level**, `config_path = "${dirname(get_terragrunt_dir())}/database"`; `mock_outputs = { database_name = "tallyo_mock", user_name = "tallyo_mock" }`.
+  - `secrets` — **env-level**, `config_path = "${dirname(get_terragrunt_dir())}/secrets"`; `mock_outputs = { db_password = "mock-pw", db_password_secret_id = "tallyo-mock-db-password", anthropic_secret_id = "tallyo-mock-anthropic" }` (must include ALL THREE attributes the inputs wire, or `run-all validate` errors on a missing mock).
+  `inputs` wire `image`, `cloudsql_connection_name`, `db_name`, `db_user`, `db_password`, `anthropic_secret_id`, `db_password_secret_id` from those dependency outputs.
 - [ ] **Step 6:** `cd infra/live && terragrunt hclfmt --terragrunt-check` → no diff.
 - [ ] **Step 7:** Commit: `feat(infra): add _envcommon terragrunt fragments (DRY module wiring)`
 
