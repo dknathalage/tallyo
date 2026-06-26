@@ -14,7 +14,14 @@
 
 ## Assumptions (read before starting)
 
-- **Plan 1 is merged.** The app is Postgres-only: `internal/app` reads `DATABASE_URL` (no `--data-dir`/SQLite file), runs goose migrations on startup, and has no SSE/sweep/recurring background work. If `DATABASE_URL` resolution is not yet present, stop and finish Plan 1 first — this plan's `app` service will not start without it.
+- **Plan 1 MUST be merged first (enforced gate, not just an assumption).** This plan produces a *correct* image only against the Postgres app. If run on the current SQLite code, `docker build` still succeeds (modernc is pure-Go, so `CGO_ENABLED=0` passes) and the container starts — but it ignores `DATABASE_URL`, opens a SQLite file, and never touches the compose Postgres. That failure is silent. **Before Task 1, run the gate below; do not proceed (and do not use Task 0's "deferred to CI" path) until it passes:**
+  ```bash
+  cd /Users/dknathalage/repos/tallyo
+  grep -rq "DATABASE_URL" internal/app && grep -q "jackc/pgx" go.mod \
+    && ! grep -q "modernc.org/sqlite" go.mod \
+    && echo "Plan 1 merged — OK to containerize" \
+    || { echo "STOP: Plan 1 not merged (app is still SQLite). Finish Plan 1 first."; exit 1; }
+  ```
 - **Port is 8080.** `cmd/tallyo/main.go` defaults `--port` to `8080` (verified). The app does not read a `PORT` env var; the binary listens on `8080` unless `--port` is passed. The Dockerfile `EXPOSE`s 8080 and compose maps `8080:8080`.
 - **SPA embed contract.** `web/embed.go` is `//go:embed all:build` (verified) → the Go build **requires** `web/build` to exist in the build context at compile time. Stage ordering must guarantee that. `web/package-lock.json` exists (verified) so `npm ci` works.
 - **No Docker on the dev machine.** Verification commands that need Docker must run wherever Docker is available (CI or a machine with Docker installed). See Task 0.
@@ -43,7 +50,8 @@ The dev machine has no Docker. Every `docker`/`docker compose` command below MUS
 
 - [ ] **Step 1:** `docker version && docker compose version` → both print client+server with no error.
 - [ ] **Step 2 (if absent):** macOS — `brew install --cask docker` then launch Docker.app once; or `brew install colima docker docker-compose && colima start`. Re-run `docker version` until the `Server:` block appears.
-- [ ] **Step 3:** If no Docker environment is reachable, author Tasks 1–3, commit, and mark their Docker-only verifications **deferred to CI** in the commit bodies.
+- [ ] **Step 3:** Run the **Plan-1 gate** from the Assumptions block above; it must print "OK to containerize". If it fails, STOP — finish Plan 1 first (a pre-migration image is silently wrong). The deferred-to-CI path below is allowed ONLY after the gate passes.
+- [ ] **Step 4:** If no Docker environment is reachable (but the Plan-1 gate passed), author Tasks 1–3, commit, and mark their Docker-only verifications **deferred to CI** in the commit bodies.
 
 ---
 
