@@ -12,20 +12,25 @@ Initial deployment is a single GCP project in one region, with `dev`, `stg`, and
 `prd` environments sharing one Cloud SQL instance via three separate databases.
 A `docker-compose` stack provides the local equivalent.
 
-As part of this work the **realtime/SSE subsystem is removed** and replaced with
-client-side polling (§2). This makes the server fully stateless — no in-process
-connection state — so Cloud Run scales to zero (and horizontally) cleanly with no
-`min=1`/`max=1` constraints. It also deletes a meaningful amount of code.
+This work also **simplifies the app to a single stateless web binary** (§2): the
+realtime/SSE subsystem is removed (the SPA polls), **all background processing is
+removed** (the overdue sweep — overdue becomes a UI-derived display — and the
+recurring-invoice sweep, whose whole feature is dropped), and there is no worker,
+task queue, or scheduler. With no in-process connection state and no background
+work, Cloud Run scale-to-zero is trivially correct. Net: a meaningful code
+deletion.
 
 This changes Tallyo's identity from "single self-hosted binary with embedded
-SQLite" to a Postgres-backed web service. That trade-off was chosen
-deliberately.
+SQLite" to a Postgres-backed web service (still a single binary). That trade-off
+was chosen deliberately.
 
 ## Goals
 
 - Replace SQLite with Postgres across driver, sqlc, goose, and session store.
-- Remove the SSE realtime subsystem; the SPA polls instead. Server becomes
-  stateless.
+- Remove the SSE realtime subsystem; the SPA polls instead.
+- Remove all background work: delete the overdue sweep (overdue → UI-derived) and
+  remove the recurring-invoice feature entirely. Server becomes stateless with no
+  ticker/worker/scheduler.
 - Run on the cheapest viable managed GCP stack (Cloud Run scale-to-zero +
   Cloud SQL shared-core).
 - Support multiple regions and projects in the IaC layout without restructuring;
@@ -49,6 +54,12 @@ deliberately.
   a separate, larger change. (`ponytail: double precision keeps float64; move to
   numeric only if rounding errors surface in money totals`.)
 - Keeping SQLite as an option (explicitly dropped).
+- Any background worker, task queue (Cloud Tasks/Pub/Sub), or scheduler (Cloud
+  Scheduler) — explicitly out. There is no background work to run.
+- Scheduled/recurring invoice generation — the feature is removed, not deferred.
+- Offloading slow user-triggered work (LLM Smarts, large imports, PDF) to async —
+  out of scope; they stay synchronous as today. If async is needed later it is a
+  separate worker design.
 
 ---
 
@@ -117,12 +128,11 @@ to Postgres (its test harness builds a table with SQLite-only
   - `CAST(... AS REAL)` → `CAST(... AS double precision)` —
     `internal/db/queries/payments.sql:5`, `invoices.sql:84`, and any other
     `AS REAL` cast. (`AS INTEGER` casts are valid Postgres and stay.)
-  - `date('now')` (SQLite) → Postgres. `invoices.sql:79`
-    (`SelectOverdueInvoicesForTenant`, on the live sweep path
-    `internal/invoice/status.go`) compares `due_date < date('now')`. `date('now')`
-    is invalid in Postgres. `due_date` is `TEXT` (ISO-8601), so preserve the
-    string-ordering semantics with `due_date < CURRENT_DATE::text` (equivalently
-    `due_date::date < CURRENT_DATE`).
+  - `date('now')` — **not ported, deleted.** Its only use was
+    `SelectOverdueInvoicesForTenant` (`invoices.sql:79`), which is removed entirely
+    with the overdue sweep (§2.2). No Postgres date-function rewrite is needed.
+  - `recurring_templates.sql` — **deleted** with the recurring feature (§2.3); it
+    is not ported.
   - The numbering MAX queries `invoices.sql:73` / `estimates.sql:74` use
     `CAST(COALESCE(MAX(CAST(substr(number, CAST(sqlc.arg(prefix_len) AS INTEGER)
     + 1) AS INTEGER)), 0) AS INTEGER)`. Postgres `substr` is 1-indexed like
@@ -148,10 +158,10 @@ faithful Postgres. Each must be addressed before §1.3's `sqlc generate`:
 - **`REAL` money columns → `double precision`.** Pervasive across the tenant
   migrations (`tax_rates.rate`, `invoices`/`estimates` `subtotal`/`tax`/`total`,
   `line_items` `quantity`/`unit_price`/`line_total`, `payments.amount`,
-  `catalogue_items.unit_price`, `recurring_templates.*`, etc.). `REAL` is valid
-  PG but is 4-byte float (lossy); `double precision` (8-byte) matches Go
-  `float64` and the current SQLite REAL→float64 behavior. All `REAL` →
-  `double precision`.
+  `catalogue_items.unit_price`, etc.). `REAL` is valid PG but is 4-byte float
+  (lossy); `double precision` (8-byte) matches Go `float64` and the current SQLite
+  REAL→float64 behavior. All `REAL` → `double precision`. (The
+  `recurring_templates` table is deleted, not converted — §2.3.)
 - **`REAL` non-money column.** `sessions.expiry REAL` → `timestamptz` per
   postgresstore (§1.5), not `double precision`.
 - **`INTEGER`-as-boolean columns** (`is_current`, `taxable`, any `0/1` flags)
@@ -223,198 +233,131 @@ via Postgres schemas and not via separate instances.
 
 ---
 
-## 2. Statelessness: remove SSE, poll instead
+## 2. Statelessness & simplification
 
-The only things tying the app to a single, always-on instance are two in-process
-mechanisms: the in-process SSE hub (`internal/realtime`) and the hourly sweep
-ticker (`internal/app/sweep.go`). The SSE hub is removed entirely (the SPA polls);
-all background and slow work moves to a separate **async worker** (§2.5). The
-result is a stateless web server that scales to zero and horizontally with no
-instance-count constraints, and never hangs on long-running work.
+Alongside the Postgres move, this work removes everything that ties the app to an
+always-on or single instance, plus one feature the user has decided to drop. End
+state: a **single stateless web binary** (`cmd/tallyo`, unchanged) with **no
+background work** — so Cloud Run scale-to-zero is trivially correct. There is no
+worker, no task queue, no scheduler, no ticker.
 
-### 2.1 Remove the realtime/SSE subsystem (backend)
+### 2.1 Remove the realtime/SSE subsystem → client polling
 
-Delete the push-event machinery; nothing replaces it server-side.
+Backend (net deletion):
 
-- **Delete `internal/realtime/`** — the hub, the `/api/events` SSE handler, and
-  their tests (`hub.go`, `events_handler.go`, `hub_test.go`,
-  `events_handler_test.go`).
-- **Delete `internal/events/`** — the `events.Notifier` package.
-- **Remove the broadcast calls from every service.** Eight service files
-  construct/use a notifier and call `Created/Updated/Deleted`:
-  `internal/{catalogue,client,estimate,invoice,payer,recurring,taxrate}/service.go`
-  and `internal/session/{service.go,service_items.go}`. Drop the notifier field,
-  constructor parameter, and the `s.events.*(ctx, id)` calls. The post-commit
-  broadcast simply goes away; the audit log (`audit.WithTx`) is unaffected.
+- **Delete `internal/realtime/`** (hub, `/api/events` SSE handler, tests) and
+  **`internal/events/`** (the `events.Notifier`).
+- **Remove broadcast calls from every service.** The service files that construct
+  /use a notifier and call `Created/Updated/Deleted`
+  (`internal/{catalogue,client,estimate,invoice,payer,taxrate}/service.go`,
+  `internal/session/{service.go,service_items.go}`) drop the notifier field,
+  constructor param, and `s.events.*` calls. Audit (`audit.WithTx`) is unaffected.
 - **`internal/app`:** remove the `Events *realtime.EventsHandler` field and the
-  `pr.Get("/events", …)` route in `server.go`; remove hub construction/wiring in
-  `app.go`; update the app tests that build `realtime.NewHub()`
-  (`clients_test.go`, `events_test.go` → delete, `catalogue_import_test.go`).
-- This is a net code deletion. The CLAUDE.md convention "broadcasts an SSE event
-  from the service after commit" is removed/updated as part of the change.
+  `pr.Get("/events", …)` route in `server.go`; remove hub wiring in `app.go`;
+  delete/adjust the app tests that build `realtime.NewHub()`.
+- Update the CLAUDE.md convention "broadcasts an SSE event from the service after
+  commit" — that behavior is gone.
 
-### 2.2 Client polling (frontend)
-
-Replace push subscriptions with polling. The existing client already resyncs by
-refetching, so this is a mechanism swap, not a behavior rethink.
+Frontend (mechanism swap; the client already resyncs by refetching):
 
 - **Delete `web/src/lib/realtime/events.ts`** and the `openEvents()/closeEvents()`
   calls in `web/src/routes/[tenant]/+layout.svelte`.
-- Add a small polling helper (e.g. `web/src/lib/realtime/poll.ts`, ~20 lines):
-  given a refetch callback, it refetches (a) on mount, (b) on an interval
-  (default ~30s), and (c) on `visibilitychange`/window focus; returns a cleanup
-  that clears the interval + listener. (`ponytail: fixed 30s interval + focus
-  refetch; tune the interval only if it feels stale or chatty`.)
+- Add a ~20-line poll helper (`web/src/lib/realtime/poll.ts`): given a refetch
+  callback, refetch on mount, on an interval (~30s), and on
+  `visibilitychange`/focus; return a cleanup. (`ponytail: fixed 30s interval +
+  focus refetch; tune only if stale or chatty`.)
 - Replace the `onEntity(entity, cb)` subscriptions in the three stores
   (`stores/sessions.svelte.ts`, `stores/collection.svelte.ts` — the generic CRUD
-  store, covering most entities — and `stores/businessProfile.svelte.ts`) with the
-  poll helper bound to the same refetch each `onEntity` used to call.
-- SvelteKit `load` functions already refetch on navigation, so polling mainly
-  covers "data changed while the user sits on a list." For a single-org app a 30s
-  interval + focus refetch is ample; no websocket/SSE, no live cursor.
+  store — `stores/businessProfile.svelte.ts`) with the poll helper bound to the
+  same refetch. SvelteKit `load` already refetches on navigation, so polling only
+  covers "data changed while sitting on a view."
 
-### 2.3 Two binaries: `cmd/tallyo-app` and `cmd/tallyo-worker`
+### 2.2 Remove all background sweeps; overdue becomes UI-derived
 
-The single `cmd/tallyo` binary is split into two, both linking the shared
-`internal/` packages (slices, `billing`, `db`, `audit`, `numbering`, etc.):
+There is no background processing of any kind after this change.
 
-- **`cmd/tallyo-app`** — the existing web server (rename of today's
-  `cmd/tallyo`). Serves the SPA + REST API. No background work, no ticker — purely
-  request/response. This is what CLAUDE.md's "single binary" referred to;
-  references to `cmd/tallyo` (CLAUDE.md, build commands, Dockerfile) update to
-  `cmd/tallyo-app`.
-- **`cmd/tallyo-worker`** — new. A small HTTP server exposing
-  `POST /tasks/{type}` handlers that Cloud Tasks (and Cloud Scheduler, for the
-  sweep) push work to. It opens the same Postgres (`DATABASE_URL`), runs the same
-  migrations on startup, and calls the same services to do the work. No SPA, no
-  user-facing routes.
+- **Overdue is a UI concern, not a persisted/swept status.** "Overdue" =
+  `status='sent' AND due_date < today`, which the SPA computes from the data it
+  already has (the dashboard already does this at `+page.svelte:29`). The API
+  returns the **raw** stored status (`sent`); no backend derivation is added.
+- **Delete the overdue flip machinery:** `MarkOverdueForTenant` (invoice service +
+  repo), `flipOverdue`, the `SelectOverdueInvoicesForTenant` query, the
+  `OverdueInvoice` type, the **read-time sweep in `Handler.List`**
+  (`invoice/handler.go:127`), and the sent→overdue audit writes. This also deletes
+  the `date('now')` query — removing that Postgres-port item entirely.
+- **Delete `internal/app/sweep.go`** (`runSweeper`/`runSweepOnce`) and its
+  goroutine launch in `app.go`. No ticker, no `SWEEP_TICKER`, no Cloud Scheduler.
+- **Frontend overdue:** the invoice list "overdue" filter chip and the detail
+  badge move to client-side computation from `due_date` (status `sent` + past due
+  → show as overdue). The follow-up Smart button already shows for `sent`, so it
+  still appears for now-overdue invoices.
 
-Both are `CGO_ENABLED=0` pure-Go builds. The composition root in `internal/app`
-is refactored so the web wiring and the worker wiring share service construction;
-the worker gets its own thin entrypoint (e.g. `internal/worker` package) rather
-than reusing the web server's router.
+### 2.3 Remove the recurring feature (full deletion)
 
-### 2.4 Async worker + task queue
+The recurring-invoice generator is real scheduled backend work; with no
+background processing it cannot run, and the user has chosen to drop the feature
+rather than keep any scheduler. Remove it end to end:
 
-Heavy or slow work is enqueued by the app and executed by the worker, so the web
-request returns immediately and the app server never hangs.
+- **Backend:** delete the `internal/recurring/` slice (all files); remove the
+  `recurring_templates` table from the baseline migration
+  (`tenant/00001_tenant.sql`, clean-break so edit baseline in place) and its
+  indexes; delete `internal/db/queries/recurring_templates.sql` and regenerate
+  `gen/` (drops the `RecurringTemplate` model + all its query methods); remove the
+  `internal/app` wiring — the `Recurring` handler field + route in `server.go`,
+  `recurring.NewService`/`NewHandler` in `app.go`, the `FeatureRecurring` config
+  field, the `"recurring"` features-map entry, and `recForSweep`.
+- **Frontend:** delete `web/src/lib/stores/recurring.svelte.ts` and
+  `web/src/routes/[tenant]/recurring/`; remove the recurring entry from
+  `stores/features.svelte.ts`, the nav link in `+layout.svelte`, and the
+  recurring types in `api/types.ts`.
+- **Gate:** the `FeatureRecurring` env gate is removed entirely (not just
+  defaulted off).
 
-- **Queue: Cloud Tasks.** The app creates an HTTP task targeting the worker
-  service URL (`POST /tasks/{type}` + JSON payload), authenticated with an OIDC
-  token. Cloud Tasks pushes tasks to the worker, retrying on non-2xx with backoff.
-  The worker Cloud Run service scales **0 → N with queue depth and back to 0 when
-  the queue drains** — the requested behavior. (Cloud Tasks, not Pub/Sub: the unit
-  is a discrete task with retries/rate-limits, not a fan-out stream.)
-- **Enqueue seam: an `Enqueuer` interface** (declared where the app needs it,
-  wired in `internal/app`), with:
-  - a **Cloud Tasks** implementation (cloud), and
-  - a **local** implementation for compose/dev that POSTs directly to the worker
-    service (or runs the task inline) — so no Cloud Tasks dependency locally.
-- **Task handlers are idempotent** (Cloud Tasks guarantees at-least-once). Each
-  `/tasks/{type}` handler re-checks state before acting.
-- **Results via polling.** The worker writes results into the normal domain tables
-  (e.g. the generated invoice, the committed catalogue rows); the SPA's polling
-  (§2.2) surfaces them on the next refresh. No SSE, and no generic `jobs`/status
-  table unless a specific task needs visible progress — added then, not now.
-- **Auth (worker endpoints):** mounted as a standalone router (no session
-  cookie). Two gates: Cloud Run IAM (only the app's and Scheduler's service
-  accounts hold `roles/run.invoker` on the worker) + a required shared-secret
-  header from Secret Manager (also the sole gate in local/compose).
-- **Which tasks move async (initial scope):** the **sweep** (§2.4a) runs on the
-  worker now. User-triggered heavy tasks are routed through the `Enqueuer`
-  incrementally; candidates, each with a UX note, listed in §2.4b. The deliverable
-  for this spec is the *backbone* + the sweep on the worker, not migrating every
-  task.
+### 2.4 Cloud Run configuration (single service)
 
-#### 2.4a Sweep (runs on the worker)
-
-- Extract the per-tenant sweep from `internal/app/sweep.go` into a plain callable
-  function (no HTTP/ticker dependency); the worker's `POST /tasks/sweep` calls it.
-- **Cloud Scheduler** runs an hourly job per environment that hits the worker's
-  `/tasks/sweep` with an OIDC token (Scheduler SA → worker, `roles/run.invoker`).
-  Scheduler is the trigger directly — no need to round-trip through Cloud Tasks for
-  a fixed-schedule job.
-- The in-process ticker is retained **only for local/compose**, gated by
-  `SWEEP_TICKER=1` (off by default); in cloud, Scheduler is the sole driver.
-- Idempotent (safe to run twice), so duplicate triggers are harmless.
-
-#### 2.4b Candidate user-triggered tasks (later, not in this spec's scope)
-
-Listed so the `Enqueuer` is shaped right; migrate when each is worth it:
-
-- **LLM Smarts** (Anthropic calls — slow). Note: Smarts currently return an
-  editable draft *synchronously*; making them async changes the UX (enqueue →
-  poll for the draft). Deferred to preserve current behavior.
-- **Catalogue import commit** (large CSV/XLSX). Async would change import UX from
-  immediate result to enqueue-and-poll.
-- **PDF generation / bulk operations / email** (none of email exists yet).
-
-### 2.5 Cloud Run instance configuration (both services)
-
-- **App service:** `min-instances=0`, `concurrency=80`, a modest `max-instances`
-  cap (e.g. 3) purely as a cost guardrail (stateless, so no correctness need to
-  pin). Cloud Run gen2.
-- **Worker service:** `min-instances=0` (scales to zero when the queue is empty),
-  `concurrency=1`–small (one task at a time per instance keeps task execution
-  simple and lets Cloud Tasks rate-limits control parallelism), a `max-instances`
-  cap to bound concurrent task fan-out. Cloud Run gen2.
+- One Cloud Run service per env (`tallyo`, the existing binary). `min-instances=0`
+  (true scale-to-zero — correct now that there is no background work and no
+  in-process connection state), `concurrency=80`, a modest `max-instances` cap
+  (e.g. 3) purely as a cost guardrail. Cloud Run gen2.
+- No worker service, no Cloud Tasks queue, no Cloud Scheduler.
 
 ---
 
 ## 3. GCP architecture (cheap, single project now)
 
-- **Compute:** per environment (`dev`, `stg`, `prd`) in one project/region, **two
-  Cloud Run services** — `tallyo-app` (web) and `tallyo-worker` — both scale to
-  zero. Each connects to Cloud SQL through the built-in unix socket via
-  `--add-cloudsql-instances` (no public IP, no VPC connector).
-- **Task queue:** one **Cloud Tasks** queue per environment. The app enqueues
-  HTTP tasks targeting the worker; the queue pushes them to `tallyo-worker`
-  (OIDC-authed), scaling it 0→N with depth and back to 0 when empty.
+- **Compute:** one Cloud Run service per environment (`dev`, `stg`, `prd`) in one
+  project/region — the single `tallyo` binary, scale-to-zero. Each connects to
+  Cloud SQL through the built-in unix socket via `--add-cloudsql-instances` (no
+  public IP, no VPC connector). No worker, no task queue, no scheduler.
 - **Database:** one Cloud SQL for PostgreSQL instance, `db-f1-micro` shared-core,
   zonal (no HA), minimal SSD. Three databases: `tallyo_dev`, `tallyo_stg`,
-  `tallyo_prd`, each with a dedicated database user/password. Both the app and
-  worker of an env share that env's database.
-- **Registry:** one Artifact Registry Docker repository in the region. Two images
-  — `tallyo-app` and `tallyo-worker` — are built and pushed (manually or by future
-  CI); each Cloud Run service deploys its tagged image.
-- **Secrets:** each env's DB password, the worker shared-secret header, and the
-  `ANTHROPIC_API_KEY` live in Secret Manager, injected into the relevant
-  service(s). `DATABASE_URL` for each service points at its database via the Cloud
-  SQL socket.
-- **Service accounts:**
-  - App runtime SA: Cloud SQL client, Secret Manager accessor for its secrets,
-    and **Cloud Tasks enqueuer** (`roles/cloudtasks.enqueuer`) + permission to
-    mint OIDC tokens for the worker.
-  - Worker runtime SA: Cloud SQL client, Secret Manager accessor.
-  - The app SA and a Scheduler SA hold `roles/run.invoker` on the **worker**
-    service (the app enqueues, Scheduler triggers the sweep). The app service
-    itself is invokable per its exposure policy (public or IAP — see below).
-- **Sweep schedule:** one Cloud Scheduler job per environment, hourly, OIDC-authed
-  to that env's **worker** `/tasks/sweep`.
-- **App ingress:** `tallyo-app` is the only public-facing service; `tallyo-worker`
-  requires authenticated invocation (no public ingress).
+  `tallyo_prd`, each with a dedicated database user/password.
+- **Registry:** one Artifact Registry Docker repository in the region. One image
+  (`tallyo`) is built and pushed (manually or by future CI); each Cloud Run
+  service deploys its tagged image.
+- **Secrets:** each env's DB password and the `ANTHROPIC_API_KEY` live in Secret
+  Manager, injected into the service. `DATABASE_URL` points at the env's database
+  via the Cloud SQL socket.
+- **Service accounts:** one Cloud Run runtime SA per env (least privilege: Cloud
+  SQL client, Secret Manager accessor for its own secrets).
+- **Ingress:** the service is the only (public-facing) component per env.
 
 ---
 
 ## 4. docker-compose (local dev)
 
-- A multi-stage `Dockerfile` (a shared builder, two final images via build
-  targets/stages):
+- A multi-stage `Dockerfile`:
   1. Build the SvelteKit SPA (`web/`, `npm ci && npm run build`).
-  2. Build both cgo-free binaries: `CGO_ENABLED=0 go build ./cmd/tallyo-app` (SPA
-     embedded) and `CGO_ENABLED=0 go build ./cmd/tallyo-worker`.
-  3. Two final distroless (`gcr.io/distroless/static`) stages: `tallyo-app` runs
-     the app binary, `tallyo-worker` runs the worker binary.
+  2. Build the cgo-free binary: `CGO_ENABLED=0 go build ./cmd/tallyo` (SPA
+     embedded).
+  3. Final distroless (`gcr.io/distroless/static`) stage running the binary.
 - `docker-compose.yml`:
   - `postgres:17` service with a named volume and healthcheck.
-  - `app` service (`tallyo-app` image), `DATABASE_URL` at the compose Postgres,
-    `Enqueuer`=local (POSTs to the `worker` service), depends-on Postgres healthy.
-  - `worker` service (`tallyo-worker` image), same `DATABASE_URL`, the
-    shared-secret env, `SWEEP_TICKER=1` (so the local sweep runs without
-    Scheduler), depends-on Postgres healthy.
-  - One `docker compose up` yields a working local stack (Postgres + app +
-    worker); migrations run on each service's startup.
-- The same two images are what Artifact Registry hosts and Cloud Run runs.
+  - `app` service (`tallyo` image), `DATABASE_URL` at the compose Postgres,
+    depends-on Postgres healthy.
+  - One `docker compose up` yields a working local stack (Postgres + app);
+    migrations run on app startup.
+- The same image is what Artifact Registry hosts and Cloud Run runs.
 
 ---
 
@@ -429,9 +372,7 @@ infra/
     artifact-registry/          # one Docker repo (project/region scoped)
     cloud-sql/                  # ONE shared instance + per-env database + user
     secrets/                    # Secret Manager secrets + versions
-    cloud-run/                  # one Cloud Run service + runtime SA + IAM (used for BOTH app and worker)
-    cloud-tasks/                # one Cloud Tasks queue + IAM
-    scheduler/                  # Cloud Scheduler job + invoker SA binding
+    cloud-run/                  # one Cloud Run service + runtime SA + IAM
   live/
     terragrunt.hcl              # root: GCS remote state, google provider codegen, common inputs
     _envcommon/                 # shared per-module input fragments (DRY)
@@ -442,10 +383,7 @@ infra/
         artifact-registry/      # shared by all envs in this region
         cloud-sql/              # ONE shared instance for all envs
         dev/                    # per-env leaf
-          database/  secrets/  cloud-tasks/
-          app/        # cloud-run module → tallyo-app (public)
-          worker/     # cloud-run module → tallyo-worker (no public ingress)
-          scheduler/  # hourly → worker /tasks/sweep
+          database/  secrets/  cloud-run/
         stg/                    # same shape
         prd/                    # same shape
 ```
@@ -466,12 +404,8 @@ infra/
   per-env-leaf form, not feeding three databases as inputs to the shared module —
   it keeps each env's DB lifecycle in its own state and matches the per-env leaf
   structure.) The constraint holds: one instance, three databases.
-- The `cloud-run` module is reused twice per env (`app/` and `worker/` leaves)
-  with different inputs (image, ingress, env vars, concurrency). The `worker/`
-  leaf grants the app SA and Scheduler SA `roles/run.invoker` on itself; the
-  `app/` leaf grants its SA `cloudtasks.enqueuer` on the env's queue. Leaf
-  `dependency` wiring: `app`→`worker` (needs the worker URL to enqueue),
-  `scheduler`→`worker`, `app`/`worker`→`database`,`secrets`,`cloud-sql`.
+- The per-env `cloud-run` leaf declares `dependency` on that env's `database`,
+  `secrets`, and the shared `cloud-sql` unit (for the instance connection name).
 - **Deploy now:** apply only `<project>/<region>/{artifact-registry, cloud-sql,
   dev, stg, prd}`. Adding a region = copy `<region>/` to a new region dir; adding
   a project = copy `<project>/`. No module edits required for either.
@@ -488,20 +422,19 @@ infra/
 
 - **Identity shift:** dropping SQLite removes the zero-dependency single-binary
   self-host story. Accepted by the user.
-- **Cold-start latency:** scale-to-zero means the first request after idle
-  (including a Scheduler sweep) pays a cold start. Accepted for cost; a modest
-  `max-instances` cap bounds instance sprawl.
+- **Cold-start latency:** scale-to-zero means the first user request after idle
+  pays a cold start. Accepted for cost; a modest `max-instances` cap bounds
+  instance sprawl.
 - **Polling vs realtime:** dropping SSE means cross-user updates appear on the
   next poll/focus (~30s) instead of instantly. Accepted for a single-org app; the
   trade buys a stateless server and a smaller codebase.
-- **Worker adds operational surface:** a second binary, image, Cloud Run service,
-  and a Cloud Tasks queue per env. Justified by keeping slow work (LLM, imports)
-  off the request path. Mitigated by sharing one codebase (`internal/`) and the
-  `Enqueuer` seam so local dev needs no Cloud Tasks. Day-one async scope is just
-  the sweep; user-triggered tasks migrate incrementally (§2.4b).
-- **At-least-once delivery:** Cloud Tasks may deliver a task more than once, so
-  every handler must be idempotent. Enforced by re-checking state in each handler
-  and covered by tests.
+- **No background processing:** with both sweeps removed, nothing runs unless a
+  request drives it. Overdue is computed in the UI; recurring invoices are no
+  longer auto-generated (feature removed). Accepted by the user — if scheduled
+  generation is ever wanted again, it returns as a separate worker/scheduler
+  design, not retrofitted here.
+- **Recurring feature removed:** existing recurring templates and the table are
+  deleted (clean-break schema, no data to preserve). Irreversible by design.
 - **`db-f1-micro` limits:** shared-core, no HA, limited connections. Fits a
   single-org low-traffic app; revisit if load grows.
 - **One shared Cloud SQL instance across dev/stg/prd:** an instance-level outage
@@ -514,9 +447,8 @@ infra/
 ## 7. Acceptance criteria
 
 - `go test ./...` passes against Postgres (including the numbering concurrency
-  test); `go vet ./...` and `gofmt -l .` clean; both `CGO_ENABLED=0 go build
-  ./cmd/tallyo-app` and `CGO_ENABLED=0 go build ./cmd/tallyo-worker` succeed; no
-  `cmd/tallyo` remains; `cd web && npm run check` clean.
+  test); `go vet ./...` and `gofmt -l .` clean; `CGO_ENABLED=0 go build
+  ./cmd/tallyo` succeeds; `cd web && npm run check` clean.
 - No `modernc.org/sqlite` (incl. the blank import and the `go.mod` require),
   `sqlite3store`, or SQLite pragma/`_txlock` references remain. No `BLOB` /
   `CAST(... AS REAL)` / `date('now')` / `_pragma` strings remain in migrations
@@ -525,16 +457,18 @@ infra/
   concurrency test passes against Postgres.
 - `internal/realtime/` and `internal/events/` are gone; no `realtime.`,
   `events.Notifier`, `EventSource`, or `/api/events` references remain (Go or
-  SPA). Services no longer take a notifier. The SPA polls (interval + focus) and
-  still refreshes after a mutation.
-- An async task enqueued by the app is executed by the worker (verified locally
-  via compose: app enqueues → worker processes → result visible via polling); the
-  sweep runs on the worker via `/tasks/sweep`.
-- `docker compose up` brings up Postgres + app + worker; both migrate and serve.
+  SPA). Services no longer take a notifier. The SPA polls (interval + focus).
+- **No background work:** `internal/app/sweep.go` is gone; no ticker, no
+  `MarkOverdueForTenant`/`flipOverdue`/`SelectOverdueInvoicesForTenant`, no
+  `SWEEP_TICKER`. The invoice API returns the raw stored status; the SPA shows
+  "overdue" computed from `due_date`.
+- **Recurring feature removed:** no `internal/recurring/`, no `recurring_templates`
+  table/queries/`RecurringTemplate` model, no `FeatureRecurring` gate, no
+  `web/.../recurring/` routes — `grep -ri recurring` is clean across Go and SPA.
+- `docker compose up` brings up Postgres + app; the app migrates and serves.
 - `tofu`/`terragrunt` plan validates for the live leaves; applying provisions
-  Artifact Registry, one Cloud SQL instance with three databases, **six** Cloud
-  Run services (app+worker × 3 envs), three Cloud Tasks queues, three Cloud
-  Scheduler jobs, and the supporting SAs/secrets.
-- The worker Cloud Run service scales to zero when its queue is empty.
+  Artifact Registry, one Cloud SQL instance with three databases, **three** Cloud
+  Run services (one per env), and the supporting SAs/secrets. No Cloud Tasks, no
+  Cloud Scheduler.
 - Adding a new region or project requires only new `live/` leaf directories, no
   module changes.
