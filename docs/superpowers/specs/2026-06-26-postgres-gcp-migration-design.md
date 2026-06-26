@@ -33,7 +33,14 @@ deliberately.
   suffices).
 - CI/CD pipeline definitions (tracked as a possible follow-up, not in this spec).
 - Custom domains, external load balancer, Cloud Armor.
-- `timestamptz` schema migration (timestamps stay `TEXT` for now).
+- `timestamptz` for the business `created_at`/`updated_at` columns (they stay
+  `TEXT`). **Exception:** the scs `sessions.expiry` column *does* become
+  `timestamptz` because `postgresstore` requires it (§1.5).
+- Migrating money columns to `numeric`. They become `double precision` (§1.3a),
+  preserving the existing `float64` contract. `numeric` is a deliberate
+  non-goal: it would force `pgtype.Numeric`/string across all `billing` math —
+  a separate, larger change. (`ponytail: double precision keeps float64; move to
+  numeric only if rounding errors surface in money totals`.)
 - Keeping SQLite as an option (explicitly dropped).
 
 ---
@@ -57,21 +64,39 @@ deliberately.
 - DSN comes from the `DATABASE_URL` environment variable. `DataDir()` and the
   `tallyo.db` file path are removed; `internal/app` reads `DATABASE_URL` instead
   of resolving a data directory and opening a file.
+- **Cloud SQL socket DSN form (pinned).** On Cloud Run with
+  `--add-cloudsql-instances`, the instance is reached via the unix socket
+  `/cloudsql/PROJECT:REGION:INSTANCE/.s.PGSQL.5432` — no public IP, no VPC
+  connector. `DATABASE_URL` uses the URL form pgx/stdlib accepts:
+  `postgres://USER:PASSWORD@/DBNAME?host=/cloudsql/PROJECT:REGION:INSTANCE`
+  (empty host authority, socket dir in the `host` query param). Local/compose
+  uses the ordinary `postgres://user:pass@host:5432/db?sslmode=disable` form.
+- Dropping the SQLite pragmas means the `_ "modernc.org/sqlite"` blank import is
+  removed and replaced by `_ "github.com/jackc/pgx/v5/stdlib"`. (PG enforces
+  same-table FKs natively; tenant isolation remains app-level `WHERE tenant_id =
+  $n` guards — Postgres does not and should not enforce tenancy.)
 
 ### 1.2 The `_txlock=immediate` race
 
 SQLite used `_txlock=immediate` to make the numbering slice's read-then-insert
 (MAX read + INSERT) take the write lock at `BEGIN`, avoiding
-`SQLITE_BUSY_SNAPSHOT`. In Postgres this race is handled by either:
+`SQLITE_BUSY_SNAPSHOT`. In Postgres this race is handled by the existing unique
+constraint + retry already present in `internal/numbering` (no DSN-level lock mode
+exists; `SELECT ... FOR UPDATE` is an available fallback but the unique-violation
+retry is sufficient).
 
-- a `SELECT ... FOR UPDATE` on the relevant counter/row inside the transaction, or
-- relying on the existing unique constraint + retry already present in
-  `internal/numbering`.
+**Required code change — `isRetryable`.** `internal/numbering/numbering.go`
+classifies retryable errors by SQLite error substrings (`"busy"`, `"locked"`,
+`"unique"`, `"constraint"`). pgx surfaces errors as `*pgconn.PgError` with
+SQLSTATE codes, not those substrings. `isRetryable` is rewritten to match
+`pgconn` SQLSTATEs: `23505` (unique_violation) and `40001`
+(serialization_failure), via `errors.As(err, *pgconn.PgError)`. This is a
+mandatory edit, not "the existing loop is preserved."
 
-The numbering code's existing retry loop is preserved; the concurrency guard is
-re-expressed in Postgres terms (no DSN-level lock mode exists). The exact form is
-an implementation detail for the plan, but the behavioral contract — no duplicate
-document numbers under concurrency — is unchanged and must be covered by a test.
+The behavioral contract — no duplicate document numbers under concurrency — is
+unchanged and must be covered by the existing numbering concurrency test, ported
+to Postgres (its test harness builds a table with SQLite-only
+`substr`/`CAST`/`LIKE` SQL that must be ported too — see §1.3a/§1.7).
 
 ### 1.3 sqlc
 
@@ -80,32 +105,91 @@ document numbers under concurrency — is unchanged and must be covered by a tes
   (SQLite style). These are mechanically rewritten to Postgres `$1, $2, …`
   numbered placeholders. `RETURNING *` and `ON CONFLICT (...) DO UPDATE` are
   already valid Postgres and stay.
+- **Non-mechanical query edits (NOT just placeholders).** The following are
+  SQLite-isms that must be rewritten, not just re-placeholdered:
+  - `CAST(... AS REAL)` → `CAST(... AS double precision)` —
+    `internal/db/queries/payments.sql:5`, `invoices.sql:84`, and any other
+    `AS REAL` cast. (`AS INTEGER` casts are valid Postgres and stay.)
+  - The numbering MAX queries `invoices.sql:73` / `estimates.sql:74` use
+    `CAST(COALESCE(MAX(CAST(substr(number, CAST(sqlc.arg(prefix_len) AS INTEGER)
+    + 1) AS INTEGER)), 0) AS INTEGER)`. Postgres `substr` is 1-indexed like
+    SQLite so the offset is unchanged, but the whole expression must be verified
+    to compile under the postgresql engine and return an integer (the inner
+    `CAST(... AS INTEGER)` on a text suffix is valid in PG).
 - The `schema:` list in `sqlc.yaml` continues to point at the migration files
   (control dir + the explicitly-listed tenant files), now interpreted as
-  Postgres DDL.
-- Regenerate `internal/db/gen/` with `sqlc generate`. The generated Go API
-  (method names, params, structs) should remain materially the same; downstream
-  slice code is unaffected except where generated types shift.
+  Postgres DDL — which first requires the DDL audit in §1.3a.
+- Regenerate `internal/db/gen/` with `sqlc generate`. With `REAL` →
+  `double precision` (§1.3a), sqlc continues to map money columns to Go
+  `float64`, so the generated Go API stays materially the same and downstream
+  slice/billing code is unaffected except where generated types shift.
+
+### 1.3a Migration DDL audit (REQUIRED — the schema does NOT port unchanged)
+
+The migrations contain SQLite-only type affinities that are not all valid or
+faithful Postgres. Each must be addressed before §1.3's `sqlc generate`:
+
+- **`BLOB` → `bytea`.** `internal/db/migrations/control/00001_control.sql:51`
+  (`sessions.data BLOB`). `BLOB` is not a Postgres type. (This column is replaced
+  wholesale by the postgresstore schema — see §1.5.)
+- **`REAL` money columns → `double precision`.** Pervasive across the tenant
+  migrations (`tax_rates.rate`, `invoices`/`estimates` `subtotal`/`tax`/`total`,
+  `line_items` `quantity`/`unit_price`/`line_total`, `payments.amount`,
+  `catalogue_items.unit_price`, `recurring_templates.*`, etc.). `REAL` is valid
+  PG but is 4-byte float (lossy); `double precision` (8-byte) matches Go
+  `float64` and the current SQLite REAL→float64 behavior. All `REAL` →
+  `double precision`.
+- **`REAL` non-money column.** `sessions.expiry REAL` → `timestamptz` per
+  postgresstore (§1.5), not `double precision`.
+- **`INTEGER`-as-boolean columns** (`is_current`, `taxable`, any `0/1` flags)
+  stay `INTEGER`; existing `WHERE is_current = 1` predicates remain valid in PG,
+  and sqlc generates `int32`/`int64` exactly as today. No change required, but
+  the audit must confirm no column is silently expected to be `bool`.
+
+The audit is a concrete checklist deliverable: enumerate every column type across
+all migration files and confirm each is valid Postgres. The §7 acceptance
+criteria depend on it.
 
 ### 1.4 goose migrations
 
 - `internal/db/migrate.go`: dialect `sqlite3` → `postgres`.
-- The two-sequence model (control + tenant, distinct version tables) is kept.
-  Goose's Postgres dialect supports custom version-table names.
-- Migration DDL is almost entirely `TEXT` columns with `TEXT` PKs (uuidv7) and
-  same-file FKs — these port to Postgres unchanged. Review each migration for any
-  SQLite-only constructs (none expected beyond pragmas, which don't appear in
-  migrations). `IF NOT EXISTS` on the tenant `audit_log` is valid in Postgres.
+- The two-sequence model (control + tenant, distinct version tables via
+  `SetTableName`) is kept; goose's Postgres dialect supports custom version-table
+  names.
+- **Verify the two-sequence + shared-`audit_log` interplay under Postgres.** The
+  current model relies on the tenant `audit_log` migration using
+  `CREATE TABLE IF NOT EXISTS` so it coexists with the control `audit_log` in one
+  database (sqlc deliberately omits the tenant audit_log file). Both goose `Up`
+  calls run sequentially against the same Postgres database; confirm both version
+  tables and the `IF NOT EXISTS` audit_log apply cleanly together (goose takes a
+  per-run advisory lock; sequential runs are fine). This is a verification step,
+  not a code change.
+- DDL portability is handled by the §1.3a audit (`BLOB`/`REAL` are NOT
+  no-ops). `TEXT` PKs/columns and same-file FKs do port unchanged; `IF NOT
+  EXISTS` is valid in Postgres.
 - Migrations still run on app startup (`appdb.Migrate(db)`), now against the
   environment's Postgres database. One database per environment means each env's
   startup migrates its own database independently.
 
 ### 1.5 Session store
 
-- Replace `alexedwards/scs/sqlite3store` with
-  `alexedwards/scs/postgresstore`. The scs sessions table is created by the
-  postgresstore (or an added migration, matching how it's done today). Session
-  semantics are unchanged.
+- Replace `alexedwards/scs/sqlite3store` with `alexedwards/scs/postgresstore`.
+- **The `sessions` table schema changes and must be authored explicitly.**
+  `postgresstore.New(db)` does NOT create its table — the caller must. The
+  current SQLite `sessions(token TEXT PK, data BLOB, expiry REAL)` is replaced by
+  the postgresstore-required schema:
+  ```sql
+  CREATE TABLE sessions (
+      token  text PRIMARY KEY,
+      data   bytea NOT NULL,
+      expiry timestamptz NOT NULL
+  );
+  CREATE INDEX sessions_expiry_idx ON sessions (expiry);
+  ```
+  This replaces the `sessions` table DDL in `control/00001` (clean-break schema —
+  no data migration, so editing the baseline migration in place is acceptable).
+- Session semantics (cookie-backed, SQLite-backed → Postgres-backed) are
+  otherwise unchanged.
 
 ### 1.6 Tenancy model (unchanged)
 
@@ -142,10 +226,20 @@ hub (`internal/realtime`). Resolution:
 - The in-process hourly ticker is retained **only for local/compose** use, gated
   by an env flag (e.g. `SWEEP_TICKER=1`, off by default). In the cloud, Scheduler
   is the sole driver; locally, the ticker is convenient.
-- Endpoint auth: verify the Cloud Run-provided OIDC identity (the request is
-  already authenticated by Cloud Run's IAM when the invoker is the Scheduler
-  service account). A defense-in-depth shared-secret header is acceptable but
-  optional.
+- **Routing & auth (pinned).** `/api/internal/sweep` is mounted **outside** the
+  cookie-`RequireAuth` `/api` group — it is a machine endpoint with no session,
+  so it must not sit behind the SPA session middleware. Two gates, both required:
+  1. **Cloud Run IAM** — the service requires authenticated invocation; only the
+     Scheduler service account holds `roles/run.invoker`. Cloud Run validates the
+     OIDC token before the request reaches the app (the app sees an ordinary
+     request, not the token), so IAM is the primary gate.
+  2. **Shared-secret header (required, not optional)** — the handler also checks a
+     secret header (value from Secret Manager) as defense-in-depth, since the app
+     cannot itself see the OIDC identity. This keeps the endpoint safe even if it
+     is ever exposed without IAM (e.g. local/compose).
+- In local/compose there is no Cloud Run IAM; the shared-secret header is the
+  sole gate there (or the endpoint is simply driven by the in-process ticker and
+  the HTTP endpoint left unused).
 
 ### 2.2 SSE
 
@@ -163,6 +257,11 @@ hub (`internal/realtime`). Resolution:
   instance (single-org app; one instance is sufficient).
 - `concurrency=80` (one instance serves all concurrent users).
 - Cloud Run gen2 execution environment.
+- **Deploy-time overlap is acceptable.** During a revision rollout Cloud Run can
+  briefly run the old + new instance simultaneously (momentarily exceeding
+  `max=1`). For a single-org app this is harmless: SSE clients reconnect to the
+  new revision, and a sweep is idempotent (overdue/recurring re-evaluation is
+  safe to run twice). No leader-election needed.
 
 ---
 
@@ -230,7 +329,7 @@ infra/
         artifact-registry/      # shared by all envs in this region
         cloud-sql/              # ONE shared instance for all envs
         dev/                    # per-env leaf
-          cloud-run/  secrets/  scheduler/   (+ a database/user in the shared instance)
+          database/  secrets/  cloud-run/  scheduler/
         stg/                    # same shape
         prd/                    # same shape
 ```
@@ -244,10 +343,13 @@ infra/
 - Remote state: one GCS bucket, state keyed by path so each leaf has isolated
   state. The root `terragrunt.hcl` generates the `backend` and `google` provider
   blocks so no module hard-codes them.
-- The shared `cloud-sql` unit owns the instance; each env's database + user is
-  either a small per-env unit that depends on the shared instance (Terragrunt
-  `dependency`) or inputs to the shared module. The plan picks the cleaner of the
-  two; the constraint is one instance, three databases.
+- The shared `cloud-sql` unit owns the **instance only**. Each env owns a small
+  per-env `database/` leaf (creating that env's `google_sql_database` +
+  `google_sql_user`) that declares a Terragrunt `dependency` on the shared
+  `cloud-sql` unit and consumes its `instance_name` output. (Decision made: the
+  per-env-leaf form, not feeding three databases as inputs to the shared module —
+  it keeps each env's DB lifecycle in its own state and matches the per-env leaf
+  structure.) The constraint holds: one instance, three databases.
 - **Deploy now:** apply only `<project>/<region>/{artifact-registry, cloud-sql,
   dev, stg, prd}`. Adding a region = copy `<region>/` to a new region dir; adding
   a project = copy `<project>/`. No module edits required for either.
@@ -281,7 +383,11 @@ infra/
 - `go test ./...` passes against Postgres (including the numbering concurrency
   test); `go vet ./...` and `gofmt -l .` clean; `CGO_ENABLED=0 go build
   ./cmd/tallyo` succeeds; `cd web && npm run check` clean.
-- No `modernc.org/sqlite` / `sqlite3store` references remain.
+- No `modernc.org/sqlite` (incl. the blank import and the `go.mod` require),
+  `sqlite3store`, or SQLite pragma/`_txlock` references remain. No `BLOB` /
+  `CAST(... AS REAL)` / `_pragma` strings remain in migrations or queries.
+- `isRetryable` matches pgconn SQLSTATEs (`23505`/`40001`), and the numbering
+  concurrency test passes against Postgres.
 - `docker compose up` brings up Postgres + app; the app migrates and serves.
 - `tofu`/`terragrunt` plan validates for the live leaves; applying provisions
   Artifact Registry, one Cloud SQL instance with three databases, three Cloud Run
