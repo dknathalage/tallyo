@@ -12,6 +12,11 @@ Initial deployment is a single GCP project in one region, with `dev`, `stg`, and
 `prd` environments sharing one Cloud SQL instance via three separate databases.
 A `docker-compose` stack provides the local equivalent.
 
+As part of this work the **realtime/SSE subsystem is removed** and replaced with
+client-side polling (§2). This makes the server fully stateless — no in-process
+connection state — so Cloud Run scales to zero (and horizontally) cleanly with no
+`min=1`/`max=1` constraints. It also deletes a meaningful amount of code.
+
 This changes Tallyo's identity from "single self-hosted binary with embedded
 SQLite" to a Postgres-backed web service. That trade-off was chosen
 deliberately.
@@ -19,6 +24,8 @@ deliberately.
 ## Goals
 
 - Replace SQLite with Postgres across driver, sqlc, goose, and session store.
+- Remove the SSE realtime subsystem; the SPA polls instead. Server becomes
+  stateless.
 - Run on the cheapest viable managed GCP stack (Cloud Run scale-to-zero +
   Cloud SQL shared-core).
 - Support multiple regions and projects in the IaC layout without restructuring;
@@ -216,58 +223,84 @@ via Postgres schemas and not via separate instances.
 
 ---
 
-## 2. Scale-to-zero reconciliation
+## 2. Statelessness: remove SSE, poll instead
 
-Cloud Run scale-to-zero conflicts with two in-process mechanisms: the hourly
-overdue+recurring sweep ticker (`internal/app/sweep.go`) and the in-process SSE
-hub (`internal/realtime`). Resolution:
+The only things tying the app to a single, always-on instance are two in-process
+mechanisms: the in-process SSE hub (`internal/realtime`) and the hourly sweep
+ticker (`internal/app/sweep.go`). The SSE hub is removed entirely (the SPA polls);
+the sweep clock moves outside the process. The result is a stateless server that
+scales to zero and horizontally with no instance-count constraints.
 
-### 2.1 Sweep
+### 2.1 Remove the realtime/SSE subsystem (backend)
 
-- Extract the per-tenant sweep into a handler behind an authenticated internal
-  endpoint: `POST /api/internal/sweep`.
-- **Cloud Scheduler** runs an hourly cron job that calls this endpoint with an
-  **OIDC token** (Scheduler → Cloud Run service account). The call wakes the
-  scaled-to-zero instance and runs the sweep.
-- The in-process hourly ticker is retained **only for local/compose** use, gated
-  by an env flag (e.g. `SWEEP_TICKER=1`, off by default). In the cloud, Scheduler
-  is the sole driver; locally, the ticker is convenient.
-- **Routing & auth (pinned).** `/api/internal/sweep` is mounted **outside** the
-  cookie-`RequireAuth` `/api` group — it is a machine endpoint with no session,
-  so it must not sit behind the SPA session middleware. Two gates, both required:
-  1. **Cloud Run IAM** — the service requires authenticated invocation; only the
-     Scheduler service account holds `roles/run.invoker`. Cloud Run validates the
-     OIDC token before the request reaches the app (the app sees an ordinary
-     request, not the token), so IAM is the primary gate.
-  2. **Shared-secret header (required, not optional)** — the handler also checks a
-     secret header (value from Secret Manager) as defense-in-depth, since the app
-     cannot itself see the OIDC identity. This keeps the endpoint safe even if it
-     is ever exposed without IAM (e.g. local/compose).
-- In local/compose there is no Cloud Run IAM; the shared-secret header is the
-  sole gate there (or the endpoint is simply driven by the in-process ticker and
-  the HTTP endpoint left unused).
+Delete the push-event machinery; nothing replaces it server-side.
 
-### 2.2 SSE
+- **Delete `internal/realtime/`** — the hub, the `/api/events` SSE handler, and
+  their tests (`hub.go`, `events_handler.go`, `hub_test.go`,
+  `events_handler_test.go`).
+- **Delete `internal/events/`** — the `events.Notifier` package.
+- **Remove the broadcast calls from every service.** Eight service files
+  construct/use a notifier and call `Created/Updated/Deleted`:
+  `internal/{catalogue,client,estimate,invoice,payer,recurring,taxrate}/service.go`
+  and `internal/session/{service.go,service_items.go}`. Drop the notifier field,
+  constructor parameter, and the `s.events.*(ctx, id)` calls. The post-commit
+  broadcast simply goes away; the audit log (`audit.WithTx`) is unaffected.
+- **`internal/app`:** remove the `Events *realtime.EventsHandler` field and the
+  `pr.Get("/events", …)` route in `server.go`; remove hub construction/wiring in
+  `app.go`; update the app tests that build `realtime.NewHub()`
+  (`clients_test.go`, `events_test.go` → delete, `catalogue_import_test.go`).
+- This is a net code deletion. The CLAUDE.md convention "broadcasts an SSE event
+  from the service after commit" is removed/updated as part of the change.
 
-- The browser `EventSource` API auto-reconnects after a connection drop, which is
-  what a cold start looks like to the client. Confirm the SPA relies on the
-  default reconnect behavior (no code that treats a dropped stream as fatal). No
-  server change beyond continuing to accept reconnections.
-- Acceptable degradation: a few seconds of missed live updates during cold start;
-  the SPA refetches on reconnect.
+### 2.2 Client polling (frontend)
 
-### 2.3 Cloud Run instance configuration
+Replace push subscriptions with polling. The existing client already resyncs by
+refetching, so this is a mechanism swap, not a behavior rethink.
+
+- **Delete `web/src/lib/realtime/events.ts`** and the `openEvents()/closeEvents()`
+  calls in `web/src/routes/[tenant]/+layout.svelte`.
+- Add a small polling helper (e.g. `web/src/lib/realtime/poll.ts`, ~20 lines):
+  given a refetch callback, it refetches (a) on mount, (b) on an interval
+  (default ~30s), and (c) on `visibilitychange`/window focus; returns a cleanup
+  that clears the interval + listener. (`ponytail: fixed 30s interval + focus
+  refetch; tune the interval only if it feels stale or chatty`.)
+- Replace the `onEntity(entity, cb)` subscriptions in the three stores
+  (`stores/sessions.svelte.ts`, `stores/collection.svelte.ts` — the generic CRUD
+  store, covering most entities — and `stores/businessProfile.svelte.ts`) with the
+  poll helper bound to the same refetch each `onEntity` used to call.
+- SvelteKit `load` functions already refetch on navigation, so polling mainly
+  covers "data changed while the user sits on a list." For a single-org app a 30s
+  interval + focus refetch is ample; no websocket/SSE, no live cursor.
+
+### 2.3 Sweep: external clock (the one remaining background concern)
+
+A stateless scale-to-zero server cannot self-trigger hourly cron — no instance is
+guaranteed up to hold a ticker. This is not statefulness; cron simply lives
+outside disposable compute.
+
+- Extract the per-tenant sweep from `internal/app/sweep.go` into a plain callable
+  function (no HTTP/ticker dependency) so any trigger can run it.
+- Expose it behind `POST /api/internal/sweep`, mounted **outside** the
+  cookie-`RequireAuth` `/api` group (machine endpoint, no session).
+- **Cloud Scheduler** runs an hourly job per environment that calls this endpoint
+  with an **OIDC token** (Scheduler SA → Cloud Run, `roles/run.invoker`).
+- **Auth — two gates:** (1) Cloud Run IAM validates the OIDC invocation before the
+  request reaches the app (primary gate); (2) the handler also checks a required
+  shared-secret header (value from Secret Manager) as defense-in-depth and as the
+  sole gate in local/compose where there is no Cloud Run IAM.
+- The in-process ticker is retained **only for local/compose**, gated by an env
+  flag (`SWEEP_TICKER=1`, off by default). In cloud, Scheduler is the sole driver.
+- The sweep is idempotent (overdue/recurring re-evaluation is safe to run twice),
+  so a duplicate trigger during a deploy overlap is harmless.
+
+### 2.4 Cloud Run instance configuration
 
 - `min-instances=0` (true scale-to-zero — chosen for cost).
-- `max-instances=1` so the SSE hub and any ticker stay coherent on a single
-  instance (single-org app; one instance is sufficient).
-- `concurrency=80` (one instance serves all concurrent users).
-- Cloud Run gen2 execution environment.
-- **Deploy-time overlap is acceptable.** During a revision rollout Cloud Run can
-  briefly run the old + new instance simultaneously (momentarily exceeding
-  `max=1`). For a single-org app this is harmless: SSE clients reconnect to the
-  new revision, and a sweep is idempotent (overdue/recurring re-evaluation is
-  safe to run twice). No leader-election needed.
+- **No `max-instances` pin** is required for correctness now that the server is
+  stateless; a modest cap (e.g. `max-instances=3`) is fine purely as a cost
+  guardrail for a single-org app. Any instance serves any request; deploy-time
+  overlap is harmless (no shared in-process state, sweep idempotent).
+- `concurrency=80`; Cloud Run gen2 execution environment.
 
 ---
 
@@ -373,8 +406,11 @@ infra/
 - **Identity shift:** dropping SQLite removes the zero-dependency single-binary
   self-host story. Accepted by the user.
 - **Cold-start latency:** scale-to-zero means the first request after idle
-  (including a Scheduler sweep) pays a cold start. Accepted for cost; `max=1`
-  bounds instance sprawl.
+  (including a Scheduler sweep) pays a cold start. Accepted for cost; a modest
+  `max-instances` cap bounds instance sprawl.
+- **Polling vs realtime:** dropping SSE means cross-user updates appear on the
+  next poll/focus (~30s) instead of instantly. Accepted for a single-org app; the
+  trade buys a stateless server and a smaller codebase.
 - **`db-f1-micro` limits:** shared-core, no HA, limited connections. Fits a
   single-org low-traffic app; revisit if load grows.
 - **One shared Cloud SQL instance across dev/stg/prd:** an instance-level outage
@@ -395,6 +431,10 @@ infra/
   or queries.
 - `isRetryable` matches pgconn SQLSTATEs (`23505`/`40001`), and the numbering
   concurrency test passes against Postgres.
+- `internal/realtime/` and `internal/events/` are gone; no `realtime.`,
+  `events.Notifier`, `EventSource`, or `/api/events` references remain (Go or
+  SPA). Services no longer take a notifier. The SPA polls (interval + focus) and
+  still refreshes after a mutation.
 - `docker compose up` brings up Postgres + app; the app migrates and serves.
 - `tofu`/`terragrunt` plan validates for the live leaves; applying provisions
   Artifact Registry, one Cloud SQL instance with three databases, three Cloud Run
