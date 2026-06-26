@@ -36,7 +36,7 @@ func TestMigrateCreatesTenantBusinessTables(t *testing.T) {
 	for _, tbl := range []string{
 		"payers", "clients", "catalogue_items", "tax_rates",
 		"invoices", "line_items", "estimates", "estimate_line_items",
-		"payments", "recurring_templates", "audit_log",
+		"payments", "audit_log",
 	} {
 		var n string
 		if err := conn.QueryRow(

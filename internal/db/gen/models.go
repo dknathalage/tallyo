@@ -180,22 +180,6 @@ type Payment struct {
 	UpdatedAt string         `json:"updated_at"`
 }
 
-type RecurringTemplate struct {
-	ID        string         `json:"id"`
-	TenantID  string         `json:"tenant_id"`
-	ClientID  sql.NullString `json:"client_id"`
-	PayerID   sql.NullString `json:"payer_id"`
-	Name      string         `json:"name"`
-	Frequency string         `json:"frequency"`
-	NextDue   string         `json:"next_due"`
-	LineItems string         `json:"line_items"`
-	TaxRate   float64        `json:"tax_rate"`
-	Notes     string         `json:"notes"`
-	IsActive  int64          `json:"is_active"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
-}
-
 type Session struct {
 	Token  string  `json:"token"`
 	Data   []byte  `json:"data"`
