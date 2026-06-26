@@ -2,7 +2,6 @@ package invoice
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/listquery"
 	"github.com/dknathalage/tallyo/internal/pdf"
-	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -121,12 +119,9 @@ func writeUnknownCatalogueItem(w http.ResponseWriter, err error) bool {
 	return false
 }
 
-// List performs a read-time overdue sweep, then returns invoices filtered by the
-// optional ?clientId= or ?status= query params.
+// List returns invoices filtered by the optional ?clientId= or ?status= query
+// params.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.svc.MarkOverdueForTenant(r.Context(), reqctx.MustTenant(r.Context())); err != nil {
-		httpx.LoggerFrom(r.Context()).Error("overdue sweep on list failed", slog.Any("error", err))
-	}
 	q := r.URL.Query()
 	if listquery.IsListQuery(q) {
 		c := listquery.Build(q, InvoiceCols)
