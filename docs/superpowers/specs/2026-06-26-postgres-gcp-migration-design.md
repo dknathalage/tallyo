@@ -126,8 +126,9 @@ to Postgres (its test harness builds a table with SQLite-only
 - **Non-mechanical query edits (NOT just placeholders).** The following are
   SQLite-isms that must be rewritten, not just re-placeholdered:
   - `CAST(... AS REAL)` → `CAST(... AS double precision)` —
-    `internal/db/queries/payments.sql:5`, `invoices.sql:84`, and any other
-    `AS REAL` cast. (`AS INTEGER` casts are valid Postgres and stay.)
+    `internal/db/queries/payments.sql:5`, `invoices.sql:84` (`total_invoiced`),
+    `invoices.sql:89` (`total_paid`), and any other `AS REAL` cast. (`AS INTEGER`
+    casts are valid Postgres and stay.)
   - `date('now')` — **not ported, deleted.** Its only use was
     `SelectOverdueInvoicesForTenant` (`invoices.sql:79`), which is removed entirely
     with the overdue sweep (§2.2). No Postgres date-function rewrite is needed.
@@ -230,6 +231,12 @@ via Postgres schemas and not via separate instances.
   preferred (e.g. a `TEST_DATABASE_URL` that defaults to the compose instance,
   skipping DB-touching tests when unset).
 - The numbering concurrency test (§1.2) must pass against Postgres.
+- **`internal/db/migrate_test.go` is SQLite-specific and must be rewritten.** It
+  queries `sqlite_master` (lines 20/43/62/70/120) and `PRAGMA table_info(...)`
+  (lines 80/129) — both invalid in Postgres — and asserts the now-deleted
+  `recurring_templates` table exists (line 39). Rewrite table-existence checks to
+  `information_schema.tables` / `pg_tables`, column checks to
+  `information_schema.columns`, and drop the `recurring_templates` assertion.
 
 ---
 
@@ -247,14 +254,23 @@ Backend (net deletion):
 
 - **Delete `internal/realtime/`** (hub, `/api/events` SSE handler, tests) and
   **`internal/events/`** (the `events.Notifier`).
-- **Remove broadcast calls from every service.** The service files that construct
-  /use a notifier and call `Created/Updated/Deleted`
-  (`internal/{catalogue,client,estimate,invoice,payer,taxrate}/service.go`,
-  `internal/session/{service.go,service_items.go}`) drop the notifier field,
-  constructor param, and `s.events.*` calls. Audit (`audit.WithTx`) is unaffected.
-- **`internal/app`:** remove the `Events *realtime.EventsHandler` field and the
-  `pr.Get("/events", …)` route in `server.go`; remove hub wiring in `app.go`;
-  delete/adjust the app tests that build `realtime.NewHub()`.
+- **Remove broadcast calls from every service.** All services take the raw
+  `hub *realtime.Hub` today (wired as `NewService(database, hub)` in `app.go`).
+  Two broadcast styles exist and both must go:
+  - via `events.Notifier` (`s.events.Created/Updated/Deleted`) — most slices.
+  - via the hub directly (`s.hub.Broadcast(realtime.Event{...})` + a nil-hub
+    `panic`) — **`internal/businessprofile/service.go`** and
+    **`internal/invoice/payment_service.go`**. These are easy to miss and will
+    fail to compile after `internal/realtime/` is deleted.
+  For every service: drop the `hub`/notifier field, the nil-hub panic, the
+  constructor param, and the broadcast call. **Every `NewService(...)` /
+  `NewPaymentService(...)` signature loses its `hub` parameter.** Audit
+  (`audit.WithTx`) is unaffected.
+- **`internal/app`:** delete the `hub := realtime.NewHub()` line (`app.go:149`)
+  and the `hub` argument from all nine `New*Service(...)` calls
+  (`app.go:154–162`); remove the `Events *realtime.EventsHandler` field and the
+  `pr.Get("/events", …)` route in `server.go`; delete/adjust the app tests that
+  build `realtime.NewHub()`.
 - Update the CLAUDE.md convention "broadcasts an SSE event from the service after
   commit" — that behavior is gone.
 
@@ -277,9 +293,11 @@ Frontend (mechanism swap; the client already resyncs by refetching):
 There is no background processing of any kind after this change.
 
 - **Overdue is a UI concern, not a persisted/swept status.** "Overdue" =
-  `status='sent' AND due_date < today`, which the SPA computes from the data it
-  already has (the dashboard already does this at `+page.svelte:29`). The API
-  returns the **raw** stored status (`sent`); no backend derivation is added.
+  `status='sent' AND due_date < today`, which the SPA computes from the invoice
+  data it already has. The API returns the **raw** stored status (`sent`); no
+  backend derivation is added. (Note: the dashboard's existing "⚠ Overdue" at
+  `+page.svelte:29` is for *session scheduling*, not invoices — there is no
+  invoice-overdue helper to reuse, so a small one is written from scratch.)
 - **Delete the overdue flip machinery:** `MarkOverdueForTenant` (invoice service +
   repo), `flipOverdue`, the `SelectOverdueInvoicesForTenant` query, the
   `OverdueInvoice` type, the **read-time sweep in `Handler.List`**
@@ -287,10 +305,14 @@ There is no background processing of any kind after this change.
   the `date('now')` query — removing that Postgres-port item entirely.
 - **Delete `internal/app/sweep.go`** (`runSweeper`/`runSweepOnce`) and its
   goroutine launch in `app.go`. No ticker, no `SWEEP_TICKER`, no Cloud Scheduler.
-- **Frontend overdue:** the invoice list "overdue" filter chip and the detail
-  badge move to client-side computation from `due_date` (status `sent` + past due
-  → show as overdue). The follow-up Smart button already shows for `sent`, so it
-  still appears for now-overdue invoices.
+- **Frontend overdue:** every spot that today reads the server `'overdue'` status
+  moves to client-side computation from `due_date` (status `sent` + past due → show
+  as overdue): the invoice list "overdue" filter chip
+  (`routes/[tenant]/invoices/+page.svelte`), the invoice detail badge
+  (`routes/[tenant]/invoices/[uuid]/+page.svelte`), and the badge tone in
+  **`web/src/lib/components/ClientEditor.svelte:152`**. The follow-up Smart button
+  already shows for `sent`, so it still appears for now-overdue invoices (its dead
+  `status === 'overdue'` branch can be cleaned up).
 
 ### 2.3 Remove the recurring feature (full deletion)
 
@@ -305,7 +327,11 @@ rather than keep any scheduler. Remove it end to end:
   `gen/` (drops the `RecurringTemplate` model + all its query methods); remove the
   `internal/app` wiring — the `Recurring` handler field + route in `server.go`,
   `recurring.NewService`/`NewHandler` in `app.go`, the `FeatureRecurring` config
-  field, the `"recurring"` features-map entry, and `recForSweep`.
+  field, the `"recurring"` features-map entry, and `recForSweep`; delete
+  `internal/app/recurring_test.go` (lives outside the slice, would not compile).
+- **Config/entrypoint:** remove the `FeatureRecurring:
+  app.EnvBool("TALLYO_FEATURE_RECURRING", true)` line in `cmd/tallyo/main.go:38`
+  and the `TALLYO_FEATURE_RECURRING` entry in `.env`. The env var name is retired.
 - **Frontend:** delete `web/src/lib/stores/recurring.svelte.ts` and
   `web/src/routes/[tenant]/recurring/`; remove the recurring entry from
   `stores/features.svelte.ts`, the nav link in `+layout.svelte`, and the
@@ -463,8 +489,11 @@ infra/
   `SWEEP_TICKER`. The invoice API returns the raw stored status; the SPA shows
   "overdue" computed from `due_date`.
 - **Recurring feature removed:** no `internal/recurring/`, no `recurring_templates`
-  table/queries/`RecurringTemplate` model, no `FeatureRecurring` gate, no
-  `web/.../recurring/` routes — `grep -ri recurring` is clean across Go and SPA.
+  table/queries/`RecurringTemplate` model, no `FeatureRecurring`/
+  `TALLYO_FEATURE_RECURRING` gate, no `web/.../recurring/` routes. No recurring
+  *code or identifiers* remain in Go or the SPA (incidental prose in
+  `internal/billing/*` comments, CLAUDE.md, and `docs/` is not in scope and may
+  mention it historically).
 - `docker compose up` brings up Postgres + app; the app migrates and serves.
 - `tofu`/`terragrunt` plan validates for the live leaves; applying provisions
   Artifact Registry, one Cloud SQL instance with three databases, **three** Cloud
