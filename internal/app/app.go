@@ -220,14 +220,6 @@ func Run(cfg Config, version string) error {
 		BaseContext: func(net.Listener) context.Context { return baseCtx },
 	}
 
-	// Run one per-tenant sweep at startup, then keep a background sweeper running
-	// on an hourly tick. The done channel stops the goroutine on shutdown so it
-	// does not leak.
-	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, logger)
-	overdueDone := make(chan struct{})
-	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, logger, overdueDone)
-	defer close(overdueDone)
-
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("listening", slog.Int("port", cfg.Port), slog.String("version", version))

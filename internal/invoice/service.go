@@ -353,18 +353,3 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []string, status str
 func (s *Service) ActiveTenantIDs(ctx context.Context) ([]string, error) {
 	return s.repo.ActiveTenantIDs(ctx)
 }
-
-// MarkOverdueForTenant flips overdue invoices for ONE tenant (the per-tenant
-// sweep path) and, when any flipped, broadcasts a sweep event scoped to that
-// tenant so only its subscribers resync. ctx must carry the tenant (the sweep
-// driver attaches it via reqctx.WithTenant).
-func (s *Service) MarkOverdueForTenant(ctx context.Context, tenantID string) ([]OverdueInvoice, error) {
-	rows, err := s.repo.MarkOverdueForTenant(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) > 0 {
-		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "overdue_sweep"})
-	}
-	return rows, nil
-}

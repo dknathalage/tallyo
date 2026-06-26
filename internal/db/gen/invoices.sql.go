@@ -531,40 +531,6 @@ func (q *Queries) MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumber
 	return max_seq, err
 }
 
-const selectOverdueInvoicesForTenant = `-- name: SelectOverdueInvoicesForTenant :many
-SELECT id, tenant_id, number FROM invoices
-WHERE tenant_id = ? AND status = 'sent' AND due_date < date('now')
-`
-
-type SelectOverdueInvoicesForTenantRow struct {
-	ID       string `json:"id"`
-	TenantID string `json:"tenant_id"`
-	Number   string `json:"number"`
-}
-
-func (q *Queries) SelectOverdueInvoicesForTenant(ctx context.Context, tenantID string) ([]SelectOverdueInvoicesForTenantRow, error) {
-	rows, err := q.db.QueryContext(ctx, selectOverdueInvoicesForTenant, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []SelectOverdueInvoicesForTenantRow
-	for rows.Next() {
-		var i SelectOverdueInvoicesForTenantRow
-		if err := rows.Scan(&i.ID, &i.TenantID, &i.Number); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const updateInvoice = `-- name: UpdateInvoice :one
 UPDATE invoices SET
     number = ?, client_id = ?, payer_id = ?, status = ?, issue_date = ?, due_date = ?,

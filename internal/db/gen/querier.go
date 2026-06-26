@@ -140,7 +140,6 @@ type Querier interface {
 	SearchCatalogue(ctx context.Context, arg SearchCatalogueParams) ([]CatalogueItem, error)
 	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
-	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID string) ([]SelectOverdueInvoicesForTenantRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
