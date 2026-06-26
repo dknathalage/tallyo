@@ -23,9 +23,6 @@ function createFeaturesStore() {
 		},
 		get invites(): boolean {
 			return flags.invites === true;
-		},
-		get recurring(): boolean {
-			return flags.recurring === true;
 		}
 	};
 }

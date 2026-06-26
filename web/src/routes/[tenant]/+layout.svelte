@@ -106,8 +106,7 @@
 			icon: FileText,
 			children: [
 				{ href: '/invoices', label: 'Invoices' },
-				{ href: '/estimates', label: 'Estimates' },
-				...(features.recurring ? [{ href: '/recurring', label: 'Recurring' }] : [])
+				{ href: '/estimates', label: 'Estimates' }
 			]
 		},
 		{
