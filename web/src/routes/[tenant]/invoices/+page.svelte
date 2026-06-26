@@ -5,8 +5,9 @@
 	import DataTable from '$lib/components/DataTable.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import type { Invoice, InvoiceStatus } from '$lib/api/types';
+	import { effectiveStatus } from '$lib/invoiceStatus';
 
-	const STATUSES: InvoiceStatus[] = ['draft', 'sent', 'overdue', 'paid'];
+	const STATUSES: InvoiceStatus[] = ['draft', 'sent', 'paid'];
 
 	function money(n: number): string {
 		const v = Number.isFinite(n) ? n : 0;
@@ -53,7 +54,8 @@
 			label: 'Status',
 			sortable: true,
 			filter: 'enum',
-			values: STATUSES
+			values: STATUSES,
+			cell: (inv) => effectiveStatus(inv.status, inv.dueDate)
 		},
 		{
 			key: 'payment',
