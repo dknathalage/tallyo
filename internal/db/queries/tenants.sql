@@ -12,9 +12,6 @@ SELECT * FROM tenants WHERE id = ?;
 -- name: ListTenants :many
 SELECT * FROM tenants ORDER BY created_at DESC;
 
--- name: ListActiveTenantIDs :many
-SELECT id FROM tenants WHERE status = 'active' ORDER BY id;
-
 -- name: UpdateTenant :one
 UPDATE tenants SET name = ?, updated_at = ?
 WHERE id = ?

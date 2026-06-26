@@ -97,23 +97,3 @@ func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 		t.Fatalf("after bulk delete list = %+v, want only c (id=%s)", list, c.ID)
 	}
 }
-
-func TestInvoiceActiveTenantIDs(t *testing.T) {
-	conn := newTestDB(t)
-	a := seedTenant(t, conn, "Active A")
-	b := seedTenant(t, conn, "Active B")
-	repo := NewInvoices(conn)
-
-	ids, err := repo.ActiveTenantIDs(context.Background())
-	if err != nil {
-		t.Fatalf("ActiveTenantIDs: %v", err)
-	}
-	// Both seeded tenants are 'active'.
-	seen := map[string]bool{}
-	for _, id := range ids {
-		seen[id] = true
-	}
-	if !seen[a] || !seen[b] {
-		t.Fatalf("ActiveTenantIDs = %v, want to include %s and %s", ids, a, b)
-	}
-}

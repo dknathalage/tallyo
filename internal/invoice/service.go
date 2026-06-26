@@ -347,9 +347,3 @@ func (s *Service) BulkUpdateStatus(ctx context.Context, ids []string, status str
 	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "bulk_status"})
 	return nil
 }
-
-// ActiveTenantIDs returns the ids of active (non-suspended) tenants. The sweep
-// driver uses it to iterate tenants and skip suspended ones (spec §8).
-func (s *Service) ActiveTenantIDs(ctx context.Context) ([]string, error) {
-	return s.repo.ActiveTenantIDs(ctx)
-}

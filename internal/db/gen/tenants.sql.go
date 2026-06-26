@@ -85,33 +85,6 @@ func (q *Queries) GetTenantByUUID(ctx context.Context, id string) (Tenant, error
 	return i, err
 }
 
-const listActiveTenantIDs = `-- name: ListActiveTenantIDs :many
-SELECT id FROM tenants WHERE status = 'active' ORDER BY id
-`
-
-func (q *Queries) ListActiveTenantIDs(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listActiveTenantIDs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listTenants = `-- name: ListTenants :many
 SELECT id, name, status, created_at, updated_at FROM tenants ORDER BY created_at DESC
 `

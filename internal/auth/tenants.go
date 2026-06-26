@@ -53,17 +53,6 @@ func (r *TenantsRepo) Count(ctx context.Context) (int64, error) {
 	return int64(len(rows)), nil
 }
 
-// ActiveTenantIDs returns the ids of active (non-suspended) tenants. The
-// per-tenant sweep iterates these; suspended tenants are skipped. Reads the
-// control DB (the tenants registry).
-func (r *TenantsRepo) ActiveTenantIDs(ctx context.Context) ([]string, error) {
-	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("active tenant ids: %w", err)
-	}
-	return ids, nil
-}
-
 // Create inserts a tenant (status "active") and writes one audit row, atomically.
 func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) {
 	if name == "" {

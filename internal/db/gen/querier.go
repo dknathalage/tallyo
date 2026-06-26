@@ -91,7 +91,6 @@ type Querier interface {
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
 	LineItemReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error)
 	LinkSessionItemsToInvoice(ctx context.Context, arg LinkSessionItemsToInvoiceParams) error
-	ListActiveTenantIDs(ctx context.Context) ([]string, error)
 	// Per-tenant catalogue (tenant-owned, scoped by tenant_id). One append-only
 	// table with per-item copy-on-write versioning: is_current = 1 is the live row.
 	ListCatalogue(ctx context.Context, tenantID string) ([]CatalogueItem, error)

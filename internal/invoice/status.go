@@ -74,13 +74,3 @@ func (r *InvoicesRepo) BulkUpdateStatus(ctx context.Context, tenantID string, id
 		})
 	})
 }
-
-// ActiveTenantIDs returns the ids of tenants whose status is 'active' (suspended
-// tenants are excluded).
-func (r *InvoicesRepo) ActiveTenantIDs(ctx context.Context) ([]string, error) {
-	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("active tenant ids: %w", err)
-	}
-	return ids, nil
-}
