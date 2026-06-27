@@ -124,6 +124,7 @@ type Querier interface {
 	ListTenants(ctx context.Context) ([]Tenant, error)
 	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
 	ListTenantsByFirebaseUID(ctx context.Context, firebaseUid string) ([]ListTenantsByFirebaseUIDRow, error)
+	ListTenantsWithUserCount(ctx context.Context) ([]ListTenantsWithUserCountRow, error)
 	ListUsers(ctx context.Context, tenantID string) ([]User, error)
 	MarkCatalogueVersionStale(ctx context.Context, arg MarkCatalogueVersionStaleParams) error
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
@@ -145,6 +146,7 @@ type Querier interface {
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
+	SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) error
 	// Delete flips every row of the logical_id out of current; referenced versions
 	// linger so existing documents stay intact.
 	TombstoneCatalogueLogical(ctx context.Context, arg TombstoneCatalogueLogicalParams) error

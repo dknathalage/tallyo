@@ -141,6 +141,107 @@ func (r *TenantsRepo) GetByUUID(ctx context.Context, tenantUUID string) (*Tenant
 	return tenantFromRow(row), nil
 }
 
+// TenantSummary is the admin list view of a tenant: all Tenant fields plus the
+// count of users belonging to that tenant.
+type TenantSummary struct {
+	Tenant
+	UserCount int64 `json:"userCount"`
+}
+
+// List returns all tenants with per-tenant user counts. Intended for the
+// platform-admin panel; not tenant-scoped.
+func (r *TenantsRepo) List(ctx context.Context) ([]*TenantSummary, error) {
+	rows, err := gen.New(r.db).ListTenantsWithUserCount(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tenants: %w", err)
+	}
+	out := make([]*TenantSummary, 0, len(rows))
+	for _, row := range rows {
+		t := tenantFromRow(gen.Tenant{
+			ID:                   row.ID,
+			Name:                 row.Name,
+			Status:               row.Status,
+			CreatedAt:            row.CreatedAt,
+			UpdatedAt:            row.UpdatedAt,
+			StripeCustomerID:     row.StripeCustomerID,
+			StripeSubscriptionID: row.StripeSubscriptionID,
+			SubscriptionStatus:   row.SubscriptionStatus,
+			TrialEnd:             row.TrialEnd,
+			CurrentPeriodEnd:     row.CurrentPeriodEnd,
+			SubscriptionSyncedAt: row.SubscriptionSyncedAt,
+		})
+		out = append(out, &TenantSummary{Tenant: *t, UserCount: row.UserCount})
+	}
+	return out, nil
+}
+
+// Suspend sets a tenant's status to StatusSuspended, blocking login for all of
+// its users. adminUserID is the acting platform admin; it is stamped on the
+// audit row alongside the target tenant.
+func (r *TenantsRepo) Suspend(ctx context.Context, tenantUUID, adminUserID string) error {
+	if tenantUUID == "" {
+		return errors.New("suspend tenant: tenant uuid required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		if err := gen.New(tx).UpdateTenantStatus(ctx, gen.UpdateTenantStatusParams{
+			Status:    StatusSuspended,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+			ID:        tenantUUID,
+		}); err != nil {
+			return fmt.Errorf("suspend: update status: %w", err)
+		}
+		return audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantUUID,
+			Action:     "suspend",
+			Changes:    audit.Changes(map[string]any{"status": StatusSuspended}),
+		})
+	})
+}
+
+// Unsuspend clears a tenant's suspended status, setting it back to
+// StatusActive and allowing its users to log in again.
+func (r *TenantsRepo) Unsuspend(ctx context.Context, tenantUUID, adminUserID string) error {
+	if tenantUUID == "" {
+		return errors.New("unsuspend tenant: tenant uuid required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		if err := gen.New(tx).UpdateTenantStatus(ctx, gen.UpdateTenantStatusParams{
+			Status:    StatusActive,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+			ID:        tenantUUID,
+		}); err != nil {
+			return fmt.Errorf("unsuspend: update status: %w", err)
+		}
+		return audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantUUID,
+			Action:     "unsuspend",
+			Changes:    audit.Changes(map[string]any{"status": StatusActive}),
+		})
+	})
+}
+
+// Delete permanently removes a tenant and all of its data. This is
+// destructive and irreversible. adminUserID is stamped on the audit row.
+func (r *TenantsRepo) Delete(ctx context.Context, tenantUUID, adminUserID string) error {
+	if tenantUUID == "" {
+		return errors.New("delete tenant: tenant uuid required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		// Audit BEFORE delete so the row exists when the audit log references it.
+		if err := audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantUUID,
+			Action:     "delete",
+			Changes:    audit.Changes(map[string]any{}),
+		}); err != nil {
+			return err
+		}
+		return gen.New(tx).DeleteTenant(ctx, tenantUUID)
+	})
+}
+
 // SignupInput carries the validated fields for self-serve onboarding. Validation
 // (non-empty business name, valid email, password strength) is the caller's
 // (HTTP boundary) responsibility; this method assumes pre-validated input and

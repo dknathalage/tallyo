@@ -100,6 +100,42 @@ func WithTx(ctx context.Context, db txBeginner, e Entry, fn func(*sql.Tx) error)
 	return nil
 }
 
+// LogAs writes one audit row with explicit tenantID and userID, bypassing
+// reqctx. Use this for cross-tenant admin actions where the acting tenant
+// (the admin's tenant) is NOT the target tenant: stamp the TARGET tenant's id
+// and the ACTING admin's user id so the row lands in the affected tenant's
+// trail attributed to the operator.
+func LogAs(ctx context.Context, db Execer, tenantID, userID string, e Entry) error {
+	if e.EntityType == "" {
+		return fmt.Errorf("audit: empty entity_type")
+	}
+	if e.Action == "" {
+		return fmt.Errorf("audit: empty action")
+	}
+	changes := e.Changes
+	if changes == "" {
+		changes = "{}"
+	}
+	var tenant any
+	if tenantID != "" {
+		tenant = tenantID
+	}
+	var user any
+	if userID != "" {
+		user = userID
+	}
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO audit_log (id, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9)`,
+		ids.New(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("audit insert: %w", err)
+	}
+	return nil
+}
+
 // Changes marshals a map to a JSON string for Entry.Changes. Returns "{}" on
 // marshal failure (audit must never break a mutation).
 func Changes(m map[string]any) string {
