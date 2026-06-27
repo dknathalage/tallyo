@@ -18,8 +18,9 @@ web/build/
 web/.svelte-kit/
 web/.vite/
 
-# Go build artifacts
+# Go build artifacts (but keep the host-built binary `task image` copies in)
 bin/
+!bin/tallyo-linux-amd64
 /tallyo
 *.test
 

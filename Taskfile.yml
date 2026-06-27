@@ -6,7 +6,10 @@ vars:
   BINARY: bin/tallyo
   PROJECT: tallyo-saas
   REGION: australia-southeast1
-  IMAGE: '{{.REGION}}-docker.pkg.dev/{{.PROJECT}}/tallyo/tallyo:latest'
+  REPO: "{{.REGION}}-docker.pkg.dev/{{.PROJECT}}/tallyo/tallyo"
+  IMAGE: "{{.REPO}}:latest"
+  SHA:
+    sh: git rev-parse --short HEAD
 
 tasks:
   default:
@@ -100,23 +103,29 @@ tasks:
   # gitignored .env at the repo root:  GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...
 
   image:
-    desc: Build + push the app image to Artifact Registry (Cloud Build, amd64)
+    desc: Build amd64 binary on host (SPA embedded), copy into runtime image, push
+    deps: [build:web]
     cmds:
-      - gcloud builds submit --project {{.PROJECT}} --config cloudbuild.yaml .
+      # cross-compile amd64 for Cloud Run; SPA embedded via go:embed (needs build:web first)
+      - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o bin/tallyo-linux-amd64 ./cmd/tallyo
+      - gcloud auth print-access-token | podman login -u oauth2accesstoken --password-stdin {{.REGION}}-docker.pkg.dev
+      - podman build --platform=linux/amd64 -t {{.REPO}}:{{.SHA}} -t {{.IMAGE}} .
+      - podman push {{.REPO}}:{{.SHA}}
+      - podman push {{.IMAGE}}
 
   deploy:
     desc: Build the image, then roll all envs (prd, stg, dev)
     cmds:
       - task: image
-      - task: 'deploy:prd'
-      - task: 'deploy:stg'
-      - task: 'deploy:dev'
+      - task: "deploy:dev"
+      - task: "deploy:stg"
+      - task: "deploy:prd"
 
   deploy:*:
-    desc: Roll one env to the latest image (e.g. `task deploy:prd`)
-    vars: { ENV: '{{index .MATCH 0}}' }
+    desc: Roll one env to the current commit's image (e.g. `task deploy:prd`)
+    vars: { ENV: "{{index .MATCH 0}}" }
     cmds:
-      - gcloud run services update tallyo-{{.ENV}} --image {{.IMAGE}} --region {{.REGION}} --project {{.PROJECT}}
+      - gcloud run services update tallyo-{{.ENV}} --image {{.REPO}}:{{.SHA}} --region {{.REGION}} --project {{.PROJECT}}
 
   infra:plan:
     desc: Plan all infra (no writes)
