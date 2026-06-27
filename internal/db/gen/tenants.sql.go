@@ -201,6 +201,8 @@ type ListTenantsWithUserCountRow struct {
 	UserCount            int64          `json:"user_count"`
 }
 
+// Low-frequency platform-admin query: full tenants scan + user-count join, not
+// a hot path. Fine to leave unindexed at expected tenant counts.
 func (q *Queries) ListTenantsWithUserCount(ctx context.Context) ([]ListTenantsWithUserCountRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTenantsWithUserCount)
 	if err != nil {

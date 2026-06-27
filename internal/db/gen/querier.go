@@ -87,12 +87,19 @@ type Querier interface {
 	GetTenantByStripeCustomer(ctx context.Context, stripeCustomerID sql.NullString) (Tenant, error)
 	GetTenantByUUID(ctx context.Context, id string) (Tenant, error)
 	GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error)
+	// email is unique only per tenant (UNIQUE(tenant_id, email)), so the same email
+	// can exist in several tenants. Prefer the platform-admin row and LIMIT 1 to keep
+	// the pick deterministic (avoids misattributing audit user_id on admin actions).
 	GetUserByEmailGlobal(ctx context.Context, email string) (User, error)
 	GetUserByFirebaseUID(ctx context.Context, arg GetUserByFirebaseUIDParams) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
 	LineItemReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error)
 	LinkSessionItemsToInvoice(ctx context.Context, arg LinkSessionItemsToInvoiceParams) error
+	// Most recent audit rows for a tenant, newest first. Bounded to 50 rows for the
+	// platform-admin tenant-detail trail (idx_audit_tenant + idx_audit_created back
+	// the filter + order).
+	ListAuditByTenant(ctx context.Context, tenantID sql.NullString) ([]AuditLog, error)
 	// Per-tenant catalogue (tenant-owned, scoped by tenant_id). One append-only
 	// table with per-item copy-on-write versioning: is_current = 1 is the live row.
 	ListCatalogue(ctx context.Context, tenantID string) ([]CatalogueItem, error)
@@ -124,6 +131,8 @@ type Querier interface {
 	ListTenants(ctx context.Context) ([]Tenant, error)
 	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
 	ListTenantsByFirebaseUID(ctx context.Context, firebaseUid string) ([]ListTenantsByFirebaseUIDRow, error)
+	// Low-frequency platform-admin query: full tenants scan + user-count join, not
+	// a hot path. Fine to leave unindexed at expected tenant counts.
 	ListTenantsWithUserCount(ctx context.Context) ([]ListTenantsWithUserCountRow, error)
 	ListUsers(ctx context.Context, tenantID string) ([]User, error)
 	MarkCatalogueVersionStale(ctx context.Context, arg MarkCatalogueVersionStaleParams) error

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/httpx"
@@ -81,6 +82,25 @@ func (f *fakeSubscription) SetSubscriptionStatus(_ context.Context, tenantID, st
 	return f.err
 }
 
+// fakeAudit implements AuditLister, returning a fixed trail per tenant id.
+type fakeAudit struct {
+	byTenant map[string][]audit.Record
+	err      error
+}
+
+func (f *fakeAudit) ListByTenant(_ context.Context, tenantID string) ([]audit.Record, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.byTenant[tenantID], nil
+}
+
+// newAdmin is a test constructor that defaults the audit lister to an empty fake
+// so existing tests need not all pass one.
+func newAdmin(tenants TenantsRepo, sub SubscriptionSetter) *Handler {
+	return New(tenants, sub, &fakeAudit{byTenant: map[string][]audit.Record{}})
+}
+
 // ── helper: admin user in context ────────────────────────────────────────────
 
 // withAdmin places an admin user on the request context the same way
@@ -100,7 +120,7 @@ func withNonAdmin(r *http.Request) *http.Request {
 
 func TestListReturnsTenantsForAdmin(t *testing.T) {
 	tenant := &auth.Tenant{ID: "t-1", Name: "Acme"}
-	h := New(newFakeTenants(tenant), &fakeSubscription{})
+	h := newAdmin(newFakeTenants(tenant), &fakeSubscription{})
 
 	req := withAdmin(httptest.NewRequest(http.MethodGet, "/api/admin/tenants", nil))
 	rec := httptest.NewRecorder()
@@ -120,7 +140,7 @@ func TestListReturnsTenantsForAdmin(t *testing.T) {
 
 func TestListReturns500OnStoreError(t *testing.T) {
 	ft := &fakeTenants{listErr: errors.New("db error")}
-	h := New(ft, &fakeSubscription{})
+	h := newAdmin(ft, &fakeSubscription{})
 
 	req := withAdmin(httptest.NewRequest(http.MethodGet, "/api/admin/tenants", nil))
 	rec := httptest.NewRecorder()
@@ -147,11 +167,14 @@ func chiReqWithUUID(method, path, uuidVal string, body []byte) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestDetailReturnsTenantForAdmin(t *testing.T) {
+func TestDetailReturnsTenantAndAuditForAdmin(t *testing.T) {
 	tenant := &auth.Tenant{ID: "t-uuid-1", Name: "Beta"}
 	ft := newFakeTenants(tenant)
 	ft.byUUID["t-uuid-1"] = tenant
-	h := New(ft, &fakeSubscription{})
+	fa := &fakeAudit{byTenant: map[string][]audit.Record{
+		"t-uuid-1": {{ID: "a1", Action: "suspend", TenantID: "t-uuid-1", CreatedAt: "2026-06-27T10:00:00Z"}},
+	}}
+	h := New(ft, &fakeSubscription{}, fa)
 
 	req := withAdmin(chiReqWithUUID(http.MethodGet, "/api/admin/tenants/t-uuid-1", "t-uuid-1", nil))
 	rec := httptest.NewRecorder()
@@ -160,17 +183,23 @@ func TestDetailReturnsTenantForAdmin(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var body auth.Tenant
+	var body struct {
+		Tenant *auth.Tenant   `json:"tenant"`
+		Audit  []audit.Record `json:"audit"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Name != "Beta" {
-		t.Errorf("body.Name = %q, want Beta", body.Name)
+	if body.Tenant == nil || body.Tenant.Name != "Beta" {
+		t.Errorf("body.Tenant = %+v, want name Beta", body.Tenant)
+	}
+	if len(body.Audit) != 1 || body.Audit[0].Action != "suspend" {
+		t.Errorf("body.Audit = %+v, want one suspend row", body.Audit)
 	}
 }
 
 func TestDetail404ForUnknownTenant(t *testing.T) {
-	h := New(newFakeTenants(nil), &fakeSubscription{})
+	h := newAdmin(newFakeTenants(nil), &fakeSubscription{})
 	req := withAdmin(chiReqWithUUID(http.MethodGet, "/api/admin/tenants/no-such", "no-such", nil))
 	rec := httptest.NewRecorder()
 	h.Detail(rec, req)
@@ -184,7 +213,7 @@ func TestDetail404ForUnknownTenant(t *testing.T) {
 
 func TestSetSubscriptionPatchesStatus(t *testing.T) {
 	fs := &fakeSubscription{}
-	h := New(newFakeTenants(&auth.Tenant{ID: "t-2"}), fs)
+	h := newAdmin(newFakeTenants(&auth.Tenant{ID: "t-2"}), fs)
 
 	body, _ := json.Marshal(setSubscriptionRequest{Status: "active"})
 	req := withAdmin(chiReqWithUUID(http.MethodPatch, "/api/admin/tenants/t-2/subscription", "t-2", body))
@@ -201,7 +230,7 @@ func TestSetSubscriptionPatchesStatus(t *testing.T) {
 
 func TestSetSubscriptionTrialingForwardsTrialEnd(t *testing.T) {
 	fs := &fakeSubscription{}
-	h := New(newFakeTenants(&auth.Tenant{ID: "t-3"}), fs)
+	h := newAdmin(newFakeTenants(&auth.Tenant{ID: "t-3"}), fs)
 
 	body, _ := json.Marshal(setSubscriptionRequest{Status: "trialing", TrialEndsAt: "2027-01-01T00:00:00Z"})
 	req := withAdmin(chiReqWithUUID(http.MethodPatch, "/api/admin/tenants/t-3/subscription", "t-3", body))
@@ -217,7 +246,7 @@ func TestSetSubscriptionTrialingForwardsTrialEnd(t *testing.T) {
 }
 
 func TestSetSubscriptionRejectsMissingStatus(t *testing.T) {
-	h := New(newFakeTenants(nil), &fakeSubscription{})
+	h := newAdmin(newFakeTenants(nil), &fakeSubscription{})
 	body, _ := json.Marshal(map[string]string{"status": ""})
 	req := withAdmin(chiReqWithUUID(http.MethodPatch, "/api/admin/tenants/t-x/subscription", "t-x", body))
 	rec := httptest.NewRecorder()
@@ -231,7 +260,7 @@ func TestSetSubscriptionRejectsMissingStatus(t *testing.T) {
 
 func TestSuspendCallsThrough(t *testing.T) {
 	ft := newFakeTenants(&auth.Tenant{ID: "t-4"})
-	h := New(ft, &fakeSubscription{})
+	h := newAdmin(ft, &fakeSubscription{})
 
 	req := withAdmin(chiReqWithUUID(http.MethodPost, "/api/admin/tenants/t-4/suspend", "t-4", nil))
 	rec := httptest.NewRecorder()
@@ -248,7 +277,7 @@ func TestSuspendCallsThrough(t *testing.T) {
 func TestUnsuspendCallsThrough(t *testing.T) {
 	ft := newFakeTenants(&auth.Tenant{ID: "t-5"})
 	ft.suspended["t-5"] = true
-	h := New(ft, &fakeSubscription{})
+	h := newAdmin(ft, &fakeSubscription{})
 
 	req := withAdmin(chiReqWithUUID(http.MethodPost, "/api/admin/tenants/t-5/unsuspend", "t-5", nil))
 	rec := httptest.NewRecorder()
@@ -266,7 +295,7 @@ func TestUnsuspendCallsThrough(t *testing.T) {
 
 func TestDeleteCallsThrough(t *testing.T) {
 	ft := newFakeTenants(&auth.Tenant{ID: "t-6"})
-	h := New(ft, &fakeSubscription{})
+	h := newAdmin(ft, &fakeSubscription{})
 
 	req := withAdmin(chiReqWithUUID(http.MethodDelete, "/api/admin/tenants/t-6", "t-6", nil))
 	rec := httptest.NewRecorder()
@@ -285,7 +314,7 @@ func TestDeleteCallsThrough(t *testing.T) {
 // TestNonAdminForbiddenViaMiddleware verifies the full middleware chain rejects
 // a non-platform-admin with 403.
 func TestNonAdminForbiddenViaMiddleware(t *testing.T) {
-	h := New(newFakeTenants(nil), &fakeSubscription{})
+	h := newAdmin(newFakeTenants(nil), &fakeSubscription{})
 	// Wrap the List handler with RequirePlatformAdmin (as it is in production).
 	handler := httpx.RequirePlatformAdmin(http.HandlerFunc(h.List))
 
@@ -302,7 +331,7 @@ func TestNonAdminForbiddenViaMiddleware(t *testing.T) {
 // platform-admin.
 func TestAdminPassesMiddleware(t *testing.T) {
 	ft := newFakeTenants(&auth.Tenant{ID: "t-ok", Name: "OK Co"})
-	h := New(ft, &fakeSubscription{})
+	h := newAdmin(ft, &fakeSubscription{})
 	handler := httpx.RequirePlatformAdmin(http.HandlerFunc(h.List))
 
 	req := withAdmin(httptest.NewRequest(http.MethodGet, "/api/admin/tenants", nil))
@@ -339,7 +368,7 @@ func TestDBListAndSuspendAndDelete(t *testing.T) {
 	}
 
 	subStore := subscription.NewStore(conn)
-	h := New(auth.NewTenants(conn), subStore)
+	h := New(auth.NewTenants(conn), subStore, audit.NewReader(conn))
 
 	// List: target tenant must appear.
 	{
@@ -365,13 +394,23 @@ func TestDBListAndSuspendAndDelete(t *testing.T) {
 		}
 	}
 
-	// Detail: resolve by UUID.
+	// Detail: resolve by UUID and decode the {tenant, audit} response shape.
 	{
 		req := withAdminUser(adminUser, chiReqWithUUID(http.MethodGet, "/api/admin/tenants/"+targetTenant.ID, targetTenant.ID, nil))
 		rec := httptest.NewRecorder()
 		h.Detail(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("Detail: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var detail struct {
+			Tenant *auth.Tenant   `json:"tenant"`
+			Audit  []audit.Record `json:"audit"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("Detail decode: %v", err)
+		}
+		if detail.Tenant == nil || detail.Tenant.ID != targetTenant.ID {
+			t.Errorf("Detail tenant = %+v, want id %s", detail.Tenant, targetTenant.ID)
 		}
 	}
 
@@ -420,6 +459,50 @@ func TestDBListAndSuspendAndDelete(t *testing.T) {
 		}
 		if status != auth.StatusActive {
 			t.Errorf("status after Unsuspend = %q, want active", status)
+		}
+	}
+
+	// Detail audit trail: by now the target tenant has set_subscription_status +
+	// suspend + unsuspend audit rows. Detail must surface them (newest first),
+	// attributed to the acting admin.
+	{
+		req := withAdminUser(adminUser, chiReqWithUUID(http.MethodGet, "/api/admin/tenants/"+targetTenant.ID, targetTenant.ID, nil))
+		rec := httptest.NewRecorder()
+		h.Detail(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Detail (audit): want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var detail struct {
+			Tenant *auth.Tenant   `json:"tenant"`
+			Audit  []audit.Record `json:"audit"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("Detail (audit) decode: %v", err)
+		}
+		if len(detail.Audit) < 3 {
+			t.Fatalf("audit trail = %d rows, want >= 3 (set_subscription_status, suspend, unsuspend)", len(detail.Audit))
+		}
+		// Newest first: created_at must be non-increasing.
+		for i := 1; i < len(detail.Audit); i++ {
+			if detail.Audit[i-1].CreatedAt < detail.Audit[i].CreatedAt {
+				t.Errorf("audit not ordered newest-first at %d: %q < %q", i, detail.Audit[i-1].CreatedAt, detail.Audit[i].CreatedAt)
+			}
+		}
+		// Every row is stamped to the target tenant and the acting admin.
+		actions := map[string]bool{}
+		for _, rec := range detail.Audit {
+			actions[rec.Action] = true
+			if rec.TenantID != targetTenant.ID {
+				t.Errorf("audit row %s tenantId = %q, want %q", rec.Action, rec.TenantID, targetTenant.ID)
+			}
+			if rec.UserID != adminUser.ID {
+				t.Errorf("audit row %s userId = %q, want admin %q", rec.Action, rec.UserID, adminUser.ID)
+			}
+		}
+		for _, want := range []string{"set_subscription_status", "suspend", "unsuspend"} {
+			if !actions[want] {
+				t.Errorf("audit trail missing action %q", want)
+			}
 		}
 	}
 

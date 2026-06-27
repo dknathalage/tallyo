@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/go-chi/chi/v5"
@@ -48,6 +49,12 @@ type SubscriptionSetter interface {
 	SetSubscriptionStatus(ctx context.Context, tenantID, status, adminUserID string, trialEndsAt string) error
 }
 
+// AuditLister returns the recent audit trail for a tenant.
+// Satisfied by *audit.Reader.
+type AuditLister interface {
+	ListByTenant(ctx context.Context, tenantID string) ([]audit.Record, error)
+}
+
 // TenantsRepo combines all tenant store operations needed by the admin handler.
 // *auth.TenantsRepo satisfies this interface.
 type TenantsRepo interface {
@@ -63,14 +70,15 @@ type TenantsRepo interface {
 type Handler struct {
 	tenants      TenantsRepo
 	subscription SubscriptionSetter
+	auditLog     AuditLister
 }
 
 // New constructs the admin handler. Nil dependencies are programmer errors.
-func New(tenants TenantsRepo, subscription SubscriptionSetter) *Handler {
-	if tenants == nil || subscription == nil {
+func New(tenants TenantsRepo, subscription SubscriptionSetter, auditLog AuditLister) *Handler {
+	if tenants == nil || subscription == nil || auditLog == nil {
 		panic("admin: New nil dep")
 	}
-	return &Handler{tenants: tenants, subscription: subscription}
+	return &Handler{tenants: tenants, subscription: subscription, auditLog: auditLog}
 }
 
 // Routes registers all admin endpoints on the provided router. The router must
@@ -94,12 +102,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, tenants)
 }
 
-// Detail returns a single tenant by UUID. The audit trail is not yet surfaced
-// here because no store method to list audit rows per tenant exists in the
-// control-DB query layer.
-//
-// ponytail: add a ListAuditByTenant(ctx, tenantID) query to surface the audit
-// trail once the operator panel needs it.
+// detailResponse is the body of GET /api/admin/tenants/:uuid: the tenant row
+// plus its recent audit trail (newest first, capped by the store query).
+type detailResponse struct {
+	Tenant *auth.Tenant   `json:"tenant"`
+	Audit  []audit.Record `json:"audit"`
+}
+
+// Detail returns a single tenant by UUID together with its recent audit trail
+// (the affected-tenant rows, including cross-tenant admin actions stamped via
+// LogAs). The trail is bounded by the ListByTenant store query.
 func (h *Handler) Detail(w http.ResponseWriter, r *http.Request) {
 	uuid := chi.URLParam(r, "uuid")
 	tenant, err := h.tenants.GetByUUID(r.Context(), uuid)
@@ -111,7 +123,13 @@ func (h *Handler) Detail(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "tenant not found")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, tenant)
+	trail, err := h.auditLog.ListByTenant(r.Context(), tenant.ID)
+	if err != nil {
+		httpx.LoggerFrom(r.Context()).Error("list audit trail", "err", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, detailResponse{Tenant: tenant, Audit: trail})
 }
 
 // setSubscriptionRequest is the request body for PATCH .../subscription.
