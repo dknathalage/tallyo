@@ -1,7 +1,7 @@
 # Tallyo SaaS Subscriptions — Design
 
 Date: 2026-06-27
-Status: Approved (design); pending spec review
+Status: Approved (design + spec review)
 
 ## Goal
 
@@ -23,7 +23,7 @@ proration logic, locally-stored Stripe invoices, a Stripe OpenTofu provider.
 - `internal/httpx.ResolveTenant` middleware already loads the tenant per request
   and 403s a suspended tenant — the entitlement gate folds in here.
 - `internal/httpx.RequireRole("owner")` exists for owner-only routes.
-- Env config helpers: `app.EnvOr`, `app.envBool` (`internal/app/app.go`).
+- Env config helpers: `app.EnvOr`, `app.EnvBool` (`internal/app/app.go`).
 - Signup: `SignupHandler` (`internal/app/auth_handlers.go`) provisions
   tenant + owner + business profile for the bearer identity.
 - Secrets: Google Secret Manager via `infra/modules/secrets`, one resource pair
@@ -57,6 +57,17 @@ Add to `tenants`:
 - `current_period_end TEXT` — display only, set from webhook
 
 `none` = tenant created but Checkout never completed.
+
+Index `CREATE INDEX idx_tenants_stripe_customer ON tenants(stripe_customer_id)` —
+the tenant-agnostic webhook resolves the tenant by `stripe_customer_id` (or by
+`client_reference_id`/metadata carried on the Checkout Session; see §5).
+
+**sqlc plumbing:** the entitlement fields must ride along with the existing
+`ResolveTenant` read (no extra query). That means: add the new columns to the
+`SELECT *`-equivalent in `internal/db/queries/tenants.sql` (they come free with
+`SELECT *`, but pin explicit columns if switching), add a
+`GetTenantByStripeCustomer` query, regenerate sqlc (`task sqlc`), and add the
+new fields to the `auth.Tenant` struct + its `GetByUUID`/status mappers.
 
 ## Entitlement (the whole gate)
 
@@ -111,6 +122,17 @@ trial bookkeeping.
   - `customer.subscription.updated` / `.deleted` → sync `subscription_status`,
     `trial_end`, `current_period_end`.
 
+  **Tenant resolution + race/idempotency:** set `client_reference_id` (and
+  metadata `tenant_id`) on the Checkout Session so EVERY handler can map back to
+  a tenant — `checkout.session.completed` reads `client_reference_id`;
+  `subscription.*` handlers resolve via `GetTenantByStripeCustomer`, and if the
+  customer isn't linked yet (update arrived before completed), self-heal by
+  fetching the subscription from Stripe to read its metadata/customer and link.
+  **Idempotency:** webhook delivery is at-least-once and can be out of order —
+  store the Stripe event/subscription `created`(or `current_period_end`)
+  timestamp and no-op any event not newer than stored state; duplicate
+  deliveries are therefore idempotent.
+
 Uses the `stripe-go` SDK (justified dependency: hand-rolling signed API calls and
 webhook signature verification is the wrong rung).
 
@@ -121,7 +143,7 @@ webhook signature verification is the wrong rung).
 - `STRIPE_PRICE_ID`
 - `TRIAL_DAYS` (int, default 90)
 
-Read via `EnvOr` / `envBool`. Use the `feature-gate` skill for `BILLING_ENABLED`.
+Read via `app.EnvOr` / `app.EnvBool`. Use the `feature-gate` skill for `BILLING_ENABLED`.
 
 ### 7. Frontend
 - Billing settings page: status + trial days left; `Subscribe` → Checkout,
@@ -134,10 +156,21 @@ Read via `EnvOr` / `envBool`. Use the `feature-gate` skill for `BILLING_ENABLED`
   "ask your account owner" (member).
 
 ### 8. Infra
-Extend `infra/modules/secrets` with two GSM secrets — `stripe_secret_key`,
-`stripe_webhook_secret` — copying the `anthropic` resource pair. Wire both into
-Cloud Run env like the existing secrets. No Stripe tofu provider; create the
-product + price once in the Stripe dashboard and set `STRIPE_PRICE_ID` in config.
+Cross-module, all copying existing patterns:
+- `infra/modules/secrets` — add `stripe_secret_key` + `stripe_webhook_secret`
+  vars + GSM secret/version resource pairs (clone the `anthropic` pair); export
+  their ids in `outputs.tf`.
+- `infra/modules/cloud-run` — add the two secret vars + `variables.tf` entries
+  for `billing_enabled`, `stripe_price_id`, `trial_days`; reference the secrets
+  in the container env block in `main.tf`; grant the runtime SA
+  `secretAccessor` on the two new secrets (the IAM binding near
+  `cloud-run/main.tf:30`).
+- Terragrunt — pass the new secret outputs + plain values through
+  `_envcommon/secrets.hcl`, `_envcommon/cloud-run.hcl`, and per-env inputs.
+
+No Stripe tofu provider; create the product + price once in the Stripe dashboard
+(grab `STRIPE_PRICE_ID`) and register the webhook endpoint (grab
+`STRIPE_WEBHOOK_SECRET`) manually.
 
 ## Data flow
 
@@ -170,4 +203,8 @@ product + price once in the Stripe dashboard and set `STRIPE_PRICE_ID` in config
   gate disabled → all pass.
 - Webhook handler: valid signature applies state for each handled event type;
   invalid signature → 400; unknown subscription → 200 + no-op.
+- Webhook idempotency: duplicate delivery of the same event is a no-op;
+  out-of-order (stale-timestamp) event does not clobber newer state.
+- Webhook self-heal: `subscription.updated` arriving before
+  `checkout.session.completed` still links the tenant (via Stripe lookup).
 - Signup: new tenant lands in `status='none'`.
