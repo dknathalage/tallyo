@@ -17,9 +17,14 @@ import (
 func setup(t *testing.T) *sql.DB {
 	t.Helper()
 	conn := appdb.OpenTestDB(t)
+	// doc_test is a scratch table created after OpenTestDB's truncate, so drop
+	// it first to start clean across the package's serialized tests.
+	if _, err := conn.Exec(`DROP TABLE IF EXISTS doc_test`); err != nil {
+		t.Fatalf("drop: %v", err)
+	}
 	if _, err := conn.Exec(`CREATE TABLE doc_test (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		tenant_id INTEGER NOT NULL,
+		id BIGSERIAL PRIMARY KEY,
+		tenant_id BIGINT NOT NULL,
 		number TEXT NOT NULL,
 		UNIQUE(tenant_id, number))`); err != nil {
 		t.Fatalf("create: %v", err)
@@ -34,7 +39,7 @@ const prefix = "INV-"
 func nextForTenant(ctx context.Context, tx *sql.Tx, tenantID int64) (string, error) {
 	var max int64
 	row := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(CAST(substr(number, ?) AS INTEGER)), 0) FROM doc_test WHERE tenant_id = ? AND number LIKE ?`,
+		`SELECT COALESCE(MAX(CAST(substr(number, $1) AS INTEGER)), 0) FROM doc_test WHERE tenant_id = $2 AND number LIKE $3`,
 		int64(len(prefix)+1), tenantID, prefix+"%")
 	if err := row.Scan(&max); err != nil {
 		return "", err
@@ -54,7 +59,7 @@ func allocate(ctx context.Context, conn *sql.DB, tenantID int64) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO doc_test (tenant_id, number) VALUES (?, ?)`, tenantID, n); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO doc_test (tenant_id, number) VALUES ($1, $2)`, tenantID, n); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -82,7 +87,7 @@ func TestSequentialPerTenant(t *testing.T) {
 		if n != want {
 			t.Fatalf("got %q want %q", n, want)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO doc_test (tenant_id, number) VALUES (?, ?)`, 1, n); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO doc_test (tenant_id, number) VALUES ($1, $2)`, 1, n); err != nil {
 			t.Fatalf("insert: %v", err)
 		}
 		_ = tx.Commit()
@@ -148,7 +153,7 @@ func TestTenantsNumberIndependently(t *testing.T) {
 		for n := 1; n <= perTenant; n++ {
 			num := fmt.Sprintf("INV-%04d", n)
 			var c int
-			_ = conn.QueryRow(`SELECT COUNT(*) FROM doc_test WHERE tenant_id = ? AND number = ?`, tenant, num).Scan(&c)
+			_ = conn.QueryRow(`SELECT COUNT(*) FROM doc_test WHERE tenant_id = $1 AND number = $2`, tenant, num).Scan(&c)
 			if c != 1 {
 				t.Fatalf("tenant %d missing/duplicate %s (count=%d)", tenant, num, c)
 			}

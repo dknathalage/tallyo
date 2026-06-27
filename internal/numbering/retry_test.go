@@ -4,7 +4,15 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// pgErr builds a *pgconn.PgError carrying the given SQLSTATE, matching what the
+// pgx driver returns for a constraint/serialization conflict.
+func pgErr(code string) error {
+	return &pgconn.PgError{Code: code}
+}
 
 // TestWithRetrySucceedsFirstAttempt verifies fn that returns nil immediately is
 // run exactly once and reports success.
@@ -46,7 +54,7 @@ func TestWithRetryRetriesThenSucceeds(t *testing.T) {
 	err := WithRetry(context.Background(), 5, func() error {
 		calls++
 		if calls < 3 {
-			return errors.New("UNIQUE constraint failed: doc_test.number")
+			return pgErr("23505") // unique_violation
 		}
 		return nil
 	})
@@ -61,7 +69,7 @@ func TestWithRetryRetriesThenSucceeds(t *testing.T) {
 // TestWithRetryExhausts verifies that a persistently retryable error exhausts
 // all attempts and the wrapped error preserves the underlying cause.
 func TestWithRetryExhausts(t *testing.T) {
-	underlying := errors.New("database is locked")
+	underlying := pgErr("40001") // serialization_failure
 	calls := 0
 	err := WithRetry(context.Background(), 3, func() error {
 		calls++
@@ -106,29 +114,27 @@ func TestWithRetryClampsAttempts(t *testing.T) {
 }
 
 // TestIsRetryable is a table-driven check of the transient-error classifier:
-// UNIQUE/constraint/locked/busy substrings (case-insensitive) are retryable,
-// everything else is fatal.
+// pgconn SQLSTATEs 23505 (unique_violation) and 40001 (serialization_failure)
+// are retryable; any other SQLSTATE or a non-pg error is fatal.
 func TestIsRetryable(t *testing.T) {
 	cases := []struct {
 		name string
-		err  string
+		err  error
 		want bool
 	}{
-		{"unique lower", "unique constraint failed", true},
-		{"unique upper", "UNIQUE constraint failed: x.number", true},
-		{"constraint only", "FOREIGN KEY constraint failed", true},
-		{"locked", "database is LOCKED", true},
-		{"busy", "database is busy (SQLITE_BUSY)", true},
-		{"busy snapshot", "Busy snapshot 517", true},
-		{"not found", "no rows in result set", false},
-		{"syntax", "near \"SELCT\": syntax error", false},
-		{"empty", "", false},
+		{"unique violation", pgErr("23505"), true},
+		{"serialization failure", pgErr("40001"), true},
+		{"foreign key violation", pgErr("23503"), false},
+		{"not null violation", pgErr("23502"), false},
+		{"syntax error", pgErr("42601"), false},
+		{"non-pg error", errors.New("no rows in result set"), false},
+		{"nil-ish plain", errors.New(""), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := isRetryable(errors.New(tc.err))
+			got := isRetryable(tc.err)
 			if got != tc.want {
-				t.Fatalf("isRetryable(%q) = %v, want %v", tc.err, got, tc.want)
+				t.Fatalf("isRetryable(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})
 	}
