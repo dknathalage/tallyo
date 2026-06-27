@@ -9,14 +9,14 @@ SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? ORDER BY s.service_date DESC, s.id DESC;
+WHERE s.tenant_id = $1 ORDER BY s.service_date DESC, s.id DESC;
 
 -- name: ListSessionsByClient :many
 SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.client_id = ?
+WHERE s.tenant_id = $1 AND s.client_id = $2
 ORDER BY s.service_date, s.id;
 
 -- name: ListSessionsByClientRange :many
@@ -24,8 +24,8 @@ SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.client_id = ?
-  AND s.service_date >= ? AND s.service_date <= ?
+WHERE s.tenant_id = $1 AND s.client_id = $2
+  AND s.service_date >= $3 AND s.service_date <= $4
 ORDER BY s.service_date, s.id;
 
 -- name: ListSessionsByStatus :many
@@ -33,21 +33,21 @@ SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.status = ? ORDER BY s.service_date, s.id;
+WHERE s.tenant_id = $1 AND s.status = $2 ORDER BY s.service_date, s.id;
 
 -- name: ListScheduledSessions :many
 SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.status = 'scheduled' ORDER BY s.service_date, s.id;
+WHERE s.tenant_id = $1 AND s.status = 'scheduled' ORDER BY s.service_date, s.id;
 
 -- name: ListRecordedUnbilledByClient :many
 SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.client_id = ? AND s.status = 'recorded' AND s.invoice_id IS NULL
+WHERE s.tenant_id = $1 AND s.client_id = $2 AND s.status = 'recorded' AND s.invoice_id IS NULL
 ORDER BY s.service_date, s.id;
 
 -- name: GetSession :one
@@ -55,49 +55,49 @@ SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.id = ?;
+WHERE s.tenant_id = $1 AND s.id = $2;
 
 -- name: GetSessionByID :one
 SELECT s.*, p.id AS client_uuid, i.id AS invoice_uuid
 FROM work_sessions s
 LEFT JOIN clients p ON s.client_id = p.id AND p.tenant_id = s.tenant_id
 LEFT JOIN invoices i ON s.invoice_id = i.id AND i.tenant_id = s.tenant_id
-WHERE s.tenant_id = ? AND s.id = ?;
+WHERE s.tenant_id = $1 AND s.id = $2;
 
 -- name: GetSessionIDByUUID :one
-SELECT id FROM work_sessions WHERE tenant_id = ? AND id = ?;
+SELECT id FROM work_sessions WHERE tenant_id = $1 AND id = $2;
 
 -- name: CreateSession :one
 INSERT INTO work_sessions (
     id, tenant_id, client_id, service_date, note, tags, status,
     author_user_id, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: UpdateSession :one
 UPDATE work_sessions SET
-    service_date = ?, note = ?, tags = ?, status = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+    service_date = $1, note = $2, tags = $3, status = $4, updated_at = $5
+WHERE tenant_id = $6 AND id = $7
 RETURNING *;
 
 -- name: UpdateSessionStatus :exec
-UPDATE work_sessions SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?;
+UPDATE work_sessions SET status = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4;
 
 -- name: SetSessionInvoice :exec
-UPDATE work_sessions SET invoice_id = ?, status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?;
+UPDATE work_sessions SET invoice_id = $1, status = $2, updated_at = $3 WHERE tenant_id = $4 AND id = $5;
 
 -- name: SetStatusForInvoice :exec
-UPDATE work_sessions SET status = ?, updated_at = ? WHERE tenant_id = ? AND invoice_id = ?;
+UPDATE work_sessions SET status = $1, updated_at = $2 WHERE tenant_id = $3 AND invoice_id = $4;
 
 -- name: ClearSessionsForInvoice :exec
-UPDATE work_sessions SET invoice_id = NULL, status = 'recorded', updated_at = ?
-WHERE tenant_id = ? AND invoice_id = ?;
+UPDATE work_sessions SET invoice_id = NULL, status = 'recorded', updated_at = $1
+WHERE tenant_id = $2 AND invoice_id = $3;
 
 -- name: DeleteSession :exec
-DELETE FROM work_sessions WHERE tenant_id = ? AND id = ?;
+DELETE FROM work_sessions WHERE tenant_id = $1 AND id = $2;
 
 -- name: ClientUnbilledAgg :many
 SELECT client_id, COUNT(*) AS cnt, MIN(service_date) AS from_date, MAX(service_date) AS to_date
 FROM work_sessions
-WHERE tenant_id = ? AND status = 'recorded' AND invoice_id IS NULL
+WHERE tenant_id = $1 AND status = 'recorded' AND invoice_id IS NULL
 GROUP BY client_id;

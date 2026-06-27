@@ -11,7 +11,7 @@ import (
 )
 
 const countSessionItems = `-- name: CountSessionItems :one
-SELECT COUNT(*) FROM line_items WHERE tenant_id = ? AND session_id = ? AND invoice_id IS NULL
+SELECT COUNT(*) FROM line_items WHERE tenant_id = $1 AND session_id = $2 AND invoice_id IS NULL
 `
 
 type CountSessionItemsParams struct {
@@ -31,7 +31,7 @@ INSERT INTO line_items (
     id, tenant_id, session_id, invoice_id, catalogue_item_id, code, description,
     service_date, unit, start_time, end_time, quantity, unit_price, taxable,
     line_total, sort_order
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 RETURNING id, tenant_id, session_id, invoice_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order, catalogue_item_id
 `
 
@@ -96,7 +96,7 @@ func (q *Queries) CreateLineItem(ctx context.Context, arg CreateLineItemParams) 
 }
 
 const deleteLineItemsForInvoice = `-- name: DeleteLineItemsForInvoice :exec
-DELETE FROM line_items WHERE tenant_id = ? AND invoice_id = ?
+DELETE FROM line_items WHERE tenant_id = $1 AND invoice_id = $2
 `
 
 type DeleteLineItemsForInvoiceParams struct {
@@ -110,7 +110,7 @@ func (q *Queries) DeleteLineItemsForInvoice(ctx context.Context, arg DeleteLineI
 }
 
 const deleteSessionLineItem = `-- name: DeleteSessionLineItem :exec
-DELETE FROM line_items WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
+DELETE FROM line_items WHERE tenant_id = $1 AND id = $2 AND invoice_id IS NULL
 `
 
 type DeleteSessionLineItemParams struct {
@@ -124,7 +124,7 @@ func (q *Queries) DeleteSessionLineItem(ctx context.Context, arg DeleteSessionLi
 }
 
 const deleteSessionLineItemByUUID = `-- name: DeleteSessionLineItemByUUID :exec
-DELETE FROM line_items WHERE tenant_id = ? AND session_id = ? AND id = ? AND invoice_id IS NULL
+DELETE FROM line_items WHERE tenant_id = $1 AND session_id = $2 AND id = $3 AND invoice_id IS NULL
 `
 
 type DeleteSessionLineItemByUUIDParams struct {
@@ -139,7 +139,7 @@ func (q *Queries) DeleteSessionLineItemByUUID(ctx context.Context, arg DeleteSes
 }
 
 const deleteUnbilledItemsForSession = `-- name: DeleteUnbilledItemsForSession :exec
-DELETE FROM line_items WHERE tenant_id = ? AND session_id = ? AND invoice_id IS NULL
+DELETE FROM line_items WHERE tenant_id = $1 AND session_id = $2 AND invoice_id IS NULL
 `
 
 type DeleteUnbilledItemsForSessionParams struct {
@@ -156,7 +156,7 @@ const getLineItem = `-- name: GetLineItem :one
 SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, li.catalogue_item_id, cat.id AS catalogue_item_uuid
 FROM line_items li
 LEFT JOIN catalogue_items cat ON li.catalogue_item_id = cat.id
-WHERE li.tenant_id = ? AND li.id = ?
+WHERE li.tenant_id = $1 AND li.id = $2
 `
 
 type GetLineItemParams struct {
@@ -213,7 +213,7 @@ const getSessionLineItemByUUID = `-- name: GetSessionLineItemByUUID :one
 SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, li.catalogue_item_id, cat.id AS catalogue_item_uuid
 FROM line_items li
 LEFT JOIN catalogue_items cat ON li.catalogue_item_id = cat.id
-WHERE li.tenant_id = ? AND li.session_id = ? AND li.id = ?
+WHERE li.tenant_id = $1 AND li.session_id = $2 AND li.id = $3
 `
 
 type GetSessionLineItemByUUIDParams struct {
@@ -269,8 +269,8 @@ func (q *Queries) GetSessionLineItemByUUID(ctx context.Context, arg GetSessionLi
 }
 
 const linkSessionItemsToInvoice = `-- name: LinkSessionItemsToInvoice :exec
-UPDATE line_items SET invoice_id = ?, sort_order = ?
-WHERE tenant_id = ? AND session_id = ? AND invoice_id IS NULL
+UPDATE line_items SET invoice_id = $1, sort_order = $2
+WHERE tenant_id = $3 AND session_id = $4 AND invoice_id IS NULL
 `
 
 type LinkSessionItemsToInvoiceParams struct {
@@ -294,7 +294,7 @@ const listLineItemsForInvoice = `-- name: ListLineItemsForInvoice :many
 SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, li.catalogue_item_id, cat.id AS catalogue_item_uuid
 FROM line_items li
 LEFT JOIN catalogue_items cat ON li.catalogue_item_id = cat.id
-WHERE li.tenant_id = ? AND li.invoice_id = ? ORDER BY li.sort_order, li.id
+WHERE li.tenant_id = $1 AND li.invoice_id = $2 ORDER BY li.sort_order, li.id
 `
 
 type ListLineItemsForInvoiceParams struct {
@@ -367,7 +367,7 @@ const listLineItemsForSession = `-- name: ListLineItemsForSession :many
 SELECT li.id, li.tenant_id, li.session_id, li.invoice_id, li.code, li.description, li.service_date, li.unit, li.start_time, li.end_time, li.quantity, li.unit_price, li.taxable, li.line_total, li.sort_order, li.catalogue_item_id, cat.id AS catalogue_item_uuid
 FROM line_items li
 LEFT JOIN catalogue_items cat ON li.catalogue_item_id = cat.id
-WHERE li.tenant_id = ? AND li.session_id = ? ORDER BY li.id
+WHERE li.tenant_id = $1 AND li.session_id = $2 ORDER BY li.id
 `
 
 type ListLineItemsForSessionParams struct {
@@ -437,8 +437,8 @@ func (q *Queries) ListLineItemsForSession(ctx context.Context, arg ListLineItems
 }
 
 const restampUnbilledSessionItems = `-- name: RestampUnbilledSessionItems :exec
-UPDATE line_items SET service_date = ?
-WHERE tenant_id = ? AND session_id = ? AND invoice_id IS NULL
+UPDATE line_items SET service_date = $1
+WHERE tenant_id = $2 AND session_id = $3 AND invoice_id IS NULL
 `
 
 type RestampUnbilledSessionItemsParams struct {
@@ -454,7 +454,7 @@ func (q *Queries) RestampUnbilledSessionItems(ctx context.Context, arg RestampUn
 
 const unlinkSessionItemsFromInvoice = `-- name: UnlinkSessionItemsFromInvoice :exec
 UPDATE line_items SET invoice_id = NULL, sort_order = 0
-WHERE tenant_id = ? AND invoice_id = ? AND session_id IS NOT NULL
+WHERE tenant_id = $1 AND invoice_id = $2 AND session_id IS NOT NULL
 `
 
 type UnlinkSessionItemsFromInvoiceParams struct {
@@ -469,9 +469,9 @@ func (q *Queries) UnlinkSessionItemsFromInvoice(ctx context.Context, arg UnlinkS
 
 const updateSessionLineItem = `-- name: UpdateSessionLineItem :one
 UPDATE line_items SET
-    catalogue_item_id = ?, code = ?, description = ?, service_date = ?, unit = ?,
-    start_time = ?, end_time = ?, quantity = ?, unit_price = ?, taxable = ?, line_total = ?
-WHERE tenant_id = ? AND id = ? AND invoice_id IS NULL
+    catalogue_item_id = $1, code = $2, description = $3, service_date = $4, unit = $5,
+    start_time = $6, end_time = $7, quantity = $8, unit_price = $9, taxable = $10, line_total = $11
+WHERE tenant_id = $12 AND id = $13 AND invoice_id IS NULL
 RETURNING id, tenant_id, session_id, invoice_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order, catalogue_item_id
 `
 
@@ -531,9 +531,9 @@ func (q *Queries) UpdateSessionLineItem(ctx context.Context, arg UpdateSessionLi
 
 const updateSessionLineItemByUUID = `-- name: UpdateSessionLineItemByUUID :one
 UPDATE line_items SET
-    catalogue_item_id = ?, code = ?, description = ?, service_date = ?, unit = ?,
-    start_time = ?, end_time = ?, quantity = ?, unit_price = ?, taxable = ?, line_total = ?
-WHERE tenant_id = ? AND session_id = ? AND id = ? AND invoice_id IS NULL
+    catalogue_item_id = $1, code = $2, description = $3, service_date = $4, unit = $5,
+    start_time = $6, end_time = $7, quantity = $8, unit_price = $9, taxable = $10, line_total = $11
+WHERE tenant_id = $12 AND session_id = $13 AND id = $14 AND invoice_id IS NULL
 RETURNING id, tenant_id, session_id, invoice_id, code, description, service_date, unit, start_time, end_time, quantity, unit_price, taxable, line_total, sort_order, catalogue_item_id
 `
 

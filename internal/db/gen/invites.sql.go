@@ -12,7 +12,7 @@ import (
 
 const createInvite = `-- name: CreateInvite :one
 INSERT INTO invites (id, tenant_id, token, email, role, created_by, expires_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at
 `
 
@@ -54,7 +54,7 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Inv
 }
 
 const deleteInvite = `-- name: DeleteInvite :exec
-DELETE FROM invites WHERE tenant_id = ? AND id = ?
+DELETE FROM invites WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteInviteParams struct {
@@ -68,7 +68,7 @@ func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) erro
 }
 
 const deleteInviteByUUID = `-- name: DeleteInviteByUUID :exec
-DELETE FROM invites WHERE tenant_id = ? AND id = ?
+DELETE FROM invites WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteInviteByUUIDParams struct {
@@ -82,7 +82,7 @@ func (q *Queries) DeleteInviteByUUID(ctx context.Context, arg DeleteInviteByUUID
 }
 
 const getInviteByToken = `-- name: GetInviteByToken :one
-SELECT id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE token = ?
+SELECT id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE token = $1
 `
 
 func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, error) {
@@ -103,7 +103,7 @@ func (q *Queries) GetInviteByToken(ctx context.Context, token string) (Invite, e
 }
 
 const listInvites = `-- name: ListInvites :many
-SELECT id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE tenant_id = ? ORDER BY created_at DESC
+SELECT id, tenant_id, token, email, role, created_by, expires_at, accepted_at, created_at FROM invites WHERE tenant_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListInvites(ctx context.Context, tenantID string) ([]Invite, error) {
@@ -140,7 +140,7 @@ func (q *Queries) ListInvites(ctx context.Context, tenantID string) ([]Invite, e
 }
 
 const markInviteAccepted = `-- name: MarkInviteAccepted :exec
-UPDATE invites SET accepted_at = ? WHERE token = ?
+UPDATE invites SET accepted_at = $1 WHERE token = $2
 `
 
 type MarkInviteAcceptedParams struct {

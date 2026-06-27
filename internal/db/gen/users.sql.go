@@ -11,7 +11,7 @@ import (
 )
 
 const countUsers = `-- name: CountUsers :one
-SELECT COUNT(*) FROM users WHERE tenant_id = ?
+SELECT COUNT(*) FROM users WHERE tenant_id = $1
 `
 
 func (q *Queries) CountUsers(ctx context.Context, tenantID string) (int64, error) {
@@ -22,7 +22,7 @@ func (q *Queries) CountUsers(ctx context.Context, tenantID string) (int64, error
 }
 
 const countUsersByEmailGlobal = `-- name: CountUsersByEmailGlobal :one
-SELECT COUNT(*) FROM users WHERE email = ?
+SELECT COUNT(*) FROM users WHERE email = $1
 `
 
 func (q *Queries) CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error) {
@@ -34,7 +34,7 @@ func (q *Queries) CountUsersByEmailGlobal(ctx context.Context, email string) (in
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at
 `
 
@@ -79,7 +79,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const deleteUser = `-- name: DeleteUser :exec
-DELETE FROM users WHERE tenant_id = ? AND id = ?
+DELETE FROM users WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteUserParams struct {
@@ -93,7 +93,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? AND email = ?
+SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = $1 AND email = $2
 `
 
 type GetUserByEmailParams struct {
@@ -120,7 +120,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 }
 
 const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE email = ?
+SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
@@ -142,7 +142,7 @@ func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User,
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = $1 AND id = $2
 `
 
 type GetUserByIDParams struct {
@@ -172,7 +172,7 @@ const listTenantsByEmail = `-- name: ListTenantsByEmail :many
 SELECT u.tenant_id, t.name AS tenant_name, t.id AS tenant_uuid, u.role AS role
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
-WHERE u.email = ?
+WHERE u.email = $1
 ORDER BY t.name
 `
 
@@ -212,7 +212,7 @@ func (q *Queries) ListTenantsByEmail(ctx context.Context, email string) ([]ListT
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? ORDER BY id
+SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = $1 ORDER BY id
 `
 
 func (q *Queries) ListUsers(ctx context.Context, tenantID string) ([]User, error) {
@@ -250,7 +250,7 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID string) ([]User, error
 }
 
 const touchLastLogin = `-- name: TouchLastLogin :exec
-UPDATE users SET last_login_at = ? WHERE id = ?
+UPDATE users SET last_login_at = $1 WHERE id = $2
 `
 
 type TouchLastLoginParams struct {
@@ -264,7 +264,7 @@ func (q *Queries) TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) 
 }
 
 const updateUserRole = `-- name: UpdateUserRole :exec
-UPDATE users SET role = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
+UPDATE users SET role = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4
 `
 
 type UpdateUserRoleParams struct {

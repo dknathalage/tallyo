@@ -12,7 +12,7 @@ import (
 
 const createPayment = `-- name: CreatePayment :one
 INSERT INTO payments (id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at
 `
 
 type CreatePaymentParams struct {
@@ -58,7 +58,7 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 }
 
 const deletePayment = `-- name: DeletePayment :exec
-DELETE FROM payments WHERE tenant_id = ? AND id = ?
+DELETE FROM payments WHERE tenant_id = $1 AND id = $2
 `
 
 type DeletePaymentParams struct {
@@ -72,7 +72,7 @@ func (q *Queries) DeletePayment(ctx context.Context, arg DeletePaymentParams) er
 }
 
 const deletePaymentByUUID = `-- name: DeletePaymentByUUID :exec
-DELETE FROM payments WHERE tenant_id = ? AND invoice_id = ? AND id = ?
+DELETE FROM payments WHERE tenant_id = $1 AND invoice_id = $2 AND id = $3
 `
 
 type DeletePaymentByUUIDParams struct {
@@ -87,7 +87,7 @@ func (q *Queries) DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUU
 }
 
 const getPayment = `-- name: GetPayment :one
-SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = $1 AND id = $2
 `
 
 type GetPaymentParams struct {
@@ -114,7 +114,7 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Payment
 }
 
 const getPaymentByUUID = `-- name: GetPaymentByUUID :one
-SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? AND id = ?
+SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = $1 AND invoice_id = $2 AND id = $3
 `
 
 type GetPaymentByUUIDParams struct {
@@ -142,8 +142,8 @@ func (q *Queries) GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDPara
 }
 
 const invoiceTotalPaid = `-- name: InvoiceTotalPaid :one
-SELECT CAST(COALESCE(SUM(amount), 0) AS REAL) AS total_paid
-FROM payments WHERE tenant_id = ? AND invoice_id = ?
+SELECT CAST(COALESCE(SUM(amount), 0) AS double precision) AS total_paid
+FROM payments WHERE tenant_id = $1 AND invoice_id = $2
 `
 
 type InvoiceTotalPaidParams struct {
@@ -159,7 +159,7 @@ func (q *Queries) InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidPara
 }
 
 const listInvoicePayments = `-- name: ListInvoicePayments :many
-SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = ? AND invoice_id = ? ORDER BY paid_at, id
+SELECT id, tenant_id, invoice_id, amount, paid_at, method, reference, notes, created_at, updated_at FROM payments WHERE tenant_id = $1 AND invoice_id = $2 ORDER BY paid_at, id
 `
 
 type ListInvoicePaymentsParams struct {

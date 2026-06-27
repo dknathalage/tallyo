@@ -14,7 +14,7 @@ const createCatalogueItem = `-- name: CreateCatalogueItem :one
 INSERT INTO catalogue_items (
     id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable,
     metadata, version, is_current, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at
 `
 
@@ -73,7 +73,7 @@ func (q *Queries) CreateCatalogueItem(ctx context.Context, arg CreateCatalogueIt
 }
 
 const estimateLineReferencesCatalogue = `-- name: EstimateLineReferencesCatalogue :one
-SELECT EXISTS (SELECT 1 FROM estimate_line_items WHERE catalogue_item_id = ?)
+SELECT EXISTS (SELECT 1 FROM estimate_line_items WHERE catalogue_item_id = $1)
 `
 
 func (q *Queries) EstimateLineReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error) {
@@ -84,7 +84,7 @@ func (q *Queries) EstimateLineReferencesCatalogue(ctx context.Context, catalogue
 }
 
 const getCatalogueItem = `-- name: GetCatalogueItem :one
-SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items WHERE tenant_id = ? AND id = ?
+SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items WHERE tenant_id = $1 AND id = $2
 `
 
 type GetCatalogueItemParams struct {
@@ -118,7 +118,7 @@ func (q *Queries) GetCatalogueItem(ctx context.Context, arg GetCatalogueItemPara
 
 const getCatalogueLogicalIDByUUID = `-- name: GetCatalogueLogicalIDByUUID :one
 SELECT logical_id FROM catalogue_items
-WHERE tenant_id = ? AND id = ? AND is_current = 1
+WHERE tenant_id = $1 AND id = $2 AND is_current = 1
 `
 
 type GetCatalogueLogicalIDByUUIDParams struct {
@@ -137,7 +137,7 @@ func (q *Queries) GetCatalogueLogicalIDByUUID(ctx context.Context, arg GetCatalo
 
 const getCurrentCatalogueByCode = `-- name: GetCurrentCatalogueByCode :one
 SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items
-WHERE tenant_id = ? AND is_current = 1 AND code = ? AND code <> ''
+WHERE tenant_id = $1 AND is_current = 1 AND code = $2 AND code <> ''
 `
 
 type GetCurrentCatalogueByCodeParams struct {
@@ -170,7 +170,7 @@ func (q *Queries) GetCurrentCatalogueByCode(ctx context.Context, arg GetCurrentC
 
 const getCurrentCatalogueByLogical = `-- name: GetCurrentCatalogueByLogical :one
 SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items
-WHERE tenant_id = ? AND logical_id = ? AND is_current = 1
+WHERE tenant_id = $1 AND logical_id = $2 AND is_current = 1
 `
 
 type GetCurrentCatalogueByLogicalParams struct {
@@ -201,7 +201,7 @@ func (q *Queries) GetCurrentCatalogueByLogical(ctx context.Context, arg GetCurre
 }
 
 const lineItemReferencesCatalogue = `-- name: LineItemReferencesCatalogue :one
-SELECT EXISTS (SELECT 1 FROM line_items WHERE catalogue_item_id = ?)
+SELECT EXISTS (SELECT 1 FROM line_items WHERE catalogue_item_id = $1)
 `
 
 func (q *Queries) LineItemReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error) {
@@ -214,7 +214,7 @@ func (q *Queries) LineItemReferencesCatalogue(ctx context.Context, catalogueItem
 const listCatalogue = `-- name: ListCatalogue :many
 
 SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items
-WHERE tenant_id = ? AND is_current = 1
+WHERE tenant_id = $1 AND is_current = 1
 ORDER BY name
 `
 
@@ -259,7 +259,7 @@ func (q *Queries) ListCatalogue(ctx context.Context, tenantID string) ([]Catalog
 }
 
 const markCatalogueVersionStale = `-- name: MarkCatalogueVersionStale :exec
-UPDATE catalogue_items SET is_current = 0 WHERE tenant_id = ? AND id = ?
+UPDATE catalogue_items SET is_current = 0 WHERE tenant_id = $1 AND id = $2
 `
 
 type MarkCatalogueVersionStaleParams struct {
@@ -274,7 +274,7 @@ func (q *Queries) MarkCatalogueVersionStale(ctx context.Context, arg MarkCatalog
 
 const maxCatalogueVersionForLogical = `-- name: MaxCatalogueVersionForLogical :one
 SELECT COALESCE(MAX(version), 0) FROM catalogue_items
-WHERE tenant_id = ? AND logical_id = ?
+WHERE tenant_id = $1 AND logical_id = $2
 `
 
 type MaxCatalogueVersionForLogicalParams struct {
@@ -291,21 +291,21 @@ func (q *Queries) MaxCatalogueVersionForLogical(ctx context.Context, arg MaxCata
 
 const searchCatalogue = `-- name: SearchCatalogue :many
 SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items
-WHERE tenant_id = ? AND is_current = 1
-  AND ( (code     LIKE ? ESCAPE '\')
-     OR (name     LIKE ? ESCAPE '\')
-     OR (category LIKE ? ESCAPE '\')
-     OR (unit     LIKE ? ESCAPE '\') )
+WHERE tenant_id = $1 AND is_current = 1
+  AND ( (code     LIKE $2::text     ESCAPE '\')
+     OR (name     LIKE $3::text     ESCAPE '\')
+     OR (category LIKE $4::text ESCAPE '\')
+     OR (unit     LIKE $5::text     ESCAPE '\') )
 ORDER BY name
 LIMIT 50
 `
 
 type SearchCatalogueParams struct {
-	TenantID string         `json:"tenant_id"`
-	Code     sql.NullString `json:"code"`
-	Name     string         `json:"name"`
-	Category sql.NullString `json:"category"`
-	Unit     sql.NullString `json:"unit"`
+	TenantID string `json:"tenant_id"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Unit     string `json:"unit"`
 }
 
 // All searchable fields (code, name, category, unit), current rows only.
@@ -356,7 +356,7 @@ func (q *Queries) SearchCatalogue(ctx context.Context, arg SearchCatalogueParams
 
 const tombstoneCatalogueLogical = `-- name: TombstoneCatalogueLogical :exec
 UPDATE catalogue_items SET is_current = 0
-WHERE tenant_id = ? AND logical_id = ?
+WHERE tenant_id = $1 AND logical_id = $2
 `
 
 type TombstoneCatalogueLogicalParams struct {
@@ -373,9 +373,9 @@ func (q *Queries) TombstoneCatalogueLogical(ctx context.Context, arg TombstoneCa
 
 const updateCatalogueItemInPlace = `-- name: UpdateCatalogueItemInPlace :one
 UPDATE catalogue_items SET
-    code = ?, name = ?, unit = ?, category = ?, unit_price = ?, taxable = ?,
-    metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+    code = $1, name = $2, unit = $3, category = $4, unit_price = $5, taxable = $6,
+    metadata = $7, updated_at = $8
+WHERE tenant_id = $9 AND id = $10
 RETURNING id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at
 `
 

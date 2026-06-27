@@ -11,7 +11,7 @@ import (
 )
 
 const getBusinessProfile = `-- name: GetBusinessProfile :one
-SELECT id, tenant_id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = ?
+SELECT id, tenant_id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at FROM business_profile WHERE tenant_id = $1
 `
 
 func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID string) (BusinessProfile, error) {
@@ -37,7 +37,7 @@ func (q *Queries) GetBusinessProfile(ctx context.Context, tenantID string) (Busi
 const upsertBusinessProfile = `-- name: UpsertBusinessProfile :exec
 INSERT INTO business_profile (
     tenant_id, id, name, abn, email, phone, address, logo, metadata, default_currency, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT(tenant_id) DO UPDATE SET
     name = excluded.name,
     abn = excluded.abn,

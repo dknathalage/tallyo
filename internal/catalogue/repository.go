@@ -57,10 +57,10 @@ func (r *Repo) Search(ctx context.Context, tenantID, q string) ([]*CatalogueItem
 	like := "%" + escapeLike(q) + "%"
 	rows, err := gen.New(r.db).SearchCatalogue(ctx, gen.SearchCatalogueParams{
 		TenantID: tenantID,
-		Code:     db.NzMaybe(like),
+		Code:     like,
 		Name:     like,
-		Category: db.NzMaybe(like),
-		Unit:     db.NzMaybe(like),
+		Category: like,
+		Unit:     like,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search catalogue: %w", err)

@@ -12,7 +12,7 @@ import (
 
 const createPayer = `-- name: CreatePayer :one
 INSERT INTO payers (id, tenant_id, name, email, phone, address, metadata, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, tenant_id, name, email, phone, address, metadata, created_at, updated_at
 `
 
@@ -56,7 +56,7 @@ func (q *Queries) CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer
 }
 
 const deletePayer = `-- name: DeletePayer :exec
-DELETE FROM payers WHERE tenant_id = ? AND id = ?
+DELETE FROM payers WHERE tenant_id = $1 AND id = $2
 `
 
 type DeletePayerParams struct {
@@ -70,7 +70,7 @@ func (q *Queries) DeletePayer(ctx context.Context, arg DeletePayerParams) error 
 }
 
 const deletePayerByID = `-- name: DeletePayerByID :exec
-DELETE FROM payers WHERE tenant_id = ? AND id = ?
+DELETE FROM payers WHERE tenant_id = $1 AND id = $2
 `
 
 type DeletePayerByIDParams struct {
@@ -84,7 +84,7 @@ func (q *Queries) DeletePayerByID(ctx context.Context, arg DeletePayerByIDParams
 }
 
 const getPayer = `-- name: GetPayer :one
-SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = $1 AND id = $2
 `
 
 type GetPayerParams struct {
@@ -110,7 +110,7 @@ func (q *Queries) GetPayer(ctx context.Context, arg GetPayerParams) (Payer, erro
 }
 
 const getPayerByID = `-- name: GetPayerByID :one
-SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = $1 AND id = $2
 `
 
 type GetPayerByIDParams struct {
@@ -136,7 +136,7 @@ func (q *Queries) GetPayerByID(ctx context.Context, arg GetPayerByIDParams) (Pay
 }
 
 const getPayerIDByUUID = `-- name: GetPayerIDByUUID :one
-SELECT id FROM payers WHERE tenant_id = ? AND id = ?
+SELECT id FROM payers WHERE tenant_id = $1 AND id = $2
 `
 
 type GetPayerIDByUUIDParams struct {
@@ -152,7 +152,7 @@ func (q *Queries) GetPayerIDByUUID(ctx context.Context, arg GetPayerIDByUUIDPara
 }
 
 const listPayers = `-- name: ListPayers :many
-SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = ? ORDER BY name
+SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers WHERE tenant_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListPayers(ctx context.Context, tenantID string) ([]Payer, error) {
@@ -190,7 +190,7 @@ func (q *Queries) ListPayers(ctx context.Context, tenantID string) ([]Payer, err
 
 const searchPayers = `-- name: SearchPayers :many
 SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers
-WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ?)
+WHERE tenant_id = $1 AND (name LIKE $2 OR email LIKE $3)
 ORDER BY name
 `
 
@@ -234,8 +234,8 @@ func (q *Queries) SearchPayers(ctx context.Context, arg SearchPayersParams) ([]P
 }
 
 const updatePayer = `-- name: UpdatePayer :one
-UPDATE payers SET name = ?, email = ?, phone = ?, address = ?, metadata = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+UPDATE payers SET name = $1, email = $2, phone = $3, address = $4, metadata = $5, updated_at = $6
+WHERE tenant_id = $7 AND id = $8
 RETURNING id, tenant_id, name, email, phone, address, metadata, created_at, updated_at
 `
 

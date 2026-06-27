@@ -11,7 +11,7 @@ import (
 
 const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (id, name, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, name, status, created_at, updated_at
 `
 
@@ -43,7 +43,7 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 }
 
 const deleteTenant = `-- name: DeleteTenant :exec
-DELETE FROM tenants WHERE id = ?
+DELETE FROM tenants WHERE id = $1
 `
 
 func (q *Queries) DeleteTenant(ctx context.Context, id string) error {
@@ -52,7 +52,7 @@ func (q *Queries) DeleteTenant(ctx context.Context, id string) error {
 }
 
 const getTenant = `-- name: GetTenant :one
-SELECT id, name, status, created_at, updated_at FROM tenants WHERE id = ?
+SELECT id, name, status, created_at, updated_at FROM tenants WHERE id = $1
 `
 
 func (q *Queries) GetTenant(ctx context.Context, id string) (Tenant, error) {
@@ -69,7 +69,7 @@ func (q *Queries) GetTenant(ctx context.Context, id string) (Tenant, error) {
 }
 
 const getTenantByUUID = `-- name: GetTenantByUUID :one
-SELECT id, name, status, created_at, updated_at FROM tenants WHERE id = ?
+SELECT id, name, status, created_at, updated_at FROM tenants WHERE id = $1
 `
 
 func (q *Queries) GetTenantByUUID(ctx context.Context, id string) (Tenant, error) {
@@ -119,8 +119,8 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 }
 
 const updateTenant = `-- name: UpdateTenant :one
-UPDATE tenants SET name = ?, updated_at = ?
-WHERE id = ?
+UPDATE tenants SET name = $1, updated_at = $2
+WHERE id = $3
 RETURNING id, name, status, created_at, updated_at
 `
 
@@ -144,7 +144,7 @@ func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Ten
 }
 
 const updateTenantStatus = `-- name: UpdateTenantStatus :exec
-UPDATE tenants SET status = ?, updated_at = ? WHERE id = ?
+UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3
 `
 
 type UpdateTenantStatusParams struct {

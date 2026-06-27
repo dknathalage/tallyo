@@ -6,6 +6,7 @@ package gen
 
 import (
 	"database/sql"
+	"time"
 )
 
 type AuditLog struct {
@@ -181,9 +182,9 @@ type Payment struct {
 }
 
 type Session struct {
-	Token  string  `json:"token"`
-	Data   []byte  `json:"data"`
-	Expiry float64 `json:"expiry"`
+	Token  string    `json:"token"`
+	Data   []byte    `json:"data"`
+	Expiry time.Time `json:"expiry"`
 }
 
 type TaxRate struct {
