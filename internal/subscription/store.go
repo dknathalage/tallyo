@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
+	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/entitlement"
 )
 
 // Store reads and writes the subscription mirror columns on the control-DB
@@ -89,6 +92,71 @@ func (s *Store) GetTenantByStripeCustomer(ctx context.Context, customerID string
 		return "", false, fmt.Errorf("subscription lookup: %w", qerr)
 	}
 	return row.ID, true, nil
+}
+
+// SetSubscriptionStatus writes subscription_status for the given tenant,
+// bypassing the Stripe sync gate and leaving Stripe IDs untouched. It writes
+// one audit row attributed to the target tenant and the acting admin user.
+//
+// trial_end handling: when status is trialing AND trialEndsAt is non-empty,
+// trial_end is set to trialEndsAt. For ALL OTHER statuses (and for trialing
+// with an empty trialEndsAt), trial_end is CLEARED to NULL — the update always
+// writes the trial_end column, so a non-trialing override drops any prior trial
+// date. This is intentional: a trial date is only meaningful while trialing.
+//
+// Known limitation: a subsequent Stripe webhook for that tenant can overwrite a
+// manual override via Apply. The override is an operator stopgap, not a lock.
+// ponytail: an override-lock column is the upgrade path if webhooks fight
+// overrides in practice.
+func (s *Store) SetSubscriptionStatus(ctx context.Context, tenantID, status, adminUserID string, trialEndsAt string) error {
+	if tenantID == "" {
+		return errors.New("set subscription status: tenant id required")
+	}
+	switch status {
+	case entitlement.StatusNone, entitlement.StatusTrialing, entitlement.StatusActive,
+		entitlement.StatusPastDue, entitlement.StatusCanceled:
+		// valid
+	default:
+		// A bad status is a client input error, not a server fault: surface it as
+		// a 422 via apperr.Validation (WriteServiceError maps it), not a bare error
+		// that would default to 500.
+		return &apperr.ValidationError{Errors: []apperr.FieldError{{
+			Field:   "status",
+			Message: fmt.Sprintf("invalid status %q (must be one of none, trialing, active, past_due, canceled)", status),
+		}}}
+	}
+
+	var trialEnd sql.NullString
+	if status == entitlement.StatusTrialing && trialEndsAt != "" {
+		trialEnd = sql.NullString{String: trialEndsAt, Valid: true}
+	}
+
+	return audit.WithTx(ctx, s.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		n, err := gen.New(tx).SetTenantSubscriptionStatus(ctx, gen.SetTenantSubscriptionStatusParams{
+			SubscriptionStatus: status,
+			TrialEnd:           trialEnd,
+			UpdatedAt:          time.Now().UTC().Format(time.RFC3339),
+			ID:                 tenantID,
+		})
+		if err != nil {
+			return fmt.Errorf("set subscription status: update: %w", err)
+		}
+		if n == 0 {
+			// Unknown tenant id: no row written. Surface as not-found (handler → 404)
+			// instead of a silent success.
+			return fmt.Errorf("set subscription status: tenant %q: %w", tenantID, apperr.ErrNotFound)
+		}
+		changes := map[string]any{"subscription_status": status}
+		if trialEnd.Valid {
+			changes["trial_end"] = trialEndsAt
+		}
+		return audit.LogAs(ctx, tx, tenantID, adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantID,
+			Action:     "set_subscription_status",
+			Changes:    audit.Changes(changes),
+		})
+	})
 }
 
 func nullStr(s string) sql.NullString {

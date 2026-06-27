@@ -32,6 +32,15 @@ type Entry struct {
 // user_id is NULL for system actions (the launch/hourly sweeps) and the
 // pre-auth signup transaction. A real, authenticated mutation carries both.
 func Log(ctx context.Context, db Execer, e Entry) error {
+	tenant := nullString(reqctx.TenantFrom(ctx))
+	user := nullString(reqctx.UserFrom(ctx))
+	return insertAuditRow(ctx, db, tenant, user, e)
+}
+
+// insertAuditRow validates the entry and writes one audit_log row with the
+// given (already nullable) tenant and user arguments. It is the single INSERT
+// shared by Log (reqctx-sourced ids) and LogAs (explicit ids).
+func insertAuditRow(ctx context.Context, db Execer, tenant, user any, e Entry) error {
 	if e.EntityType == "" {
 		return fmt.Errorf("audit: empty entity_type")
 	}
@@ -42,8 +51,6 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	if changes == "" {
 		changes = "{}"
 	}
-	tenant := nullString(reqctx.TenantFrom(ctx))
-	user := nullString(reqctx.UserFrom(ctx))
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO audit_log (id, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9)`,
@@ -56,8 +63,10 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	return nil
 }
 
-// nullString maps a (value, present) pair from reqctx into a SQL argument: the
-// raw uuid id when present and non-empty, otherwise nil (stored as NULL).
+// nullString maps a (value, present) pair into a SQL argument: the raw uuid id
+// when present and non-empty, otherwise nil (stored as NULL). Log passes the
+// reqctx presence flag; LogAs passes ok=true and relies on the empty-string
+// check so an explicit "" id stores NULL.
 func nullString(v string, ok bool) any {
 	if !ok || v == "" {
 		return nil
@@ -98,6 +107,16 @@ func WithTx(ctx context.Context, db txBeginner, e Entry, fn func(*sql.Tx) error)
 		return fmt.Errorf("audit WithTx: commit: %w", err)
 	}
 	return nil
+}
+
+// LogAs writes one audit row with explicit tenantID and userID, bypassing
+// reqctx. Use this for cross-tenant admin actions where the acting tenant
+// (the admin's tenant) is NOT the target tenant: stamp the TARGET tenant's id
+// and the ACTING admin's user id so the row lands in the affected tenant's
+// trail attributed to the operator. Either id may be "" to store NULL (e.g. a
+// tenant-delete audit records the gone tenant in entity_id, not tenant_id).
+func LogAs(ctx context.Context, db Execer, tenantID, userID string, e Entry) error {
+	return insertAuditRow(ctx, db, nullString(tenantID, true), nullString(userID, true), e)
 }
 
 // Changes marshals a map to a JSON string for Entry.Changes. Returns "{}" on

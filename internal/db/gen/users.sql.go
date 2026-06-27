@@ -120,9 +120,12 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 }
 
 const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
-SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE email = $1
+SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE email = $1 ORDER BY is_platform_admin DESC LIMIT 1
 `
 
+// email is unique only per tenant (UNIQUE(tenant_id, email)), so the same email
+// can exist in several tenants. Prefer the platform-admin row and LIMIT 1 to keep
+// the pick deterministic (avoids misattributing audit user_id on admin actions).
 func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
 	row := q.db.QueryRowContext(ctx, getUserByEmailGlobal, email)
 	var i User

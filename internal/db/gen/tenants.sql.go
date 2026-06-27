@@ -166,6 +166,109 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 	return items, nil
 }
 
+const listTenantsWithUserCount = `-- name: ListTenantsWithUserCount :many
+SELECT
+    t.id,
+    t.name,
+    t.status,
+    t.created_at,
+    t.updated_at,
+    t.stripe_customer_id,
+    t.stripe_subscription_id,
+    t.subscription_status,
+    t.trial_end,
+    t.current_period_end,
+    t.subscription_synced_at,
+    COUNT(u.id) AS user_count
+FROM tenants t
+LEFT JOIN users u ON u.tenant_id = t.id
+GROUP BY t.id
+ORDER BY t.created_at DESC
+`
+
+type ListTenantsWithUserCountRow struct {
+	ID                   string         `json:"id"`
+	Name                 string         `json:"name"`
+	Status               string         `json:"status"`
+	CreatedAt            string         `json:"created_at"`
+	UpdatedAt            string         `json:"updated_at"`
+	StripeCustomerID     sql.NullString `json:"stripe_customer_id"`
+	StripeSubscriptionID sql.NullString `json:"stripe_subscription_id"`
+	SubscriptionStatus   string         `json:"subscription_status"`
+	TrialEnd             sql.NullString `json:"trial_end"`
+	CurrentPeriodEnd     sql.NullString `json:"current_period_end"`
+	SubscriptionSyncedAt sql.NullString `json:"subscription_synced_at"`
+	UserCount            int64          `json:"user_count"`
+}
+
+// Low-frequency platform-admin query: full tenants scan + user-count join, not
+// a hot path. Fine to leave unindexed at expected tenant counts.
+func (q *Queries) ListTenantsWithUserCount(ctx context.Context) ([]ListTenantsWithUserCountRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTenantsWithUserCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTenantsWithUserCountRow
+	for rows.Next() {
+		var i ListTenantsWithUserCountRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StripeCustomerID,
+			&i.StripeSubscriptionID,
+			&i.SubscriptionStatus,
+			&i.TrialEnd,
+			&i.CurrentPeriodEnd,
+			&i.SubscriptionSyncedAt,
+			&i.UserCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setTenantSubscriptionStatus = `-- name: SetTenantSubscriptionStatus :execrows
+UPDATE tenants
+SET subscription_status = $1,
+    trial_end            = $2,
+    updated_at           = $3
+WHERE id = $4
+`
+
+type SetTenantSubscriptionStatusParams struct {
+	SubscriptionStatus string         `json:"subscription_status"`
+	TrialEnd           sql.NullString `json:"trial_end"`
+	UpdatedAt          string         `json:"updated_at"`
+	ID                 string         `json:"id"`
+}
+
+// :execrows so an admin override on an unknown tenant id is detectable (404)
+// instead of a silent no-op.
+func (q *Queries) SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTenantSubscriptionStatus,
+		arg.SubscriptionStatus,
+		arg.TrialEnd,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateTenant = `-- name: UpdateTenant :one
 UPDATE tenants SET name = $1, updated_at = $2
 WHERE id = $3
@@ -197,7 +300,7 @@ func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Ten
 	return i, err
 }
 
-const updateTenantStatus = `-- name: UpdateTenantStatus :exec
+const updateTenantStatus = `-- name: UpdateTenantStatus :execrows
 UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3
 `
 
@@ -207,9 +310,14 @@ type UpdateTenantStatusParams struct {
 	ID        string `json:"id"`
 }
 
-func (q *Queries) UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateTenantStatus, arg.Status, arg.UpdatedAt, arg.ID)
-	return err
+// :execrows so callers can detect a no-match (unknown tenant id) and 404 rather
+// than silently succeeding.
+func (q *Queries) UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateTenantStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateTenantSubscription = `-- name: UpdateTenantSubscription :exec

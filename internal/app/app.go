@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/admin"
+	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalogue"
@@ -192,6 +194,13 @@ func Run(cfg Config, version string) error {
 		return fmt.Errorf("embedded SPA missing 200.html — run `npm run build` in web/ before `go build`: %w", err)
 	}
 
+	// Platform-admin panel. Independent of billing state: an operator can override
+	// a tenant's subscription status, suspend/delete, and read the audit trail even
+	// when BILLING_ENABLED is off. Its own subscription.Store + audit.Reader read
+	// the control DB directly (the routes are gated by RequirePlatformAdmin in
+	// server.go).
+	adminHandler := admin.New(tenants, subscription.NewStore(database), audit.NewReader(database))
+
 	deps := Deps{
 		Assets:          assets,
 		Users:           users,
@@ -213,6 +222,7 @@ func Run(cfg Config, version string) error {
 		Smarts:          smartsHandler,
 		Subscription:    subHandler,
 		BillingEnabled:  billingCfg.Enabled,
+		Admin:           adminHandler,
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{

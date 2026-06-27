@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/dknathalage/tallyo/internal/admin"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalogue"
@@ -46,6 +47,7 @@ type Deps struct {
 	Features        map[string]bool          // feature-gate state exposed at GET /api/features
 	Subscription    *subscription.Handler    // SaaS billing: checkout/portal/status + webhook (nil when BILLING_ENABLED off)
 	BillingEnabled  bool                     // when true, ResolveTenant computes entitlement and write routes are gated
+	Admin           *admin.Handler           // platform-admin panel (nil disables the /api/admin routes)
 }
 
 // Server wraps the configured chi router.
@@ -110,6 +112,17 @@ func NewServer(deps Deps) *Server {
 				pr.Post("/invites/{token}/accept", deps.Invites.Accept)
 			}
 		})
+		// Platform-admin routes: RequireAuth (uid) → ResolveAdminUser (user row
+		// via global email lookup) → RequirePlatformAdmin (is_platform_admin flag).
+		// No tenant is resolved; these routes operate cross-tenant.
+		if deps.Admin != nil && deps.Users != nil {
+			api.Route("/admin", func(ar chi.Router) {
+				ar.Use(httpx.RequireAuth(deps.Verifier))
+				ar.Use(httpx.ResolveAdminUser(deps.Users))
+				ar.Use(httpx.RequirePlatformAdmin)
+				deps.Admin.Routes(ar)
+			})
+		}
 		// Tenant-SCOPED routes: the {tenantUUID} segment is authorized against
 		// the verified uid by ResolveTenant, which attaches the per-tenant
 		// tenant id + user + role to the context.

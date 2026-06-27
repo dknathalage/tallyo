@@ -87,12 +87,19 @@ type Querier interface {
 	GetTenantByStripeCustomer(ctx context.Context, stripeCustomerID sql.NullString) (Tenant, error)
 	GetTenantByUUID(ctx context.Context, id string) (Tenant, error)
 	GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error)
+	// email is unique only per tenant (UNIQUE(tenant_id, email)), so the same email
+	// can exist in several tenants. Prefer the platform-admin row and LIMIT 1 to keep
+	// the pick deterministic (avoids misattributing audit user_id on admin actions).
 	GetUserByEmailGlobal(ctx context.Context, email string) (User, error)
 	GetUserByFirebaseUID(ctx context.Context, arg GetUserByFirebaseUIDParams) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
 	LineItemReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error)
 	LinkSessionItemsToInvoice(ctx context.Context, arg LinkSessionItemsToInvoiceParams) error
+	// Most recent audit rows for a tenant, newest first. Bounded to 50 rows for the
+	// platform-admin tenant-detail trail (idx_audit_tenant + idx_audit_created back
+	// the filter + order).
+	ListAuditByTenant(ctx context.Context, tenantID sql.NullString) ([]AuditLog, error)
 	// Per-tenant catalogue (tenant-owned, scoped by tenant_id). One append-only
 	// table with per-item copy-on-write versioning: is_current = 1 is the live row.
 	ListCatalogue(ctx context.Context, tenantID string) ([]CatalogueItem, error)
@@ -124,6 +131,9 @@ type Querier interface {
 	ListTenants(ctx context.Context) ([]Tenant, error)
 	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
 	ListTenantsByFirebaseUID(ctx context.Context, firebaseUid string) ([]ListTenantsByFirebaseUIDRow, error)
+	// Low-frequency platform-admin query: full tenants scan + user-count join, not
+	// a hot path. Fine to leave unindexed at expected tenant counts.
+	ListTenantsWithUserCount(ctx context.Context) ([]ListTenantsWithUserCountRow, error)
 	ListUsers(ctx context.Context, tenantID string) ([]User, error)
 	MarkCatalogueVersionStale(ctx context.Context, arg MarkCatalogueVersionStaleParams) error
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
@@ -145,6 +155,9 @@ type Querier interface {
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
+	// :execrows so an admin override on an unknown tenant id is detectable (404)
+	// instead of a silent no-op.
+	SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) (int64, error)
 	// Delete flips every row of the logical_id out of current; referenced versions
 	// linger so existing documents stay intact.
 	TombstoneCatalogueLogical(ctx context.Context, arg TombstoneCatalogueLogicalParams) error
@@ -165,7 +178,9 @@ type Querier interface {
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
-	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error
+	// :execrows so callers can detect a no-match (unknown tenant id) and 404 rather
+	// than silently succeeding.
+	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) (int64, error)
 	UpdateTenantSubscription(ctx context.Context, arg UpdateTenantSubscriptionParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
