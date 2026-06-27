@@ -4,6 +4,9 @@ dotenv: [".env"]
 
 vars:
   BINARY: bin/tallyo
+  PROJECT: tallyo-saas
+  REGION: australia-southeast1
+  IMAGE: '{{.REGION}}-docker.pkg.dev/{{.PROJECT}}/tallyo/tallyo:latest'
 
 tasks:
   default:
@@ -91,3 +94,38 @@ tasks:
     cmds:
       - PID=$(lsof -t -i :8080 || true); test -n "$PID" && kill -9 $PID || true
       - ./{{.BINARY}}
+
+  # --- deploy --------------------------------------------------------------
+  # Infra applies that touch Google sign-in need the OAuth client secret in a
+  # gitignored .env at the repo root:  GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...
+
+  image:
+    desc: Build + push the app image to Artifact Registry (Cloud Build, amd64)
+    cmds:
+      - gcloud builds submit --project {{.PROJECT}} --config cloudbuild.yaml .
+
+  deploy:
+    desc: Build the image, then roll all envs (prd, stg, dev)
+    cmds:
+      - task: image
+      - task: 'deploy:prd'
+      - task: 'deploy:stg'
+      - task: 'deploy:dev'
+
+  deploy:*:
+    desc: Roll one env to the latest image (e.g. `task deploy:prd`)
+    vars: { ENV: '{{index .MATCH 0}}' }
+    cmds:
+      - gcloud run services update tallyo-{{.ENV}} --image {{.IMAGE}} --region {{.REGION}} --project {{.PROJECT}}
+
+  infra:plan:
+    desc: Plan all infra (no writes)
+    dir: infra/live
+    cmds:
+      - terragrunt run --all plan
+
+  infra:apply:
+    desc: Apply all infra (needs GOOGLE_OAUTH_CLIENT_SECRET in .env)
+    dir: infra/live
+    cmds:
+      - terragrunt run --all apply
