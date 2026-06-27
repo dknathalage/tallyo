@@ -12,7 +12,6 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 )
@@ -86,14 +85,13 @@ func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID string) str
 }
 
 // newInvoiceSvc creates a migrated DB, seeds a tenant+client, and returns
-// the invoice Service, Hub, tenantID, clientID.
-func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
+// the invoice Service, tenantID, clientID.
+func newInvoiceSvc(t *testing.T) (*Service, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	return NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn))), hub, tenantID, clientID
+	return NewService(conn, session.NewService(conn, NewInvoices(conn))), tenantID, clientID
 }
 
 // makeInvoice creates a single invoice for the tenant/client and returns it.

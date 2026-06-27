@@ -11,7 +11,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
@@ -39,10 +38,9 @@ func newInvoiceHandler(t *testing.T) (*Handler, *PaymentHandler, string, string,
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	pid, pUUID := seedClientUUID(t, conn, tenantID, "Jane")
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, session.NewService(conn, NewInvoices(conn)))
 	inv := makeInvoice(t, svc, tenantID, pid)
-	return NewHandler(svc), NewPaymentHandler(NewPaymentService(conn, hub)), tenantID, pUUID, inv
+	return NewHandler(svc), NewPaymentHandler(NewPaymentService(conn)), tenantID, pUUID, inv
 }
 
 func TestInvoiceGetByUUID(t *testing.T) {
@@ -168,11 +166,10 @@ func TestInvoiceDraftFromSessionsByUUID(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	pid, _ := seedClientUUID(t, conn, tenantID, "Jane")
-	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
+	invSvc := NewService(conn, sessionSvc)
 	ih := NewHandler(invSvc)
-	ph := NewPaymentHandler(NewPaymentService(conn, hub))
+	ph := NewPaymentHandler(NewPaymentService(conn))
 
 	// Seed one recorded session with one item, capture its uuid.
 	sh, err := sessionSvc.Create(tctx(tenantID), session.SessionInput{ClientID: pid, ServiceDate: "2026-01-15", Status: "recorded"})

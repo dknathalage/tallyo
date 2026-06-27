@@ -2,20 +2,17 @@ package session
 
 import (
 	"testing"
-	"time"
 
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-func newSessionSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
+func newSessionSvc(t *testing.T) (*Service, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	return NewService(conn, hub, invoice.NewInvoices(conn)), hub, tenantID, clientID
+	return NewService(conn, invoice.NewInvoices(conn)), tenantID, clientID
 }
 
 func sessionInput(pid string, date string) SessionInput {
@@ -26,10 +23,8 @@ func sessionInput(pid string, date string) SessionInput {
 	}
 }
 
-func TestSessionCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newSessionSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
+func TestSessionCreate(t *testing.T) {
+	svc, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
@@ -39,14 +34,6 @@ func TestSessionCreateBroadcasts(t *testing.T) {
 	if sh == nil {
 		t.Fatal("Create returned nil session")
 	}
-	select {
-	case e := <-ch:
-		if e.Entity != "session" || e.UUID != sh.ID || e.Action != "create" {
-			t.Fatalf("event=%+v want session/%s/create", e, sh.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Create")
-	}
 }
 
 func TestSessionCreateAttributesAuthor(t *testing.T) {
@@ -54,7 +41,7 @@ func TestSessionCreateAttributesAuthor(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	uid := seedUser(t, conn, tenantID)
-	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, invoice.NewInvoices(conn))
 	ctx := reqctx.WithUser(tctx(tenantID), uid)
 
 	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
@@ -67,7 +54,7 @@ func TestSessionCreateAttributesAuthor(t *testing.T) {
 }
 
 func TestSessionListClientRangeSvc(t *testing.T) {
-	svc, _, tenantID, clientID := newSessionSvc(t)
+	svc, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
 	for _, d := range []string{"2026-01-10", "2026-01-15", "2026-01-20"} {
@@ -84,8 +71,8 @@ func TestSessionListClientRangeSvc(t *testing.T) {
 	}
 }
 
-func TestSessionUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newSessionSvc(t)
+func TestSessionUpdateStatusSvc(t *testing.T) {
+	svc, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
 	in := sessionInput(clientID, "2026-01-15")
@@ -95,18 +82,8 @@ func TestSessionUpdateStatusBroadcasts(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
 	if err := svc.UpdateStatus(ctx, sh.ID, "recorded"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "session" || e.UUID != sh.ID || e.Action != "update" {
-			t.Fatalf("event=%+v want session/%s/update", e, sh.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after UpdateStatus")
 	}
 	got, _ := svc.Get(ctx, sh.ID)
 	if got == nil || got.Status != "recorded" {
@@ -115,25 +92,15 @@ func TestSessionUpdateStatusBroadcasts(t *testing.T) {
 }
 
 func TestSessionDeleteSvc(t *testing.T) {
-	svc, hub, tenantID, clientID := newSessionSvc(t)
+	svc, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
 	if err := svc.Delete(ctx, sh.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "session" || e.UUID != sh.ID || e.Action != "delete" {
-			t.Fatalf("event=%+v want session/%s/delete", e, sh.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Delete")
 	}
 	if got, _ := svc.Get(ctx, sh.ID); got != nil {
 		t.Fatalf("session present after delete: %+v", got)
@@ -141,7 +108,7 @@ func TestSessionDeleteSvc(t *testing.T) {
 }
 
 func TestSessionToRecord(t *testing.T) {
-	svc, _, tenantID, clientID := newSessionSvc(t)
+	svc, tenantID, clientID := newSessionSvc(t)
 	ctx := tctx(tenantID)
 
 	sched := sessionInput(clientID, "2026-01-15")
@@ -167,7 +134,7 @@ func TestSessionSuggestions(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme")
 	p1 := seedClient(t, conn, tenantID, "Jane")
 	p2 := seedClient(t, conn, tenantID, "Bob")
-	svc := NewService(conn, realtime.NewHub(), invoice.NewInvoices(conn))
+	svc := NewService(conn, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	var p1ids []string
@@ -207,8 +174,7 @@ func TestSessionMarkDrafted(t *testing.T) {
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
 	invID := seedDraftInvoice(t, conn, tenantID, clientID)
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, invoice.NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	sh, err := svc.Create(ctx, sessionInput(clientID, "2026-01-15"))
@@ -216,18 +182,8 @@ func TestSessionMarkDrafted(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
 	if err := svc.MarkDrafted(ctx, invID, []string{sh.ID}); err != nil {
 		t.Fatalf("MarkDrafted: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "session" || e.Action != "bill" {
-			t.Fatalf("event=%+v want session/bill", e)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after MarkDrafted")
 	}
 	got, _ := svc.Get(ctx, sh.ID)
 	if got == nil || got.Status != "drafted" || got.InvoiceID == nil || *got.InvoiceID != invID {
@@ -244,8 +200,7 @@ func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 
 	tenantB := seedTenant(t, conn, "Beta")
 	clientB := seedClient(t, conn, tenantB, "Bob")
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub, invoice.NewInvoices(conn))
+	svc := NewService(conn, invoice.NewInvoices(conn))
 	ctxB := tctx(tenantB)
 
 	sh, err := svc.Create(ctxB, sessionInput(clientB, "2026-01-15"))
@@ -253,16 +208,8 @@ func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	ch, unsub := hub.Subscribe(tenantB)
-	defer unsub()
 	if err := svc.MarkDrafted(ctxB, invA, []string{sh.ID}); err == nil {
 		t.Fatal("MarkDrafted cross-tenant invoice: want error, got nil")
-	}
-	select {
-	case e := <-ch:
-		t.Fatalf("no event expected on rejected cross-tenant MarkDrafted, got %+v", e)
-	case <-time.After(100 * time.Millisecond):
-		// ok
 	}
 	got, _ := svc.Get(ctxB, sh.ID)
 	if got == nil || got.InvoiceID != nil || got.Status != "recorded" {
@@ -270,18 +217,10 @@ func TestSessionMarkDraftedRejectsCrossTenantInvoice(t *testing.T) {
 	}
 }
 
-func TestSessionMarkDraftedEmptyNoEvent(t *testing.T) {
-	svc, hub, tenantID, _ := newSessionSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
+func TestSessionMarkDraftedEmpty(t *testing.T) {
+	svc, tenantID, _ := newSessionSvc(t)
 
 	if err := svc.MarkDrafted(tctx(tenantID), "some-invoice-uuid", nil); err != nil {
 		t.Fatalf("MarkDrafted empty: %v", err)
-	}
-	select {
-	case e := <-ch:
-		t.Fatalf("no event expected on empty MarkDrafted, got %+v", e)
-	case <-time.After(100 * time.Millisecond):
-		// ok
 	}
 }

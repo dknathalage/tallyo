@@ -14,9 +14,9 @@ func (s *Service) ListItems(ctx context.Context, sessionID string) ([]*billing.L
 	return s.repo.ListItems(ctx, tenantID, sessionID)
 }
 
-// AddItem prices then inserts one item on a session (invoice_id NULL), then
-// broadcasts. Returns (nil, nil) when the session is absent. A blank ServiceDate
-// defaults to the session's date so pricing keys off the right catalogue.
+// AddItem prices then inserts one item on a session (invoice_id NULL). Returns
+// (nil, nil) when the session is absent. A blank ServiceDate defaults to the
+// session's date so pricing keys off the right catalogue.
 func (s *Service) AddItem(ctx context.Context, sessionID string, in billing.LineItemInput) (*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.Get(ctx, tenantID, sessionID)
@@ -37,7 +37,6 @@ func (s *Service) AddItem(ctx context.Context, sessionID string, in billing.Line
 	if err != nil {
 		return nil, err
 	}
-	s.events.Updated(tenantID, sh.ID)
 	return item, nil
 }
 
@@ -69,8 +68,8 @@ func (s *Service) ListItemsBySessionUUID(ctx context.Context, sessionUUID string
 	return s.repo.ListItems(ctx, tenantID, sessionID)
 }
 
-// AddItemBySessionUUID prices then inserts one item on the session named by uuid,
-// then broadcasts. Returns (nil, nil) when the session is absent.
+// AddItemBySessionUUID prices then inserts one item on the session named by uuid.
+// Returns (nil, nil) when the session is absent.
 func (s *Service) AddItemBySessionUUID(ctx context.Context, sessionUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.GetByUUID(ctx, tenantID, sessionUUID)
@@ -91,13 +90,12 @@ func (s *Service) AddItemBySessionUUID(ctx context.Context, sessionUUID string, 
 	if err != nil {
 		return nil, err
 	}
-	s.events.Updated(tenantID, sh.ID)
 	return item, nil
 }
 
 // UpdateItemBySessionUUID prices then rewrites one UNBILLED item addressed by uuid,
-// scoped to the session named by uuid, then broadcasts. Returns (nil, nil) when the
-// session or item is absent (or the item is already billed).
+// scoped to the session named by uuid. Returns (nil, nil) when the session or
+// item is absent (or the item is already billed).
 func (s *Service) UpdateItemBySessionUUID(ctx context.Context, sessionUUID, itemUUID string, in billing.LineItemInput) (*billing.LineItem, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.GetByUUID(ctx, tenantID, sessionUUID)
@@ -121,12 +119,11 @@ func (s *Service) UpdateItemBySessionUUID(ctx context.Context, sessionUUID, item
 	if item == nil {
 		return nil, nil
 	}
-	s.events.Updated(tenantID, sh.ID)
 	return item, nil
 }
 
 // DeleteItemBySessionUUID removes one UNBILLED item addressed by uuid, scoped to the
-// session named by uuid, then broadcasts. A missing session is a no-op.
+// session named by uuid. A missing session is a no-op.
 func (s *Service) DeleteItemBySessionUUID(ctx context.Context, sessionUUID, itemUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sessionID, err := s.resolveSession(ctx, tenantID, sessionUUID)
@@ -139,27 +136,16 @@ func (s *Service) DeleteItemBySessionUUID(ctx context.Context, sessionUUID, item
 	if err := s.repo.DeleteItemByUUID(ctx, tenantID, sessionID, itemUUID); err != nil {
 		return err
 	}
-	// The event names the changed session; sessionUUID is its public id.
-	s.events.Updated(tenantID, sessionUUID)
 	return nil
 }
 
 // ClearUnbilledItems removes all of a session's unbilled items (used to make a
-// re-divide idempotent). Broadcasts on success. Resolves the session's uuid first
-// so the post-commit event carries the public id (uuid).
+// re-divide idempotent).
 func (s *Service) ClearUnbilledItems(ctx context.Context, sessionID string) error {
 	tenantID := reqctx.MustTenant(ctx)
-	sh, err := s.repo.Get(ctx, tenantID, sessionID)
-	if err != nil {
-		return err
-	}
-	if sh == nil {
-		return nil
-	}
 	if err := s.repo.DeleteUnbilledItems(ctx, tenantID, sessionID); err != nil {
 		return err
 	}
-	s.events.Updated(tenantID, sh.ID)
 	return nil
 }
 

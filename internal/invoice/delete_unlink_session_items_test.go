@@ -7,7 +7,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -58,9 +57,8 @@ func TestDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "T")
 	clientID := seedClient(t, conn, tenantID, "Jane")
-	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
+	invSvc := NewService(conn, sessionSvc)
 	repo := session.NewSessions(conn)
 	ctx := tctx(tenantID)
 
@@ -95,9 +93,8 @@ func TestBulkDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "T")
 	clientID := seedClient(t, conn, tenantID, "Jane")
-	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
+	invSvc := NewService(conn, sessionSvc)
 	repo := session.NewSessions(conn)
 	ctx := tctx(tenantID)
 

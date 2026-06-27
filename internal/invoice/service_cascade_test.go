@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -29,9 +28,8 @@ func TestInvoiceStatusCascadesToSessions(t *testing.T) {
 			conn := newTestDB(t)
 			tenantID := seedTenant(t, conn, "Acme")
 			clientID := seedClient(t, conn, tenantID, "Jane Client")
-			hub := realtime.NewHub()
-			invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
-			sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+			invSvc := NewService(conn, session.NewService(conn, NewInvoices(conn)))
+			sessionSvc := session.NewService(conn, NewInvoices(conn))
 			ctx := tctx(tenantID)
 
 			inv, err := invSvc.Create(ctx, InvoiceInput{
@@ -57,9 +55,8 @@ func TestInvoiceStatusDoesNotCascadeForDraft(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, session.NewService(conn, NewInvoices(conn)))
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, InvoiceInput{
@@ -84,9 +81,8 @@ func TestInvoiceDeleteRevertsSessionsToRecorded(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	invSvc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
+	invSvc := NewService(conn, session.NewService(conn, NewInvoices(conn)))
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
 	ctx := tctx(tenantID)
 
 	inv, err := invSvc.Create(ctx, InvoiceInput{

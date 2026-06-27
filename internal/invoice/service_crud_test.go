@@ -2,15 +2,13 @@ package invoice
 
 import (
 	"testing"
-	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
 func TestInvoiceListAndGet(t *testing.T) {
-	svc, _, tenantID, clientID := newInvoiceSvc(t)
+	svc, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, clientID)
@@ -36,7 +34,7 @@ func TestInvoiceListAndGet(t *testing.T) {
 }
 
 func TestInvoiceGetNotFoundReturnsNil(t *testing.T) {
-	svc, _, tenantID, _ := newInvoiceSvc(t)
+	svc, tenantID, _ := newInvoiceSvc(t)
 
 	got, err := svc.Get(tctx(tenantID), "nonexistent-uuid")
 	if err != nil {
@@ -48,7 +46,7 @@ func TestInvoiceGetNotFoundReturnsNil(t *testing.T) {
 }
 
 func TestInvoiceListByStatusSvc(t *testing.T) {
-	svc, _, tenantID, clientID := newInvoiceSvc(t)
+	svc, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, clientID)
@@ -77,8 +75,7 @@ func TestInvoiceListClientInvoicesAndStats(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID, clientUUID := seedClientUUID(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, session.NewService(conn, NewInvoices(conn)))
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, clientID)
@@ -111,7 +108,7 @@ func TestInvoiceListClientInvoicesAndStats(t *testing.T) {
 }
 
 func TestInvoiceUpdate(t *testing.T) {
-	svc, _, tenantID, clientID := newInvoiceSvc(t)
+	svc, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, clientID)
@@ -131,7 +128,7 @@ func TestInvoiceUpdate(t *testing.T) {
 }
 
 func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
-	svc, _, tenantID, clientID := newInvoiceSvc(t)
+	svc, tenantID, clientID := newInvoiceSvc(t)
 
 	got, err := svc.Update(tctx(tenantID), "nonexistent-uuid", InvoiceInput{
 		ClientID: clientID, IssueDate: "2026-03-01", DueDate: "2026-04-01",
@@ -144,25 +141,14 @@ func TestInvoiceUpdateNotFoundReturnsNil(t *testing.T) {
 	}
 }
 
-func TestInvoiceDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newInvoiceSvc(t)
+func TestInvoiceDelete(t *testing.T) {
+	svc, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	inv := makeInvoice(t, svc, tenantID, clientID)
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
 	if err := svc.Delete(ctx, inv.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "invoice" || e.UUID != inv.ID || e.Action != "delete" {
-			t.Fatalf("event=%+v want invoice/%s/delete", e, inv.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Delete")
 	}
 
 	got, err := svc.Get(ctx, inv.ID)
@@ -174,26 +160,15 @@ func TestInvoiceDeleteBroadcasts(t *testing.T) {
 	}
 }
 
-func TestInvoiceBulkDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newInvoiceSvc(t)
+func TestInvoiceBulkDelete(t *testing.T) {
+	svc, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	a := makeInvoice(t, svc, tenantID, clientID)
 	b := makeInvoice(t, svc, tenantID, clientID)
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
 	if err := svc.BulkDelete(ctx, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "invoice" || e.UUID != "" || e.Action != "bulk_delete" {
-			t.Fatalf("event=%+v want invoice/0/bulk_delete", e)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after BulkDelete")
 	}
 
 	list, err := svc.List(ctx)
@@ -205,26 +180,15 @@ func TestInvoiceBulkDeleteBroadcasts(t *testing.T) {
 	}
 }
 
-func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newInvoiceSvc(t)
+func TestInvoiceBulkUpdateStatus(t *testing.T) {
+	svc, tenantID, clientID := newInvoiceSvc(t)
 	ctx := tctx(tenantID)
 
 	a := makeInvoice(t, svc, tenantID, clientID)
 	b := makeInvoice(t, svc, tenantID, clientID)
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
 	if err := svc.BulkUpdateStatus(ctx, []string{a.ID, b.ID}, "sent"); err != nil {
 		t.Fatalf("BulkUpdateStatus: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "invoice" || e.UUID != "" || e.Action != "bulk_status" {
-			t.Fatalf("event=%+v want invoice/0/bulk_status", e)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after BulkUpdateStatus")
 	}
 
 	sent, err := svc.ListByStatus(ctx, "sent")
@@ -240,8 +204,7 @@ func TestInvoiceBulkUpdateStatusBroadcasts(t *testing.T) {
 // tenant's invoice.
 func TestInvoiceTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn)))
+	svc := NewService(conn, session.NewService(conn, NewInvoices(conn)))
 
 	tenantA := seedTenant(t, conn, "Acme")
 	partA := seedClient(t, conn, tenantA, "Jane")

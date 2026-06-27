@@ -9,7 +9,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -38,8 +37,7 @@ func newEstimateHandler(t *testing.T) (*Handler, string, string, *Estimate) {
 	if err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub)
+	svc := NewService(conn)
 	est := makeEstimate(t, svc, tenantID, p.ID)
 	return NewHandler(svc), tenantID, p.ID, est
 }

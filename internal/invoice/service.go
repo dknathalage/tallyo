@@ -5,9 +5,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
@@ -24,29 +22,21 @@ type SessionLinker interface {
 	MarkDrafted(ctx context.Context, invoiceID string, sessionIDs []string) error
 }
 
-// Service orchestrates invoice reads/writes and publishes change events
-// after a successful commit. Line items pass through the line validation engine
-// (validator) on create/update before reaching the repository.
+// Service orchestrates invoice reads/writes. Line items pass through the line
+// validation engine (validator) on create/update before reaching the repository.
 type Service struct {
 	repo      *InvoicesRepo
 	sessions  SessionLinker
 	validator *billing.LineValidator
-	hub       *realtime.Hub
-	events    events.Notifier
 }
 
-// NewService constructs the invoice service. A nil hub is a programmer error.
+// NewService constructs the invoice service.
 // sessions may be nil (session cascade is skipped when nil).
-func NewService(db db.Executor, hub *realtime.Hub, sessions SessionLinker) *Service {
-	if hub == nil {
-		panic("invoice.NewService: nil hub")
-	}
+func NewService(db db.Executor, sessions SessionLinker) *Service {
 	return &Service{
 		repo:      NewInvoices(db),
 		sessions:  sessions,
 		validator: billing.NewLineValidator(db),
-		hub:       hub,
-		events:    events.New(hub, "invoice"),
 	}
 }
 
@@ -135,7 +125,7 @@ func (s *Service) ClientStats(ctx context.Context, clientUUID string) (*ClientSt
 	return s.repo.ClientStats(ctx, tenantID, clientID)
 }
 
-// Create inserts an invoice + line items, then broadcasts on success.
+// Create inserts an invoice + line items.
 //
 // Every line passes through the line validation engine (catalogue resolution,
 // unit_price fill, taxable resolution, snapshotting) first; tax is COMPUTED from
@@ -152,7 +142,6 @@ func (s *Service) Create(ctx context.Context, in InvoiceInput, items []billing.L
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, inv.ID)
 	return inv, nil
 }
 
@@ -172,7 +161,6 @@ func (s *Service) CreateWithCatalogPricing(ctx context.Context, in InvoiceInput,
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, inv.ID)
 	return inv, nil
 }
 
@@ -197,13 +185,10 @@ func (s *Service) DraftFromSessions(ctx context.Context, sessionIDs []string) (*
 			return nil, err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "create"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "bill"})
 	return inv, nil
 }
 
-// Update rewrites an invoice. A nil result means the row was not found, in which
-// case no event is published.
+// Update rewrites an invoice. A nil result means the row was not found.
 func (s *Service) Update(ctx context.Context, id string, in InvoiceInput, items []billing.LineItemInput) (*Invoice, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
@@ -218,7 +203,6 @@ func (s *Service) Update(ctx context.Context, id string, in InvoiceInput, items 
 	if inv == nil {
 		return nil, nil
 	}
-	s.events.Updated(tenantID, inv.ID)
 	return inv, nil
 }
 
@@ -264,9 +248,9 @@ func (s *Service) UpdateStatusByUUID(ctx context.Context, invoiceUUID, status st
 	return s.UpdateStatus(ctx, id, status)
 }
 
-// UpdateStatus sets the invoice status, then broadcasts on success. When the
-// invoice advances to a terminal billing status ('sent'/'paid'), the sessions
-// attached to it advance in lockstep (recorded→drafted→sent→paid lifecycle).
+// UpdateStatus sets the invoice status. When the invoice advances to a terminal
+// billing status ('sent'/'paid'), the sessions attached to it advance in lockstep
+// (recorded→drafted→sent→paid lifecycle).
 func (s *Service) UpdateStatus(ctx context.Context, id string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	inv, err := s.repo.Get(ctx, tenantID, id)
@@ -285,17 +269,13 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status string) er
 			return err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "status"})
-	if cascade {
-		s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "status"})
-	}
 	return nil
 }
 
-// Delete removes an invoice, then broadcasts on success. Before deleting, any
-// sessions attached to the invoice are reverted to 'recorded' with a NULL
-// invoice_id, so the work returns to the unbilled pool rather than being orphaned
-// at status 'drafted' by the FK's ON DELETE SET NULL.
+// Delete removes an invoice. Before deleting, any sessions attached to the
+// invoice are reverted to 'recorded' with a NULL invoice_id, so the work returns
+// to the unbilled pool rather than being orphaned at status 'drafted' by the FK's
+// ON DELETE SET NULL.
 func (s *Service) Delete(ctx context.Context, id string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	inv, err := s.repo.Get(ctx, tenantID, id)
@@ -313,15 +293,12 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: inv.ID, Action: "delete"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "status"})
 	return nil
 }
 
-// BulkDelete removes several invoices, then broadcasts a single bulk event.
-// Like Delete, each invoice's sessions are first reverted to 'recorded' (NULL
-// invoice_id) so bulk-deleted work returns to the unbilled pool rather than
-// being orphaned at status 'drafted'.
+// BulkDelete removes several invoices. Like Delete, each invoice's sessions are
+// first reverted to 'recorded' (NULL invoice_id) so bulk-deleted work returns to
+// the unbilled pool rather than being orphaned at status 'drafted'.
 func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if s.sessions != nil {
@@ -334,16 +311,14 @@ func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "bulk_delete"})
 	return nil
 }
 
-// BulkUpdateStatus sets several invoices' status, then broadcasts a bulk event.
+// BulkUpdateStatus sets several invoices' status.
 func (s *Service) BulkUpdateStatus(ctx context.Context, ids []string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: "", Action: "bulk_status"})
 	return nil
 }

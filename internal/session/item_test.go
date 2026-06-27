@@ -8,7 +8,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db/gen"
-	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
 // customItem is a pre-priced custom line (no catalogue code), so repo tests don't
@@ -84,7 +83,7 @@ func TestSessionDeleteBilledGuard(t *testing.T) {
 	conn := newTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	pid := seedClient(t, conn, tid, "Jane")
-	svc := NewService(conn, realtime.NewHub(), nil)
+	svc := NewService(conn, nil)
 	repo := NewSessions(conn)
 	ctx := tctx(tid)
 
