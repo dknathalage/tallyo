@@ -3,15 +3,20 @@
 	import { billing } from '$lib/stores/billing.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { startCheckout, openPortal, trialDaysLeft } from '$lib/api/billing';
+	import { PLAN_STORAGE_KEY, monthlyPrice, annualTotal, currency } from '$lib/pricing';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 
 	const isOwner = $derived(session.isOwner);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
+	// Cadence for the first checkout. Defaults from the landing toggle choice
+	// (sessionStorage), still user-changeable here.
+	let annual = $state(false);
 
 	onMount(() => {
 		void billing.load();
+		if (sessionStorage.getItem(PLAN_STORAGE_KEY) === 'annual') annual = true;
 	});
 
 	const status = $derived(billing.status);
@@ -37,7 +42,7 @@
 		busy = true;
 		error = null;
 		try {
-			const url = await startCheckout();
+			const url = await startCheckout(annual ? 'annual' : 'monthly');
 			if (url) window.location.assign(url);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not start checkout';
@@ -79,6 +84,17 @@
 		{:else if canManage}
 			<Button onclick={manage} loading={busy} disabled={busy}>Manage billing</Button>
 		{:else}
+			<fieldset class="space-y-2">
+				<legend class="text-sm text-gray-500">Billing cycle</legend>
+				<label class="flex items-center gap-2 text-sm">
+					<input type="radio" name="cadence" checked={!annual} onchange={() => (annual = false)} />
+					Monthly — {monthlyPrice} {currency}/month
+				</label>
+				<label class="flex items-center gap-2 text-sm">
+					<input type="radio" name="cadence" checked={annual} onchange={() => (annual = true)} />
+					Annual — {annualTotal} {currency}/year (2 months free)
+				</label>
+			</fieldset>
 			<Button onclick={subscribe} loading={busy} disabled={busy}>Subscribe</Button>
 		{/if}
 	</Card>

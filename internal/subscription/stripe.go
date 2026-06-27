@@ -14,13 +14,16 @@ import (
 // kept here too so the handler has one place to read config-derived Stripe state.
 type Client struct {
 	api           *stripe.Client
-	priceID       string
+	priceID       string // monthly
+	priceIDAnnual string // annual; equals priceID when STRIPE_PRICE_ID_ANNUAL is unset
 	trialDays     int
 	webhookSecret string
 }
 
 // NewClient builds a Stripe client from config. Returns an error if the secret
-// key or price id is missing (billing cannot function without them).
+// key or price id is missing (billing cannot function without them). The annual
+// price is optional: when unset it falls back to the monthly price so checkout
+// still works before the annual price exists in the Stripe dashboard.
 func NewClient(cfg Config) (*Client, error) {
 	if cfg.SecretKey == "" {
 		return nil, errors.New("stripe: STRIPE_SECRET_KEY is required")
@@ -28,12 +31,27 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.PriceID == "" {
 		return nil, errors.New("stripe: STRIPE_PRICE_ID is required")
 	}
+	annual := cfg.PriceIDAnnual
+	if annual == "" {
+		annual = cfg.PriceID
+	}
 	return &Client{
 		api:           stripe.NewClient(cfg.SecretKey),
 		priceID:       cfg.PriceID,
+		priceIDAnnual: annual,
 		trialDays:     cfg.TrialDays,
 		webhookSecret: cfg.WebhookSecret,
 	}, nil
+}
+
+// priceFor selects the Stripe price for the requested cadence. Only "annual"
+// selects the annual price; everything else (including "" and unknown values)
+// falls back to monthly.
+func (c *Client) priceFor(plan string) string {
+	if plan == "annual" {
+		return c.priceIDAnnual
+	}
+	return c.priceID
 }
 
 // WebhookSecret returns the configured Stripe webhook signing secret.
@@ -45,6 +63,7 @@ type CheckoutInput struct {
 	Email      string
 	SuccessURL string
 	CancelURL  string
+	Plan       string // "monthly" (default) or "annual" — selects the price
 }
 
 // CreateCheckoutSession starts a subscription Checkout with the configured trial.
@@ -60,7 +79,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, in CheckoutInput) (u
 		SuccessURL:        stripe.String(in.SuccessURL),
 		CancelURL:         stripe.String(in.CancelURL),
 		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{{
-			Price:    stripe.String(c.priceID),
+			Price:    stripe.String(c.priceFor(in.Plan)),
 			Quantity: stripe.Int64(1),
 		}},
 		SubscriptionData: &stripe.CheckoutSessionCreateSubscriptionDataParams{

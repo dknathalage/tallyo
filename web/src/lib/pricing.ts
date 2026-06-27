@@ -1,27 +1,32 @@
-// Display-only marketing pricing. The backend has exactly ONE Stripe price;
-// these tiers are copy. Every tier CTA goes to /signup (no plan param). The
-// monthly/annual toggle changes shown numbers only — it does not affect checkout.
+// Display-only marketing pricing. Tallyo has ONE paid plan, billed monthly or
+// annually (two Stripe prices). The landing monthly/annual toggle records the
+// choice in sessionStorage (key PLAN_STORAGE_KEY) so the in-app billing page can
+// default its cadence at first checkout — see settings/billing/+page.svelte.
+// Prices are in AUD.
 
-export type Tier = 'starter' | 'professional' | 'business';
+export type Plan = 'monthly' | 'annual';
 
-export type TierPrices = Record<Tier, string>;
+/** sessionStorage key the landing toggle writes and the billing page reads. */
+export const PLAN_STORAGE_KEY = 'tallyo_plan';
 
-// Monthly prices (shown when the toggle is on "Monthly").
-export const monthlyPrices: TierPrices = {
-	starter: '$0',
-	professional: '$29',
-	business: '$79'
-};
+/** Monthly plan price (shown when the toggle is on "Monthly"). */
+export const monthlyPrice = '$19';
 
-// Annual prices (shown when the toggle is on "Annual" — approx 2 months free,
-// displayed per month).
-export const annualPrices: TierPrices = {
-	starter: '$0',
-	professional: '$24',
-	business: '$66'
-};
+/** Annual plan shown per month ($190/yr ÷ 12 ≈ $15.83). */
+export const annualPerMonth = '$15.83';
 
-/** Pure selection: the price set to display for the chosen billing cadence. */
-export function pricesFor(annual: boolean): TierPrices {
-	return annual ? annualPrices : monthlyPrices;
+/** Annual plan billed total. */
+export const annualTotal = '$190';
+
+/** Currency label shown alongside prices. */
+export const currency = 'AUD';
+
+/** Pure selection: the per-period price string to display for the cadence. */
+export function priceFor(annual: boolean): string {
+	return annual ? annualPerMonth : monthlyPrice;
+}
+
+/** The period suffix shown next to the price. */
+export function periodFor(annual: boolean): string {
+	return annual ? '/mo, billed annually' : '/month';
 }
