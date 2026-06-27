@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -38,7 +37,6 @@ import (
 // is called.
 type Config struct {
 	Port           int
-	DataDir        string // empty → DATA_DIR env, else ./data
 	SecureCookie   bool
 	LogLevel       string
 	LogFormat      string
@@ -116,27 +114,23 @@ func Run(cfg Config, version string) error {
 		logger.Warn("smarts disabled: ANTHROPIC_API_KEY unset")
 	}
 
-	dir := cfg.DataDir
-	if dir == "" {
-		d, err := appdb.DataDir()
-		if err != nil {
-			return fmt.Errorf("data dir: %w", err)
-		}
-		dir = d
+	dsn := EnvOr("DATABASE_URL", "")
+	if dsn == "" {
+		return fmt.Errorf("DATABASE_URL is required (postgres connection string)")
 	}
 
-	// Single SQLite instance: the whole app — control tables (tenants, users,
-	// sessions, audit) and every tenant's business data — lives in one file.
+	// Single Postgres instance: the whole app — control tables (tenants, users,
+	// sessions, audit) and every tenant's business data — lives in one database.
 	// Tenancy is logical: each business row carries a tenant_id and every query
 	// guards on it; reqctx carries the request's tenant for guards + audit.
-	database, err := appdb.Open(filepath.Join(dir, "tallyo.db"))
+	database, err := appdb.Open(dsn)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
 	if err := appdb.Migrate(database); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	logger.Info("database connected", slog.String("path", filepath.Join(dir, "tallyo.db")))
+	logger.Info("database connected")
 	defer func() {
 		if cerr := database.Close(); cerr != nil {
 			logger.Error("close db failed", slog.Any("error", cerr))
