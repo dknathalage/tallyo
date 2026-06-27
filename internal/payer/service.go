@@ -5,26 +5,18 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/apperr"
-	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// Service orchestrates payer reads/writes and publishes change events
-// after a successful commit.
+// Service orchestrates payer reads/writes.
 type Service struct {
-	repo   *PayersRepo
-	hub    *realtime.Hub
-	events events.Notifier
+	repo *PayersRepo
 }
 
-// NewService constructs the payer service. A nil hub is a programmer error.
-func NewService(db db.Executor, hub *realtime.Hub) *Service {
-	if hub == nil {
-		panic("payer.NewService: nil hub")
-	}
-	return &Service{repo: NewPayers(db), hub: hub, events: events.New(hub, "payer")}
+// NewService constructs the payer service.
+func NewService(db db.Executor) *Service {
+	return &Service{repo: NewPayers(db)}
 }
 
 func (s *Service) List(ctx context.Context, search string) ([]*Payer, error) {
@@ -58,7 +50,7 @@ func (s *Service) Get(ctx context.Context, uuid string) (*Payer, error) {
 	return p, nil
 }
 
-// Create inserts a payer, then broadcasts AFTER the commit succeeds.
+// Create inserts a payer.
 func (s *Service) Create(ctx context.Context, in PayerInput) (*Payer, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -68,12 +60,11 @@ func (s *Service) Create(ctx context.Context, in PayerInput) (*Payer, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, p.ID)
 	return p, nil
 }
 
-// Update mutates a payer, then broadcasts on success. A missing row surfaces as
-// apperr.ErrNotFound from the repo and is propagated (no event published).
+// Update mutates a payer. A missing row surfaces as apperr.ErrNotFound from the
+// repo and is propagated.
 func (s *Service) Update(ctx context.Context, uuid string, in PayerInput) (*Payer, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -83,18 +74,16 @@ func (s *Service) Update(ctx context.Context, uuid string, in PayerInput) (*Paye
 	if err != nil {
 		return nil, err
 	}
-	s.events.Updated(tenantID, p.ID)
 	return p, nil
 }
 
-// Delete removes a payer by uuid, then broadcasts on success. A missing row
-// surfaces as apperr.ErrNotFound from the repo and is propagated.
+// Delete removes a payer by uuid. A missing row surfaces as apperr.ErrNotFound
+// from the repo and is propagated.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.events.Deleted(tenantID, uuid)
 	return nil
 }
 
@@ -106,13 +95,11 @@ func (s *Service) ResolvePayerIDs(ctx context.Context, pmUUIDs []string) ([]stri
 	return s.repo.ResolvePayerIDs(ctx, tenantID, pmUUIDs)
 }
 
-// BulkDelete removes multiple payers, then broadcasts a single
-// bulk_delete event on success.
+// BulkDelete removes multiple payers.
 func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "payer", UUID: "", Action: "bulk_delete"})
 	return nil
 }

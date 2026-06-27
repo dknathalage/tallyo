@@ -6,9 +6,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/apperr"
-	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
@@ -19,21 +17,15 @@ type QueryResult struct {
 	Total int64     `json:"total"`
 }
 
-// Service orchestrates client reads/writes and publishes change events
-// after a successful commit. It resolves the caller's tenant from the request
-// context and passes it into the tenant-scoped repository.
+// Service orchestrates client reads/writes. It resolves the caller's tenant from
+// the request context and passes it into the tenant-scoped repository.
 type Service struct {
-	repo   *ClientsRepo
-	hub    *realtime.Hub
-	events events.Notifier
+	repo *ClientsRepo
 }
 
-// NewService constructs the service. A nil hub is a programmer error.
-func NewService(db db.Executor, hub *realtime.Hub) *Service {
-	if hub == nil {
-		panic("client.NewService: nil hub")
-	}
-	return &Service{repo: NewClients(db), hub: hub, events: events.New(hub, "client")}
+// NewService constructs the service.
+func NewService(db db.Executor) *Service {
+	return &Service{repo: NewClients(db)}
 }
 
 // List returns the tenant's clients, optionally filtered by search.
@@ -68,7 +60,7 @@ func (s *Service) Get(ctx context.Context, uuid string) (*Client, error) {
 	return c, nil
 }
 
-// Create inserts a client, then broadcasts AFTER the commit succeeds.
+// Create inserts a client.
 func (s *Service) Create(ctx context.Context, in ClientInput) (*Client, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -78,13 +70,11 @@ func (s *Service) Create(ctx context.Context, in ClientInput) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, c.ID)
 	return c, nil
 }
 
-// Update mutates a client by uuid, then broadcasts on success. A missing row
-// surfaces as apperr.ErrNotFound from the repo and is propagated (no event). The
-// SSE event carries the row's uuid.
+// Update mutates a client by uuid. A missing row surfaces as apperr.ErrNotFound
+// from the repo and is propagated.
 func (s *Service) Update(ctx context.Context, uuid string, in ClientInput) (*Client, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -94,18 +84,16 @@ func (s *Service) Update(ctx context.Context, uuid string, in ClientInput) (*Cli
 	if err != nil {
 		return nil, err
 	}
-	s.events.Updated(tenantID, c.ID)
 	return c, nil
 }
 
-// Delete removes a client by uuid, then broadcasts on success. A missing row
-// surfaces as apperr.ErrNotFound from the repo and is propagated.
+// Delete removes a client by uuid. A missing row surfaces as apperr.ErrNotFound
+// from the repo and is propagated.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.events.Deleted(tenantID, uuid)
 	return nil
 }
 
@@ -117,13 +105,11 @@ func (s *Service) ResolveClientIDs(ctx context.Context, clientUUIDs []string) ([
 	return s.repo.ResolveClientIDs(ctx, tenantID, clientUUIDs)
 }
 
-// BulkDelete removes multiple clients, then broadcasts a single bulk_delete
-// event on success.
+// BulkDelete removes multiple clients.
 func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "client", UUID: "", Action: "bulk_delete"})
 	return nil
 }

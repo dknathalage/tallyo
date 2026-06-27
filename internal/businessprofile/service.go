@@ -4,23 +4,17 @@ import (
 	"context"
 	"github.com/dknathalage/tallyo/internal/db"
 
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// Service orchestrates business-profile reads/writes and publishes change events
-// after a successful commit.
+// Service orchestrates business-profile reads/writes.
 type Service struct {
 	repo *BusinessProfileRepo
-	hub  *realtime.Hub
 }
 
-// NewService constructs the business-profile service. A nil hub is a programmer error.
-func NewService(db db.Executor, hub *realtime.Hub) *Service {
-	if hub == nil {
-		panic("businessprofile.NewService: nil hub")
-	}
-	return &Service{repo: NewBusinessProfile(db), hub: hub}
+// NewService constructs the business-profile service.
+func NewService(db db.Executor) *Service {
+	return &Service{repo: NewBusinessProfile(db)}
 }
 
 // Get returns the business profile, or nil if unset.
@@ -29,7 +23,7 @@ func (s *Service) Get(ctx context.Context) (*BusinessProfile, error) {
 	return s.repo.Get(ctx, tenantID)
 }
 
-// Save upserts the profile, then broadcasts AFTER the commit succeeds.
+// Save upserts the profile.
 func (s *Service) Save(ctx context.Context, in BusinessProfileInput) error {
 	if err := in.Validate(); err != nil {
 		return err
@@ -38,6 +32,5 @@ func (s *Service) Save(ctx context.Context, in BusinessProfileInput) error {
 	if err := s.repo.Save(ctx, tenantID, in); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "business_profile", UUID: "", Action: "update"})
 	return nil
 }

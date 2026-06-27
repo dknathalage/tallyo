@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
@@ -24,7 +23,7 @@ func newClientHandler(t *testing.T) (*Handler, string, string, *Client) {
 	if err != nil {
 		t.Fatalf("seed payer: %v", err)
 	}
-	svc := NewService(conn, realtime.NewHub())
+	svc := NewService(conn)
 	seeded, err := svc.Create(tctx(tenantID), ClientInput{Name: "Jane", PayerUUID: &pm.ID})
 	if err != nil {
 		t.Fatalf("seed client: %v", err)
@@ -110,7 +109,7 @@ func TestClientCreateResolvesPayerUUID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed payer: %v", err)
 	}
-	h := NewHandler(NewService(conn, realtime.NewHub()))
+	h := NewHandler(NewService(conn))
 	srv := httptest.NewServer(mountClient(h, tenantID))
 	defer srv.Close()
 
