@@ -12,6 +12,8 @@
 
 **Module path:** `github.com/dknathalage/tallyo`
 
+> **Test prerequisite:** DB-backed tests (`internal/db`, `internal/auth`, `internal/subscription` store/handler, `internal/app` routes) call `appdb.OpenTestDB(t)` (`internal/db/testdb.go`), which `t.Skip`s when `TEST_DATABASE_URL` is unset. **A SKIP is not a PASS** — export `TEST_DATABASE_URL` (Postgres) before claiming any DB task green. The auth tests' `mustTenantDB(t)` wrapper (`internal/auth/tenants_test.go:13`) is the harness to copy. Note: a tenant's public "uuid" IS `tenants.id` — there is no separate uuid column.
+
 ---
 
 ## File Structure
@@ -261,7 +263,7 @@ func RequireSubscription(next http.Handler) http.Handler {
 
 **Files:**
 - Create: `internal/subscription/store.go`
-- Test: `internal/subscription/store_test.go` (follow `internal/auth` repo test harness — `testhelper_test.go` pattern with a control DB)
+- Test: `internal/subscription/store_test.go` (use `appdb.OpenTestDB(t)` — copy the `mustTenantDB` harness from `internal/auth/tenants_test.go:13`; needs `TEST_DATABASE_URL`)
 
 - [ ] **Step 1: Failing test** — `Store.Apply(ctx, update)` writes the 6 fields; `GetByStripeCustomer` round-trips; a second `Apply` with an OLDER `SyncedAt` is a no-op (idempotency/out-of-order guard).
 
@@ -407,7 +409,7 @@ func RequireSubscription(next http.Handler) http.Handler {
 
 - [ ] **Step 1:** `secrets` module — add `stripe_secret_key` + `stripe_webhook_secret` vars (sensitive, default ""), clone the `anthropic` `google_secret_manager_secret` + `_version` pair (version `count` guarded on non-empty), export the secret ids in `outputs.tf`.
 
-- [ ] **Step 2:** `cloud-run` module — add vars for the two secret ids + `billing_enabled` (bool), `stripe_price_id`, `trial_days`; reference the two secrets in the container env (secret-backed env, matching how `anthropic`/db password are injected); add plain env vars for the non-secret three; grant the runtime SA `roles/secretmanager.secretAccessor` on the two new secrets (the IAM binding near `cloud-run/main.tf:30`).
+- [ ] **Step 2:** `cloud-run` module — add vars for the two secret ids + `billing_enabled` (bool), `stripe_price_id`, `trial_days`; reference the two secrets in the container env (secret-backed env, matching how `anthropic`/db password are injected); add plain env vars for the non-secret three; grant the runtime SA `roles/secretmanager.secretAccessor` on the two new secrets — clone `google_secret_manager_secret_iam_member.anthropic` (`cloud-run/main.tf:28-33`), threading each new secret id as a variable like `var.anthropic_secret_id`, AND add the two new iam_member resources to the service's `depends_on` list (`cloud-run/main.tf:131-135`).
 
 - [ ] **Step 3:** Terragrunt — thread the secret outputs + plain values through `_envcommon/secrets.hcl`, `_envcommon/cloud-run.hcl`, and the per-env `terragrunt.hcl` inputs (dev + prd). Leave secret VALUES blank in committed HCL (populated out-of-band).
 
