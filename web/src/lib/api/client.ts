@@ -117,6 +117,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 	const data: unknown = text.length > 0 ? JSON.parse(text) : null;
 
 	if (!res.ok) {
+		// 402 = subscription required (a write hit the billing gate). Broadcast it so
+		// the layout can show a paywall; a window event avoids a store import cycle.
+		if (res.status === 402 && typeof window !== 'undefined') {
+			window.dispatchEvent(new CustomEvent('billing:blocked'));
+		}
 		const errBody = (data as ApiErrorBody | null) ?? null;
 		const errMsg = errBody?.error ?? `request failed (${res.status})`;
 		throw new ApiError(res.status, errMsg, errBody);

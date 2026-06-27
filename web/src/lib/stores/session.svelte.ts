@@ -102,6 +102,9 @@ function createSessionStore() {
 		get isManager(): boolean {
 			return user !== null && (user.role === 'owner' || user.role === 'admin');
 		},
+		get isOwner(): boolean {
+			return user?.role === 'owner';
+		},
 		get isPlatformAdmin(): boolean {
 			return user?.isPlatformAdmin === true;
 		},

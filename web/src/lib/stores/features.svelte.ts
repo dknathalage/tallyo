@@ -23,6 +23,9 @@ function createFeaturesStore() {
 		},
 		get invites(): boolean {
 			return flags.invites === true;
+		},
+		get billing(): boolean {
+			return flags.billing === true;
 		}
 	};
 }
