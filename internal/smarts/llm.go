@@ -29,10 +29,12 @@ func supportsTuning(m anthropic.Model) bool {
 	return !strings.Contains(string(m), "haiku")
 }
 
-// defaultModel is Anthropic's most capable widely-used model; overridable via
-// the model arg to NewAnthropicClient (ANTHROPIC_MODEL in the composition root).
+// defaultModel is Haiku 4.5 — invoice drafting is structured extraction, so the
+// cheapest fast model fits and keeps gross margin high; overridable via the model
+// arg to NewAnthropicClient (ANTHROPIC_MODEL in the composition root). Haiku
+// rejects thinking/effort tuning — supportsTuning gates that off.
 const (
-	defaultModel = string(anthropic.ModelClaudeOpus4_8)
+	defaultModel = string(anthropic.ModelClaudeHaiku4_5)
 	maxTokens    = 8000
 	maxToolCalls = 6 // bound on the grounded search loop (NASA rule 2)
 )

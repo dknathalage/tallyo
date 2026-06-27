@@ -61,9 +61,14 @@ variable "stripe_price_id" {
   default = ""
 }
 
+variable "stripe_price_id_annual" {
+  type    = string
+  default = ""
+}
+
 variable "trial_days" {
   type    = number
-  default = 90
+  default = 30
 }
 
 variable "min_instances" {

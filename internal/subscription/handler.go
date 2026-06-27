@@ -56,6 +56,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		Email:      email,
 		SuccessURL: base + "?checkout=success",
 		CancelURL:  base + "?checkout=cancel",
+		Plan:       r.URL.Query().Get("plan"), // "annual" selects the annual price; else monthly
 	})
 	if err != nil {
 		httpx.LoggerFrom(r.Context()).Error("checkout session", "err", err)

@@ -148,6 +148,11 @@ resource "google_cloud_run_v2_service" "this" {
       }
 
       env {
+        name  = "STRIPE_PRICE_ID_ANNUAL"
+        value = var.stripe_price_id_annual
+      }
+
+      env {
         name  = "TRIAL_DAYS"
         value = tostring(var.trial_days)
       }

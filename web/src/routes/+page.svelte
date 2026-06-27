@@ -2,7 +2,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import PricingCard from '$lib/components/PricingCard.svelte';
-	import { pricesFor } from '$lib/pricing';
+	import { priceFor, periodFor, annualTotal, currency, PLAN_STORAGE_KEY } from '$lib/pricing';
 	import Receipt from '@lucide/svelte/icons/receipt';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Users from '@lucide/svelte/icons/users';
@@ -10,37 +10,30 @@
 	import Calculator from '@lucide/svelte/icons/calculator';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 
-	// Display-only billing toggle — no backend effect. All CTAs go to /signup.
+	// Billing cadence toggle. On any signup CTA we persist the choice to
+	// sessionStorage so the in-app billing page defaults the cadence at first
+	// checkout (see settings/billing/+page.svelte).
 	let annual = $state(false);
 
-	// Prices are display-only marketing copy; selection lives in $lib/pricing.
-	let prices = $derived(pricesFor(annual));
-	let period = $derived(annual ? '/mo, billed annually' : '/month');
+	let price = $derived(priceFor(annual));
+	let period = $derived(periodFor(annual));
 
-	const starterFeatures = [
-		'Up to 5 clients',
-		'Unlimited invoices',
-		'Estimates & quotes',
-		'Product catalogue',
-		'PDF export',
-		'Email support'
-	];
-	const professionalFeatures = [
+	// Persist the cadence right before navigating to /signup.
+	function persistPlan(): void {
+		sessionStorage.setItem(PLAN_STORAGE_KEY, annual ? 'annual' : 'monthly');
+	}
+
+	// One plan. Only features that actually exist in the app.
+	const planFeatures = [
 		'Unlimited clients',
 		'Unlimited invoices',
 		'Estimates & quotes',
 		'Product catalogue',
-		'Tax reports',
-		'Recurring invoices',
-		'Priority support'
-	];
-	const businessFeatures = [
-		'Everything in Professional',
-		'Multiple team members',
-		'Advanced tax reporting',
-		'Custom branding',
-		'API access',
-		'Dedicated support'
+		'Tax-rate fields',
+		'AI draft assist',
+		'PDF export',
+		'Team members',
+		'Email support'
 	];
 
 	const features = [
@@ -48,13 +41,13 @@
 			icon: FileText,
 			title: 'Invoices',
 			description:
-				'Create professional invoices in seconds. Track payment status, send reminders, and get paid faster.'
+				'Create professional invoices in seconds. Track status from draft to paid, and export a clean PDF to send.'
 		},
 		{
 			icon: Calculator,
 			title: 'Estimates',
 			description:
-				'Send polished estimates that convert. Clients approve with a click — turn quotes into invoices automatically.'
+				'Draft polished estimates and quotes. Turn an accepted quote into an invoice in one click — no retyping.'
 		},
 		{
 			icon: Users,
@@ -64,9 +57,9 @@
 		},
 		{
 			icon: Tag,
-			title: 'Tax',
+			title: 'Tax rates',
 			description:
-				'Stay compliant with automated tax calculations. Run reports at year-end without the spreadsheet scramble.'
+				'Set your own tax rates and apply them per line. Hand clean, itemised totals to your accountant at tax time.'
 		},
 		{
 			icon: BookOpen,
@@ -85,7 +78,7 @@
 	const faqs = [
 		{
 			q: 'Do I need a credit card to start?',
-			a: 'No. Your 90-day free trial starts the moment you sign up — no card required until you choose to subscribe.'
+			a: 'Yes — your 30-day free trial starts when you add a card, and you are not charged until the trial ends. Cancel any time before then and you pay nothing.'
 		},
 		{
 			q: 'What happens when my trial ends?',
@@ -114,7 +107,7 @@
 	<title>Tallyo — Invoicing &amp; billing for freelancers</title>
 	<meta
 		name="description"
-		content="Create invoices, send estimates, manage clients, and track tax — all in one place. Start your 90-day free trial today."
+		content="Create invoices, send estimates, manage clients, and apply tax rates — all in one place. Start your 30-day free trial today."
 	/>
 </svelte:head>
 
@@ -145,7 +138,7 @@
 			<a href="/login" class="text-sm font-medium text-gray-600 hover:text-gray-900">Sign in</a>
 		</nav>
 
-		<Button href="/signup" size="sm">Start free trial</Button>
+		<Button href="/signup" onclick={persistPlan} size="sm">Start free trial</Button>
 	</div>
 
 	<!-- Small screens: section anchors as a second wrapped row (no drawer). -->
@@ -164,7 +157,7 @@
 	<!-- Hero -->
 	<section class="bg-gradient-to-b from-brand-50 to-white px-4 py-20 text-center sm:px-6 sm:py-28">
 		<div class="mx-auto max-w-3xl">
-			<Badge tone="brand" class="mb-4">90-day free trial · No card required</Badge>
+			<Badge tone="brand" class="mb-4">30-day free trial · Cancel any time</Badge>
 			<h1 class="mt-4 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl">
 				Invoicing &amp; billing<br />
 				<span class="text-brand-700">made simple</span>
@@ -174,7 +167,9 @@
 				tool built for freelancers and small businesses.
 			</p>
 			<div class="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-				<Button href="/signup" class="px-6 py-3 text-base">Start free trial</Button>
+				<Button href="/signup" onclick={persistPlan} class="px-6 py-3 text-base"
+					>Start free trial</Button
+				>
 				<Button href="#pricing" variant="secondary" class="px-6 py-3 text-base">
 					See pricing
 				</Button>
@@ -189,7 +184,9 @@
 				<h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
 					Simple, transparent pricing
 				</h2>
-				<p class="mt-4 text-lg text-gray-600">Start free. Upgrade when you're ready.</p>
+				<p class="mt-4 text-lg text-gray-600">
+					One plan, everything included. {currency} pricing.
+				</p>
 
 				<!-- Monthly / Annual toggle — display only -->
 				<div class="mt-8 inline-flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-1">
@@ -221,35 +218,24 @@
 				{/if}
 			</div>
 
-			<div class="grid gap-8 sm:grid-cols-3">
+			<div class="mx-auto max-w-sm">
 				<PricingCard
-					name="Starter"
-					price={prices.starter}
+					name="Tallyo"
+					price={price}
 					{period}
-					description="For freelancers just getting started."
-					features={starterFeatures}
-				/>
-				<PricingCard
-					name="Professional"
-					price={prices.professional}
-					{period}
-					description="For growing freelancers and consultants."
-					features={professionalFeatures}
+					description="Everything you need to invoice, for solo traders and small businesses."
+					features={planFeatures}
 					popular={true}
-				/>
-				<PricingCard
-					name="Business"
-					price={prices.business}
-					{period}
-					description="For small agencies and teams."
-					features={businessFeatures}
 				/>
 			</div>
 
 			<p class="mt-8 text-center text-sm text-gray-500">
-				All plans include a <strong>90-day free trial</strong> — no credit card required.
-				<a href="/signup" class="font-medium text-brand-700 hover:text-brand-800"
-					>Get started today →</a
+				Includes a <strong>30-day free trial</strong>. Card required to start; cancel any time before
+				it ends and you pay nothing.
+				<a
+					href="/signup"
+					onclick={persistPlan}
+					class="font-medium text-brand-700 hover:text-brand-800">Get started today →</a
 				>
 			</p>
 		</div>
@@ -260,7 +246,7 @@
 		<div class="mx-auto max-w-6xl">
 			<div class="mb-12 text-center">
 				<h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-					Everything you need to get paid
+					Everything you need to invoice
 				</h2>
 				<p class="mt-4 text-lg text-gray-600">
 					No bloat, no complexity — just the tools that matter for your business.
@@ -326,15 +312,20 @@
 	<section class="bg-brand-700 px-4 py-20 text-center sm:px-6">
 		<div class="mx-auto max-w-2xl">
 			<h2 class="text-3xl font-bold tracking-tight text-onbrand dark:text-white sm:text-4xl">
-				Ready to get paid on time?
+				Ready to send your first invoice?
 			</h2>
 			<!-- In dark mode brand-700 is a lighter teal; light body copy drops below
 			     4.5:1, so dark text (dark:text-white maps to near-black) is required. -->
 			<p class="mt-4 text-lg text-brand-100 dark:text-white">
-				Join thousands of freelancers who run their billing with Tallyo. Start your 90-day free
-				trial — no credit card needed.
+				Run your invoicing with Tallyo. Start your 30-day free trial — cancel any time before it
+				ends.
 			</p>
-			<Button href="/signup" variant="secondary" class="mt-10 px-8 py-3 text-base">
+			<Button
+				href="/signup"
+				onclick={persistPlan}
+				variant="secondary"
+				class="mt-10 px-8 py-3 text-base"
+			>
 				Start free trial
 			</Button>
 		</div>

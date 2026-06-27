@@ -13,9 +13,13 @@ export async function getBillingStatus(): Promise<BillingStatus | null> {
 	return apiGet<BillingStatus>(tenantPath('billing'));
 }
 
-/** Start a Stripe Checkout session and return its redirect URL (owner-only). */
-export async function startCheckout(): Promise<string | null> {
-	const res = await apiPost<{ url: string }>(tenantPath('billing/checkout'));
+/**
+ * Start a Stripe Checkout session and return its redirect URL (owner-only).
+ * `plan` selects the cadence; "annual" uses the annual price, anything else
+ * (default) uses monthly. Passed as a query param on the POST.
+ */
+export async function startCheckout(plan: 'monthly' | 'annual' = 'monthly'): Promise<string | null> {
+	const res = await apiPost<{ url: string }>(tenantPath(`billing/checkout?plan=${plan}`));
 	return res?.url ?? null;
 }
 

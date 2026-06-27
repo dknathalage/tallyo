@@ -13,12 +13,13 @@ type Config struct {
 	Enabled       bool
 	SecretKey     string // STRIPE_SECRET_KEY
 	WebhookSecret string // STRIPE_WEBHOOK_SECRET
-	PriceID       string // STRIPE_PRICE_ID — the recurring price the trial subscribes to
+	PriceID       string // STRIPE_PRICE_ID — the monthly recurring price the trial subscribes to
+	PriceIDAnnual string // STRIPE_PRICE_ID_ANNUAL — the annual price; falls back to PriceID when unset
 	TrialDays     int    // TRIAL_DAYS — passed to Stripe as trial_period_days
 }
 
 // DefaultTrialDays is used when TRIAL_DAYS is unset or unparseable.
-const DefaultTrialDays = 90
+const DefaultTrialDays = 30
 
 // LoadConfig reads billing config from the environment.
 //
@@ -30,6 +31,7 @@ func LoadConfig() Config {
 		SecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
 		WebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
 		PriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
+		PriceIDAnnual: strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID_ANNUAL")),
 		TrialDays:     trialDays(os.Getenv("TRIAL_DAYS")),
 	}
 }

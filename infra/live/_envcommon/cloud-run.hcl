@@ -72,10 +72,11 @@ inputs = {
   firebase_auth_domain = dependency.identity_platform.outputs.auth_domain
   firebase_project_id  = dependency.identity_platform.outputs.project_id
 
-  # Billing: off until the Stripe dashboard product/price/webhook exist and the
+  # Billing: off until the Stripe dashboard product/prices/webhook exist and the
   # GSM secret VALUES are populated. Flip per-env in the leaf terragrunt inputs
-  # and set stripe_price_id there.
-  billing_enabled = false
-  stripe_price_id = ""
-  trial_days      = 90
+  # and set stripe_price_id (monthly) + stripe_price_id_annual there.
+  billing_enabled        = false
+  stripe_price_id        = ""
+  stripe_price_id_annual = ""
+  trial_days             = 30
 }
