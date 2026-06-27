@@ -62,6 +62,10 @@ Collapse the three-tier structure to a single plan.
   and feature arrays.
 - Export a single monthly and annual AUD price (`$19` / `$190`), plus a helper
   for the displayed per-period string.
+- **Display format:** monthly shows `$19/month`; annual shows the per-month
+  equivalent `$15.83/mo, billed annually` (matches the existing toggle UX and
+  makes the discount vs $19 visually obvious). `$190` appears as the billed
+  total in the toggle/fine print.
 - Keep the existing unit test file (`pricing.test.ts`) updated to the new shape.
 
 ### 2. Website / landing — `web/src/routes/+page.svelte`
@@ -93,7 +97,10 @@ Collapse the three-tier structure to a single plan.
   `CheckoutInput` gains `Plan` (`"monthly"` | `"annual"`, default `"monthly"`);
   `CreateCheckoutSession` selects the price by `Plan`.
 - `internal/subscription/handler.go`: `Checkout` reads the desired plan from the
-  request (query param `plan`) and passes it through. Unknown/empty → monthly.
+  request. **Transport: query param on the existing POST** —
+  `POST .../billing/checkout?plan=annual`. No request body / JSON parsing is
+  added (the endpoint takes no body today). `startCheckout()` in `billing.ts`
+  appends `?plan=` to the POST URL. Unknown/empty → monthly.
 
 ### 4. Annual cadence flow (landing toggle → first checkout)
 
@@ -128,7 +135,7 @@ when `RequireSubscription` routes a `none`-status tenant to
 | `web/src/lib/pricing.test.ts` | update to new shape |
 | `web/src/routes/+page.svelte` | one pricing card; real features; cut payment language; CTA writes `tallyo_plan` |
 | `web/src/routes/[tenant]/settings/billing/+page.svelte` | read `tallyo_plan`, default cadence toggle, pass `plan` to checkout |
-| `web/src/lib/api/billing.ts` | send `plan` on checkout call |
+| `web/src/lib/api/billing.ts` | `startCheckout(plan)` appends `?plan=` to the POST URL |
 | `internal/subscription/config.go` | `DefaultTrialDays = 30`; add `PriceIDAnnual` |
 | `internal/subscription/stripe.go` | two prices; `CheckoutInput.Plan`; price selection |
 | `internal/subscription/handler.go` | read `plan` query param |
