@@ -146,4 +146,21 @@ describe('applyListParams — pagination', () => {
 		expect(res.total).toBe(3); // a, b, d are active
 		expect(res.rows.map((r) => r.userCount)).toEqual([1, 2]);
 	});
+
+	it('applies filter → sort → slice in order across a page boundary', () => {
+		// Date window 2024-02-01..2024-04-30 keeps b, c, d (3 rows). Sorting those
+		// by userCount asc → d(1), b(2), c(10). Page 2 @ limit 2 is the last slice,
+		// holding only c — proving total is the post-filter count (3, not 4) and the
+		// page is taken AFTER the filter+sort, not before.
+		const res = applyListParams(fixture, {
+			filters: { 'createdAt.from': '2024-02-01', 'createdAt.to': '2024-04-30' },
+			sort: 'userCount',
+			dir: 'asc',
+			page: 2,
+			limit: 2
+		});
+		expect(res.total).toBe(3);
+		expect(res.rows.map((r) => r.id)).toEqual(['c']);
+		expect(res.rows.map((r) => r.userCount)).toEqual([10]);
+	});
 });

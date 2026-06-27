@@ -52,9 +52,15 @@ function createAdminTenantsStore() {
 		}
 	}
 
-	/** Evict the cache so the next query() re-fetches from the server. */
+	/**
+	 * Evict the cache so the next query() re-fetches from the server. Also clears
+	 * the currently displayed page so a stale list does not flash after a mutation
+	 * (e.g. a deleted tenant lingering until the refetch resolves).
+	 */
 	function invalidate(): void {
 		all = [];
+		rows = [];
+		total = 0;
 	}
 
 	return {

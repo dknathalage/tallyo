@@ -16,17 +16,23 @@ export { applyListParams } from './listParams';
 
 import type { AdminTenant, AdminTenantSummary } from './listParams';
 
-/** Audit trail record (GET /api/admin/tenants/:uuid → .audit[]). */
+/**
+ * Audit trail record (GET /api/admin/tenants/:uuid → .audit[]).
+ *
+ * The Go audit.Record marks tenantId/userId/entityId/changes/context/batchId
+ * `omitempty`, so those keys are absent (not "") when empty — they are optional
+ * here to match the wire reality. id/entityType/action/createdAt are always sent.
+ */
 export interface AuditRecord {
 	id: string;
-	tenantId: string;
-	userId: string;
+	tenantId?: string;
+	userId?: string;
 	entityType: string;
-	entityId: string;
+	entityId?: string;
 	action: string;
-	changes: string;
-	context: string;
-	batchId: string;
+	changes?: string;
+	context?: string;
+	batchId?: string;
 	createdAt: string;
 }
 

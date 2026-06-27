@@ -1,46 +1,20 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { adminTenants } from '$lib/stores/adminTenants.svelte';
-	import { ApiError } from '$lib/api/client';
 	import DataTable from '$lib/components/DataTable.svelte';
-	import Badge from '$lib/components/Badge.svelte';
 	import type { Column } from '$lib/components/datatable';
 	import type { AdminTenantSummary } from '$lib/api/admin';
 
-	onMount(() => {
-		void adminTenants.query({ page: 1, limit: 50 });
-	});
+	// DataTable's own $effect issues the initial query() when it mounts, so no
+	// onMount fetch here (a second call would just duplicate that request).
 
-	let forbidden = $state(false);
-
-	// Watch for 403 errors from the store
-	$effect(() => {
-		if (adminTenants.error?.includes('403') || adminTenants.error?.toLowerCase().includes('forbidden')) {
-			forbidden = true;
-		}
-	});
-
-	// Subscription status → Badge tone mapping
-	function subStatusTone(
-		status: string
-	): 'green' | 'blue' | 'amber' | 'red' | 'gray' {
-		switch (status) {
-			case 'active':
-				return 'green';
-			case 'trialing':
-				return 'blue';
-			case 'past_due':
-				return 'amber';
-			case 'canceled':
-				return 'red';
-			default:
-				return 'gray';
-		}
-	}
-
-	function tenantStatusTone(status: string): 'red' | 'gray' {
-		return status === 'suspended' ? 'red' : 'gray';
-	}
+	// A 403 from the admin API means the signed-in user is not a platform admin.
+	// Derived (not $state set from an $effect) so it clears the moment a later
+	// query succeeds and resets the error — no stale access-denied banner.
+	const forbidden = $derived(
+		(adminTenants.error?.includes('403') ||
+			adminTenants.error?.toLowerCase().includes('forbidden')) ??
+			false
+	);
 
 	const columns: Column<AdminTenantSummary>[] = [
 		{

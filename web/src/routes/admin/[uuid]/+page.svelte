@@ -66,6 +66,10 @@
 				subTrialEndsAt = detail.tenant.trialEnd
 					? detail.tenant.trialEnd.slice(0, 10) // ISO date portion
 					: '';
+			} else {
+				// getTenant returns null on a 204/empty body — without this branch the
+				// page would sit on "Loading…" forever (neither tenant nor error set).
+				loadError = 'Unexpected empty response from server.';
 			}
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 403) {
@@ -172,8 +176,11 @@
 	}
 
 	// ── Delete ────────────────────────────────────────────────────────────────
+	// Match the typed input (trimmed of accidental surrounding whitespace) against
+	// the EXACT tenant name — do not trim the name side, or a tenant called "Acme "
+	// would be confirmable by typing "Acme". Guard against an empty name.
 	const deleteNameMatches = $derived(
-		tenant !== null && deleteConfirmName.trim() === tenant.name.trim()
+		tenant !== null && tenant.name !== '' && deleteConfirmName.trim() === tenant.name
 	);
 
 	async function handleDelete(): Promise<void> {
@@ -205,9 +212,9 @@
 		}
 	});
 
-	// Suspend modal: match name
+	// Suspend modal: same exact-name match rule as delete (see deleteNameMatches).
 	const suspendNameMatches = $derived(
-		tenant !== null && suspendConfirmName.trim() === tenant.name.trim()
+		tenant !== null && tenant.name !== '' && suspendConfirmName.trim() === tenant.name
 	);
 </script>
 
