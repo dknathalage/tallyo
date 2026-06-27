@@ -16,8 +16,10 @@ visitors something to convert on.
 **Pricing-Focused Landing** (ui-ux-pro-max). Section order:
 
 1. **Hero** — value proposition + primary CTA → signup.
-2. **Pricing** — 3 tiers, mid-tier highlighted with a "most popular" badge,
-   monthly/annual toggle showing the ~20% annual discount.
+2. **Pricing** — 3 **display-only** tiers, mid-tier highlighted with a "most
+   popular" badge. An optional monthly/annual toggle changes only the displayed
+   numbers (pure marketing copy). See "Pricing reality" below — the backend has
+   one price, so all tier CTAs go to the same place.
 3. **Feature grid** — the core jobs Tallyo does (invoices, estimates, clients,
    tax, catalogue).
 4. **FAQ** — addresses common objections.
@@ -31,22 +33,38 @@ Sticky nav with a CTA. (`primary-action`: one primary CTA per section.)
   `PUBLIC_PATHS` so logged-out visitors render the page instead of being
   redirected to `/login`.
 - Existing root-layout behaviour is preserved: a **logged-in** user hitting `/`
-  still redirects to their first tenant. The landing is for logged-out traffic.
+  still redirects to their first tenant (the redirect fires in `bootstrap()`
+  after `loadSession()`). The landing is for logged-out traffic. Note: a
+  logged-in user may briefly see the landing mount before the async redirect
+  fires — acceptable; not worth a guard. (`isPublic` is exact-match for root, so
+  adding `'/'` to `PUBLIC_PATHS` is sufficient.)
 - Reuses `app.css` tokens (teal/amber, IBM Plex). Marketing polish (larger hero
   type, amber accents) may exceed in-app chrome but stays on-brand.
 
-## Pricing CTAs — how they wire to Stripe
+## Pricing reality — tiers are display-only
 
-A logged-out visitor has **no tenant and no auth**, so they cannot start a
-Stripe checkout directly. The flow is:
+The backend supports **exactly one Stripe price** (`STRIPE_PRICE_ID`), and
+checkout is **trial-first** (`TrialPeriodDays`, default 90). There is no tier,
+plan, or billing-cadence concept anywhere in Go, the frontend billing API, or
+infra. Confirmed by spec review against `internal/subscription/config.go`,
+`stripe.go`, `handler.go`, and infra.
 
-> Pricing tier CTA → `/signup?plan=<tier>` → existing signup → in-app billing
-> flow starts the trial/checkout for the chosen plan.
+Decision: tiers are **marketing copy only**. Every tier CTA does the same thing:
 
-So "wired to Stripe" = the tier choice is carried into signup; the actual
-Stripe checkout is the **existing** in-app billing flow from
-`feat/saas-subscriptions` (no new checkout code on the landing page). Signup
-reads `?plan=` and pre-selects the tier.
+> Pricing CTA → `/signup` → existing signup → existing in-app billing flow
+> starts the single trial/checkout.
+
+Consequences for the build:
+- **No** `?plan=` param, **no** plan selection, **no** signup changes for plan.
+  Signup stays as-is (posts `{ businessName, name }`).
+- `startCheckout()` and the backend `Checkout` handler are unchanged — they take
+  no plan and start the one configured price. Nothing new is wired to Stripe.
+- The monthly/annual toggle, if kept, is **display-only** — it changes shown
+  numbers, not what checkout does.
+
+`// ponytail:` real multi-tier billing (multiple Stripe prices + plan param
+through signup→checkout→infra) is a separate, larger product effort. Deferred.
+When it lands, the landing CTAs get a `?plan=` and signup learns to carry it.
 
 ## SEO / rendering — deliberate limitation
 
@@ -78,12 +96,13 @@ Reuse `Button`, `Card`, `Badge`. New, landing-only, small:
 
 ## Testing
 
-- One unit test: signup reads `?plan=` and pre-selects the matching tier
-  (mirror existing `lib/*.test.ts` style).
-- The monthly/annual toggle price math (the only non-trivial logic) gets a small
-  assert-based test.
-- Routing: a logged-out visit to `/` renders the landing (not a redirect) — the
-  one behavioural change to the root layout.
+- Routing (the one real behavioural change): a logged-out visit to `/` renders
+  the landing instead of bouncing to `/login` — assert `/` is treated public.
+- If the monthly/annual display toggle is kept, its price-math (the only
+  non-trivial logic) gets a small assert-based test. Otherwise no test — the
+  page is static markup.
+
+No signup test — signup is unchanged (tiers are display-only).
 
 ## Explicitly skipped (YAGNI)
 
