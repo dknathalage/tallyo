@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.8.0](https://github.com/dknathalage/tallyo/compare/v3.7.0...v3.8.0) (2026-06-27)
+
+
+### Features
+
+* **catalogue:** per-item copy-on-write slice (replaces customitem+pricelist) ([c13b700](https://github.com/dknathalage/tallyo/commit/c13b70038e55c2cbd881e768833b3e1444466c4c))
+* **catalogue:** wire catalogue slice, remove customitem+pricelist ([cdf486e](https://github.com/dknathalage/tallyo/commit/cdf486eb3ab649a61070263d862f330cc767db9c))
+* **db:** catalogue sqlc queries; line-item join collapse ([69a93d3](https://github.com/dknathalage/tallyo/commit/69a93d3cab0dec3e996a6522b09b89b92b53a540))
+* **db:** catalogue_items table + line-item FK collapse migration ([46f31f2](https://github.com/dknathalage/tallyo/commit/46f31f2c57ba1b548b15aafc3a87fda2bff557a4))
+* **invites:** gate user-invite features behind TALLYO_FEATURE_INVITES ([675b786](https://github.com/dknathalage/tallyo/commit/675b786ab0b7563ceaf812f1da018e0a79c6f85d))
+* Postgres/GCP migration + GCP Identity Platform auth ([407e44b](https://github.com/dknathalage/tallyo/commit/407e44bc2636b81ff73910d445542d23fe2eaaf2))
+* **recurring:** add FeatureRecurring env gate ([41b4460](https://github.com/dknathalage/tallyo/commit/41b446068d35408b39914f420b4a83f67ef800be))
+* SaaS subscriptions (Stripe Billing, card-required 90d trial) ([#17](https://github.com/dknathalage/tallyo/issues/17)) ([21071e0](https://github.com/dknathalage/tallyo/commit/21071e0d456ffaf4b5a8f770fa61adb471ef510e))
+* single $19 AUD plan, real landing copy, 30d card trial, Haiku AI ([#19](https://github.com/dknathalage/tallyo/issues/19)) ([25f25ff](https://github.com/dknathalage/tallyo/commit/25f25ffc135ccfa597f2cadbb899043b281d1ddb))
+* **smarts:** tenant-scoped catalogue + AI Smarts backend ([5b71bc0](https://github.com/dknathalage/tallyo/commit/5b71bc003a75a618b26495d24b67b67a697a046a))
+* **web:** catalogue UI replaces custom-items + price-list ([5f979d9](https://github.com/dknathalage/tallyo/commit/5f979d9ecfbaa243639611572c5bde69af3e98e4))
+* **web:** surface Smarts buttons + update docs ([1be1352](https://github.com/dknathalage/tallyo/commit/1be1352e721990f174d5cb985a39022ce86fd90d))
+
+
+### Bug Fixes
+
+* **smarts:** gate thinking/effort off for haiku models ([3a8d62d](https://github.com/dknathalage/tallyo/commit/3a8d62dd8188cf5ce59c0b7c2510126f7530ea82))
+* **web:** don't bounce / to /login on logged-out 401 ([a8d12db](https://github.com/dknathalage/tallyo/commit/a8d12db0437455dc738d207146851e0e84b00374))
+
 ## [3.7.0](https://github.com/dknathalage/tallyo/compare/v3.6.0...v3.7.0) (2026-06-24)
 
 
