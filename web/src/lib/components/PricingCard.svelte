@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
 	import Badge from './Badge.svelte';
 	import Button from './Button.svelte';
 
@@ -10,7 +9,6 @@
 		description: string;
 		features: string[];
 		popular?: boolean;
-		children?: Snippet;
 	};
 
 	let {
@@ -36,15 +34,23 @@
 	{/if}
 
 	<div class="mb-4">
-		<h3 class="text-lg font-semibold {popular ? 'text-onbrand' : 'text-gray-900'}">{name}</h3>
-		<p class="mt-1 text-sm {popular ? 'text-brand-100' : 'text-gray-500'}">{description}</p>
+		<h3 class="text-lg font-semibold {popular ? 'text-onbrand dark:text-white' : 'text-gray-900'}">
+			{name}
+		</h3>
+		<p class="mt-1 text-sm {popular ? 'text-brand-100 dark:text-white' : 'text-gray-500'}">
+			{description}
+		</p>
 	</div>
 
 	<div class="mb-6">
-		<span class="font-mono text-4xl font-bold tabular-nums {popular ? 'text-onbrand' : 'text-gray-900'}"
-			>{price}</span
+		<span
+			class="font-mono text-4xl font-bold tabular-nums {popular
+				? 'text-onbrand dark:text-white'
+				: 'text-gray-900'}">{price}</span
 		>
-		<span class="ml-1 text-sm {popular ? 'text-brand-100' : 'text-gray-500'}">{period}</span>
+		<span class="ml-1 text-sm {popular ? 'text-brand-100 dark:text-white' : 'text-gray-500'}"
+			>{period}</span
+		>
 	</div>
 
 	<ul class="mb-8 flex-1 space-y-2.5" aria-label="Plan features">
@@ -62,7 +68,7 @@
 						clip-rule="evenodd"
 					/>
 				</svg>
-				<span class="{popular ? 'text-brand-50' : 'text-gray-600'}">{feature}</span>
+				<span class="{popular ? 'text-brand-50 dark:text-white' : 'text-gray-600'}">{feature}</span>
 			</li>
 		{/each}
 	</ul>

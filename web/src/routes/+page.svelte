@@ -15,6 +15,7 @@
 
 	// Prices are display-only marketing copy; selection lives in $lib/pricing.
 	let prices = $derived(pricesFor(annual));
+	let period = $derived(annual ? '/mo, billed annually' : '/month');
 
 	const starterFeatures = [
 		'Up to 5 clients',
@@ -117,6 +118,14 @@
 	/>
 </svelte:head>
 
+<!-- Skip to content for keyboard/screen-reader users. -->
+<a
+	href="#main"
+	class="sr-only rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-onbrand focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50"
+>
+	Skip to content
+</a>
+
 <!-- Sticky nav -->
 <header
 	class="sticky top-0 z-30 border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75"
@@ -138,9 +147,20 @@
 
 		<Button href="/signup" size="sm">Start free trial</Button>
 	</div>
+
+	<!-- Small screens: section anchors as a second wrapped row (no drawer). -->
+	<nav
+		class="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-gray-100 px-4 py-2 sm:hidden"
+		aria-label="Sections"
+	>
+		<a href="#pricing" class="text-sm font-medium text-gray-600 hover:text-gray-900">Pricing</a>
+		<a href="#features" class="text-sm font-medium text-gray-600 hover:text-gray-900">Features</a>
+		<a href="#faq" class="text-sm font-medium text-gray-600 hover:text-gray-900">FAQ</a>
+		<a href="/login" class="text-sm font-medium text-gray-600 hover:text-gray-900">Sign in</a>
+	</nav>
 </header>
 
-<main>
+<main id="main">
 	<!-- Hero -->
 	<section class="bg-gradient-to-b from-brand-50 to-white px-4 py-20 text-center sm:px-6 sm:py-28">
 		<div class="mx-auto max-w-3xl">
@@ -190,7 +210,8 @@
 						aria-pressed={annual}
 					>
 						Annual
-						<span class="ml-1.5 rounded-full bg-accent-500 px-1.5 py-0.5 text-xs text-onbrand">
+						<!-- amber bg is fixed in both themes, so pin the text dark in both. -->
+						<span class="ml-1.5 rounded-full bg-accent-500 px-1.5 py-0.5 text-xs text-[#111827]">
 							Save 17%
 						</span>
 					</button>
@@ -204,14 +225,14 @@
 				<PricingCard
 					name="Starter"
 					price={prices.starter}
-					period={annual ? '/mo, billed annually' : '/month'}
+					{period}
 					description="For freelancers just getting started."
 					features={starterFeatures}
 				/>
 				<PricingCard
 					name="Professional"
 					price={prices.professional}
-					period={annual ? '/mo, billed annually' : '/month'}
+					{period}
 					description="For growing freelancers and consultants."
 					features={professionalFeatures}
 					popular={true}
@@ -219,7 +240,7 @@
 				<PricingCard
 					name="Business"
 					price={prices.business}
-					period={annual ? '/mo, billed annually' : '/month'}
+					{period}
 					description="For small agencies and teams."
 					features={businessFeatures}
 				/>
@@ -304,10 +325,12 @@
 	<!-- Final CTA -->
 	<section class="bg-brand-700 px-4 py-20 text-center sm:px-6">
 		<div class="mx-auto max-w-2xl">
-			<h2 class="text-3xl font-bold tracking-tight text-onbrand sm:text-4xl">
+			<h2 class="text-3xl font-bold tracking-tight text-onbrand dark:text-white sm:text-4xl">
 				Ready to get paid on time?
 			</h2>
-			<p class="mt-4 text-lg text-brand-100">
+			<!-- In dark mode brand-700 is a lighter teal; light body copy drops below
+			     4.5:1, so dark text (dark:text-white maps to near-black) is required. -->
+			<p class="mt-4 text-lg text-brand-100 dark:text-white">
 				Join thousands of freelancers who run their billing with Tallyo. Start your 90-day free
 				trial — no credit card needed.
 			</p>
