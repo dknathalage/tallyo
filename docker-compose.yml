@@ -1,0 +1,41 @@
+# Local dev stack: Postgres 17 + the Tallyo app, mirroring the cloud topology.
+# One `docker compose up` yields a working stack; the app runs goose migrations
+# on startup. The `app` image is byte-for-byte what Plan 3 runs on Cloud Run —
+# only DATABASE_URL differs (cloud uses the Cloud SQL unix socket; spec §1.1).
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: tallyo
+      POSTGRES_PASSWORD: tallyo
+      POSTGRES_DB: tallyo
+    volumes:
+      - tallyo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tallyo -d tallyo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "5432:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tallyo
+    environment:
+      DATABASE_URL: "postgres://tallyo:tallyo@db:5432/tallyo?sslmode=disable"
+      LOG_FORMAT: "text"
+      LOG_LEVEL: "info"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  tallyo_pgdata:

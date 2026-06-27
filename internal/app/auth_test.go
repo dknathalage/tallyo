@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,23 +17,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// openMigratedDB opens a fresh migrated SQLite database in a temp dir.
-func openMigratedDB(t *testing.T, name string) *sql.DB {
+// openMigratedDB opens the shared migrated Postgres test database. OpenTestDB
+// truncates every table on open, so each test starts from a clean schema
+// (including an empty catalogue). The name arg is retained for call-site
+// compatibility and ignored.
+func openMigratedDB(t *testing.T, _ string) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), name))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	// App integration tests seed whatever catalogue data they need, so start
-	// from a clean catalogue.
-	if _, err := conn.Exec("DELETE FROM catalogue_items"); err != nil {
-		t.Fatalf("clear catalogue: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	return conn
+	return appdb.OpenTestDB(t)
 }
 
 // seedTenantOwner provisions a tenant plus its platform-admin owner
