@@ -43,6 +43,29 @@ variable "db_password_secret_id" {
   type = string
 }
 
+variable "stripe_secret_key_secret_id" {
+  type = string
+}
+
+variable "stripe_webhook_secret_secret_id" {
+  type = string
+}
+
+variable "billing_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "stripe_price_id" {
+  type    = string
+  default = ""
+}
+
+variable "trial_days" {
+  type    = number
+  default = 90
+}
+
 variable "min_instances" {
   type    = number
   default = 0

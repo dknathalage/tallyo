@@ -53,3 +53,41 @@ resource "google_secret_manager_secret_version" "anthropic" {
   secret      = google_secret_manager_secret.anthropic.id
   secret_data = var.anthropic_api_key
 }
+
+resource "google_secret_manager_secret" "stripe_secret_key" {
+  project   = var.project_id
+  secret_id = "tallyo-${var.env}-stripe-secret-key"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "stripe_secret_key" {
+  count       = var.stripe_secret_key == "" ? 0 : 1
+  secret      = google_secret_manager_secret.stripe_secret_key.id
+  secret_data = var.stripe_secret_key
+}
+
+resource "google_secret_manager_secret" "stripe_webhook_secret" {
+  project   = var.project_id
+  secret_id = "tallyo-${var.env}-stripe-webhook-secret"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "stripe_webhook_secret" {
+  count       = var.stripe_webhook_secret == "" ? 0 : 1
+  secret      = google_secret_manager_secret.stripe_webhook_secret.id
+  secret_data = var.stripe_webhook_secret
+}

@@ -39,6 +39,20 @@ resource "google_secret_manager_secret_iam_member" "db_password" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "stripe_secret_key" {
+  project   = var.project_id
+  secret_id = var.stripe_secret_key_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "stripe_webhook_secret" {
+  project   = var.project_id
+  secret_id = var.stripe_webhook_secret_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_cloud_run_v2_service" "this" {
   project             = var.project_id
   name                = var.service_name
@@ -121,6 +135,43 @@ resource "google_cloud_run_v2_service" "this" {
         value = tostring(var.auth_email_link_enabled)
       }
 
+      # SaaS billing. BILLING_ENABLED gates the whole feature; the Stripe secrets
+      # are injected from Secret Manager, the price id + trial length are plain env.
+      env {
+        name  = "BILLING_ENABLED"
+        value = tostring(var.billing_enabled)
+      }
+
+      env {
+        name  = "STRIPE_PRICE_ID"
+        value = var.stripe_price_id
+      }
+
+      env {
+        name  = "TRIAL_DAYS"
+        value = tostring(var.trial_days)
+      }
+
+      env {
+        name = "STRIPE_SECRET_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = var.stripe_secret_key_secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "STRIPE_WEBHOOK_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = var.stripe_webhook_secret_secret_id
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -131,6 +182,8 @@ resource "google_cloud_run_v2_service" "this" {
   depends_on = [
     google_secret_manager_secret_iam_member.anthropic,
     google_secret_manager_secret_iam_member.db_password,
+    google_secret_manager_secret_iam_member.stripe_secret_key,
+    google_secret_manager_secret_iam_member.stripe_webhook_secret,
     google_project_iam_member.cloudsql_client,
   ]
 }
