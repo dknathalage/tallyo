@@ -1,15 +1,15 @@
-import { onEntity } from '$lib/realtime/events';
+import { startPolling } from '$lib/realtime/poll';
 import { createCrud, type Crud } from '$lib/api/crud';
 import type { ListParams } from '$lib/api/types';
 
 /**
  * Reusable rune-based collection store. Holds a reactive list, loads via the
- * CRUD helper, and refetches on SSE invalidation for the given entity.
+ * CRUD helper, and refetches on a poll interval/focus for the given entity.
  *
  * Two read modes share one store:
  * - `load()` — fetch the whole collection into `items` (legacy/full-list pages).
  * - `query(params)` — server-side filter/sort/paginate into `rows`/`total` for
- *   the DataTable. After a query has run, SSE invalidations re-run the LAST query
+ *   the DataTable. After a query has run, the poll re-runs the LAST query
  *   (not a full reload) so the visible page stays consistent.
  */
 export function createCollectionStore<T extends { id: string }, TInput>(
@@ -60,11 +60,11 @@ export function createCollectionStore<T extends { id: string }, TInput>(
 		}
 	}
 
-	/** Subscribe to SSE invalidations exactly once (browser only). */
+	/** Start polling exactly once (browser only). */
 	function ensureSubscribed(): void {
 		if (registered) return;
 		registered = true;
-		onEntity(entity, () => {
+		startPolling(() => {
 			// Re-run the active query if the page uses query(); else full reload.
 			if (lastParams !== null) void query(lastParams);
 			else void load();

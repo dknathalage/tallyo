@@ -1,5 +1,5 @@
 import { apiGet, apiPut, tenantPath } from '$lib/api/client';
-import { onEntity } from '$lib/realtime/events';
+import { startPolling } from '$lib/realtime/poll';
 
 export interface BusinessProfile {
 	name: string;
@@ -65,7 +65,7 @@ function createProfileStore() {
 		try {
 			const body = { ...profile, ...input };
 			await apiPut<Partial<BusinessProfile>>(tenantPath('business-profile'), body);
-			// SSE echo will also trigger load(); reload now for immediacy.
+			// Reload now for immediacy (the poll would otherwise pick it up later).
 			await load();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to save profile';
@@ -75,11 +75,11 @@ function createProfileStore() {
 		}
 	}
 
-	/** Subscribe to SSE invalidations exactly once (browser only). */
+	/** Start polling exactly once (browser only). */
 	function subscribe(): void {
 		if (subscribed) return;
 		subscribed = true;
-		onEntity('business_profile', () => {
+		startPolling(() => {
 			void load();
 		});
 	}

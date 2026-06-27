@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { onMount, onDestroy, untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { session } from '$lib/stores/session.svelte';
 	import { features } from '$lib/stores/features.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
-	import { openEvents, closeEvents } from '$lib/realtime/events';
 	import { t } from '$lib/nav';
 
 	let { children } = $props();
@@ -33,12 +32,10 @@
 		}
 	});
 
-	onDestroy(() => closeEvents());
-
 	// Wire the active tenant whenever the route's tenant changes. We track the
 	// last-wired uuid in a plain (non-reactive) variable so re-running the effect
 	// for unrelated reactive reads (e.g. session.tenants arriving) does NOT redo
-	// the loadMe/openEvents work or trigger a loop.
+	// the loadMe work or trigger a loop.
 	let wired: string | null = null;
 
 	$effect(() => {
@@ -62,11 +59,9 @@
 		wired = uuid;
 
 		untrack(() => {
-			closeEvents();
 			void (async () => {
 				await session.loadMe();
 				await features.load();
-				openEvents();
 			})();
 		});
 	});
