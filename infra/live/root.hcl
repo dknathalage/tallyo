@@ -3,7 +3,7 @@ locals {
   region       = read_terragrunt_config(find_in_parent_folders("region.hcl"))
   project_id   = local.project.locals.project_id
   region_id    = local.region.locals.region
-  state_bucket = "tallyo-tofu-state" # MUST equal the bucket created in Task 1 (bootstrap state_bucket_name). GCS bucket names are globally unique — if "tallyo-tofu-state" is taken, pick another and use the SAME value in both infra/bootstrap/terraform.tfvars AND here.
+  state_bucket = "tallyo-saas-tofu-state" # created by infra/bootstrap; globally unique
 
   # Credential-free validation: set TG_OFFLINE=1 to swap the GCS backend for a
   # local one so `terragrunt run --all validate` works without GCP credentials.

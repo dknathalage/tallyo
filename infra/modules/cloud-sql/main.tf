@@ -17,13 +17,18 @@ resource "google_sql_database_instance" "this" {
 
   settings {
     tier              = var.tier
+    edition           = "ENTERPRISE" # db-f1-micro shared-core is only valid for ENTERPRISE (not ENTERPRISE_PLUS)
     availability_type = "ZONAL"
     disk_type         = "PD_SSD"
     disk_size         = var.disk_size_gb
     disk_autoresize   = true
 
+    # Public IP, but access is ONLY via the Cloud SQL Auth Proxy (Cloud Run's
+    # --add-cloudsql-instances) authenticated by IAM — no authorized_networks,
+    # so there is no open network path. The built-in connector needs an IP
+    # endpoint; private IP would require a VPC (deliberately avoided for cost).
     ip_configuration {
-      ipv4_enabled = false
+      ipv4_enabled = true
     }
 
     backup_configuration {
