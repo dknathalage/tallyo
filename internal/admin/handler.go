@@ -65,8 +65,11 @@ type TenantsRepo interface {
 	TenantDeleter
 }
 
-// Handler serves the platform-admin HTTP endpoints. It must be mounted under
-// a RequireAuth + ResolveAdminUser + RequirePlatformAdmin middleware chain.
+// Handler serves the platform-admin HTTP endpoints. It MUST be mounted under the
+// RequireAuth → ResolveAdminUser → RequirePlatformAdmin middleware chain (see
+// internal/app/server.go). That chain guarantees every request reaching a method
+// here has a non-nil platform-admin user on the context, so the methods read
+// httpx.UserFrom(ctx) for the acting admin id without re-checking for nil.
 type Handler struct {
 	tenants      TenantsRepo
 	subscription SubscriptionSetter
@@ -138,15 +141,12 @@ type setSubscriptionRequest struct {
 	TrialEndsAt string `json:"trialEndsAt,omitempty"`
 }
 
-// SetSubscription overrides the subscription status for a tenant.
+// SetSubscription overrides the subscription status for a tenant. An invalid
+// status maps to 422 (the store returns an apperr.Validation error); an unknown
+// tenant currently writes the status with no row affected — see the store note.
 func (h *Handler) SetSubscription(w http.ResponseWriter, r *http.Request) {
 	uuid := chi.URLParam(r, "uuid")
-
 	u := httpx.UserFrom(r.Context())
-	if u == nil {
-		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 
 	var req setSubscriptionRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -160,56 +160,47 @@ func (h *Handler) SetSubscription(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.subscription.SetSubscriptionStatus(r.Context(), uuid, req.Status, u.ID, req.TrialEndsAt); err != nil {
 		httpx.LoggerFrom(r.Context()).Error("set subscription status", "err", err)
-		httpx.WriteServiceError(w, err)
+		httpx.WriteServiceError(w, err) // apperr.Validation → 422, else 500
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // Suspend sets a tenant to suspended status, blocking login for all its users.
+// An unknown tenant uuid maps to 404 (the store returns apperr.ErrNotFound).
 func (h *Handler) Suspend(w http.ResponseWriter, r *http.Request) {
 	uuid := chi.URLParam(r, "uuid")
 	u := httpx.UserFrom(r.Context())
-	if u == nil {
-		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 	if err := h.tenants.Suspend(r.Context(), uuid, u.ID); err != nil {
 		httpx.LoggerFrom(r.Context()).Error("suspend tenant", "err", err)
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteServiceError(w, err) // apperr.ErrNotFound → 404, else 500
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Unsuspend restores a tenant from suspended status.
+// Unsuspend restores a tenant from suspended status. An unknown tenant uuid maps
+// to 404.
 func (h *Handler) Unsuspend(w http.ResponseWriter, r *http.Request) {
 	uuid := chi.URLParam(r, "uuid")
 	u := httpx.UserFrom(r.Context())
-	if u == nil {
-		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 	if err := h.tenants.Unsuspend(r.Context(), uuid, u.ID); err != nil {
 		httpx.LoggerFrom(r.Context()).Error("unsuspend tenant", "err", err)
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteServiceError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // Delete permanently removes a tenant and all its dependents (users, invites,
-// audit rows in the control DB). This action is irreversible.
+// audit rows in the control DB). This action is irreversible. An unknown tenant
+// uuid maps to 404.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	uuid := chi.URLParam(r, "uuid")
 	u := httpx.UserFrom(r.Context())
-	if u == nil {
-		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 	if err := h.tenants.Delete(r.Context(), uuid, u.ID); err != nil {
 		httpx.LoggerFrom(r.Context()).Error("delete tenant", "err", err)
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		httpx.WriteServiceError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -3,8 +3,10 @@ package subscription
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
@@ -185,8 +187,16 @@ func TestSetSubscriptionStatusRejectsInvalidStatus(t *testing.T) {
 	store := NewStore(conn)
 	invalidStatuses := []string{"comp", "unknown", "", "ACTIVE", "suspended"}
 	for _, s := range invalidStatuses {
-		if err := store.SetSubscriptionStatus(ctx, tenant.ID, s, "admin", ""); err == nil {
+		err := store.SetSubscriptionStatus(ctx, tenant.ID, s, "admin", "")
+		if err == nil {
 			t.Errorf("SetSubscriptionStatus(%q) expected error, got nil", s)
+			continue
+		}
+		// The error must satisfy apperr.Validation so the handler maps it to 422,
+		// not a bare error that WriteServiceError would default to 500.
+		var v apperr.Validation
+		if !errors.As(err, &v) {
+			t.Errorf("SetSubscriptionStatus(%q) err = %v, want apperr.Validation (→422)", s, err)
 		}
 	}
 }

@@ -3,7 +3,10 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
+
+	"github.com/dknathalage/tallyo/internal/apperr"
 )
 
 // mustAdminUser provisions a platform-admin user in its own tenant and returns
@@ -232,5 +235,41 @@ func TestTenantsDeleteRejectsEmptyUUID(t *testing.T) {
 	conn := mustTenantDB(t)
 	if err := NewTenants(conn).Delete(context.Background(), "", "admin"); err == nil {
 		t.Fatal("Delete with empty uuid must error")
+	}
+}
+
+// TestTenantsSuspendUnknownIsNotFound ensures suspending a non-existent tenant
+// returns apperr.ErrNotFound (handler → 404), not a silent success.
+func TestTenantsSuspendUnknownIsNotFound(t *testing.T) {
+	conn := mustTenantDB(t)
+	_, adminID := mustAdminUser(t, conn)
+	err := NewTenants(conn).Suspend(context.Background(), "no-such-tenant", adminID)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Suspend unknown tenant err = %v, want apperr.ErrNotFound", err)
+	}
+}
+
+// TestTenantsUnsuspendUnknownIsNotFound mirrors the suspend case for Unsuspend.
+func TestTenantsUnsuspendUnknownIsNotFound(t *testing.T) {
+	conn := mustTenantDB(t)
+	_, adminID := mustAdminUser(t, conn)
+	err := NewTenants(conn).Unsuspend(context.Background(), "no-such-tenant", adminID)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Unsuspend unknown tenant err = %v, want apperr.ErrNotFound", err)
+	}
+}
+
+// TestTenantsDeleteUnknownIsNotFound ensures deleting a non-existent tenant
+// returns apperr.ErrNotFound (handler → 404), not a silent success, and writes
+// no delete-audit row for the phantom tenant.
+func TestTenantsDeleteUnknownIsNotFound(t *testing.T) {
+	conn := mustTenantDB(t)
+	_, adminID := mustAdminUser(t, conn)
+	err := NewTenants(conn).Delete(context.Background(), "no-such-tenant", adminID)
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("Delete unknown tenant err = %v, want apperr.ErrNotFound", err)
+	}
+	if n := auditRowCount(t, conn, "delete", "no-such-tenant", "", adminID, true); n != 0 {
+		t.Errorf("delete-audit rows for phantom tenant = %d, want 0", n)
 	}
 }

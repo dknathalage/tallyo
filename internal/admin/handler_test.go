@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/auth"
 	appdb "github.com/dknathalage/tallyo/internal/db"
@@ -21,12 +23,14 @@ import (
 // ── fake store implementations ───────────────────────────────────────────────
 
 type fakeTenants struct {
-	tenants   []*auth.TenantSummary
-	byUUID    map[string]*auth.Tenant
-	suspended map[string]bool
-	deleted   map[string]bool
-	listErr   error
-	getErr    error
+	tenants    []*auth.TenantSummary
+	byUUID     map[string]*auth.Tenant
+	suspended  map[string]bool
+	deleted    map[string]bool
+	listErr    error
+	getErr     error
+	suspendErr error
+	deleteErr  error
 }
 
 func newFakeTenants(t *auth.Tenant) *fakeTenants {
@@ -54,6 +58,9 @@ func (f *fakeTenants) GetByUUID(_ context.Context, uuid string) (*auth.Tenant, e
 }
 
 func (f *fakeTenants) Suspend(_ context.Context, uuid, _ string) error {
+	if f.suspendErr != nil {
+		return f.suspendErr
+	}
 	f.suspended[uuid] = true
 	return nil
 }
@@ -64,6 +71,9 @@ func (f *fakeTenants) Unsuspend(_ context.Context, uuid, _ string) error {
 }
 
 func (f *fakeTenants) Delete(_ context.Context, uuid, _ string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
 	f.deleted[uuid] = true
 	return nil
 }
@@ -253,6 +263,63 @@ func TestSetSubscriptionRejectsMissingStatus(t *testing.T) {
 	h.SetSubscription(rec, req)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d", rec.Code)
+	}
+}
+
+// TestSetSubscriptionMalformedBody asserts a non-JSON body is rejected with 400
+// before any store call.
+func TestSetSubscriptionMalformedBody(t *testing.T) {
+	fs := &fakeSubscription{}
+	h := newAdmin(newFakeTenants(&auth.Tenant{ID: "t-x"}), fs)
+	req := withAdmin(chiReqWithUUID(http.MethodPatch, "/api/admin/tenants/t-x/subscription", "t-x", []byte("not json{")))
+	rec := httptest.NewRecorder()
+	h.SetSubscription(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if fs.lastStatus != "" {
+		t.Errorf("store should not be called on malformed body, got status %q", fs.lastStatus)
+	}
+}
+
+// TestSetSubscriptionInvalidStatusMapsTo422 asserts that a store-layer
+// apperr.Validation error (e.g. an invalid status) surfaces as 422, not 500.
+func TestSetSubscriptionInvalidStatusMapsTo422(t *testing.T) {
+	fs := &fakeSubscription{err: &apperr.ValidationError{Errors: []apperr.FieldError{{Field: "status", Message: "invalid status \"bogus\""}}}}
+	h := newAdmin(newFakeTenants(&auth.Tenant{ID: "t-x"}), fs)
+	body, _ := json.Marshal(setSubscriptionRequest{Status: "bogus"})
+	req := withAdmin(chiReqWithUUID(http.MethodPatch, "/api/admin/tenants/t-x/subscription", "t-x", body))
+	rec := httptest.NewRecorder()
+	h.SetSubscription(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestSuspendUnknownTenantMapsTo404 asserts an apperr.ErrNotFound from the store
+// surfaces as 404, not 500 or a silent 204.
+func TestSuspendUnknownTenantMapsTo404(t *testing.T) {
+	ft := newFakeTenants(nil)
+	ft.suspendErr = fmt.Errorf("suspend tenant: %w", apperr.ErrNotFound)
+	h := newAdmin(ft, &fakeSubscription{})
+	req := withAdmin(chiReqWithUUID(http.MethodPost, "/api/admin/tenants/ghost/suspend", "ghost", nil))
+	rec := httptest.NewRecorder()
+	h.Suspend(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", rec.Code)
+	}
+}
+
+// TestDeleteUnknownTenantMapsTo404 mirrors the suspend case for Delete.
+func TestDeleteUnknownTenantMapsTo404(t *testing.T) {
+	ft := newFakeTenants(nil)
+	ft.deleteErr = fmt.Errorf("delete tenant: %w", apperr.ErrNotFound)
+	h := newAdmin(ft, &fakeSubscription{})
+	req := withAdmin(chiReqWithUUID(http.MethodDelete, "/api/admin/tenants/ghost", "ghost", nil))
+	rec := httptest.NewRecorder()
+	h.Delete(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", rec.Code)
 	}
 }
 

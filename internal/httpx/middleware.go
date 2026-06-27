@@ -242,6 +242,7 @@ func ResolveAdminUser(users GlobalUserLookup) func(http.Handler) http.Handler {
 			}
 			u, err := users.GetByEmailGlobal(r.Context(), email)
 			if err != nil {
+				LoggerFrom(r.Context()).Error("resolve admin user", "err", err)
 				WriteError(w, http.StatusInternalServerError, "internal error")
 				return
 			}

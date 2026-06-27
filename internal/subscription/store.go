@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/entitlement"
@@ -116,7 +117,13 @@ func (s *Store) SetSubscriptionStatus(ctx context.Context, tenantID, status, adm
 		entitlement.StatusPastDue, entitlement.StatusCanceled:
 		// valid
 	default:
-		return fmt.Errorf("set subscription status: invalid status %q (must be one of none, trialing, active, past_due, canceled)", status)
+		// A bad status is a client input error, not a server fault: surface it as
+		// a 422 via apperr.Validation (WriteServiceError maps it), not a bare error
+		// that would default to 500.
+		return &apperr.ValidationError{Errors: []apperr.FieldError{{
+			Field:   "status",
+			Message: fmt.Sprintf("invalid status %q (must be one of none, trialing, active, past_due, canceled)", status),
+		}}}
 	}
 
 	var trialEnd sql.NullString

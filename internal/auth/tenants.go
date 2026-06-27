@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
@@ -177,47 +178,50 @@ func (r *TenantsRepo) List(ctx context.Context) ([]*TenantSummary, error) {
 
 // Suspend sets a tenant's status to StatusSuspended, blocking login for all of
 // its users. adminUserID is the acting platform admin; it is stamped on the
-// audit row alongside the target tenant.
+// audit row alongside the target tenant. Returns apperr.ErrNotFound when no
+// tenant has the given uuid (handler → 404), so suspending a phantom tenant is
+// not a silent 204.
 func (r *TenantsRepo) Suspend(ctx context.Context, tenantUUID, adminUserID string) error {
 	if tenantUUID == "" {
 		return errors.New("suspend tenant: tenant uuid required")
 	}
-	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).UpdateTenantStatus(ctx, gen.UpdateTenantStatusParams{
-			Status:    StatusSuspended,
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-			ID:        tenantUUID,
-		}); err != nil {
-			return fmt.Errorf("suspend: update status: %w", err)
-		}
-		return audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
-			EntityType: "tenant",
-			EntityID:   tenantUUID,
-			Action:     "suspend",
-			Changes:    audit.Changes(map[string]any{"status": StatusSuspended}),
-		})
-	})
+	return r.setStatus(ctx, tenantUUID, adminUserID, StatusSuspended, "suspend")
 }
 
 // Unsuspend clears a tenant's suspended status, setting it back to
-// StatusActive and allowing its users to log in again.
+// StatusActive and allowing its users to log in again. Returns apperr.ErrNotFound
+// when no tenant has the given uuid.
 func (r *TenantsRepo) Unsuspend(ctx context.Context, tenantUUID, adminUserID string) error {
 	if tenantUUID == "" {
 		return errors.New("unsuspend tenant: tenant uuid required")
 	}
+	return r.setStatus(ctx, tenantUUID, adminUserID, StatusActive, "unsuspend")
+}
+
+// setStatus is the shared suspend/unsuspend body: it updates the tenant's status
+// and writes an audit row in one tx. It runs the UPDATE as raw SQL (the generated
+// UpdateTenantStatus is :exec and discards RowsAffected) so a no-match (unknown
+// tenant) surfaces as apperr.ErrNotFound instead of a silent success.
+func (r *TenantsRepo) setStatus(ctx context.Context, tenantUUID, adminUserID, status, action string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).UpdateTenantStatus(ctx, gen.UpdateTenantStatusParams{
-			Status:    StatusActive,
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-			ID:        tenantUUID,
-		}); err != nil {
-			return fmt.Errorf("unsuspend: update status: %w", err)
+		res, err := tx.ExecContext(ctx,
+			"UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3",
+			status, time.Now().UTC().Format(time.RFC3339), tenantUUID)
+		if err != nil {
+			return fmt.Errorf("%s: update status: %w", action, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("%s: rows affected: %w", action, err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%s tenant %q: %w", action, tenantUUID, apperr.ErrNotFound)
 		}
 		return audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
 			EntityType: "tenant",
 			EntityID:   tenantUUID,
-			Action:     "unsuspend",
-			Changes:    audit.Changes(map[string]any{"status": StatusActive}),
+			Action:     action,
+			Changes:    audit.Changes(map[string]any{"status": status}),
 		})
 	})
 }
@@ -239,6 +243,17 @@ func (r *TenantsRepo) Delete(ctx context.Context, tenantUUID, adminUserID string
 		return errors.New("delete tenant: tenant uuid required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		// Existence check FIRST: deleting a phantom tenant must 404, not silently
+		// succeed (the per-table DELETEs below all no-op for an unknown id). The
+		// row-lock isn't needed; this runs inside the tx so a concurrent delete
+		// would be serialized by the final DeleteTenant anyway.
+		var exists string
+		switch err := tx.QueryRowContext(ctx, "SELECT id FROM tenants WHERE id = $1", tenantUUID).Scan(&exists); {
+		case errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("delete tenant %q: %w", tenantUUID, apperr.ErrNotFound)
+		case err != nil:
+			return fmt.Errorf("delete: lookup tenant: %w", err)
+		}
 		// Audit FIRST (tenant_id NULL so the row survives the tenant delete and
 		// does not itself block it). entity_id keeps the gone tenant's id.
 		if err := audit.LogAs(ctx, tx, "", adminUserID, audit.Entry{
