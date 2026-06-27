@@ -14,7 +14,7 @@ import (
 
 func fakeClient(t *testing.T) *Client {
 	t.Helper()
-	c, err := NewClient(Config{SecretKey: "sk_test_x", PriceID: "price_x", TrialDays: 90})
+	c, err := NewClient(Config{SecretKey: "sk_test_x", PriceID: "price_x", TrialDays: 90, WebhookSecret: testWebhookSecret})
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
