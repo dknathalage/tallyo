@@ -132,13 +132,19 @@ func (s *Store) SetSubscriptionStatus(ctx context.Context, tenantID, status, adm
 	}
 
 	return audit.WithTx(ctx, s.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
-		if err := gen.New(tx).SetTenantSubscriptionStatus(ctx, gen.SetTenantSubscriptionStatusParams{
+		n, err := gen.New(tx).SetTenantSubscriptionStatus(ctx, gen.SetTenantSubscriptionStatusParams{
 			SubscriptionStatus: status,
 			TrialEnd:           trialEnd,
 			UpdatedAt:          time.Now().UTC().Format(time.RFC3339),
 			ID:                 tenantID,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("set subscription status: update: %w", err)
+		}
+		if n == 0 {
+			// Unknown tenant id: no row written. Surface as not-found (handler → 404)
+			// instead of a silent success.
+			return fmt.Errorf("set subscription status: tenant %q: %w", tenantID, apperr.ErrNotFound)
 		}
 		changes := map[string]any{"subscription_status": status}
 		if trialEnd.Valid {

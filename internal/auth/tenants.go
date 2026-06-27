@@ -199,20 +199,18 @@ func (r *TenantsRepo) Unsuspend(ctx context.Context, tenantUUID, adminUserID str
 }
 
 // setStatus is the shared suspend/unsuspend body: it updates the tenant's status
-// and writes an audit row in one tx. It runs the UPDATE as raw SQL (the generated
-// UpdateTenantStatus is :exec and discards RowsAffected) so a no-match (unknown
-// tenant) surfaces as apperr.ErrNotFound instead of a silent success.
+// and writes an audit row in one tx. UpdateTenantStatus is :execrows, so a
+// no-match (unknown tenant) surfaces as apperr.ErrNotFound instead of a silent
+// success.
 func (r *TenantsRepo) setStatus(ctx context.Context, tenantUUID, adminUserID, status, action string) error {
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx,
-			"UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3",
-			status, time.Now().UTC().Format(time.RFC3339), tenantUUID)
+		n, err := gen.New(tx).UpdateTenantStatus(ctx, gen.UpdateTenantStatusParams{
+			Status:    status,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+			ID:        tenantUUID,
+		})
 		if err != nil {
 			return fmt.Errorf("%s: update status: %w", action, err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("%s: rows affected: %w", action, err)
 		}
 		if n == 0 {
 			return fmt.Errorf("%s tenant %q: %w", action, tenantUUID, apperr.ErrNotFound)

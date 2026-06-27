@@ -239,7 +239,7 @@ func (q *Queries) ListTenantsWithUserCount(ctx context.Context) ([]ListTenantsWi
 	return items, nil
 }
 
-const setTenantSubscriptionStatus = `-- name: SetTenantSubscriptionStatus :exec
+const setTenantSubscriptionStatus = `-- name: SetTenantSubscriptionStatus :execrows
 UPDATE tenants
 SET subscription_status = $1,
     trial_end            = $2,
@@ -254,14 +254,19 @@ type SetTenantSubscriptionStatusParams struct {
 	ID                 string         `json:"id"`
 }
 
-func (q *Queries) SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) error {
-	_, err := q.db.ExecContext(ctx, setTenantSubscriptionStatus,
+// :execrows so an admin override on an unknown tenant id is detectable (404)
+// instead of a silent no-op.
+func (q *Queries) SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTenantSubscriptionStatus,
 		arg.SubscriptionStatus,
 		arg.TrialEnd,
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateTenant = `-- name: UpdateTenant :one
@@ -295,7 +300,7 @@ func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Ten
 	return i, err
 }
 
-const updateTenantStatus = `-- name: UpdateTenantStatus :exec
+const updateTenantStatus = `-- name: UpdateTenantStatus :execrows
 UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3
 `
 
@@ -305,9 +310,14 @@ type UpdateTenantStatusParams struct {
 	ID        string `json:"id"`
 }
 
-func (q *Queries) UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateTenantStatus, arg.Status, arg.UpdatedAt, arg.ID)
-	return err
+// :execrows so callers can detect a no-match (unknown tenant id) and 404 rather
+// than silently succeeding.
+func (q *Queries) UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateTenantStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateTenantSubscription = `-- name: UpdateTenantSubscription :exec

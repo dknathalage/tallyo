@@ -31,7 +31,9 @@ UPDATE tenants SET name = $1, updated_at = $2
 WHERE id = $3
 RETURNING *;
 
--- name: UpdateTenantStatus :exec
+-- name: UpdateTenantStatus :execrows
+-- :execrows so callers can detect a no-match (unknown tenant id) and 404 rather
+-- than silently succeeding.
 UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3;
 
 -- name: DeleteTenant :exec
@@ -58,7 +60,9 @@ LEFT JOIN users u ON u.tenant_id = t.id
 GROUP BY t.id
 ORDER BY t.created_at DESC;
 
--- name: SetTenantSubscriptionStatus :exec
+-- name: SetTenantSubscriptionStatus :execrows
+-- :execrows so an admin override on an unknown tenant id is detectable (404)
+-- instead of a silent no-op.
 UPDATE tenants
 SET subscription_status = $1,
     trial_end            = $2,

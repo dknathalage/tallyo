@@ -155,7 +155,9 @@ type Querier interface {
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
 	SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
-	SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) error
+	// :execrows so an admin override on an unknown tenant id is detectable (404)
+	// instead of a silent no-op.
+	SetTenantSubscriptionStatus(ctx context.Context, arg SetTenantSubscriptionStatusParams) (int64, error)
 	// Delete flips every row of the logical_id out of current; referenced versions
 	// linger so existing documents stay intact.
 	TombstoneCatalogueLogical(ctx context.Context, arg TombstoneCatalogueLogicalParams) error
@@ -176,7 +178,9 @@ type Querier interface {
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
-	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error
+	// :execrows so callers can detect a no-match (unknown tenant id) and 404 rather
+	// than silently succeeding.
+	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) (int64, error)
 	UpdateTenantSubscription(ctx context.Context, arg UpdateTenantSubscriptionParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error

@@ -296,6 +296,20 @@ func TestSetSubscriptionInvalidStatusMapsTo422(t *testing.T) {
 	}
 }
 
+// TestSetSubscriptionUnknownTenantMapsTo404 asserts an apperr.ErrNotFound from
+// the subscription store surfaces as 404, consistent with suspend/delete.
+func TestSetSubscriptionUnknownTenantMapsTo404(t *testing.T) {
+	fs := &fakeSubscription{err: fmt.Errorf("set subscription status: %w", apperr.ErrNotFound)}
+	h := newAdmin(newFakeTenants(nil), fs)
+	body, _ := json.Marshal(setSubscriptionRequest{Status: "active"})
+	req := withAdmin(chiReqWithUUID(http.MethodPatch, "/api/admin/tenants/ghost/subscription", "ghost", body))
+	rec := httptest.NewRecorder()
+	h.SetSubscription(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestSuspendUnknownTenantMapsTo404 asserts an apperr.ErrNotFound from the store
 // surfaces as 404, not 500 or a silent 204.
 func TestSuspendUnknownTenantMapsTo404(t *testing.T) {

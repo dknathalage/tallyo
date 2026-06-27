@@ -143,7 +143,7 @@ type setSubscriptionRequest struct {
 
 // SetSubscription overrides the subscription status for a tenant. An invalid
 // status maps to 422 (the store returns an apperr.Validation error); an unknown
-// tenant currently writes the status with no row affected — see the store note.
+// tenant uuid maps to 404 (apperr.ErrNotFound).
 func (h *Handler) SetSubscription(w http.ResponseWriter, r *http.Request) {
 	uuid := chi.URLParam(r, "uuid")
 	u := httpx.UserFrom(r.Context())

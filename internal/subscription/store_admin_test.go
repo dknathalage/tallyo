@@ -208,3 +208,14 @@ func TestSetSubscriptionStatusRejectsEmptyTenantID(t *testing.T) {
 		t.Fatal("empty tenant id must error")
 	}
 }
+
+// TestSetSubscriptionStatusUnknownTenantIsNotFound ensures an override on a
+// non-existent tenant id returns apperr.ErrNotFound (handler → 404) rather than
+// silently succeeding (SetTenantSubscriptionStatus is :execrows).
+func TestSetSubscriptionStatusUnknownTenantIsNotFound(t *testing.T) {
+	conn := appdb.OpenTestDB(t)
+	err := NewStore(conn).SetSubscriptionStatus(context.Background(), "no-such-tenant", StatusActive, "admin", "")
+	if !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("SetSubscriptionStatus(unknown) err = %v, want apperr.ErrNotFound", err)
+	}
+}
