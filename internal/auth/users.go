@@ -276,7 +276,7 @@ func (r *UsersRepo) TouchLastLogin(ctx context.Context, id string) error {
 	return nil
 }
 
-// bi maps a Go bool to the SQLite 0/1 integer convention.
+// bi maps a Go bool to the 0/1 integer convention used for INTEGER bool columns.
 func bi(b bool) int64 {
 	if b {
 		return 1

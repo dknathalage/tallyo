@@ -14,7 +14,7 @@ import (
 	"net/url"
 )
 
-// newTestDB opens a fresh migrated in-temp SQLite DB.
+// newTestDB opens the shared migrated Postgres test DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn := appdb.OpenTestDB(t)

@@ -15,7 +15,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 )
 
-// newTestDB opens a fresh migrated in-temp SQLite DB for a test.
+// newTestDB opens the shared migrated Postgres test DB for a test.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn := appdb.OpenTestDB(t)

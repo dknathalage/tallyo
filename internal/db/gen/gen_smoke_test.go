@@ -8,7 +8,7 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 )
 
-func TestGenRunsAgainstModernc(t *testing.T) {
+func TestGenRunsAgainstPostgres(t *testing.T) {
 	conn := appdb.OpenTestDB(t)
 	q := New(conn)
 	ctx := context.Background()
