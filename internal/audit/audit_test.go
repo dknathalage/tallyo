@@ -3,7 +3,6 @@ package audit
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 
 func TestLogInsertsRow(t *testing.T) {
 	conn := mustDB(t)
-	defer conn.Close()
-
 	err := Log(context.Background(), conn, Entry{
 		EntityType: "business_profile",
 		EntityID:   ids.New(),
@@ -39,8 +36,6 @@ func TestLogInsertsRow(t *testing.T) {
 
 func TestLogValidatesInputs(t *testing.T) {
 	conn := mustDB(t)
-	defer conn.Close()
-
 	cases := []struct {
 		name  string
 		entry Entry
@@ -68,7 +63,6 @@ func TestLogValidatesInputs(t *testing.T) {
 // acting tenant_id and user_id sourced from reqctx.
 func TestLogStampsTenantAndUserFromContext(t *testing.T) {
 	conn := mustDB(t)
-	defer conn.Close()
 	tenantID, userID := seedTenantUser(t, conn)
 
 	entityID := ids.New()
@@ -79,7 +73,7 @@ func TestLogStampsTenantAndUserFromContext(t *testing.T) {
 
 	var gotTenant, gotUser sql.NullString
 	if err := conn.QueryRow(
-		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='invoice' AND entity_id=?", entityID,
+		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='invoice' AND entity_id=$1", entityID,
 	).Scan(&gotTenant, &gotUser); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -95,15 +89,13 @@ func TestLogStampsTenantAndUserFromContext(t *testing.T) {
 // or user on the context (e.g. catalogue ingest, sweeps), both columns are NULL.
 func TestLogNullStampsWhenNoContext(t *testing.T) {
 	conn := mustDB(t)
-	defer conn.Close()
-
 	entityID := ids.New()
 	if err := Log(context.Background(), conn, Entry{EntityType: "catalog_version", EntityID: entityID, Action: "ingest"}); err != nil {
 		t.Fatalf("Log: %v", err)
 	}
 	var gotTenant, gotUser sql.NullString
 	if err := conn.QueryRow(
-		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='catalog_version' AND entity_id=?", entityID,
+		"SELECT tenant_id, user_id FROM audit_log WHERE entity_type='catalog_version' AND entity_id=$1", entityID,
 	).Scan(&gotTenant, &gotUser); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -118,14 +110,14 @@ func seedTenantUser(t *testing.T, conn *sql.DB) (tenantID, userID string) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	tenantID = ids.New()
 	if _, err := conn.Exec(
-		`INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES (?, 'Acme', 'active', ?, ?)`,
+		`INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES ($1, 'Acme', 'active', $2, $3)`,
 		tenantID, now, now); err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
 	userID = ids.New()
 	if _, err := conn.Exec(
 		`INSERT INTO users (id, tenant_id, email, password_hash, name, role, created_at, updated_at)
-		 VALUES (?, ?, 'o@acme.test', 'x', 'Owner', 'owner', ?, ?)`,
+		 VALUES ($1, $2, 'o@acme.test', 'x', 'Owner', 'owner', $3, $4)`,
 		userID, tenantID, now, now); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -134,12 +126,6 @@ func seedTenantUser(t *testing.T, conn *sql.DB) (tenantID, userID string) {
 
 func mustDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "a.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }

@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,13 +13,7 @@ import (
 
 func mustUserDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "u.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
@@ -39,7 +32,6 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 
 func TestUserCreateGetListDelete(t *testing.T) {
 	conn := mustUserDB(t)
-	defer conn.Close()
 	tid := seedTenant(t, conn, "T")
 	repo := NewUsers(conn)
 	ctx := context.Background()
@@ -107,7 +99,6 @@ func TestUserCreateGetListDelete(t *testing.T) {
 
 func TestGetByEmailMissingReturnsNil(t *testing.T) {
 	conn := mustUserDB(t)
-	defer conn.Close()
 	tid := seedTenant(t, conn, "T")
 	got, err := NewUsers(conn).GetByEmail(context.Background(), tid, "no@x.com")
 	if err != nil {
@@ -120,7 +111,6 @@ func TestGetByEmailMissingReturnsNil(t *testing.T) {
 
 func TestCreateRejectsEmptyEmailOrHash(t *testing.T) {
 	conn := mustUserDB(t)
-	defer conn.Close()
 	tid := seedTenant(t, conn, "T")
 	repo := NewUsers(conn)
 	ctx := context.Background()
@@ -134,7 +124,6 @@ func TestCreateRejectsEmptyEmailOrHash(t *testing.T) {
 
 func TestUserTenantIsolation(t *testing.T) {
 	conn := mustUserDB(t)
-	defer conn.Close()
 	a := seedTenant(t, conn, "A")
 	b := seedTenant(t, conn, "B")
 	repo := NewUsers(conn)

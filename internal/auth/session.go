@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/alexedwards/scs/sqlite3store"
+	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
 )
 
@@ -16,7 +16,7 @@ func NewSessionManager(db *sql.DB, secure bool) *scs.SessionManager {
 		panic("NewSessionManager: nil db")
 	}
 	m := scs.New()
-	m.Store = sqlite3store.New(db) // starts a 5-min cleanup goroutine
+	m.Store = postgresstore.New(db) // starts a 5-min cleanup goroutine
 	m.Lifetime = 7 * 24 * time.Hour
 	m.Cookie.HttpOnly = true
 	m.Cookie.SameSite = http.SameSiteLaxMode

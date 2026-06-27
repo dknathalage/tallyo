@@ -46,7 +46,7 @@ func Log(ctx context.Context, db Execer, e Entry) error {
 	user := nullString(reqctx.UserFrom(ctx))
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO audit_log (id, tenant_id, user_id, entity_type, entity_id, action, changes, context, batch_id, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9)`,
 		ids.New(), tenant, user, e.EntityType, e.EntityID, e.Action, changes, e.Context,
 		time.Now().UTC().Format(time.RFC3339),
 	)

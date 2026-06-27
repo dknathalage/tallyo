@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/listquery"
 )
@@ -55,7 +56,7 @@ func (r *InvoicesRepo) Query(ctx context.Context, tenantID string, c listquery.C
 		return nil, 0, errors.New("query invoices: tenant id required")
 	}
 	var total int64
-	countSQL := "SELECT count(*) FROM (" + invoiceListSelect + c.Where + ")"
+	countSQL := db.Rebind("SELECT count(*) FROM (" + invoiceListSelect + c.Where + ") AS sub")
 	countArgs := append([]any{tenantID}, c.CountArgs()...)
 	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count invoices: %w", err)
@@ -64,7 +65,7 @@ func (r *InvoicesRepo) Query(ctx context.Context, tenantID string, c listquery.C
 	if order == "" {
 		order = " ORDER BY i.created_at DESC"
 	}
-	sqlText := invoiceListSelect + c.Where + order + c.Limit
+	sqlText := db.Rebind(invoiceListSelect + c.Where + order + c.Limit)
 	pageArgs := append([]any{tenantID}, c.Args...)
 	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
 	if err != nil {

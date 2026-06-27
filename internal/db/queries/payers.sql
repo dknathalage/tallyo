@@ -3,7 +3,7 @@ SELECT * FROM payers WHERE tenant_id = $1 ORDER BY name;
 
 -- name: SearchPayers :many
 SELECT * FROM payers
-WHERE tenant_id = $1 AND (name LIKE $2 OR email LIKE $3)
+WHERE tenant_id = $1 AND (name ILIKE $2 OR email ILIKE $3)
 ORDER BY name;
 
 -- name: GetPayer :one

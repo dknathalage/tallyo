@@ -67,7 +67,9 @@ func Build(q url.Values, spec Spec) Clause {
 		switch col.Filter {
 		case Text:
 			if v := q.Get("f." + key); v != "" {
-				where = append(where, col.Col+" LIKE ?")
+				// ILIKE for case-insensitive matching (Postgres LIKE is
+				// case-sensitive; SQLite's default LIKE was not).
+				where = append(where, col.Col+" ILIKE ?")
 				args = append(args, "%"+v+"%")
 			}
 		case Enum:

@@ -292,10 +292,10 @@ func (q *Queries) MaxCatalogueVersionForLogical(ctx context.Context, arg MaxCata
 const searchCatalogue = `-- name: SearchCatalogue :many
 SELECT id, logical_id, tenant_id, code, name, unit, category, unit_price, taxable, metadata, version, is_current, created_at, updated_at FROM catalogue_items
 WHERE tenant_id = $1 AND is_current = 1
-  AND ( (code     LIKE $2::text     ESCAPE '\')
-     OR (name     LIKE $3::text     ESCAPE '\')
-     OR (category LIKE $4::text ESCAPE '\')
-     OR (unit     LIKE $5::text     ESCAPE '\') )
+  AND ( (code     ILIKE $2::text     ESCAPE '\')
+     OR (name     ILIKE $3::text     ESCAPE '\')
+     OR (category ILIKE $4::text ESCAPE '\')
+     OR (unit     ILIKE $5::text     ESCAPE '\') )
 ORDER BY name
 LIMIT 50
 `

@@ -270,7 +270,7 @@ const searchClients = `-- name: SearchClients :many
 SELECT p.id, p.tenant_id, p.name, p.reference, p.payer_id, p.email, p.phone, p.address, p.metadata, p.created_at, p.updated_at, pm.name AS payer_name, pm.id AS payer_uuid
 FROM clients p
 LEFT JOIN payers pm ON p.payer_id = pm.id AND pm.tenant_id = p.tenant_id
-WHERE p.tenant_id = $1 AND (p.name LIKE $2 OR p.email LIKE $3 OR p.reference LIKE $4)
+WHERE p.tenant_id = $1 AND (p.name ILIKE $2 OR p.email ILIKE $3 OR p.reference ILIKE $4)
 ORDER BY p.name
 `
 

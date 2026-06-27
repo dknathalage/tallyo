@@ -132,7 +132,7 @@ func TestPayerAuditCreate(t *testing.T) {
 	}
 	var n int
 	if err := conn.QueryRow(
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='payer' AND action='create' AND entity_id=?",
+		"SELECT COUNT(*) FROM audit_log WHERE entity_type='payer' AND action='create' AND entity_id=$1",
 		pm.ID,
 	).Scan(&n); err != nil {
 		t.Fatalf("count audit: %v", err)

@@ -49,7 +49,7 @@ func tenantForEmail(t *testing.T, conn *sql.DB, email string) (string, string) {
 	t.Helper()
 	var id string
 	if err := conn.QueryRowContext(t.Context(),
-		"SELECT t.id FROM tenants t JOIN users u ON u.tenant_id = t.id WHERE u.email = ?",
+		"SELECT t.id FROM tenants t JOIN users u ON u.tenant_id = t.id WHERE u.email = $1",
 		email).Scan(&id); err != nil {
 		t.Fatalf("tenant lookup for %q: %v", email, err)
 	}
@@ -81,7 +81,7 @@ func TestSignupHappyPathLogsInAndProvisions(t *testing.T) {
 	// business_profile created with the form's business name.
 	var name string
 	row := conn.QueryRowContext(t.Context(),
-		"SELECT name FROM business_profile WHERE tenant_id = ?", tenantID)
+		"SELECT name FROM business_profile WHERE tenant_id = $1", tenantID)
 	if err := row.Scan(&name); err != nil {
 		t.Fatalf("business_profile scan: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestLoginSuspendedTenantBlocked(t *testing.T) {
 	}
 	// Suspend the tenant.
 	if _, err := conn.ExecContext(t.Context(),
-		"UPDATE tenants SET status = 'suspended' WHERE id = ?", tn.ID); err != nil {
+		"UPDATE tenants SET status = 'suspended' WHERE id = $1", tn.ID); err != nil {
 		t.Fatalf("suspend: %v", err)
 	}
 

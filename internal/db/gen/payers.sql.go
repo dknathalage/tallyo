@@ -190,7 +190,7 @@ func (q *Queries) ListPayers(ctx context.Context, tenantID string) ([]Payer, err
 
 const searchPayers = `-- name: SearchPayers :many
 SELECT id, tenant_id, name, email, phone, address, metadata, created_at, updated_at FROM payers
-WHERE tenant_id = $1 AND (name LIKE $2 OR email LIKE $3)
+WHERE tenant_id = $1 AND (name ILIKE $2 OR email ILIKE $3)
 ORDER BY name
 `
 

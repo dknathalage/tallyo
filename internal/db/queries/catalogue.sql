@@ -11,10 +11,10 @@ ORDER BY name;
 -- The LIKE pattern is escaped; pair with ESCAPE backslash.
 SELECT * FROM catalogue_items
 WHERE tenant_id = sqlc.arg(tenant_id) AND is_current = 1
-  AND ( (code     LIKE sqlc.arg(code)::text     ESCAPE '\')
-     OR (name     LIKE sqlc.arg(name)::text     ESCAPE '\')
-     OR (category LIKE sqlc.arg(category)::text ESCAPE '\')
-     OR (unit     LIKE sqlc.arg(unit)::text     ESCAPE '\') )
+  AND ( (code     ILIKE sqlc.arg(code)::text     ESCAPE '\')
+     OR (name     ILIKE sqlc.arg(name)::text     ESCAPE '\')
+     OR (category ILIKE sqlc.arg(category)::text ESCAPE '\')
+     OR (unit     ILIKE sqlc.arg(unit)::text     ESCAPE '\') )
 ORDER BY name
 LIMIT 50;
 

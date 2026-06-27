@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
@@ -13,19 +12,12 @@ import (
 // mustTenantDB returns a migrated, empty DB for tenant-level tests.
 func mustTenantDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
 func TestTenantCountAndCreate(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -69,7 +61,6 @@ func TestTenantCountAndCreate(t *testing.T) {
 
 func TestTenantCreateRejectsEmptyName(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	if _, err := NewTenants(conn).Create(context.Background(), ""); err == nil {
 		t.Fatal("empty name must error")
 	}
@@ -77,7 +68,6 @@ func TestTenantCreateRejectsEmptyName(t *testing.T) {
 
 func TestTenantStatus(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -100,7 +90,6 @@ func TestTenantStatus(t *testing.T) {
 
 func TestTenantStatusMissingReturnsNotFound(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	status, found, err := NewTenants(conn).Status(context.Background(), "no-such-tenant")
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -115,7 +104,6 @@ func TestTenantStatusMissingReturnsNotFound(t *testing.T) {
 
 func TestTenantStatusRejectsZeroID(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	if _, _, err := NewTenants(conn).Status(context.Background(), ""); err == nil {
 		t.Fatal("empty tenant id must error")
 	}
@@ -123,7 +111,6 @@ func TestTenantStatusRejectsZeroID(t *testing.T) {
 
 func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -174,7 +161,6 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 
 func TestSignupRejectsMissingRequiredFields(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -196,7 +182,6 @@ func TestSignupRejectsMissingRequiredFields(t *testing.T) {
 
 func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 

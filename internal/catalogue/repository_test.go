@@ -3,7 +3,6 @@ package catalogue
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,14 +13,7 @@ import (
 
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "catalogue.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
@@ -48,20 +40,20 @@ func referenceItem(t *testing.T, conn *sql.DB, tenantID, catalogueItemID string)
 	now := time.Now().UTC().Format(time.RFC3339)
 	cliID := ids.New()
 	if _, err := conn.Exec(
-		"INSERT INTO clients (id, tenant_id, name, created_at, updated_at) VALUES (?,?,?,?,?)",
+		"INSERT INTO clients (id, tenant_id, name, created_at, updated_at) VALUES ($1,$2,$3,$4,$5)",
 		cliID, tenantID, "Client", now, now,
 	); err != nil {
 		t.Fatalf("insert client: %v", err)
 	}
 	invID := ids.New()
 	if _, err := conn.Exec(
-		"INSERT INTO invoices (id, tenant_id, number, client_id, issue_date, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+		"INSERT INTO invoices (id, tenant_id, number, client_id, issue_date, due_date, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
 		invID, tenantID, "INV-"+invID[:8], cliID, now[:10], now[:10], now, now,
 	); err != nil {
 		t.Fatalf("insert invoice: %v", err)
 	}
 	if _, err := conn.Exec(
-		"INSERT INTO line_items (id, tenant_id, invoice_id, catalogue_item_id, description, quantity, unit_price) VALUES (?,?,?,?,?,?,?)",
+		"INSERT INTO line_items (id, tenant_id, invoice_id, catalogue_item_id, description, quantity, unit_price) VALUES ($1,$2,$3,$4,$5,$6,$7)",
 		ids.New(), tenantID, invID, catalogueItemID, "billed work", 1, 10,
 	); err != nil {
 		t.Fatalf("insert line_item: %v", err)

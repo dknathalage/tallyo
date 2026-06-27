@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,13 +15,7 @@ import (
 // owner user, which is required to satisfy the invites.created_by foreign key.
 func mustInviteDB(t *testing.T) (*sql.DB, string, string) {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "i.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	tid := seedTenant(t, conn, "T")
 	hash, err := HashPassword("pw123456")
 	if err != nil {
@@ -37,7 +30,6 @@ func mustInviteDB(t *testing.T) (*sql.DB, string, string) {
 
 func TestAcceptInviteAtomic(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	ctx := context.Background()
 	invRepo := NewInvites(conn)
 	usersRepo := NewUsers(conn)
@@ -68,7 +60,6 @@ func TestAcceptInviteAtomic(t *testing.T) {
 
 func TestAcceptInviteDuplicateEmail(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	ctx := context.Background()
 	invRepo := NewInvites(conn)
 	usersRepo := NewUsers(conn)
@@ -87,7 +78,6 @@ func TestAcceptInviteDuplicateEmail(t *testing.T) {
 
 func TestInviteCreateAndGet(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
@@ -125,7 +115,6 @@ func TestInviteCreateAndGet(t *testing.T) {
 
 func TestInviteValidateFresh(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
@@ -144,7 +133,6 @@ func TestInviteValidateFresh(t *testing.T) {
 
 func TestInviteValidateUnknownToken(t *testing.T) {
 	conn, _, _ := mustInviteDB(t)
-	defer conn.Close()
 	_, err := NewInvites(conn).Validate(context.Background(), "nope")
 	if !errors.Is(err, ErrInviteInvalid) {
 		t.Fatalf("want ErrInviteInvalid, got %v", err)
@@ -153,7 +141,6 @@ func TestInviteValidateUnknownToken(t *testing.T) {
 
 func TestInviteValidateExpired(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
@@ -169,7 +156,6 @@ func TestInviteValidateExpired(t *testing.T) {
 
 func TestInviteMarkAcceptedThenValidateFails(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
@@ -195,7 +181,6 @@ func TestInviteMarkAcceptedThenValidateFails(t *testing.T) {
 
 func TestInviteTokensDiffer(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
@@ -214,7 +199,6 @@ func TestInviteTokensDiffer(t *testing.T) {
 
 func TestInviteCreateRejectsEmptyEmail(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	if _, err := NewInvites(conn).Create(context.Background(), tid, "", "member", owner, time.Hour); err == nil {
 		t.Fatal("empty email must error")
 	}
@@ -222,7 +206,6 @@ func TestInviteCreateRejectsEmptyEmail(t *testing.T) {
 
 func TestInviteExposesUUIDAsID(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	inv, err := NewInvites(conn).Create(context.Background(), tid, "u@x.com", "member", owner, time.Hour)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -253,7 +236,6 @@ func TestInviteExposesUUIDAsID(t *testing.T) {
 
 func TestDeleteInviteByUUID(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 
@@ -276,7 +258,6 @@ func TestDeleteInviteByUUID(t *testing.T) {
 
 func TestDeleteInviteByUUIDUnknownIsNoOp(t *testing.T) {
 	conn, tid, _ := mustInviteDB(t)
-	defer conn.Close()
 	// A well-formed but unknown uuid matches no rows → no error (idempotent).
 	if err := NewInvites(conn).DeleteByUUID(context.Background(), tid, "3f1b8e2a-6c4d-4f7a-9b0c-1d2e3f4a5b6c"); err != nil {
 		t.Fatalf("unknown uuid delete should be no-op, got %v", err)
@@ -285,7 +266,6 @@ func TestDeleteInviteByUUIDUnknownIsNoOp(t *testing.T) {
 
 func TestDeleteInviteByUUIDTenantScoped(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 	inv, err := repo.Create(ctx, tid, "scope@x.com", "member", owner, time.Hour)
@@ -308,7 +288,6 @@ func TestDeleteInviteByUUIDTenantScoped(t *testing.T) {
 
 func TestInviteAuditRows(t *testing.T) {
 	conn, tid, owner := mustInviteDB(t)
-	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
 

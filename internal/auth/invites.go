@@ -7,13 +7,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/dknathalage/tallyo/internal/db"
-	"strings"
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ErrInviteInvalid is returned by Validate when an invite is unknown, expired,
@@ -265,12 +265,13 @@ func validateInviteTx(ctx context.Context, q *gen.Queries, token string) (*Invit
 	return inv, nil
 }
 
-// isUniqueViolation reports whether err is a SQLite UNIQUE-constraint failure.
-// modernc.org/sqlite surfaces these as "UNIQUE constraint failed: ...". We match
-// only that phrase: matching a bare "constraint" would misclassify FK / NOT NULL
-// failures (e.g. a bad tenant_id) as ErrEmailTaken in Accept().
+// isUniqueViolation reports whether err is a Postgres UNIQUE-constraint failure
+// (SQLSTATE 23505 unique_violation). Matching only this code avoids
+// misclassifying FK / NOT NULL failures (e.g. a bad tenant_id) as ErrEmailTaken
+// in Accept().
 func isUniqueViolation(err error) bool {
-	return strings.Contains(strings.ToLower(err.Error()), "unique constraint")
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // toInvite maps a generated row to the domain Invite.

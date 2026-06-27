@@ -219,8 +219,8 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 		if e := provision(ctx, owner.TenantID, in); e != nil {
 			// Compensate: the tenant+owner are committed but unusable without a
 			// profile/tenant DB. Best-effort delete; orphan-sweep is the backstop.
-			_, _ = r.db.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = ?", owner.TenantID)
-			_, _ = r.db.ExecContext(ctx, "DELETE FROM tenants WHERE id = ?", owner.TenantID)
+			_, _ = r.db.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = $1", owner.TenantID)
+			_, _ = r.db.ExecContext(ctx, "DELETE FROM tenants WHERE id = $1", owner.TenantID)
 			return nil, fmt.Errorf("signup: provision profile: %w", e)
 		}
 	}

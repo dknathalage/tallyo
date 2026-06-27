@@ -5,22 +5,13 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 )
 
 func TestSessionRoundTripAgainstMigratedDB(t *testing.T) {
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "s.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer conn.Close()
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-
+	conn := appdb.OpenTestDB(t)
 	sm := NewSessionManager(conn, false)
 
 	mux := http.NewServeMux()
