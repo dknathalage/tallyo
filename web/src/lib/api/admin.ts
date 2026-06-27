@@ -4,28 +4,17 @@
  * will receive a 403, which the ApiError machinery surfaces to callers.
  */
 import { apiGet, apiPost, apiPatch, apiDelete } from './client';
-import type { ListParams, ListResult } from './types';
 
 // ---- Domain types ----
 
-/** Full tenant row (GET /api/admin/tenants/:uuid → .tenant). */
-export interface AdminTenant {
-	id: string;
-	name: string;
-	status: string;
-	createdAt: string;
-	updatedAt: string;
-	stripeCustomerId: string;
-	stripeSubscriptionId: string;
-	subscriptionStatus: string;
-	trialEnd: string;
-	currentPeriodEnd: string;
-}
+// AdminTenant/AdminTenantSummary and the client-side ListParams adapter live in
+// the dependency-free ./listParams module (no `./client` import) so they are
+// unit-testable without the firebase/SvelteKit module graph. Re-exported here so
+// callers keep importing tenant types + the adapter from a single `./admin` path.
+export type { AdminTenant, AdminTenantSummary } from './listParams';
+export { applyListParams } from './listParams';
 
-/** Tenant list row (GET /api/admin/tenants). Embeds AdminTenant + userCount. */
-export interface AdminTenantSummary extends AdminTenant {
-	userCount: number;
-}
+import type { AdminTenant, AdminTenantSummary } from './listParams';
 
 /** Audit trail record (GET /api/admin/tenants/:uuid → .audit[]). */
 export interface AuditRecord {
@@ -100,70 +89,4 @@ export async function unsuspendTenant(uuid: string): Promise<null> {
 /** Permanently delete a tenant. Returns null on success (204). */
 export async function deleteTenant(uuid: string): Promise<null> {
 	return apiDelete<null>(`/api/admin/tenants/${uuid}`);
-}
-
-// ---- DataTable adapter ----
-
-/**
- * Apply ListParams (sort/filter/page/limit) client-side on a flat array.
- * The /api/admin/tenants endpoint returns all tenants in one shot; we handle
- * pagination, sorting, and filtering here to satisfy the DataTable contract.
- */
-export function applyListParams(
-	all: AdminTenantSummary[],
-	params: ListParams
-): ListResult<AdminTenantSummary> {
-	let rows = [...all];
-
-	// ── Filtering ──
-	const filters = params.filters ?? {};
-	for (const [key, val] of Object.entries(filters)) {
-		if (!val) continue;
-		if (key === 'subscriptionStatus') {
-			// enum filter: comma-joined values
-			const opts = val.split(',').map((s) => s.trim()).filter(Boolean);
-			if (opts.length > 0) {
-				rows = rows.filter((r) => opts.includes(r.subscriptionStatus));
-			}
-		} else if (key === 'status') {
-			const opts = val.split(',').map((s) => s.trim()).filter(Boolean);
-			if (opts.length > 0) {
-				rows = rows.filter((r) => opts.includes(r.status));
-			}
-		} else if (key === 'name') {
-			const lower = val.toLowerCase();
-			rows = rows.filter((r) => r.name.toLowerCase().includes(lower));
-		} else if (key === 'userCount.min') {
-			const min = Number(val);
-			if (!isNaN(min)) rows = rows.filter((r) => r.userCount >= min);
-		} else if (key === 'userCount.max') {
-			const max = Number(val);
-			if (!isNaN(max)) rows = rows.filter((r) => r.userCount <= max);
-		}
-	}
-
-	// ── Sorting ──
-	const sortKey = params.sort as keyof AdminTenantSummary | undefined;
-	if (sortKey) {
-		const dir = params.dir ?? 'asc';
-		rows.sort((a, b) => {
-			const av = a[sortKey];
-			const bv = b[sortKey];
-			if (av === bv) return 0;
-			const cmp =
-				typeof av === 'number' && typeof bv === 'number'
-					? av - bv
-					: String(av ?? '').localeCompare(String(bv ?? ''));
-			return dir === 'asc' ? cmp : -cmp;
-		});
-	}
-
-	// ── Pagination ──
-	const total = rows.length;
-	const page = params.page ?? 1;
-	const limit = params.limit ?? 50;
-	const start = (page - 1) * limit;
-	const pageRows = rows.slice(start, start + limit);
-
-	return { rows: pageRows, total };
 }
