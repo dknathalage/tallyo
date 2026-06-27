@@ -222,21 +222,44 @@ func (r *TenantsRepo) Unsuspend(ctx context.Context, tenantUUID, adminUserID str
 	})
 }
 
-// Delete permanently removes a tenant and all of its data. This is
-// destructive and irreversible. adminUserID is stamped on the audit row.
+// Delete permanently removes a tenant and its control-DB dependents (invites,
+// users, and any audit rows that reference the tenant). This is destructive and
+// irreversible. The control schema has no ON DELETE CASCADE, so dependents are
+// removed in FK order INSIDE the transaction before the tenant row.
+//
+// The delete-audit row itself is stamped with tenant_id = NULL (the tenant is
+// gone — a non-NULL tenant_id would re-violate the FK and, even cascaded, would
+// be deleted with the tenant) and records the gone tenant in entity_id, with
+// the acting admin in user_id, preserving an attributable trail.
+//
+// ponytail: a control-DB ON DELETE CASCADE (or a single recursive delete query)
+// would replace this hand-ordered cleanup if the dependent set grows.
 func (r *TenantsRepo) Delete(ctx context.Context, tenantUUID, adminUserID string) error {
 	if tenantUUID == "" {
 		return errors.New("delete tenant: tenant uuid required")
 	}
 	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
-		// Audit BEFORE delete so the row exists when the audit log references it.
-		if err := audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
+		// Audit FIRST (tenant_id NULL so the row survives the tenant delete and
+		// does not itself block it). entity_id keeps the gone tenant's id.
+		if err := audit.LogAs(ctx, tx, "", adminUserID, audit.Entry{
 			EntityType: "tenant",
 			EntityID:   tenantUUID,
 			Action:     "delete",
-			Changes:    audit.Changes(map[string]any{}),
+			Changes:    audit.Changes(map[string]any{"tenantId": tenantUUID}),
 		}); err != nil {
 			return err
+		}
+		// Remove dependents in FK order: invites (→ tenants, → users) first,
+		// then any audit rows still pointing at the tenant, then users, then the
+		// tenant itself. Raw SQL: these cross-table cleanups have no sqlc query.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM invites WHERE tenant_id = $1", tenantUUID); err != nil {
+			return fmt.Errorf("delete invites: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM audit_log WHERE tenant_id = $1", tenantUUID); err != nil {
+			return fmt.Errorf("delete audit rows: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = $1", tenantUUID); err != nil {
+			return fmt.Errorf("delete users: %w", err)
 		}
 		return gen.New(tx).DeleteTenant(ctx, tenantUUID)
 	})

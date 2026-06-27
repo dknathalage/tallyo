@@ -2,8 +2,27 @@ package auth
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 )
+
+// mustAdminUser provisions a platform-admin user in its own tenant and returns
+// the admin's user id. The admin acts cross-tenant on OTHER tenants; its id is
+// a real users(id) so the audit_log.user_id FK is satisfied.
+func mustAdminUser(t *testing.T, conn *sql.DB) (adminTenantID, adminUserID string) {
+	t.Helper()
+	ctx := context.Background()
+	adminTenant, err := NewTenants(conn).Create(ctx, "Platform Admin Tenant")
+	if err != nil {
+		t.Fatalf("create admin tenant: %v", err)
+	}
+	admin, err := NewUsers(conn).Create(ctx, adminTenant.ID,
+		"admin@tallyo.test", "uid-admin", "Platform Admin", "owner", true)
+	if err != nil {
+		t.Fatalf("create admin user: %v", err)
+	}
+	return adminTenant.ID, admin.ID
+}
 
 // TestTenantsListReturnsUserCounts ensures List includes all tenants and their
 // per-tenant user counts.
@@ -64,20 +83,48 @@ func TestTenantsListReturnsUserCounts(t *testing.T) {
 	}
 }
 
+// auditRowCount returns how many audit rows match the action + entity_id AND are
+// stamped with the given target tenant_id and acting user_id. A NULL tenant_id
+// is matched by passing wantTenantNull = true (the delete case).
+func auditRowCount(t *testing.T, conn *sql.DB, action, entityID, wantTenantID, wantUserID string, wantTenantNull bool) int {
+	t.Helper()
+	var n int
+	var err error
+	if wantTenantNull {
+		err = conn.QueryRow(
+			`SELECT COUNT(*) FROM audit_log
+			 WHERE entity_type='tenant' AND action=$1 AND entity_id=$2
+			   AND tenant_id IS NULL AND user_id=$3`,
+			action, entityID, wantUserID,
+		).Scan(&n)
+	} else {
+		err = conn.QueryRow(
+			`SELECT COUNT(*) FROM audit_log
+			 WHERE entity_type='tenant' AND action=$1 AND entity_id=$2
+			   AND tenant_id=$3 AND user_id=$4`,
+			action, entityID, wantTenantID, wantUserID,
+		).Scan(&n)
+	}
+	if err != nil {
+		t.Fatalf("audit count (%s): %v", action, err)
+	}
+	return n
+}
+
 // TestTenantsSuspendAndUnsuspend verifies that Suspend sets the StatusSuspended
 // status (which the login/ResolveTenant path blocks on) and Unsuspend restores
-// StatusActive.
+// StatusActive. Audit rows must carry the TARGET tenant and the ACTING admin.
 func TestTenantsSuspendAndUnsuspend(t *testing.T) {
 	conn := mustTenantDB(t)
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
+	_, adminID := mustAdminUser(t, conn)
+
 	tn, err := repo.Create(ctx, "Suspend Me")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-
-	const adminID = "admin-user-uuid"
 
 	// Suspend.
 	if err := repo.Suspend(ctx, tn.ID, adminID); err != nil {
@@ -92,15 +139,9 @@ func TestTenantsSuspendAndUnsuspend(t *testing.T) {
 		t.Errorf("status after Suspend = %q, want %q", status, StatusSuspended)
 	}
 
-	// Audit row must exist.
-	var rows int
-	if err := conn.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='tenant' AND action='suspend' AND entity_id=$1", tn.ID,
-	).Scan(&rows); err != nil {
-		t.Fatalf("audit suspend: %v", err)
-	}
-	if rows != 1 {
-		t.Errorf("suspend audit rows = %d, want 1", rows)
+	// Audit row must be stamped with the target tenant AND the acting admin.
+	if n := auditRowCount(t, conn, "suspend", tn.ID, tn.ID, adminID, false); n != 1 {
+		t.Errorf("suspend audit rows (tenant=%s,user=%s) = %d, want 1", tn.ID, adminID, n)
 	}
 
 	// Unsuspend.
@@ -116,35 +157,38 @@ func TestTenantsSuspendAndUnsuspend(t *testing.T) {
 		t.Errorf("status after Unsuspend = %q, want %q", status, StatusActive)
 	}
 
-	// Audit row for unsuspend.
-	if err := conn.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='tenant' AND action='unsuspend' AND entity_id=$1", tn.ID,
-	).Scan(&rows); err != nil {
-		t.Fatalf("audit unsuspend: %v", err)
-	}
-	if rows != 1 {
-		t.Errorf("unsuspend audit rows = %d, want 1", rows)
+	if n := auditRowCount(t, conn, "unsuspend", tn.ID, tn.ID, adminID, false); n != 1 {
+		t.Errorf("unsuspend audit rows (tenant=%s,user=%s) = %d, want 1", tn.ID, adminID, n)
 	}
 }
 
-// TestTenantsDelete verifies that Delete removes the tenant permanently.
+// TestTenantsDelete verifies that Delete removes the tenant (and its dependents)
+// permanently and writes a delete-audit row. The delete audit row carries
+// tenant_id = NULL (the tenant is gone) with the gone tenant in entity_id and
+// the acting admin in user_id.
 func TestTenantsDelete(t *testing.T) {
 	conn := mustTenantDB(t)
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
-	tn, err := repo.Create(ctx, "Doomed Tenant")
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+	_, adminID := mustAdminUser(t, conn)
 
-	const adminID = "admin-user-uuid"
-	if err := repo.Delete(ctx, tn.ID, adminID); err != nil {
+	// Provision a full tenant (owner user + profile) so Delete must clean up
+	// dependents, not just a bare tenant row.
+	owner, err := repo.Signup(ctx, SignupInput{
+		BusinessName: "Doomed Tenant", Email: "owner@doomed.test", FirebaseUID: "uid-doomed", OwnerName: "Doomed Owner",
+	}, profileProv(conn))
+	if err != nil {
+		t.Fatalf("Signup: %v", err)
+	}
+	tenantID := owner.TenantID
+
+	if err := repo.Delete(ctx, tenantID, adminID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
 	// Tenant must be gone.
-	_, found, err := repo.Status(ctx, tn.ID)
+	_, found, err := repo.Status(ctx, tenantID)
 	if err != nil {
 		t.Fatalf("Status after Delete: %v", err)
 	}
@@ -152,15 +196,18 @@ func TestTenantsDelete(t *testing.T) {
 		t.Error("tenant still exists after Delete")
 	}
 
-	// Audit row must exist (written before the delete).
-	var rows int
-	if err := conn.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM audit_log WHERE entity_type='tenant' AND action='delete' AND entity_id=$1", tn.ID,
-	).Scan(&rows); err != nil {
-		t.Fatalf("audit delete: %v", err)
+	// Its users must be gone too.
+	var userRows int
+	if err := conn.QueryRow("SELECT COUNT(*) FROM users WHERE tenant_id=$1", tenantID).Scan(&userRows); err != nil {
+		t.Fatalf("count users: %v", err)
 	}
-	if rows != 1 {
-		t.Errorf("delete audit rows = %d, want 1", rows)
+	if userRows != 0 {
+		t.Errorf("users for deleted tenant = %d, want 0", userRows)
+	}
+
+	// Delete audit row: tenant_id NULL, entity_id = gone tenant, user_id = admin.
+	if n := auditRowCount(t, conn, "delete", tenantID, "", adminID, true); n != 1 {
+		t.Errorf("delete audit rows (tenant NULL,user=%s) = %d, want 1", adminID, n)
 	}
 }
 

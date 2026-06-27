@@ -93,14 +93,19 @@ func (s *Store) GetTenantByStripeCustomer(ctx context.Context, customerID string
 	return row.ID, true, nil
 }
 
-// SetSubscriptionStatus writes subscription_status (and trial_end when the new
-// status is trialing and trialEndsAt is non-empty) for the given tenant,
+// SetSubscriptionStatus writes subscription_status for the given tenant,
 // bypassing the Stripe sync gate and leaving Stripe IDs untouched. It writes
 // one audit row attributed to the target tenant and the acting admin user.
 //
+// trial_end handling: when status is trialing AND trialEndsAt is non-empty,
+// trial_end is set to trialEndsAt. For ALL OTHER statuses (and for trialing
+// with an empty trialEndsAt), trial_end is CLEARED to NULL — the update always
+// writes the trial_end column, so a non-trialing override drops any prior trial
+// date. This is intentional: a trial date is only meaningful while trialing.
+//
 // Known limitation: a subsequent Stripe webhook for that tenant can overwrite a
 // manual override via Apply. The override is an operator stopgap, not a lock.
-// // ponytail: an override-lock column is the upgrade path if webhooks fight
+// ponytail: an override-lock column is the upgrade path if webhooks fight
 // overrides in practice.
 func (s *Store) SetSubscriptionStatus(ctx context.Context, tenantID, status, adminUserID string, trialEndsAt string) error {
 	if tenantID == "" {

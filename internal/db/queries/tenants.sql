@@ -37,6 +37,8 @@ UPDATE tenants SET status = $1, updated_at = $2 WHERE id = $3;
 -- name: DeleteTenant :exec
 DELETE FROM tenants WHERE id = $1;
 
+-- Low-frequency platform-admin query: full tenants scan + user-count join, not
+-- a hot path. Fine to leave unindexed at expected tenant counts.
 -- name: ListTenantsWithUserCount :many
 SELECT
     t.id,
