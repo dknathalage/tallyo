@@ -36,7 +36,7 @@ func serve(t *testing.T, users MemberLookup, tenants TenantLookup, tenantUUID, u
 	t.Helper()
 	r := chi.NewRouter()
 	r.Route("/t/{tenantUUID}", func(tr chi.Router) {
-		tr.Use(ResolveTenant(users, tenants))
+		tr.Use(ResolveTenant(users, tenants, false))
 		tr.Get("/x", final)
 	})
 	req := httptest.NewRequest(http.MethodGet, "/t/"+tenantUUID+"/x", nil)
@@ -132,7 +132,7 @@ func TestResolveTenant_PerTenantRoleGate(t *testing.T) {
 	run := func(tenantUUID string) int {
 		r := chi.NewRouter()
 		r.Route("/t/{tenantUUID}", func(tr chi.Router) {
-			tr.Use(ResolveTenant(users, tenants))
+			tr.Use(ResolveTenant(users, tenants, false))
 			tr.With(RequireRole("owner")).Get("/x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 		})
 		req := httptest.NewRequest(http.MethodGet, "/t/"+tenantUUID+"/x", nil)

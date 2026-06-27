@@ -46,7 +46,7 @@ func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, string) {
 		// Invite create is tenant-scoped + owner/admin only (matches production).
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireAuth(v))
-			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.Use(httpx.ResolveTenant(users, tenants, false))
 			pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", invH.Create)
 		})
 	})

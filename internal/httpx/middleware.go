@@ -11,6 +11,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
+	"github.com/dknathalage/tallyo/internal/subscription"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -207,7 +208,7 @@ type MemberLookup interface {
 //
 // On success, downstream handlers read the tenant via reqctx.MustTenant and the
 // per-tenant user/role via UserFrom (so role gates reflect THIS tenant's role).
-func ResolveTenant(users MemberLookup, tenants TenantLookup) func(http.Handler) http.Handler {
+func ResolveTenant(users MemberLookup, tenants TenantLookup, billingEnabled bool) func(http.Handler) http.Handler {
 	if users == nil || tenants == nil {
 		panic("ResolveTenant: nil dep")
 	}
@@ -248,6 +249,10 @@ func ResolveTenant(users MemberLookup, tenants TenantLookup) func(http.Handler) 
 			}
 			ctx = reqctx.WithTenant(ctx, tenant.ID)
 			ctx = reqctx.WithUser(ctx, u.ID)
+			// Entitlement rides along the already-loaded tenant (no extra read).
+			// Gate off → always entitled. Read by RequireSubscription.
+			entitled := !billingEnabled || subscription.Entitled(tenant.SubscriptionStatus)
+			ctx = reqctx.WithEntitled(ctx, entitled)
 			tenantID, userID := tenant.ID, u.ID
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {
 				return l.With(slog.String("tenant_id", tenantID), slog.String("user_id", userID))

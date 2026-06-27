@@ -39,7 +39,7 @@ func newSignupServer(t *testing.T) (*httptest.Server, *sql.DB, *auth.UsersRepo, 
 		})
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireAuth(v))
-			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.Use(httpx.ResolveTenant(users, tenants, false))
 			pr.Get("/auth/me", authH.Me)
 		})
 	})
@@ -173,7 +173,7 @@ func newRoleServer(t *testing.T) (*httptest.Server, string) {
 	router.Route("/api", func(api chi.Router) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireAuth(v))
-			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.Use(httpx.ResolveTenant(users, tenants, false))
 			pr.With(httpx.RequireRole("owner", "admin")).Post("/settings", probe200)
 			pr.Get("/clients", probe200) // any role
 		})

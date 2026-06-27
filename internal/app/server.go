@@ -43,6 +43,7 @@ type Deps struct {
 	Payments        *invoice.PaymentHandler  // per-invoice payment list/create + delete
 	Smarts          *smarts.Handler          // AI "Smarts" routes (503 when AI disabled)
 	Features        map[string]bool          // feature-gate state exposed at GET /api/features
+	BillingEnabled  bool                     // when true, ResolveTenant computes entitlement and write routes are gated
 }
 
 // Server wraps the configured chi router.
@@ -106,7 +107,7 @@ func NewServer(deps Deps) *Server {
 		// tenant id + user + role to the context.
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireAuth(deps.Verifier))
-			pr.Use(httpx.ResolveTenant(deps.Users, deps.Tenants))
+			pr.Use(httpx.ResolveTenant(deps.Users, deps.Tenants, deps.BillingEnabled))
 			if deps.Auth != nil {
 				pr.Get("/auth/me", deps.Auth.Me)
 			}

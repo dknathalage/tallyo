@@ -33,7 +33,7 @@ func newInvoiceServer(t *testing.T) (*httptest.Server, string) {
 	router.Route("/api", func(api chi.Router) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireAuth(v))
-			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.Use(httpx.ResolveTenant(users, tenants, false))
 			pr.Post("/clients", pH.Create)
 			catH.Routes(pr)
 			invH.Routes(pr)
