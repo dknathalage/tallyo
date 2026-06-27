@@ -28,6 +28,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
+	"github.com/dknathalage/tallyo/internal/subscription"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
@@ -165,6 +166,23 @@ func Run(cfg Config, version string) error {
 		smartsHandler = smarts.NewHandler(nil, false)
 	}
 
+	// SaaS billing (optional, behind BILLING_ENABLED). When off, the handler is
+	// nil (routes unmounted) and ResolveTenant treats every tenant as entitled.
+	// A misconfigured-but-enabled billing setup is fatal: better to fail at boot
+	// than silently run unbilled.
+	billingCfg := subscription.LoadConfig()
+	var subHandler *subscription.Handler
+	if billingCfg.Enabled {
+		stripeClient, cerr := subscription.NewClient(billingCfg)
+		if cerr != nil {
+			return fmt.Errorf("billing enabled but misconfigured: %w", cerr)
+		}
+		subHandler = subscription.NewHandler(stripeClient, subscription.NewStore(database), tenants)
+		logger.Info("billing enabled", slog.Int("trial_days", billingCfg.TrialDays))
+	} else {
+		logger.Warn("billing disabled: BILLING_ENABLED off — all tenants entitled")
+	}
+
 	assets, err := fs.Sub(tallyoweb.Build, "build")
 	if err != nil {
 		return fmt.Errorf("sub web build: %w", err)
@@ -193,11 +211,14 @@ func Run(cfg Config, version string) error {
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Smarts:          smartsHandler,
+		Subscription:    subHandler,
+		BillingEnabled:  billingCfg.Enabled,
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
 			"smarts":  smartsEnabled,
 			"invites": cfg.FeatureInvites,
+			"billing": billingCfg.Enabled,
 		},
 	}
 

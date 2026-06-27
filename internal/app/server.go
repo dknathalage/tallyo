@@ -14,6 +14,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
+	"github.com/dknathalage/tallyo/internal/subscription"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
 )
@@ -43,6 +44,7 @@ type Deps struct {
 	Payments        *invoice.PaymentHandler  // per-invoice payment list/create + delete
 	Smarts          *smarts.Handler          // AI "Smarts" routes (503 when AI disabled)
 	Features        map[string]bool          // feature-gate state exposed at GET /api/features
+	Subscription    *subscription.Handler    // SaaS billing: checkout/portal/status + webhook (nil when BILLING_ENABLED off)
 	BillingEnabled  bool                     // when true, ResolveTenant computes entitlement and write routes are gated
 }
 
@@ -84,6 +86,12 @@ func NewServer(deps Deps) *Server {
 		if deps.Invites != nil {
 			api.Get("/invites/{token}", deps.Invites.Validate)
 		}
+		// Stripe webhook: tenant-agnostic and UNauthenticated (Stripe can't carry a
+		// bearer token); it verifies its own signature. Mounted here so it works
+		// even without a token verifier and outside any body-consuming middleware.
+		if deps.Subscription != nil {
+			api.Post("/stripe/webhook", deps.Subscription.Webhook)
+		}
 		if deps.Verifier == nil {
 			return // no authenticated routes without a token verifier
 		}
@@ -111,49 +119,62 @@ func NewServer(deps Deps) *Server {
 			if deps.Auth != nil {
 				pr.Get("/auth/me", deps.Auth.Me)
 			}
-			if deps.Invites != nil && deps.Features["invites"] {
-				// User management is owner/admin only (spec §3.2).
-				pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
-				pr.With(httpx.RequireRole("owner", "admin")).Delete("/invites/{inviteUUID}", deps.Invites.Revoke)
-			}
-			if deps.BusinessProfile != nil {
-				deps.BusinessProfile.Routes(pr)
-			}
-			if deps.Payers != nil {
-				deps.Payers.Routes(pr)
-			}
-			if deps.TaxRates != nil {
-				deps.TaxRates.Routes(pr)
-			}
-			if deps.Clients != nil {
-				deps.Clients.Routes(pr)
-			}
-			// Catalogue is the per-tenant catalogue. Reads + CRUD are open to any
-			// authenticated tenant user; the upload-and-map import (write) is gated
-			// to owner/admin within the handler's Routes.
-			if deps.Catalogue != nil {
-				deps.Catalogue.Routes(pr)
-			}
-			if deps.Invoices != nil {
-				deps.Invoices.Routes(pr)
-			}
-			if deps.Sessions != nil {
-				deps.Sessions.Routes(pr)
-			}
-			if deps.Estimates != nil {
-				deps.Estimates.Routes(pr)
-			}
-			if deps.Payments != nil {
-				deps.Payments.Routes(pr)
-			}
-			if deps.Smarts != nil {
-				deps.Smarts.Routes(pr)
+			// Billing routes live OUTSIDE the subscription gate so a lapsed tenant
+			// can still reach Checkout/Portal to pay.
+			if deps.Subscription != nil {
+				deps.Subscription.Routes(pr)
 			}
 			if deps.Features != nil {
 				pr.Get("/features", func(w http.ResponseWriter, _ *http.Request) {
 					httpx.WriteJSON(w, http.StatusOK, deps.Features)
 				})
 			}
+			// Everything that mutates tenant data sits behind RequireSubscription:
+			// when billing is on and the tenant is not entitled, write methods
+			// return 402 (reads still pass). The gate is a no-op when billing is off.
+			pr.Group(func(gr chi.Router) {
+				if deps.BillingEnabled {
+					gr.Use(httpx.RequireSubscription)
+				}
+				if deps.Invites != nil && deps.Features["invites"] {
+					// User management is owner/admin only (spec §3.2).
+					gr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
+					gr.With(httpx.RequireRole("owner", "admin")).Delete("/invites/{inviteUUID}", deps.Invites.Revoke)
+				}
+				if deps.BusinessProfile != nil {
+					deps.BusinessProfile.Routes(gr)
+				}
+				if deps.Payers != nil {
+					deps.Payers.Routes(gr)
+				}
+				if deps.TaxRates != nil {
+					deps.TaxRates.Routes(gr)
+				}
+				if deps.Clients != nil {
+					deps.Clients.Routes(gr)
+				}
+				// Catalogue is the per-tenant catalogue. Reads + CRUD are open to any
+				// authenticated tenant user; the upload-and-map import (write) is gated
+				// to owner/admin within the handler's Routes.
+				if deps.Catalogue != nil {
+					deps.Catalogue.Routes(gr)
+				}
+				if deps.Invoices != nil {
+					deps.Invoices.Routes(gr)
+				}
+				if deps.Sessions != nil {
+					deps.Sessions.Routes(gr)
+				}
+				if deps.Estimates != nil {
+					deps.Estimates.Routes(gr)
+				}
+				if deps.Payments != nil {
+					deps.Payments.Routes(gr)
+				}
+				if deps.Smarts != nil {
+					deps.Smarts.Routes(gr)
+				}
+			})
 		})
 	})
 
