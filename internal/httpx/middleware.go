@@ -162,6 +162,28 @@ func RequireRole(allowed ...string) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireSubscription blocks write methods (POST/PUT/PATCH/DELETE) for tenants
+// without an entitled subscription, returning 402. Reads (GET/HEAD/OPTIONS)
+// always pass — a lapsed tenant keeps read + export access. Chain it AFTER
+// ResolveTenant (which sets the entitled flag). Mount it only on the non-billing
+// route group so a lapsed tenant can still reach Checkout/Portal to pay.
+//
+// A missing entitled flag (gate disabled — ResolveTenant never set it) is treated
+// as entitled, so this middleware is a no-op when BILLING_ENABLED is off.
+func RequireSubscription(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		entitled, ok := reqctx.EntitledFrom(r.Context())
+		if ok && !entitled {
+			switch r.Method {
+			case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+				WriteError(w, http.StatusPaymentRequired, "subscription required")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequirePlatformAdmin gates a route to platform admins. is_platform_admin is
 // ORTHOGONAL to the tenant role (spec §3.1): it is only checked for the global
 // catalogue-admin area (J7 ingest). Must be chained after RequireAuth.
