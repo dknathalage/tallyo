@@ -18,21 +18,21 @@ func (f *fakeTenants) GetByUUID(_ context.Context, u string) (*auth.Tenant, erro
 	return f.byUUID[u], nil
 }
 
-// fakeUsers implements MemberLookup keyed by "tenantID\x00email".
+// fakeUsers implements MemberLookup keyed by "tenantID\x00firebaseUID".
 type fakeUsers struct{ rows map[string]*auth.User }
 
-func (f *fakeUsers) GetByEmail(_ context.Context, tenantID string, email string) (*auth.User, error) {
-	return f.rows[memberKey(tenantID, email)], nil
+func (f *fakeUsers) GetByFirebaseUID(_ context.Context, tenantID string, uid string) (*auth.User, error) {
+	return f.rows[memberKey(tenantID, uid)], nil
 }
 
-func memberKey(tenantID string, email string) string {
-	return tenantID + "\x00" + email
+func memberKey(tenantID string, uid string) string {
+	return tenantID + "\x00" + uid
 }
 
-// serve routes one GET through ResolveTenant (with email pre-attached as
-// RequireSession would) and returns the recorded response + the resolved
-// context captured by the terminal handler.
-func serve(t *testing.T, users MemberLookup, tenants TenantLookup, tenantUUID, email string, final http.HandlerFunc) *httptest.ResponseRecorder {
+// serve routes one GET through ResolveTenant (with the Firebase uid pre-attached
+// as RequireAuth would) and returns the recorded response + the resolved context
+// captured by the terminal handler. The uid arg doubles as the member key.
+func serve(t *testing.T, users MemberLookup, tenants TenantLookup, tenantUUID, uid string, final http.HandlerFunc) *httptest.ResponseRecorder {
 	t.Helper()
 	r := chi.NewRouter()
 	r.Route("/t/{tenantUUID}", func(tr chi.Router) {
@@ -40,8 +40,8 @@ func serve(t *testing.T, users MemberLookup, tenants TenantLookup, tenantUUID, e
 		tr.Get("/x", final)
 	})
 	req := httptest.NewRequest(http.MethodGet, "/t/"+tenantUUID+"/x", nil)
-	if email != "" {
-		req = req.WithContext(reqctx.WithEmail(req.Context(), email))
+	if uid != "" {
+		req = req.WithContext(reqctx.WithFirebaseUID(req.Context(), uid))
 	}
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -136,7 +136,7 @@ func TestResolveTenant_PerTenantRoleGate(t *testing.T) {
 			tr.With(RequireRole("owner")).Get("/x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 		})
 		req := httptest.NewRequest(http.MethodGet, "/t/"+tenantUUID+"/x", nil)
-		req = req.WithContext(reqctx.WithEmail(req.Context(), "x@y.com"))
+		req = req.WithContext(reqctx.WithFirebaseUID(req.Context(), "x@y.com"))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		return rec.Code

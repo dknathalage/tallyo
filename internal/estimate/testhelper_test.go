@@ -3,7 +3,6 @@ package estimate
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,21 +11,13 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// newTestDB opens a fresh migrated in-temp SQLite DB.
+// newTestDB opens the shared migrated Postgres test DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "estimate.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
@@ -63,14 +54,13 @@ func seedClient(t *testing.T, conn *sql.DB, tenantID string, name string) string
 }
 
 // newEstimateSvc creates a migrated DB, seeds a tenant+client, and returns
-// the estimate Service, Hub, tenantID, clientID.
-func newEstimateSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
+// the estimate Service, tenantID, clientID.
+func newEstimateSvc(t *testing.T) (*Service, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	return NewService(conn, hub), hub, tenantID, clientID
+	return NewService(conn), tenantID, clientID
 }
 
 // makeEstimate creates a single estimate for the tenant/client.

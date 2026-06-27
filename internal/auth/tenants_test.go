@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
@@ -13,19 +12,12 @@ import (
 // mustTenantDB returns a migrated, empty DB for tenant-level tests.
 func mustTenantDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
 func TestTenantCountAndCreate(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -69,7 +61,6 @@ func TestTenantCountAndCreate(t *testing.T) {
 
 func TestTenantCreateRejectsEmptyName(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	if _, err := NewTenants(conn).Create(context.Background(), ""); err == nil {
 		t.Fatal("empty name must error")
 	}
@@ -77,7 +68,6 @@ func TestTenantCreateRejectsEmptyName(t *testing.T) {
 
 func TestTenantStatus(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -100,7 +90,6 @@ func TestTenantStatus(t *testing.T) {
 
 func TestTenantStatusMissingReturnsNotFound(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	status, found, err := NewTenants(conn).Status(context.Background(), "no-such-tenant")
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -115,7 +104,6 @@ func TestTenantStatusMissingReturnsNotFound(t *testing.T) {
 
 func TestTenantStatusRejectsZeroID(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	if _, _, err := NewTenants(conn).Status(context.Background(), ""); err == nil {
 		t.Fatal("empty tenant id must error")
 	}
@@ -123,18 +111,13 @@ func TestTenantStatusRejectsZeroID(t *testing.T) {
 
 func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
-	hash, err := HashPassword("pw123456")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
 	owner, err := repo.Signup(ctx, SignupInput{
 		BusinessName: "Signup Co",
 		Email:        "owner@signup.com",
-		PasswordHash: hash,
+		FirebaseUID:  "uid-owner",
 		OwnerName:    "Owner Person",
 	}, profileProv(conn))
 	if err != nil {
@@ -165,16 +148,15 @@ func TestSignupProvisionsTenantOwnerAndProfile(t *testing.T) {
 		t.Fatalf("profile name=%q want Signup Co", prof.Name)
 	}
 
-	// the owner is reachable via the global login lookup
-	got, err := NewUsers(conn).GetByEmailGlobal(ctx, "owner@signup.com")
+	// the owner is reachable via the tenant-scoped firebase-uid lookup
+	got, err := NewUsers(conn).GetByFirebaseUID(ctx, owner.TenantID, "uid-owner")
 	if err != nil || got == nil {
-		t.Fatalf("GetByEmailGlobal owner=%+v err=%v", got, err)
+		t.Fatalf("GetByFirebaseUID owner=%+v err=%v", got, err)
 	}
 }
 
 func TestSignupRejectsMissingRequiredFields(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
@@ -182,9 +164,9 @@ func TestSignupRejectsMissingRequiredFields(t *testing.T) {
 		name string
 		in   SignupInput
 	}{
-		{"no business name", SignupInput{Email: "a@x.com", PasswordHash: "h"}},
-		{"no email", SignupInput{BusinessName: "B", PasswordHash: "h"}},
-		{"no password hash", SignupInput{BusinessName: "B", Email: "a@x.com"}},
+		{"no business name", SignupInput{Email: "a@x.com", FirebaseUID: "uid"}},
+		{"no email", SignupInput{BusinessName: "B", FirebaseUID: "uid"}},
+		{"no firebase uid", SignupInput{BusinessName: "B", Email: "a@x.com"}},
 	}
 	// bounded loop: fixed-size table
 	for _, tc := range cases {
@@ -196,13 +178,11 @@ func TestSignupRejectsMissingRequiredFields(t *testing.T) {
 
 func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	conn := mustTenantDB(t)
-	defer conn.Close()
 	repo := NewTenants(conn)
 	ctx := context.Background()
 
-	hash, _ := HashPassword("pw123456")
 	a, err := repo.Signup(ctx, SignupInput{
-		BusinessName: "First", Email: "dup@x.com", PasswordHash: hash, OwnerName: "A",
+		BusinessName: "First", Email: "dup@x.com", FirebaseUID: "uid-a", OwnerName: "A",
 	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("first signup: %v", err)
@@ -210,7 +190,7 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	// Email is unique per-tenant (not global): a second signup creates a NEW
 	// tenant, so the same email is allowed and a second tenant exists.
 	b, err := repo.Signup(ctx, SignupInput{
-		BusinessName: "Second", Email: "dup@x.com", PasswordHash: hash, OwnerName: "B",
+		BusinessName: "Second", Email: "dup@x.com", FirebaseUID: "uid-b", OwnerName: "B",
 	}, profileProv(conn))
 	if err != nil {
 		t.Fatalf("second signup: %v", err)
@@ -225,11 +205,6 @@ func TestSignupSameEmailDistinctTenants(t *testing.T) {
 	}
 	if n != 2 {
 		t.Fatalf("tenant Count=%d want 2", n)
-	}
-
-	// The shared email is now ambiguous for global credential lookup (fail safe).
-	if _, _, err := NewUsers(conn).GetCredentialsGlobal(ctx, "dup@x.com"); err != ErrAmbiguousEmail {
-		t.Fatalf("GetCredentialsGlobal err=%v want ErrAmbiguousEmail", err)
 	}
 }
 

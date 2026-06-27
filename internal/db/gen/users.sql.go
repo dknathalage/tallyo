@@ -11,7 +11,7 @@ import (
 )
 
 const countUsers = `-- name: CountUsers :one
-SELECT COUNT(*) FROM users WHERE tenant_id = ?
+SELECT COUNT(*) FROM users WHERE tenant_id = $1
 `
 
 func (q *Queries) CountUsers(ctx context.Context, tenantID string) (int64, error) {
@@ -22,7 +22,7 @@ func (q *Queries) CountUsers(ctx context.Context, tenantID string) (int64, error
 }
 
 const countUsersByEmailGlobal = `-- name: CountUsersByEmailGlobal :one
-SELECT COUNT(*) FROM users WHERE email = ?
+SELECT COUNT(*) FROM users WHERE email = $1
 `
 
 func (q *Queries) CountUsersByEmailGlobal(ctx context.Context, email string) (int64, error) {
@@ -33,16 +33,16 @@ func (q *Queries) CountUsersByEmailGlobal(ctx context.Context, email string) (in
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at
+INSERT INTO users (id, tenant_id, email, firebase_uid, name, is_platform_admin, role, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid
 `
 
 type CreateUserParams struct {
 	ID              string `json:"id"`
 	TenantID        string `json:"tenant_id"`
 	Email           string `json:"email"`
-	PasswordHash    string `json:"password_hash"`
+	FirebaseUid     string `json:"firebase_uid"`
 	Name            string `json:"name"`
 	IsPlatformAdmin int64  `json:"is_platform_admin"`
 	Role            string `json:"role"`
@@ -55,7 +55,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.ID,
 		arg.TenantID,
 		arg.Email,
-		arg.PasswordHash,
+		arg.FirebaseUid,
 		arg.Name,
 		arg.IsPlatformAdmin,
 		arg.Role,
@@ -67,19 +67,19 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ID,
 		&i.TenantID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.Name,
 		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.FirebaseUid,
 	)
 	return i, err
 }
 
 const deleteUser = `-- name: DeleteUser :exec
-DELETE FROM users WHERE tenant_id = ? AND id = ?
+DELETE FROM users WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteUserParams struct {
@@ -93,7 +93,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? AND email = ?
+SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE tenant_id = $1 AND email = $2
 `
 
 type GetUserByEmailParams struct {
@@ -108,19 +108,19 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 		&i.ID,
 		&i.TenantID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.Name,
 		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.FirebaseUid,
 	)
 	return i, err
 }
 
 const getUserByEmailGlobal = `-- name: GetUserByEmailGlobal :one
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE email = ?
+SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User, error) {
@@ -130,19 +130,46 @@ func (q *Queries) GetUserByEmailGlobal(ctx context.Context, email string) (User,
 		&i.ID,
 		&i.TenantID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.Name,
 		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.FirebaseUid,
+	)
+	return i, err
+}
+
+const getUserByFirebaseUID = `-- name: GetUserByFirebaseUID :one
+SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE tenant_id = $1 AND firebase_uid = $2
+`
+
+type GetUserByFirebaseUIDParams struct {
+	TenantID    string `json:"tenant_id"`
+	FirebaseUid string `json:"firebase_uid"`
+}
+
+func (q *Queries) GetUserByFirebaseUID(ctx context.Context, arg GetUserByFirebaseUIDParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByFirebaseUID, arg.TenantID, arg.FirebaseUid)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Email,
+		&i.Name,
+		&i.IsPlatformAdmin,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastLoginAt,
+		&i.FirebaseUid,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE tenant_id = $1 AND id = $2
 `
 
 type GetUserByIDParams struct {
@@ -157,13 +184,13 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.ID,
 		&i.TenantID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.Name,
 		&i.IsPlatformAdmin,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastLoginAt,
+		&i.FirebaseUid,
 	)
 	return i, err
 }
@@ -172,7 +199,7 @@ const listTenantsByEmail = `-- name: ListTenantsByEmail :many
 SELECT u.tenant_id, t.name AS tenant_name, t.id AS tenant_uuid, u.role AS role
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
-WHERE u.email = ?
+WHERE u.email = $1
 ORDER BY t.name
 `
 
@@ -211,8 +238,51 @@ func (q *Queries) ListTenantsByEmail(ctx context.Context, email string) ([]ListT
 	return items, nil
 }
 
+const listTenantsByFirebaseUID = `-- name: ListTenantsByFirebaseUID :many
+SELECT u.tenant_id, t.name AS tenant_name, t.id AS tenant_uuid, u.role AS role
+FROM users u
+JOIN tenants t ON t.id = u.tenant_id
+WHERE u.firebase_uid = $1
+ORDER BY t.name
+`
+
+type ListTenantsByFirebaseUIDRow struct {
+	TenantID   string `json:"tenant_id"`
+	TenantName string `json:"tenant_name"`
+	TenantUuid string `json:"tenant_uuid"`
+	Role       string `json:"role"`
+}
+
+func (q *Queries) ListTenantsByFirebaseUID(ctx context.Context, firebaseUid string) ([]ListTenantsByFirebaseUIDRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTenantsByFirebaseUID, firebaseUid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTenantsByFirebaseUIDRow
+	for rows.Next() {
+		var i ListTenantsByFirebaseUIDRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.TenantName,
+			&i.TenantUuid,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, tenant_id, email, password_hash, name, is_platform_admin, role, created_at, updated_at, last_login_at FROM users WHERE tenant_id = ? ORDER BY id
+SELECT id, tenant_id, email, name, is_platform_admin, role, created_at, updated_at, last_login_at, firebase_uid FROM users WHERE tenant_id = $1 ORDER BY id
 `
 
 func (q *Queries) ListUsers(ctx context.Context, tenantID string) ([]User, error) {
@@ -228,13 +298,13 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID string) ([]User, error
 			&i.ID,
 			&i.TenantID,
 			&i.Email,
-			&i.PasswordHash,
 			&i.Name,
 			&i.IsPlatformAdmin,
 			&i.Role,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LastLoginAt,
+			&i.FirebaseUid,
 		); err != nil {
 			return nil, err
 		}
@@ -250,7 +320,7 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID string) ([]User, error
 }
 
 const touchLastLogin = `-- name: TouchLastLogin :exec
-UPDATE users SET last_login_at = ? WHERE id = ?
+UPDATE users SET last_login_at = $1 WHERE id = $2
 `
 
 type TouchLastLoginParams struct {
@@ -264,7 +334,7 @@ func (q *Queries) TouchLastLogin(ctx context.Context, arg TouchLastLoginParams) 
 }
 
 const updateUserRole = `-- name: UpdateUserRole :exec
-UPDATE users SET role = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
+UPDATE users SET role = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4
 `
 
 type UpdateUserRoleParams struct {

@@ -3,7 +3,6 @@ package invoice
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,22 +11,14 @@ import (
 	appdb "github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
-// newTestDB opens a fresh migrated in-temp SQLite DB.
+// newTestDB opens the shared migrated Postgres test DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "invoice.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
@@ -46,19 +37,6 @@ func seedTenant(t *testing.T, conn *sql.DB, name string) string {
 		t.Fatalf("seedTenant %q: %v", name, err)
 	}
 	return tn.ID
-}
-
-// seedSuspendedTenant creates a tenant and marks it suspended.
-func seedSuspendedTenant(t *testing.T, conn *sql.DB) string {
-	t.Helper()
-	id := seedTenant(t, conn, "Suspended Tenant")
-	now := time.Now().UTC().Format(time.RFC3339)
-	if err := gen.New(conn).UpdateTenantStatus(context.Background(), gen.UpdateTenantStatusParams{
-		Status: "suspended", UpdatedAt: now, ID: id,
-	}); err != nil {
-		t.Fatalf("suspend tenant: %v", err)
-	}
-	return id
 }
 
 // tctx returns a context carrying the given tenant id.
@@ -98,45 +76,14 @@ func seedDraftInvoice(t *testing.T, conn *sql.DB, tenantID, clientID string) str
 	return inv.ID
 }
 
-// seedSentPastDue creates an invoice, flips it to 'sent', and back-dates its
-// due_date into the past so the overdue sweep selects it. Returns the invoice.
-func seedSentPastDue(t *testing.T, conn *sql.DB, svc *Service, tenantID, clientID string) *Invoice {
-	t.Helper()
-	ctx := tctx(tenantID)
-	inv, err := svc.Create(ctx, InvoiceInput{
-		ClientID: clientID, IssueDate: "2026-01-01", DueDate: "2026-01-15",
-	}, []billing.LineItemInput{{Description: "A", Quantity: 1, UnitPrice: 5}})
-	if err != nil {
-		t.Fatalf("seedSentPastDue create: %v", err)
-	}
-	past := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")
-	if _, err := conn.Exec(
-		`UPDATE invoices SET status='sent', due_date=? WHERE tenant_id=? AND id=?`,
-		past, tenantID, inv.ID); err != nil {
-		t.Fatalf("seedSentPastDue backdate: %v", err)
-	}
-	return inv
-}
-
-// containsID reports whether ids contains target.
-func containsID(ids []string, target string) bool {
-	for i := range ids { // bounded by len(ids)
-		if ids[i] == target {
-			return true
-		}
-	}
-	return false
-}
-
 // newInvoiceSvc creates a migrated DB, seeds a tenant+client, and returns
-// the invoice Service, Hub, tenantID, clientID.
-func newInvoiceSvc(t *testing.T) (*Service, *realtime.Hub, string, string) {
+// the invoice Service, tenantID, clientID.
+func newInvoiceSvc(t *testing.T) (*Service, string, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	return NewService(conn, hub, session.NewService(conn, hub, NewInvoices(conn))), hub, tenantID, clientID
+	return NewService(conn, session.NewService(conn, NewInvoices(conn))), tenantID, clientID
 }
 
 // makeInvoice creates a single invoice for the tenant/client and returns it.

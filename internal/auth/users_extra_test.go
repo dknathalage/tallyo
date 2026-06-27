@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestTenantsForEmail(t *testing.T) {
+func TestTenantsForFirebaseUID(t *testing.T) {
 	conn := mustUserDB(t)
 	defer conn.Close()
 	a := seedTenant(t, conn, "Alpha")
@@ -13,22 +13,21 @@ func TestTenantsForEmail(t *testing.T) {
 	repo := NewUsers(conn)
 	ctx := context.Background()
 
-	hash, _ := HashPassword("pw123456")
-	if _, err := repo.Create(ctx, a, "shared@x.com", hash, "A", "owner", false); err != nil {
+	// Same Firebase identity is a member of two tenants (flat user pool).
+	if _, err := repo.Create(ctx, a, "shared@x.com", "uid-shared", "A", "owner", false); err != nil {
 		t.Fatalf("create A: %v", err)
 	}
-	if _, err := repo.Create(ctx, b, "shared@x.com", hash, "B", "owner", false); err != nil {
+	if _, err := repo.Create(ctx, b, "shared@x.com", "uid-shared", "B", "owner", false); err != nil {
 		t.Fatalf("create B: %v", err)
 	}
 
-	rows, err := repo.TenantsForEmail(ctx, "shared@x.com")
+	rows, err := repo.TenantsForFirebaseUID(ctx, "uid-shared")
 	if err != nil {
-		t.Fatalf("TenantsForEmail: %v", err)
+		t.Fatalf("TenantsForFirebaseUID: %v", err)
 	}
 	if len(rows) != 2 {
 		t.Fatalf("rows=%d want 2", len(rows))
 	}
-	// bounded loop: at most 2 rows
 	seen := map[string]bool{}
 	for i := range rows {
 		if rows[i].TenantName == "" || rows[i].TenantUUID == "" {
@@ -41,12 +40,12 @@ func TestTenantsForEmail(t *testing.T) {
 	}
 }
 
-func TestTenantsForEmailUnknownReturnsEmpty(t *testing.T) {
+func TestTenantsForFirebaseUIDUnknownReturnsEmpty(t *testing.T) {
 	conn := mustUserDB(t)
 	defer conn.Close()
-	rows, err := NewUsers(conn).TenantsForEmail(context.Background(), "nobody@x.com")
+	rows, err := NewUsers(conn).TenantsForFirebaseUID(context.Background(), "nobody")
 	if err != nil {
-		t.Fatalf("TenantsForEmail: %v", err)
+		t.Fatalf("TenantsForFirebaseUID: %v", err)
 	}
 	if rows == nil {
 		t.Fatal("rows must be non-nil slice")
@@ -56,53 +55,11 @@ func TestTenantsForEmailUnknownReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestGetCredentialsForTenant(t *testing.T) {
+func TestGetByFirebaseUIDMissingReturnsNil(t *testing.T) {
 	conn := mustUserDB(t)
 	defer conn.Close()
-	a := seedTenant(t, conn, "Alpha")
-	b := seedTenant(t, conn, "Beta")
-	repo := NewUsers(conn)
-	ctx := context.Background()
-
-	hash, _ := HashPassword("pw123456")
-	u, err := repo.Create(ctx, a, "user@x.com", hash, "U", "owner", false)
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-
-	creds, found, err := repo.GetCredentialsForTenant(ctx, a, "user@x.com")
-	if err != nil {
-		t.Fatalf("GetCredentialsForTenant: %v", err)
-	}
-	if !found {
-		t.Fatal("found=false for existing (tenant,email)")
-	}
-	if creds.ID != u.ID || creds.TenantID != a || creds.Hash != hash {
-		t.Fatalf("bad creds %+v", creds)
-	}
-
-	// the same email in a different tenant must NOT match.
-	_, found, err = repo.GetCredentialsForTenant(ctx, b, "user@x.com")
-	if err != nil {
-		t.Fatalf("GetCredentialsForTenant other tenant: %v", err)
-	}
-	if found {
-		t.Fatal("found=true for (wrong tenant, email)")
-	}
-}
-
-func TestGetCredentialsForTenantRejectsZeroTenant(t *testing.T) {
-	conn := mustUserDB(t)
-	defer conn.Close()
-	if _, _, err := NewUsers(conn).GetCredentialsForTenant(context.Background(), "", "a@x.com"); err == nil {
-		t.Fatal("zero tenant id must error")
-	}
-}
-
-func TestGetByEmailGlobalMissingReturnsNil(t *testing.T) {
-	conn := mustUserDB(t)
-	defer conn.Close()
-	got, err := NewUsers(conn).GetByEmailGlobal(context.Background(), "nobody@x.com")
+	tid := seedTenant(t, conn, "T")
+	got, err := NewUsers(conn).GetByFirebaseUID(context.Background(), tid, "nobody")
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -111,68 +68,10 @@ func TestGetByEmailGlobalMissingReturnsNil(t *testing.T) {
 	}
 }
 
-func TestCountByEmailGlobal(t *testing.T) {
-	conn := mustUserDB(t)
-	defer conn.Close()
-	a := seedTenant(t, conn, "Alpha")
-	b := seedTenant(t, conn, "Beta")
-	repo := NewUsers(conn)
-	ctx := context.Background()
-
-	hash, _ := HashPassword("pw123456")
-	if _, err := repo.Create(ctx, a, "dup@x.com", hash, "A", "owner", false); err != nil {
-		t.Fatalf("create A: %v", err)
-	}
-	if _, err := repo.Create(ctx, b, "dup@x.com", hash, "B", "owner", false); err != nil {
-		t.Fatalf("create B: %v", err)
-	}
-
-	n, err := repo.CountByEmailGlobal(ctx, "dup@x.com")
-	if err != nil {
-		t.Fatalf("CountByEmailGlobal: %v", err)
-	}
-	if n != 2 {
-		t.Fatalf("count=%d want 2", n)
-	}
-
-	zero, err := repo.CountByEmailGlobal(ctx, "nobody@x.com")
-	if err != nil {
-		t.Fatalf("CountByEmailGlobal unknown: %v", err)
-	}
-	if zero != 0 {
-		t.Fatalf("count=%d want 0", zero)
-	}
-}
-
-func TestGetCredentialsGlobalAmbiguous(t *testing.T) {
-	conn := mustUserDB(t)
-	defer conn.Close()
-	a := seedTenant(t, conn, "Alpha")
-	b := seedTenant(t, conn, "Beta")
-	repo := NewUsers(conn)
-	ctx := context.Background()
-
-	hash, _ := HashPassword("pw123456")
-	if _, err := repo.Create(ctx, a, "dup@x.com", hash, "A", "owner", false); err != nil {
-		t.Fatalf("create A: %v", err)
-	}
-	if _, err := repo.Create(ctx, b, "dup@x.com", hash, "B", "owner", false); err != nil {
-		t.Fatalf("create B: %v", err)
-	}
-
-	_, found, err := repo.GetCredentialsGlobal(ctx, "dup@x.com")
-	if err != ErrAmbiguousEmail {
-		t.Fatalf("err=%v want ErrAmbiguousEmail", err)
-	}
-	if found {
-		t.Fatal("found must be false on ambiguous email")
-	}
-}
-
 func TestUserCreateRejectsZeroTenant(t *testing.T) {
 	conn := mustUserDB(t)
 	defer conn.Close()
-	if _, err := NewUsers(conn).Create(context.Background(), "", "a@x.com", "h", "N", "owner", false); err == nil {
+	if _, err := NewUsers(conn).Create(context.Background(), "", "a@x.com", "uid", "N", "owner", false); err == nil {
 		t.Fatal("zero tenant id must error")
 	}
 }

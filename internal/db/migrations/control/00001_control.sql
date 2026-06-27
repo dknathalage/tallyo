@@ -45,13 +45,14 @@ CREATE TABLE invites (
 CREATE INDEX idx_invites_token  ON invites (token);
 CREATE INDEX idx_invites_tenant ON invites (tenant_id);
 
--- scs sqlite3store session table (scs does NOT create this).
+-- scs postgresstore session table (scs does NOT create this). Shape matches the
+-- scs/postgresstore schema: token text PK, data bytea, expiry timestamptz.
 CREATE TABLE sessions (
     token  TEXT PRIMARY KEY,
-    data   BLOB NOT NULL,
-    expiry REAL NOT NULL
+    data   BYTEA NOT NULL,
+    expiry TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_sessions_expiry ON sessions (expiry);
+CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 
 -- ---------------------------------------------------------------------------
 -- Global-admin audit log. The per-tenant files carry their OWN audit_log

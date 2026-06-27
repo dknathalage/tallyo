@@ -19,6 +19,7 @@
 	import { businessProfile } from '$lib/stores/businessProfile.svelte';
 	import { sessions } from '$lib/stores/sessions.svelte';
 	import { dowDate, statusLabel } from '$lib/sessions/format';
+	import { effectiveStatus } from '$lib/invoiceStatus';
 	import type {
 		Invoice,
 		InvoiceInput,
@@ -258,8 +259,7 @@
 	const nextAction = $derived.by<{ label: string; status: InvoiceStatus } | null>(() => {
 		if (!detail) return null;
 		if (detail.status === 'draft') return { label: 'Mark sent', status: 'sent' };
-		if (detail.status === 'sent' || detail.status === 'overdue')
-			return { label: 'Mark paid', status: 'paid' };
+		if (detail.status === 'sent') return { label: 'Mark paid', status: 'paid' };
 		return null;
 	});
 
@@ -438,8 +438,11 @@
 			<div>
 				<div class="flex items-center gap-2">
 					<b class="font-mono text-lg tabular-nums">{row.number}</b>
-					<Badge tone={statusTone((detail ?? row).status)} class="capitalize">
-						{(detail ?? row).status}
+					<Badge
+						tone={statusTone(effectiveStatus((detail ?? row).status, (detail ?? row).dueDate))}
+						class="capitalize"
+					>
+						{effectiveStatus((detail ?? row).status, (detail ?? row).dueDate)}
 					</Badge>
 				</div>
 				<p class="text-sm text-gray-500">
@@ -510,7 +513,7 @@
 			{/each}
 		</section>
 
-		{#if features.smarts && ((detail ?? row).status === 'overdue' || (detail ?? row).status === 'sent')}
+		{#if features.smarts && (detail ?? row).status === 'sent'}
 			<section class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 				<div class="flex items-center justify-between gap-3">
 					<h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Reminder</h2>

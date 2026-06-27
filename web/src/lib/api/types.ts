@@ -22,9 +22,7 @@ export interface EmailTenant {
 
 export interface SignupInput {
 	businessName: string;
-	name: string;
-	email: string;
-	password: string;
+	name?: string;
 }
 
 export interface InviteInfo {
@@ -258,46 +256,6 @@ export interface EstimateInput {
 	validUntil: string;
 	notes: string;
 	lineItems: EstimateLineItemInput[];
-}
-
-export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | string;
-
-export interface RecurringLine {
-	code: string;
-	description: string;
-	unit: string;
-	quantity: number;
-	unitPrice: number;
-	taxable: boolean;
-	sortOrder: number;
-}
-
-export interface RecurringTemplate {
-	id: string;
-	clientId: string | null;
-	clientName: string;
-	payerId: string | null;
-	name: string;
-	frequency: RecurringFrequency;
-	nextDue: string;
-	lineItems: RecurringLine[];
-	taxRate: number;
-	notes: string;
-	isActive: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface RecurringInput {
-	clientId: string | null;
-	payerId: string | null;
-	name: string;
-	frequency: RecurringFrequency;
-	nextDue: string;
-	lineItems: RecurringLine[];
-	taxRate: number;
-	notes: string;
-	isActive: boolean;
 }
 
 /** One field-level validation failure from the 422 response. */

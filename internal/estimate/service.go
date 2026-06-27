@@ -5,28 +5,21 @@ import (
 	"github.com/dknathalage/tallyo/internal/db"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// Service orchestrates estimate reads/writes and publishes change events
-// after a successful commit. Unlike invoices it has no overdue sweep, but it adds
-// a Convert action that turns an accepted estimate into an invoice.
+// Service orchestrates estimate reads/writes. Unlike invoices it has no overdue
+// sweep, but it adds a Convert action that turns an accepted estimate into an
+// invoice.
 type Service struct {
 	repo      *EstimatesRepo
 	validator *billing.LineValidator
-	hub       *realtime.Hub
-	events    events.Notifier
 }
 
-// NewService constructs the estimate service. A nil hub is a programmer error.
-func NewService(db db.Executor, hub *realtime.Hub) *Service {
-	if hub == nil {
-		panic("estimate.NewService: nil hub")
-	}
-	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db), hub: hub, events: events.New(hub, "estimate")}
+// NewService constructs the estimate service.
+func NewService(db db.Executor) *Service {
+	return &Service{repo: NewEstimates(db), validator: billing.NewLineValidator(db)}
 }
 
 func (s *Service) List(ctx context.Context) ([]*Estimate, error) {
@@ -162,7 +155,7 @@ func (s *Service) ConvertByUUID(ctx context.Context, estimateUUID string) (*Conv
 	return s.Convert(ctx, id)
 }
 
-// Create inserts an estimate + line items, then broadcasts on success.
+// Create inserts an estimate + line items.
 func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
@@ -174,12 +167,10 @@ func (s *Service) Create(ctx context.Context, in EstimateInput, items []billing.
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, est.ID)
 	return est, nil
 }
 
-// Update rewrites an estimate. A nil result means the row was not found, in which
-// case no event is published.
+// Update rewrites an estimate. A nil result means the row was not found.
 func (s *Service) Update(ctx context.Context, id string, in EstimateInput, items []billing.LineItemInput) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	res, err := s.validator.Validate(ctx, tenantID, in.ClientID, items)
@@ -194,12 +185,10 @@ func (s *Service) Update(ctx context.Context, id string, in EstimateInput, items
 	if est == nil {
 		return nil, nil
 	}
-	s.events.Updated(tenantID, est.ID)
 	return est, nil
 }
 
-// UpdateStatus sets the estimate status, then broadcasts on success. The row's
-// uuid is resolved first so the post-commit event carries the public id.
+// UpdateStatus sets the estimate status.
 func (s *Service) UpdateStatus(ctx context.Context, id string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Get(ctx, tenantID, id)
@@ -212,12 +201,10 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status string) er
 	if err := s.repo.UpdateStatus(ctx, tenantID, id, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "status"})
 	return nil
 }
 
-// Delete removes an estimate, then broadcasts on success. The row's uuid is
-// resolved first so the post-commit event carries the public id.
+// Delete removes an estimate.
 func (s *Service) Delete(ctx context.Context, id string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Get(ctx, tenantID, id)
@@ -230,44 +217,39 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err := s.repo.Delete(ctx, tenantID, id); err != nil {
 		return err
 	}
-	s.events.Deleted(tenantID, est.ID)
 	return nil
 }
 
-// Duplicate copies an estimate, then broadcasts a create for the new id.
+// Duplicate copies an estimate.
 func (s *Service) Duplicate(ctx context.Context, id string) (*Estimate, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Duplicate(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "create"})
 	return est, nil
 }
 
-// BulkDelete removes several estimates, then broadcasts a single bulk event.
+// BulkDelete removes several estimates.
 func (s *Service) BulkDelete(ctx context.Context, ids []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, ids); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: "", Action: "bulk_delete"})
 	return nil
 }
 
-// BulkUpdateStatus sets several estimates' status, then broadcasts a bulk event.
+// BulkUpdateStatus sets several estimates' status.
 func (s *Service) BulkUpdateStatus(ctx context.Context, ids []string, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkUpdateStatus(ctx, tenantID, ids, status); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: "", Action: "bulk_status"})
 	return nil
 }
 
-// Convert turns an accepted estimate into an invoice. On success it broadcasts an
-// estimate "convert" event and an invoice "create" event for the new invoice, then
-// returns the result. ErrNotAccepted/ErrAlreadyConverted are propagated unchanged.
+// Convert turns an accepted estimate into an invoice. ErrNotAccepted/
+// ErrAlreadyConverted are propagated unchanged.
 func (s *Service) Convert(ctx context.Context, id string) (*ConvertResult, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	est, err := s.repo.Get(ctx, tenantID, id)
@@ -284,7 +266,5 @@ func (s *Service) Convert(ctx context.Context, id string) (*ConvertResult, error
 	if res == nil {
 		return nil, nil
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "estimate", UUID: est.ID, Action: "convert"})
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "invoice", UUID: res.InvoiceUUID, Action: "create"})
 	return res, nil
 }

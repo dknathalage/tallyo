@@ -3,14 +3,12 @@ package estimate
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
 func TestEstimateListAndGet(t *testing.T) {
-	svc, _, tenantID, clientID := newEstimateSvc(t)
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est := makeEstimate(t, svc, tenantID, clientID)
@@ -33,7 +31,7 @@ func TestEstimateListAndGet(t *testing.T) {
 }
 
 func TestEstimateGetNotFoundReturnsNil(t *testing.T) {
-	svc, _, tenantID, _ := newEstimateSvc(t)
+	svc, tenantID, _ := newEstimateSvc(t)
 
 	got, err := svc.Get(tctx(tenantID), "nonexistent-uuid")
 	if err != nil {
@@ -45,7 +43,7 @@ func TestEstimateGetNotFoundReturnsNil(t *testing.T) {
 }
 
 func TestEstimateListByStatusAndClientSvc(t *testing.T) {
-	svc, _, tenantID, clientID := newEstimateSvc(t)
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est := makeEstimate(t, svc, tenantID, clientID)
@@ -71,7 +69,7 @@ func TestEstimateListByStatusAndClientSvc(t *testing.T) {
 }
 
 func TestEstimateUpdateSvc(t *testing.T) {
-	svc, _, tenantID, clientID := newEstimateSvc(t)
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est := makeEstimate(t, svc, tenantID, clientID)
@@ -91,7 +89,7 @@ func TestEstimateUpdateSvc(t *testing.T) {
 }
 
 func TestEstimateUpdateSvcNotFoundReturnsNil(t *testing.T) {
-	svc, _, tenantID, clientID := newEstimateSvc(t)
+	svc, tenantID, clientID := newEstimateSvc(t)
 
 	got, err := svc.Update(tctx(tenantID), "nonexistent-uuid", EstimateInput{
 		ClientID: clientID, IssueDate: "2026-05-01", ValidUntil: "2026-06-01",
@@ -104,25 +102,14 @@ func TestEstimateUpdateSvcNotFoundReturnsNil(t *testing.T) {
 	}
 }
 
-func TestEstimateDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newEstimateSvc(t)
+func TestEstimateDelete(t *testing.T) {
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est := makeEstimate(t, svc, tenantID, clientID)
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
 	if err := svc.Delete(ctx, est.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "estimate" || e.UUID != est.ID || e.Action != "delete" {
-			t.Fatalf("event=%+v want estimate/%s/delete", e, est.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Delete")
 	}
 
 	got, err := svc.Get(ctx, est.ID)
@@ -134,26 +121,15 @@ func TestEstimateDeleteBroadcasts(t *testing.T) {
 	}
 }
 
-func TestEstimateBulkDeleteBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newEstimateSvc(t)
+func TestEstimateBulkDelete(t *testing.T) {
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	a := makeEstimate(t, svc, tenantID, clientID)
 	b := makeEstimate(t, svc, tenantID, clientID)
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
 	if err := svc.BulkDelete(ctx, []string{a.ID, b.ID}); err != nil {
 		t.Fatalf("BulkDelete: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "estimate" || e.UUID != "" || e.Action != "bulk_delete" {
-			t.Fatalf("event=%+v want estimate/0/bulk_delete", e)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after BulkDelete")
 	}
 
 	list, err := svc.List(ctx)
@@ -165,26 +141,15 @@ func TestEstimateBulkDeleteBroadcasts(t *testing.T) {
 	}
 }
 
-func TestEstimateBulkUpdateStatusBroadcasts(t *testing.T) {
-	svc, hub, tenantID, clientID := newEstimateSvc(t)
+func TestEstimateBulkUpdateStatus(t *testing.T) {
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	a := makeEstimate(t, svc, tenantID, clientID)
 	b := makeEstimate(t, svc, tenantID, clientID)
 
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
-
 	if err := svc.BulkUpdateStatus(ctx, []string{a.ID, b.ID}, "sent"); err != nil {
 		t.Fatalf("BulkUpdateStatus: %v", err)
-	}
-	select {
-	case e := <-ch:
-		if e.Entity != "estimate" || e.UUID != "" || e.Action != "bulk_status" {
-			t.Fatalf("event=%+v want estimate/0/bulk_status", e)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after BulkUpdateStatus")
 	}
 
 	sent, err := svc.ListByStatus(ctx, "sent")
@@ -199,7 +164,7 @@ func TestEstimateBulkUpdateStatusBroadcasts(t *testing.T) {
 // TestEstimateConvertNotAccepted asserts converting a draft estimate propagates
 // ErrNotAccepted unchanged (no invoice created).
 func TestEstimateConvertNotAccepted(t *testing.T) {
-	svc, _, tenantID, clientID := newEstimateSvc(t)
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est := makeEstimate(t, svc, tenantID, clientID) // status defaults to draft
@@ -216,7 +181,7 @@ func TestEstimateConvertNotAccepted(t *testing.T) {
 // TestEstimateConvertAlreadyConverted asserts a second convert propagates
 // ErrAlreadyConverted.
 func TestEstimateConvertAlreadyConverted(t *testing.T) {
-	svc, _, tenantID, clientID := newEstimateSvc(t)
+	svc, tenantID, clientID := newEstimateSvc(t)
 	ctx := tctx(tenantID)
 
 	est := makeEstimate(t, svc, tenantID, clientID)
@@ -239,8 +204,7 @@ func TestEstimateConvertAlreadyConverted(t *testing.T) {
 // TestEstimateTenantScoping asserts cross-tenant isolation on List/Get.
 func TestEstimateTenantScoping(t *testing.T) {
 	conn := newTestDB(t)
-	hub := realtime.NewHub()
-	svc := NewService(conn, hub)
+	svc := NewService(conn)
 
 	tenantA := seedTenant(t, conn, "Acme")
 	partA := seedClient(t, conn, tenantA, "Jane")

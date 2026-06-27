@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+project_id        = "tallyo"
+region            = "australia-southeast1"
+state_bucket_name = "tallyo-tofu-state" # MUST be globally unique; reuse this exact value in infra/live/terragrunt.hcl

@@ -180,28 +180,6 @@ type Payment struct {
 	UpdatedAt string         `json:"updated_at"`
 }
 
-type RecurringTemplate struct {
-	ID        string         `json:"id"`
-	TenantID  string         `json:"tenant_id"`
-	ClientID  sql.NullString `json:"client_id"`
-	PayerID   sql.NullString `json:"payer_id"`
-	Name      string         `json:"name"`
-	Frequency string         `json:"frequency"`
-	NextDue   string         `json:"next_due"`
-	LineItems string         `json:"line_items"`
-	TaxRate   float64        `json:"tax_rate"`
-	Notes     string         `json:"notes"`
-	IsActive  int64          `json:"is_active"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
-}
-
-type Session struct {
-	Token  string  `json:"token"`
-	Data   []byte  `json:"data"`
-	Expiry float64 `json:"expiry"`
-}
-
 type TaxRate struct {
 	ID        string  `json:"id"`
 	TenantID  string  `json:"tenant_id"`
@@ -224,13 +202,13 @@ type User struct {
 	ID              string         `json:"id"`
 	TenantID        string         `json:"tenant_id"`
 	Email           string         `json:"email"`
-	PasswordHash    string         `json:"password_hash"`
 	Name            string         `json:"name"`
 	IsPlatformAdmin int64          `json:"is_platform_admin"`
 	Role            string         `json:"role"`
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
 	LastLoginAt     sql.NullString `json:"last_login_at"`
+	FirebaseUid     string         `json:"firebase_uid"`
 }
 
 type WorkSession struct {

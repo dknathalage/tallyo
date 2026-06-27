@@ -2,23 +2,17 @@ package taxrate
 
 import (
 	"testing"
-	"time"
-
-	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newTaxSvc(t *testing.T) (*Service, *realtime.Hub, string) {
+func newTaxSvc(t *testing.T) (*Service, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
-	hub := realtime.NewHub()
-	return NewService(conn, hub), hub, tenantID
+	return NewService(conn), tenantID
 }
 
-func TestTaxRateCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newTaxSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
+func TestTaxRateCreate(t *testing.T) {
+	svc, tenantID := newTaxSvc(t)
 
 	tr, err := svc.Create(tctx(tenantID), TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {
@@ -27,29 +21,12 @@ func TestTaxRateCreateBroadcasts(t *testing.T) {
 	if tr == nil {
 		t.Fatal("Create returned nil tax rate")
 	}
-
-	select {
-	case e := <-ch:
-		if e.Entity != "tax_rate" || e.UUID != tr.ID || e.Action != "create" {
-			t.Fatalf("event=%+v want tax_rate/%s/create", e, tr.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Create")
-	}
 }
 
-func TestTaxRateCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub, tenantID := newTaxSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
+func TestTaxRateCreateEmptyNameErrors(t *testing.T) {
+	svc, tenantID := newTaxSvc(t)
 
 	if _, err := svc.Create(tctx(tenantID), TaxRateInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
-	}
-	select {
-	case e := <-ch:
-		t.Fatalf("no event expected on failed create, got %+v", e)
-	case <-time.After(100 * time.Millisecond):
-		// ok
 	}
 }

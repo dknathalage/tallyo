@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/listquery"
 )
 
@@ -18,7 +19,7 @@ func (r *Repo) Query(ctx context.Context, tenantID string, c listquery.Clause) (
 		return nil, 0, errors.New("query catalogue: tenant id required")
 	}
 	var total int64
-	countSQL := "SELECT count(*) FROM (" + catalogueListSelect + c.Where + ")"
+	countSQL := db.Rebind("SELECT count(*) FROM (" + catalogueListSelect + c.Where + ") AS sub")
 	countArgs := append([]any{tenantID}, c.CountArgs()...)
 	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count catalogue: %w", err)
@@ -27,7 +28,7 @@ func (r *Repo) Query(ctx context.Context, tenantID string, c listquery.Clause) (
 	if order == "" {
 		order = " ORDER BY name"
 	}
-	sqlText := catalogueListSelect + c.Where + order + c.Limit
+	sqlText := db.Rebind(catalogueListSelect + c.Where + order + c.Limit)
 	pageArgs := append([]any{tenantID}, c.Args...)
 	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
 	if err != nil {

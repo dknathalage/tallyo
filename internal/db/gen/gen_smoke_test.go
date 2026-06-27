@@ -3,22 +3,13 @@ package gen
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
 )
 
-func TestGenRunsAgainstModernc(t *testing.T) {
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "g.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer conn.Close()
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-
+func TestGenRunsAgainstPostgres(t *testing.T) {
+	conn := appdb.OpenTestDB(t)
 	q := New(conn)
 	ctx := context.Background()
 

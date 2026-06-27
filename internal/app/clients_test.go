@@ -10,7 +10,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
@@ -22,26 +21,23 @@ func newClientServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "client.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
-	sm := auth.NewSessionManager(conn, false)
+	v := newStubVerifier()
 	tenants := auth.NewTenants(conn)
-	authH := NewAuthHandler(sm, users, tenants)
-	clientSvc := client.NewService(conn, hub)
+	clientSvc := client.NewService(conn)
 	pH := client.NewHandler(clientSvc)
-	pmH := payer.NewHandler(payer.NewService(conn, hub))
+	pmH := payer.NewHandler(payer.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
-		api.Post("/auth/login", authH.Login)
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.RequireAuth(v))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pH.Routes(pr)
 			pr.Post("/payers", pmH.Create)
 		})
 	})
 
-	srv := httptest.NewServer(sm.LoadAndSave(router))
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, tenantUUID
 }

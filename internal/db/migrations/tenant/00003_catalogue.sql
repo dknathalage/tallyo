@@ -21,7 +21,7 @@ CREATE TABLE items (
     name                  TEXT NOT NULL,
     unit                  TEXT DEFAULT '',
     category              TEXT,                       -- generic grouping
-    unit_price            REAL,                       -- generic per-unit price (NULL = none/free-form)
+    unit_price            double precision,           -- generic per-unit price (NULL = none/free-form)
     taxable               INTEGER NOT NULL DEFAULT 0, -- ingest always sets this explicitly
     metadata              TEXT DEFAULT '{}',
     UNIQUE (price_list_version_id, code)

@@ -4,19 +4,16 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/httpx"
+	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
-
-// minPasswordLen is the minimum acceptable password length for signup and
-// invite acceptance.
-const minPasswordLen = 8
 
 // emailRe is a deliberately permissive email shape check: one @, non-empty
 // local and domain parts, and a dot in the domain. Full RFC 5322 validation is
@@ -24,153 +21,66 @@ const minPasswordLen = 8
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // ============================================================================
-// AuthHandler
+// AuthConfigHandler (public) — GET /api/auth/config
 // ============================================================================
 
-// AuthHandler implements session login/logout and the authenticated "me" route.
+// AuthConfigHandler serves the public Firebase web config + enabled sign-in
+// methods so the SPA can initialize the Firebase JS SDK and decide which sign-in
+// buttons to render. Everything it returns is public by design (the browser API
+// key is not a secret). No auth.
+type AuthConfigHandler struct{}
+
+// NewAuthConfigHandler constructs the handler. It is stateless — all values are
+// read from the environment per request so a config change does not require a
+// rebuild.
+func NewAuthConfigHandler() *AuthConfigHandler { return &AuthConfigHandler{} }
+
+// Config returns { firebase:{apiKey,authDomain,projectId}, methods:{...} } from
+// the FIREBASE_* and AUTH_*_ENABLED env vars.
+func (h *AuthConfigHandler) Config(w http.ResponseWriter, _ *http.Request) {
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"firebase": map[string]string{
+			"apiKey":     os.Getenv("FIREBASE_API_KEY"),
+			"authDomain": os.Getenv("FIREBASE_AUTH_DOMAIN"),
+			"projectId":  os.Getenv("FIREBASE_PROJECT_ID"),
+		},
+		"methods": map[string]bool{
+			"emailPassword": envBool("AUTH_EMAIL_PASSWORD_ENABLED"),
+			"google":        envBool("AUTH_GOOGLE_ENABLED"),
+			"emailLink":     envBool("AUTH_EMAIL_LINK_ENABLED"),
+		},
+	})
+}
+
+// envBool reports whether an env var is the string "true" (case-insensitive).
+// Anything else (unset, "false", garbage) is false.
+func envBool(key string) bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(key)), "true")
+}
+
+// ============================================================================
+// AuthHandler — Bearer-authed session/me routes
+// ============================================================================
+
+// AuthHandler implements the authenticated "me" and "session" routes. Auth is
+// stateless: RequireAuth verifies the bearer token upstream and places the uid +
+// email on the context; this handler reads them. There is no login/logout
+// endpoint (the client signs in/out with the Firebase SDK directly).
 type AuthHandler struct {
-	sm      *scs.SessionManager
 	users   *auth.UsersRepo
 	tenants *auth.TenantsRepo
 }
 
 // NewAuthHandler constructs the handler. Nil dependencies are programmer errors.
-func NewAuthHandler(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth.TenantsRepo) *AuthHandler {
-	if sm == nil || users == nil || tenants == nil {
+func NewAuthHandler(users *auth.UsersRepo, tenants *auth.TenantsRepo) *AuthHandler {
+	if users == nil || tenants == nil {
 		panic("NewAuthHandler: nil dep")
 	}
-	return &AuthHandler{sm: sm, users: users, tenants: tenants}
+	return &AuthHandler{users: users, tenants: tenants}
 }
 
-// loginRequest is the decoded login body. tenantId is optional: it is REQUIRED
-// only to disambiguate when the email is registered in more than one tenant. It
-// carries the tenant's public UUID (matching the 409 response's tenant id), which
-// the login handler resolves to the internal tenant PK before looking up creds.
-type loginRequest struct {
-	Email      string `json:"email"`
-	Password   string `json:"password"`
-	TenantUUID string `json:"tenantId"`
-}
-
-// Login verifies credentials and establishes a session. It uses a single error
-// message for both unknown email and bad password to avoid user enumeration, and
-// renews the session token to prevent session fixation.
-//
-// Multi-tenant fail-safe: email is UNIQUE only per (tenant_id, email). When an
-// email exists in more than one tenant and the request did not name a tenant,
-// login does NOT pick an arbitrary one — it returns 409 with the candidate
-// tenants so the client can re-submit with a tenantId. A single-tenant email
-// logs in directly.
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var in loginRequest
-	if err := httpx.DecodeJSON(r, &in); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-	// Normalize the email to match how signup stores it (lower-cased, trimmed)
-	// so the credentials lookup, tenant-choice and session identity all agree —
-	// otherwise "Sam@G.test" registered as "sam@g.test" fails to log in.
-	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
-	if in.Email == "" || in.Password == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "email and password required")
-		return
-	}
-
-	creds, found, err := h.resolveCredentials(r, in)
-	if errors.Is(err, auth.ErrAmbiguousEmail) {
-		h.respondTenantChoice(w, r, in.Email)
-		return
-	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if !found || !auth.VerifyPassword(creds.Hash, in.Password) {
-		// Same message for unknown email + bad password (no user enumeration).
-		// Log at warn for security visibility WITHOUT the email/password (PII).
-		httpx.LoggerFrom(r.Context()).Warn("failed login attempt")
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-
-	// Suspended-tenant guard: a suspended tenant cannot log in (spec §3.1).
-	status, ok, err := h.tenants.Status(r.Context(), creds.TenantID)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if !ok || status == auth.StatusSuspended {
-		httpx.LoggerFrom(r.Context()).Warn("login blocked: tenant suspended",
-			slog.String("tenant_id", creds.TenantID))
-		httpx.WriteError(w, http.StatusForbidden, "tenant suspended")
-		return
-	}
-
-	if err := h.sm.RenewToken(r.Context()); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	h.sm.Put(r.Context(), "userID", creds.ID)
-	h.sm.Put(r.Context(), "tenantID", creds.TenantID)
-	// Email is the durable cross-tenant identity used by ResolveTenant to
-	// authorize the URL tenant per request. Normalize to match stored email.
-	h.sm.Put(r.Context(), "email", strings.ToLower(strings.TrimSpace(in.Email)))
-	// Last-login is best-effort: login must not fail if recording it errors.
-	if err := h.users.TouchLastLogin(r.Context(), creds.ID); err != nil {
-		httpx.LoggerFrom(r.Context()).Warn("touch last login failed", slog.Any("error", err))
-	}
-	u, err := h.users.GetByID(r.Context(), creds.TenantID, creds.ID)
-	if err != nil || u == nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, u)
-}
-
-// resolveCredentials looks up the login credentials, honouring an explicit
-// tenant uuid when present and otherwise relying on the fail-safe global lookup
-// (which returns ErrAmbiguousEmail when the email spans multiple tenants). When a
-// tenant uuid is supplied it is resolved to the internal tenant PK first; an
-// unknown uuid yields a not-found result (→ 401, no user enumeration).
-func (h *AuthHandler) resolveCredentials(r *http.Request, in loginRequest) (auth.Credentials, bool, error) {
-	if in.TenantUUID != "" {
-		t, err := h.tenants.GetByUUID(r.Context(), in.TenantUUID)
-		if err != nil {
-			return auth.Credentials{}, false, err
-		}
-		if t == nil {
-			return auth.Credentials{}, false, nil
-		}
-		return h.users.GetCredentialsForTenant(r.Context(), t.ID, in.Email)
-	}
-	return h.users.GetCredentialsGlobal(r.Context(), in.Email)
-}
-
-// respondTenantChoice answers an ambiguous-email login with 409 and the list of
-// tenants the email belongs to, so the client can re-submit with a tenantId.
-func (h *AuthHandler) respondTenantChoice(w http.ResponseWriter, r *http.Request, email string) {
-	tenants, err := h.users.TenantsForEmail(r.Context(), email)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusConflict, map[string]any{
-		"error":          "tenant selection required",
-		"tenantRequired": true,
-		"tenants":        tenants,
-	})
-}
-
-// Logout destroys the current session.
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	if err := h.sm.Destroy(r.Context()); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-// Me returns the authenticated user placed on the context by RequireAuth.
+// Me returns the authenticated per-tenant user placed on the context by
+// ResolveTenant.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	u := httpx.UserFrom(r.Context())
 	if u == nil {
@@ -180,16 +90,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, u)
 }
 
-// Session returns the authenticated email and the tenants it belongs to (with
-// per-tenant role). Tenant-AGNOSTIC: it powers the SPA bootstrap, the root
-// redirect, and the tenant switcher before any tenant is selected.
+// Session returns the authenticated email and the tenants the token's uid
+// belongs to (with per-tenant role). Tenant-AGNOSTIC: it powers the SPA
+// bootstrap, the root redirect, and the tenant switcher before any tenant is
+// selected.
 func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
-	email := h.sm.GetString(r.Context(), "email")
-	if email == "" {
+	uid, ok := reqctx.FirebaseUIDFrom(r.Context())
+	if !ok || uid == "" {
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	tenants, err := h.users.TenantsForEmail(r.Context(), email)
+	email, _ := reqctx.EmailFrom(r.Context())
+	tenants, err := h.users.TenantsForFirebaseUID(r.Context(), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -205,7 +117,7 @@ func (h *AuthHandler) Session(w http.ResponseWriter, r *http.Request) {
 const inviteTTL = 7 * 24 * time.Hour
 
 // InviteHandler implements owner-only invite creation plus the public
-// validation and acceptance routes the invitee uses.
+// validation and (Bearer-authed) acceptance routes the invitee uses.
 type InviteHandler struct {
 	invites *auth.InvitesRepo
 	users   *auth.UsersRepo
@@ -284,7 +196,7 @@ func (h *InviteHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 // Validate reports whether a token is usable. It never echoes the token back so
-// it cannot be confirmed/leaked via the response body.
+// it cannot be confirmed/leaked via the response body. Public route.
 func (h *InviteHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	inv, err := h.invites.Validate(r.Context(), token)
@@ -300,33 +212,26 @@ func (h *InviteHandler) Validate(w http.ResponseWriter, r *http.Request) {
 }
 
 // Accept consumes an invite atomically: it re-validates the invite, creates the
-// member user, and marks the invite used in a single transaction. An already-used
-// or invalid token is rejected with 409, as is an email already registered.
+// member user linked to the bearer token's uid, and marks the invite used in a
+// single transaction. Bearer-authed: the invitee must have signed in with
+// Firebase first (the token supplies the uid). An already-used or invalid token
+// is rejected with 409, as is a uid already registered in the tenant.
 func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
+	uid, ok := reqctx.FirebaseUIDFrom(r.Context())
+	if !ok || uid == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	token := chi.URLParam(r, "token")
 	var in struct {
-		Name     string `json:"name"`
-		Password string `json:"password"`
+		Name string `json:"name"`
 	}
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "name required")
-		return
-	}
-	if len(in.Password) < minPasswordLen {
-		httpx.WriteError(w, http.StatusBadRequest, "password too short")
-		return
-	}
-	hash, err := auth.HashPassword(in.Password)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if _, err := h.invites.Accept(r.Context(), token, name, hash); err != nil {
+	if _, err := h.invites.Accept(r.Context(), token, name, uid); err != nil {
 		if errors.Is(err, auth.ErrInviteInvalid) {
 			httpx.WriteError(w, http.StatusConflict, "invite invalid or already used")
 			return
@@ -345,15 +250,14 @@ func (h *InviteHandler) Accept(w http.ResponseWriter, r *http.Request) {
 // SignupHandler
 // ============================================================================
 
-// SignupHandler serves the public self-serve tenant signup flow: one request
-// provisions a tenant + owner + business profile and logs the new owner in.
-// It supersedes the old single-org first-run setup flow.
+// SignupHandler serves the self-serve tenant signup flow: one request provisions
+// a tenant + owner + business profile for the bearer token's identity.
+// Bearer-authed: the caller must already have a Firebase account (created via the
+// SDK with their chosen sign-in method); signup links that uid to a new tenant.
 //
 // Platform admins are NOT created here: is_platform_admin is orthogonal to the
-// tenant role and is provisioned out-of-band (e.g. a future admin CLI or a
-// direct DB update), never via public signup.
+// tenant role and is provisioned out-of-band, never via public signup.
 type SignupHandler struct {
-	sm        *scs.SessionManager
 	tenants   *auth.TenantsRepo
 	users     *auth.UsersRepo
 	provision auth.ProfileProvisioner
@@ -361,43 +265,52 @@ type SignupHandler struct {
 
 // NewSignupHandler constructs the handler. Nil dependencies are programmer errors.
 // provision creates the new tenant's business_profile in its own DB (DB-per-tenant).
-func NewSignupHandler(sm *scs.SessionManager, tenants *auth.TenantsRepo, users *auth.UsersRepo, provision auth.ProfileProvisioner) *SignupHandler {
-	if sm == nil || tenants == nil || users == nil || provision == nil {
+func NewSignupHandler(tenants *auth.TenantsRepo, users *auth.UsersRepo, provision auth.ProfileProvisioner) *SignupHandler {
+	if tenants == nil || users == nil || provision == nil {
 		panic("NewSignupHandler: nil dep")
 	}
-	return &SignupHandler{sm: sm, tenants: tenants, users: users, provision: provision}
+	return &SignupHandler{tenants: tenants, users: users, provision: provision}
 }
 
-// signupRequest is the decoded body for Signup.
+// signupRequest is the decoded body for Signup. The email + uid (and optional
+// name) come from the verified token, not the body.
 type signupRequest struct {
 	BusinessName string `json:"businessName"`
 	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Password     string `json:"password"`
 }
 
-// Signup provisions a new tenant and its owner atomically, then establishes the
-// session so the caller lands logged in. Public route (no auth).
+// Signup provisions a new tenant and its owner atomically. Bearer-authed: uid +
+// email are taken from the verified token (RequireAuth). Returns the created
+// owner user.
 func (h *SignupHandler) Signup(w http.ResponseWriter, r *http.Request) {
+	uid, ok := reqctx.FirebaseUIDFrom(r.Context())
+	if !ok || uid == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	email, _ := reqctx.EmailFrom(r.Context())
+	email = strings.ToLower(strings.TrimSpace(email))
+	if !emailRe.MatchString(email) {
+		httpx.WriteError(w, http.StatusBadRequest, "token missing a valid email")
+		return
+	}
+
 	var req signupRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if status, msg := validateSignup(&req); status != 0 {
-		httpx.WriteError(w, status, msg)
+	req.BusinessName = strings.TrimSpace(req.BusinessName)
+	req.Name = strings.TrimSpace(req.Name)
+	if req.BusinessName == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "business name required")
 		return
 	}
 
-	hash, err := auth.HashPassword(req.Password)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
 	owner, err := h.tenants.Signup(r.Context(), auth.SignupInput{
 		BusinessName: req.BusinessName,
-		Email:        req.Email,
-		PasswordHash: hash,
+		Email:        email,
+		FirebaseUID:  uid,
 		OwnerName:    req.Name,
 	}, h.provision)
 	if err != nil {
@@ -405,36 +318,7 @@ func (h *SignupHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Establish the session: renew the token (fixation defence) then store the
-	// new owner's identity + tenant so the response is an authenticated session.
-	if err := h.sm.RenewToken(r.Context()); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	h.sm.Put(r.Context(), "userID", owner.ID)
-	h.sm.Put(r.Context(), "tenantID", owner.TenantID)
-	// Email identity for ResolveTenant (owner.Email is already normalized).
-	h.sm.Put(r.Context(), "email", owner.Email)
 	httpx.LoggerFrom(r.Context()).Info("tenant signup",
 		slog.String("tenant_id", owner.TenantID), slog.String("user_id", owner.ID))
 	httpx.WriteJSON(w, http.StatusCreated, owner)
-}
-
-// validateSignup checks the request fields at the boundary. It returns a zero
-// status when valid, otherwise the HTTP status and message to write. It also
-// normalizes whitespace + email casing in place.
-func validateSignup(req *signupRequest) (int, string) {
-	req.BusinessName = strings.TrimSpace(req.BusinessName)
-	req.Name = strings.TrimSpace(req.Name)
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.BusinessName == "" {
-		return http.StatusBadRequest, "business name required"
-	}
-	if !emailRe.MatchString(req.Email) {
-		return http.StatusBadRequest, "valid email required"
-	}
-	if len(req.Password) < minPasswordLen {
-		return http.StatusBadRequest, "password too short"
-	}
-	return 0, ""
 }

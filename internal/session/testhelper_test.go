@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,17 +15,10 @@ import (
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// newTestDB opens a fresh migrated in-temp SQLite DB.
+// newTestDB opens the shared migrated Postgres test DB.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "session.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
@@ -68,7 +60,7 @@ func seedUser(t *testing.T, conn *sql.DB, tenantID string) string {
 	now := time.Now().UTC().Format(time.RFC3339)
 	u, err := gen.New(conn).CreateUser(context.Background(), gen.CreateUserParams{
 		ID: ids.New(), TenantID: tenantID, Email: ids.New() + "@x.com",
-		PasswordHash: "x", Name: "U", Role: "member", CreatedAt: now, UpdatedAt: now,
+		FirebaseUid: ids.New(), Name: "U", Role: "member", CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
 		t.Fatalf("seedUser: %v", err)

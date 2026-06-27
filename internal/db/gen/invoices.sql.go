@@ -13,14 +13,14 @@ import (
 const clientInvoiceStats = `-- name: ClientInvoiceStats :one
 SELECT
   COUNT(*) AS invoice_count,
-  CAST(COALESCE(SUM(i.total), 0) AS REAL) AS total_invoiced,
+  CAST(COALESCE(SUM(i.total), 0) AS double precision) AS total_invoiced,
   CAST(COALESCE((
     SELECT SUM(p.amount) FROM payments p
     JOIN invoices iv ON p.invoice_id = iv.id
-    WHERE iv.tenant_id = ?1 AND iv.client_id = ?2
-  ), 0) AS REAL) AS total_paid
+    WHERE iv.tenant_id = $1 AND iv.client_id = $2
+  ), 0) AS double precision) AS total_paid
 FROM invoices i
-WHERE i.tenant_id = ?1 AND i.client_id = ?2
+WHERE i.tenant_id = $1 AND i.client_id = $2
 `
 
 type ClientInvoiceStatsParams struct {
@@ -46,7 +46,7 @@ INSERT INTO invoices (
     id, tenant_id, number, client_id, payer_id, status, issue_date, due_date,
     subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 RETURNING id, tenant_id, number, client_id, payer_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
@@ -114,7 +114,7 @@ func (q *Queries) CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (I
 }
 
 const deleteInvoice = `-- name: DeleteInvoice :exec
-DELETE FROM invoices WHERE tenant_id = ? AND id = ?
+DELETE FROM invoices WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteInvoiceParams struct {
@@ -132,7 +132,7 @@ SELECT i.id, i.tenant_id, i.number, i.client_id, i.payer_id, i.status, i.issue_d
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.id = ?
+WHERE i.tenant_id = $1 AND i.id = $2
 `
 
 type GetInvoiceParams struct {
@@ -196,7 +196,7 @@ SELECT i.id, i.tenant_id, i.number, i.client_id, i.payer_id, i.status, i.issue_d
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.id = ?
+WHERE i.tenant_id = $1 AND i.id = $2
 `
 
 type GetInvoiceByIDParams struct {
@@ -256,7 +256,7 @@ func (q *Queries) GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) 
 }
 
 const getInvoiceIDByUUID = `-- name: GetInvoiceIDByUUID :one
-SELECT id FROM invoices WHERE tenant_id = ? AND id = ?
+SELECT id FROM invoices WHERE tenant_id = $1 AND id = $2
 `
 
 type GetInvoiceIDByUUIDParams struct {
@@ -276,7 +276,7 @@ SELECT i.id, i.tenant_id, i.number, i.client_id, i.payer_id, i.status, i.issue_d
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.client_id = ?
+WHERE i.tenant_id = $1 AND i.client_id = $2
 ORDER BY i.created_at DESC
 `
 
@@ -357,7 +357,7 @@ SELECT i.id, i.tenant_id, i.number, i.client_id, i.payer_id, i.status, i.issue_d
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ?
+WHERE i.tenant_id = $1
 ORDER BY i.created_at DESC
 `
 
@@ -433,7 +433,7 @@ SELECT i.id, i.tenant_id, i.number, i.client_id, i.payer_id, i.status, i.issue_d
 FROM invoices i
 LEFT JOIN clients p ON i.client_id = p.id AND p.tenant_id = i.tenant_id
 LEFT JOIN payers pm ON i.payer_id = pm.id AND pm.tenant_id = i.tenant_id
-WHERE i.tenant_id = ? AND i.status = ?
+WHERE i.tenant_id = $1 AND i.status = $2
 ORDER BY i.created_at DESC
 `
 
@@ -510,9 +510,9 @@ func (q *Queries) ListInvoicesByStatus(ctx context.Context, arg ListInvoicesBySt
 }
 
 const maxInvoiceNumberLike = `-- name: MaxInvoiceNumberLike :one
-SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST(?1 AS INTEGER) + 1) AS INTEGER)), 0) AS INTEGER) AS max_seq
+SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST($1 AS INTEGER) + 1) AS INTEGER)), 0) AS INTEGER) AS max_seq
 FROM invoices
-WHERE tenant_id = ?2 AND number LIKE ?3
+WHERE tenant_id = $2 AND number LIKE $3
 `
 
 type MaxInvoiceNumberLikeParams struct {
@@ -531,46 +531,12 @@ func (q *Queries) MaxInvoiceNumberLike(ctx context.Context, arg MaxInvoiceNumber
 	return max_seq, err
 }
 
-const selectOverdueInvoicesForTenant = `-- name: SelectOverdueInvoicesForTenant :many
-SELECT id, tenant_id, number FROM invoices
-WHERE tenant_id = ? AND status = 'sent' AND due_date < date('now')
-`
-
-type SelectOverdueInvoicesForTenantRow struct {
-	ID       string `json:"id"`
-	TenantID string `json:"tenant_id"`
-	Number   string `json:"number"`
-}
-
-func (q *Queries) SelectOverdueInvoicesForTenant(ctx context.Context, tenantID string) ([]SelectOverdueInvoicesForTenantRow, error) {
-	rows, err := q.db.QueryContext(ctx, selectOverdueInvoicesForTenant, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []SelectOverdueInvoicesForTenantRow
-	for rows.Next() {
-		var i SelectOverdueInvoicesForTenantRow
-		if err := rows.Scan(&i.ID, &i.TenantID, &i.Number); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const updateInvoice = `-- name: UpdateInvoice :one
 UPDATE invoices SET
-    number = ?, client_id = ?, payer_id = ?, status = ?, issue_date = ?, due_date = ?,
-    subtotal = ?, tax = ?, total = ?, notes = ?,
-    business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+    number = $1, client_id = $2, payer_id = $3, status = $4, issue_date = $5, due_date = $6,
+    subtotal = $7, tax = $8, total = $9, notes = $10,
+    business_snapshot = $11, client_snapshot = $12, payer_snapshot = $13, updated_at = $14
+WHERE tenant_id = $15 AND id = $16
 RETURNING id, tenant_id, number, client_id, payer_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
@@ -636,7 +602,7 @@ func (q *Queries) UpdateInvoice(ctx context.Context, arg UpdateInvoiceParams) (I
 }
 
 const updateInvoiceStatus = `-- name: UpdateInvoiceStatus :exec
-UPDATE invoices SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
+UPDATE invoices SET status = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4
 `
 
 type UpdateInvoiceStatusParams struct {
@@ -657,8 +623,8 @@ func (q *Queries) UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStat
 }
 
 const updateInvoiceTotals = `-- name: UpdateInvoiceTotals :one
-UPDATE invoices SET subtotal = ?, tax = ?, total = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+UPDATE invoices SET subtotal = $1, tax = $2, total = $3, updated_at = $4
+WHERE tenant_id = $5 AND id = $6
 RETURNING id, tenant_id, number, client_id, payer_id, status, issue_date, due_date, subtotal, tax, total, notes, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 

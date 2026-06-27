@@ -7,8 +7,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/billing"
 	"github.com/dknathalage/tallyo/internal/db"
-	"github.com/dknathalage/tallyo/internal/events"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
@@ -26,31 +24,23 @@ type InvoiceChecker interface {
 	Exists(ctx context.Context, tenantID, invoiceID string) (bool, error)
 }
 
-// Service orchestrates the session lifecycle (record→draft→bill) and
-// publishes change events after a successful commit. It resolves the caller's
-// tenant (and, for authorship, user) from the request context.
+// Service orchestrates the session lifecycle (record→draft→bill). It resolves
+// the caller's tenant (and, for authorship, user) from the request context.
 type Service struct {
 	repo      *SessionsRepo
 	invoices  InvoiceChecker
 	validator *billing.LineValidator
-	hub       *realtime.Hub
-	events    events.Notifier
 }
 
-// NewService constructs the session service. A nil hub is a programmer error.
+// NewService constructs the session service.
 // invoices is the InvoiceChecker used to verify the invoice in MarkDrafted. The
 // session service builds its own billing.LineValidator (catalogue unit_price
 // pricing) from the same db the invoice service uses — no extra wiring needed.
-func NewService(db db.Executor, hub *realtime.Hub, invoices InvoiceChecker) *Service {
-	if hub == nil {
-		panic("session.NewService: nil hub")
-	}
+func NewService(db db.Executor, invoices InvoiceChecker) *Service {
 	return &Service{
 		repo:      NewSessions(db),
 		invoices:  invoices,
 		validator: billing.NewLineValidator(db),
-		hub:       hub,
-		events:    events.New(hub, "session"),
 	}
 }
 
@@ -137,8 +127,7 @@ func (s *Service) ListByClientUUID(ctx context.Context, clientUUID, status strin
 	return filtered, nil
 }
 
-// Create inserts a session attributed to the authenticated user, then broadcasts
-// after the commit succeeds.
+// Create inserts a session attributed to the authenticated user.
 func (s *Service) Create(ctx context.Context, in SessionInput) (*Session, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -152,14 +141,12 @@ func (s *Service) Create(ctx context.Context, in SessionInput) (*Session, error)
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, sh.ID)
 	return sh, nil
 }
 
-// Update mutates a session, then broadcasts on success. A nil result means the row
-// was not found, in which case no event is published. When the service date
-// changes, the session's UNBILLED items are re-stamped to the new date and
-// re-priced against that date's catalogue (G3/G4).
+// Update mutates a session. A nil result means the row was not found. When the
+// service date changes, the session's UNBILLED items are re-stamped to the new
+// date and re-priced against that date's catalogue (G3/G4).
 func (s *Service) Update(ctx context.Context, sessionUUID string, in SessionInput) (*Session, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -181,7 +168,6 @@ func (s *Service) Update(ctx context.Context, sessionUUID string, in SessionInpu
 			return nil, err
 		}
 	}
-	s.events.Updated(tenantID, sh.ID)
 	return sh, nil
 }
 
@@ -211,8 +197,7 @@ func (s *Service) repriceItemsForDate(ctx context.Context, tenantID string, sh *
 	return nil
 }
 
-// UpdateStatus advances a session's lifecycle status by uuid, then broadcasts on
-// success. The SSE event carries the row's id (uuid), resolved first.
+// UpdateStatus advances a session's lifecycle status by uuid.
 func (s *Service) UpdateStatus(ctx context.Context, sessionUUID, status string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.GetByUUID(ctx, tenantID, sessionUUID)
@@ -225,16 +210,12 @@ func (s *Service) UpdateStatus(ctx context.Context, sessionUUID, status string) 
 	if err := s.repo.UpdateStatus(ctx, tenantID, sessionUUID, status); err != nil {
 		return err
 	}
-	// Status transition: kept an explicit broadcast (not the CRUD notifier) so the
-	// status-change call site stays visible alongside the bill/cascade duals.
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: sh.ID, Action: "update"})
 	return nil
 }
 
-// Delete removes a session by uuid (its items cascade), then broadcasts on success.
-// A billed session — status past 'recorded' (drafted/sent/paid) — cannot be
-// deleted: its items live on an invoice. Returns ErrSessionBilled in that case.
-// The SSE event carries the row's id (uuid), resolved first.
+// Delete removes a session by uuid (its items cascade). A billed session —
+// status past 'recorded' (drafted/sent/paid) — cannot be deleted: its items live
+// on an invoice. Returns ErrSessionBilled in that case.
 func (s *Service) Delete(ctx context.Context, sessionUUID string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	sh, err := s.repo.GetByUUID(ctx, tenantID, sessionUUID)
@@ -250,7 +231,6 @@ func (s *Service) Delete(ctx context.Context, sessionUUID string) error {
 	if err := s.repo.Delete(ctx, tenantID, sessionUUID); err != nil {
 		return err
 	}
-	s.events.Deleted(tenantID, sh.ID)
 	return nil
 }
 
@@ -289,10 +269,9 @@ func (s *Service) Suggestions(ctx context.Context) ([]Suggestion, error) {
 	return out, nil
 }
 
-// MarkDrafted links the given recorded sessions to an invoice (status 'drafted'),
-// then broadcasts a single bulk event. An empty id list is a no-op. The invoice
-// MUST belong to the caller's tenant — verified tenant-scoped first to prevent
-// cross-tenant linkage.
+// MarkDrafted links the given recorded sessions to an invoice (status 'drafted').
+// An empty id list is a no-op. The invoice MUST belong to the caller's tenant —
+// verified tenant-scoped first to prevent cross-tenant linkage.
 func (s *Service) MarkDrafted(ctx context.Context, invoiceID string, sessionIDs []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if len(sessionIDs) == 0 {
@@ -313,7 +292,6 @@ func (s *Service) MarkDrafted(ctx context.Context, invoiceID string, sessionIDs 
 			return err
 		}
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "session", UUID: "", Action: "bill"})
 	return nil
 }
 

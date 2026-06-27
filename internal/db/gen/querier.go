@@ -26,7 +26,6 @@ type Querier interface {
 	CreateLineItem(ctx context.Context, arg CreateLineItemParams) (LineItem, error)
 	CreatePayer(ctx context.Context, arg CreatePayerParams) (Payer, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
-	CreateRecurringTemplate(ctx context.Context, arg CreateRecurringTemplateParams) (RecurringTemplate, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (WorkSession, error)
 	CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (TaxRate, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
@@ -43,7 +42,6 @@ type Querier interface {
 	DeletePayerByID(ctx context.Context, arg DeletePayerByIDParams) error
 	DeletePayment(ctx context.Context, arg DeletePaymentParams) error
 	DeletePaymentByUUID(ctx context.Context, arg DeletePaymentByUUIDParams) error
-	DeleteRecurringTemplate(ctx context.Context, arg DeleteRecurringTemplateParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 	DeleteSessionLineItem(ctx context.Context, arg DeleteSessionLineItemParams) error
 	DeleteSessionLineItemByUUID(ctx context.Context, arg DeleteSessionLineItemByUUIDParams) error
@@ -79,7 +77,6 @@ type Querier interface {
 	GetPayerIDByUUID(ctx context.Context, arg GetPayerIDByUUIDParams) (string, error)
 	GetPayment(ctx context.Context, arg GetPaymentParams) (Payment, error)
 	GetPaymentByUUID(ctx context.Context, arg GetPaymentByUUIDParams) (Payment, error)
-	GetRecurringTemplate(ctx context.Context, arg GetRecurringTemplateParams) (GetRecurringTemplateRow, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
 	GetSessionByID(ctx context.Context, arg GetSessionByIDParams) (GetSessionByIDRow, error)
 	GetSessionIDByUUID(ctx context.Context, arg GetSessionIDByUUIDParams) (string, error)
@@ -90,19 +87,17 @@ type Querier interface {
 	GetTenantByUUID(ctx context.Context, id string) (Tenant, error)
 	GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error)
 	GetUserByEmailGlobal(ctx context.Context, email string) (User, error)
+	GetUserByFirebaseUID(ctx context.Context, arg GetUserByFirebaseUIDParams) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	InvoiceTotalPaid(ctx context.Context, arg InvoiceTotalPaidParams) (float64, error)
 	LineItemReferencesCatalogue(ctx context.Context, catalogueItemID sql.NullString) (bool, error)
 	LinkSessionItemsToInvoice(ctx context.Context, arg LinkSessionItemsToInvoiceParams) error
-	ListActiveRecurringTemplates(ctx context.Context, tenantID string) ([]ListActiveRecurringTemplatesRow, error)
-	ListActiveTenantIDs(ctx context.Context) ([]string, error)
 	// Per-tenant catalogue (tenant-owned, scoped by tenant_id). One append-only
 	// table with per-item copy-on-write versioning: is_current = 1 is the live row.
 	ListCatalogue(ctx context.Context, tenantID string) ([]CatalogueItem, error)
 	ListClientEstimates(ctx context.Context, arg ListClientEstimatesParams) ([]ListClientEstimatesRow, error)
 	ListClientInvoices(ctx context.Context, arg ListClientInvoicesParams) ([]ListClientInvoicesRow, error)
 	ListClients(ctx context.Context, tenantID string) ([]ListClientsRow, error)
-	ListDueTemplatesForTenant(ctx context.Context, arg ListDueTemplatesForTenantParams) ([]RecurringTemplate, error)
 	ListEstimateLineItems(ctx context.Context, arg ListEstimateLineItemsParams) ([]ListEstimateLineItemsRow, error)
 	ListEstimates(ctx context.Context, tenantID string) ([]ListEstimatesRow, error)
 	ListEstimatesByStatus(ctx context.Context, arg ListEstimatesByStatusParams) ([]ListEstimatesByStatusRow, error)
@@ -114,7 +109,6 @@ type Querier interface {
 	ListLineItemsForSession(ctx context.Context, arg ListLineItemsForSessionParams) ([]ListLineItemsForSessionRow, error)
 	ListPayers(ctx context.Context, tenantID string) ([]Payer, error)
 	ListRecordedUnbilledByClient(ctx context.Context, arg ListRecordedUnbilledByClientParams) ([]ListRecordedUnbilledByClientRow, error)
-	ListRecurringTemplates(ctx context.Context, tenantID string) ([]ListRecurringTemplatesRow, error)
 	ListScheduledSessions(ctx context.Context, tenantID string) ([]ListScheduledSessionsRow, error)
 	// Sessions: the delivered-support unit (tenant-scoped). Physical table work_sessions.
 	// Read queries LEFT JOIN clients for p.uuid so the slice DTO can expose the
@@ -128,6 +122,7 @@ type Querier interface {
 	ListTaxRates(ctx context.Context, tenantID string) ([]TaxRate, error)
 	ListTenants(ctx context.Context) ([]Tenant, error)
 	ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error)
+	ListTenantsByFirebaseUID(ctx context.Context, firebaseUid string) ([]ListTenantsByFirebaseUIDRow, error)
 	ListUsers(ctx context.Context, tenantID string) ([]User, error)
 	MarkCatalogueVersionStale(ctx context.Context, arg MarkCatalogueVersionStaleParams) error
 	MarkInviteAccepted(ctx context.Context, arg MarkInviteAcceptedParams) error
@@ -146,9 +141,7 @@ type Querier interface {
 	SearchCatalogue(ctx context.Context, arg SearchCatalogueParams) ([]CatalogueItem, error)
 	SearchClients(ctx context.Context, arg SearchClientsParams) ([]SearchClientsRow, error)
 	SearchPayers(ctx context.Context, arg SearchPayersParams) ([]Payer, error)
-	SelectOverdueInvoicesForTenant(ctx context.Context, tenantID string) ([]SelectOverdueInvoicesForTenantRow, error)
 	SetEstimateConverted(ctx context.Context, arg SetEstimateConvertedParams) error
-	SetRecurringNextDue(ctx context.Context, arg SetRecurringNextDueParams) error
 	SetSessionInvoice(ctx context.Context, arg SetSessionInvoiceParams) error
 	SetStatusForInvoice(ctx context.Context, arg SetStatusForInvoiceParams) error
 	// Delete flips every row of the logical_id out of current; referenced versions
@@ -164,7 +157,6 @@ type Querier interface {
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) error
 	UpdateInvoiceTotals(ctx context.Context, arg UpdateInvoiceTotalsParams) (Invoice, error)
 	UpdatePayer(ctx context.Context, arg UpdatePayerParams) (Payer, error)
-	UpdateRecurringTemplate(ctx context.Context, arg UpdateRecurringTemplateParams) (RecurringTemplate, error)
 	UpdateSession(ctx context.Context, arg UpdateSessionParams) (WorkSession, error)
 	UpdateSessionLineItem(ctx context.Context, arg UpdateSessionLineItemParams) (LineItem, error)
 	// Rewrite one UNBILLED session item addressed by uuid, scoped to the owning session.

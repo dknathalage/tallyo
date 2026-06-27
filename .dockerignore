@@ -1,0 +1,46 @@
+# Version control / CI
+.git
+.github
+
+# Docs & generated docs
+*.md
+docs/
+
+# Local data / databases
+data/
+*.db*
+*.sqlite*
+
+# Node deps & SPA build output (web/build is produced inside the image)
+node_modules/
+web/node_modules/
+web/build/
+web/.svelte-kit/
+web/.vite/
+
+# Go build artifacts
+bin/
+/tallyo
+*.test
+
+# Legacy Electron/SvelteKit tree (superseded; active SPA tooling lives under web/)
+src/
+electron/
+drizzle/
+package.json
+package-lock.json
+svelte.config.js
+vite.config.*
+
+# Env & editor
+.env
+.env.*
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Docker meta
+Dockerfile
+docker-compose.yml
+.dockerignore

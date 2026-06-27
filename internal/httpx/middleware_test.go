@@ -2,13 +2,26 @@ package httpx
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 )
+
+// stubVerifier is a TokenVerifier for tests: it maps known token strings to
+// their claims and rejects everything else, so tests need no real GCP/Firebase.
+type stubVerifier struct {
+	tokens map[string]auth.Token
+}
+
+func (s stubVerifier) VerifyIDToken(_ context.Context, idToken string) (auth.Token, error) {
+	if tok, ok := s.tokens[idToken]; ok {
+		return tok, nil
+	}
+	return auth.Token{}, errors.New("invalid token")
+}
 
 func TestRecoverTurnsPanicInto500(t *testing.T) {
 	h := Recover(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -80,22 +93,44 @@ func TestRequirePlatformAdminForbidsNonAdmin(t *testing.T) {
 	}
 }
 
-func TestRequireSession401WithoutSession(t *testing.T) {
-	// scs's GetString panics on a bare context ("no session data in context"),
-	// so the handler must run inside LoadAndSave. With no cookie the loaded session
-	// is empty → userID/email "" → 401.
-	sm := scs.New()
-	h := RequireSession(sm)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+func TestRequireAuth401WithoutBearer(t *testing.T) {
+	v := stubVerifier{tokens: map[string]auth.Token{"good": {UID: "uid1", Email: "a@x.com"}}}
+	h := RequireAuth(v)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK) // should never run
 	}))
-	srv := httptest.NewServer(sm.LoadAndSave(h))
-	defer srv.Close()
-	resp, err := http.Get(srv.URL + "/")
-	if err != nil {
-		t.Fatalf("get: %v", err)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no header: want 401 got %d", rec.Code)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("want 401 got %d", resp.StatusCode)
+}
+
+func TestRequireAuth401WithInvalidToken(t *testing.T) {
+	v := stubVerifier{tokens: map[string]auth.Token{"good": {UID: "uid1", Email: "a@x.com"}}}
+	h := RequireAuth(v)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer nope")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("bad token: want 401 got %d", rec.Code)
+	}
+}
+
+func TestRequireAuthPassesValidToken(t *testing.T) {
+	v := stubVerifier{tokens: map[string]auth.Token{"good": {UID: "uid1", Email: "a@x.com"}}}
+	called := false
+	h := RequireAuth(v)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer good")
+	h.ServeHTTP(rec, req)
+	if !called || rec.Code != http.StatusOK {
+		t.Fatalf("valid token should pass: called=%v code=%d", called, rec.Code)
 	}
 }

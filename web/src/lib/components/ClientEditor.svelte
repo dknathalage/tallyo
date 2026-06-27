@@ -18,6 +18,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import { todayISO } from '$lib/sessions/format';
+	import { effectiveStatus } from '$lib/invoiceStatus';
 	import type { Client, ClientInput, Session } from '$lib/api/types';
 
 	type Props = {
@@ -402,7 +403,9 @@
 							<span>
 								<b class="font-mono tabular-nums">{inv.number}</b>
 								<span class="ml-2 inline-block capitalize">
-									<Badge tone={invStatusTone(inv.status)}>{inv.status}</Badge>
+									<Badge tone={invStatusTone(effectiveStatus(inv.status, inv.dueDate))}>
+										{effectiveStatus(inv.status, inv.dueDate)}
+									</Badge>
 								</span>
 								<span class="block text-sm text-gray-500 font-mono tabular-nums">
 									{inv.issueDate ? inv.issueDate.slice(0, 10) : '—'}

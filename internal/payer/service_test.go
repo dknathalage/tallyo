@@ -2,23 +2,17 @@ package payer
 
 import (
 	"testing"
-	"time"
-
-	"github.com/dknathalage/tallyo/internal/realtime"
 )
 
-func newPayerSvc(t *testing.T) (*Service, *realtime.Hub, string) {
+func newPayerSvc(t *testing.T) (*Service, string) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
-	hub := realtime.NewHub()
-	return NewService(conn, hub), hub, tenantID
+	return NewService(conn), tenantID
 }
 
-func TestPayerCreateBroadcasts(t *testing.T) {
-	svc, hub, tenantID := newPayerSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
+func TestPayerCreate(t *testing.T) {
+	svc, tenantID := newPayerSvc(t)
 
 	pm, err := svc.Create(tctx(tenantID), PayerInput{Name: "Acme"})
 	if err != nil {
@@ -27,29 +21,12 @@ func TestPayerCreateBroadcasts(t *testing.T) {
 	if pm == nil {
 		t.Fatal("Create returned nil payer")
 	}
-
-	select {
-	case e := <-ch:
-		if e.Entity != "payer" || e.UUID != pm.ID || e.Action != "create" {
-			t.Fatalf("event=%+v want payer/%s/create", e, pm.ID)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no broadcast after Create")
-	}
 }
 
-func TestPayerCreateEmptyNameNoEvent(t *testing.T) {
-	svc, hub, tenantID := newPayerSvc(t)
-	ch, unsub := hub.Subscribe(tenantID)
-	defer unsub()
+func TestPayerCreateEmptyNameErrors(t *testing.T) {
+	svc, tenantID := newPayerSvc(t)
 
 	if _, err := svc.Create(tctx(tenantID), PayerInput{Name: ""}); err == nil {
 		t.Fatal("empty name must error")
-	}
-	select {
-	case e := <-ch:
-		t.Fatalf("no event expected on failed create, got %+v", e)
-	case <-time.After(100 * time.Millisecond):
-		// ok
 	}
 }

@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -27,8 +26,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -39,14 +36,11 @@ import (
 // Tallyo server. All fields are already validated/defaulted by main before Run
 // is called.
 type Config struct {
-	Port             int
-	DataDir          string // empty → DATA_DIR env, else ./data
-	SecureCookie     bool
-	LogLevel         string
-	LogFormat        string
-	FeatureSmarts    bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
-	FeatureInvites   bool // gates inviting new users (create/revoke invites + UI)
-	FeatureRecurring bool // gates recurring-template routes, sweep generation, and UI
+	Port           int
+	LogLevel       string
+	LogFormat      string
+	FeatureSmarts  bool // AI "Smarts" gate; still also requires ANTHROPIC_API_KEY
+	FeatureInvites bool // gates inviting new users (create/revoke invites + UI)
 }
 
 // EnvOr returns the value of env var key, or def when it is unset/empty. Used
@@ -119,48 +113,45 @@ func Run(cfg Config, version string) error {
 		logger.Warn("smarts disabled: ANTHROPIC_API_KEY unset")
 	}
 
-	dir := cfg.DataDir
-	if dir == "" {
-		d, err := appdb.DataDir()
-		if err != nil {
-			return fmt.Errorf("data dir: %w", err)
-		}
-		dir = d
+	dsn := EnvOr("DATABASE_URL", "")
+	if dsn == "" {
+		return fmt.Errorf("DATABASE_URL is required (postgres connection string)")
 	}
 
-	// Single SQLite instance: the whole app — control tables (tenants, users,
-	// sessions, audit) and every tenant's business data — lives in one file.
+	// Single Postgres instance: the whole app — control tables (tenants, users,
+	// sessions, audit) and every tenant's business data — lives in one database.
 	// Tenancy is logical: each business row carries a tenant_id and every query
 	// guards on it; reqctx carries the request's tenant for guards + audit.
-	database, err := appdb.Open(filepath.Join(dir, "tallyo.db"))
+	database, err := appdb.Open(dsn)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
 	if err := appdb.Migrate(database); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	logger.Info("database connected", slog.String("path", filepath.Join(dir, "tallyo.db")))
+	logger.Info("database connected")
 	defer func() {
 		if cerr := database.Close(); cerr != nil {
 			logger.Error("close db failed", slog.Any("error", cerr))
 		}
 	}()
 
-	hub := realtime.NewHub()
-	sm := auth.NewSessionManager(database, cfg.SecureCookie)
+	verifier, err := auth.NewFirebaseVerifier(context.Background())
+	if err != nil {
+		return fmt.Errorf("firebase verifier: %w", err)
+	}
 	users := auth.NewUsers(database)
 	tenants := auth.NewTenants(database)
 	invites := auth.NewInvites(database)
-	bpSvc := businessprofile.NewService(database, hub)
-	payerSvc := payer.NewService(database, hub)
-	taxRateSvc := taxrate.NewService(database, hub)
-	clientSvc := client.NewService(database, hub)
-	catalogueSvc := catalogue.NewService(database, hub)
-	sessionSvc := session.NewService(database, hub, invoice.NewInvoices(database))
-	invoiceSvc := invoice.NewService(database, hub, sessionSvc)
-	estimateSvc := estimate.NewService(database, hub)
-	paymentSvc := invoice.NewPaymentService(database, hub)
-	recurringSvc := recurring.NewService(database, hub)
+	bpSvc := businessprofile.NewService(database)
+	payerSvc := payer.NewService(database)
+	taxRateSvc := taxrate.NewService(database)
+	clientSvc := client.NewService(database)
+	catalogueSvc := catalogue.NewService(database)
+	sessionSvc := session.NewService(database, invoice.NewInvoices(database))
+	invoiceSvc := invoice.NewService(database, sessionSvc)
+	estimateSvc := estimate.NewService(database)
+	paymentSvc := invoice.NewPaymentService(database)
 
 	// AI "Smarts" (optional): construct the service only when ANTHROPIC_API_KEY is
 	// set. The handler is always wired — when disabled it is a guard-only handler
@@ -187,11 +178,11 @@ func Run(cfg Config, version string) error {
 		Assets:          assets,
 		Users:           users,
 		Tenants:         tenants,
-		Session:         sm,
-		Signup:          NewSignupHandler(sm, tenants, users, provisionProfile(database)),
-		Auth:            NewAuthHandler(sm, users, tenants),
+		Verifier:        verifier,
+		AuthConfig:      NewAuthConfigHandler(),
+		Signup:          NewSignupHandler(tenants, users, provisionProfile(database)),
+		Auth:            NewAuthHandler(users, tenants),
 		Invites:         NewInviteHandler(invites, users),
-		Events:          realtime.NewEventsHandler(hub),
 		BusinessProfile: businessprofile.NewHandler(bpSvc),
 		Payers:          payer.NewHandler(payerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
@@ -201,22 +192,20 @@ func Run(cfg Config, version string) error {
 		Sessions:        session.NewHandler(sessionSvc),
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
-		Recurring:       recurring.NewHandler(recurringSvc),
 		Smarts:          smartsHandler,
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
-			"smarts":    smartsEnabled,
-			"invites":   cfg.FeatureInvites,
-			"recurring": cfg.FeatureRecurring,
+			"smarts":  smartsEnabled,
+			"invites": cfg.FeatureInvites,
 		},
 	}
 
 	server := NewServer(deps)
 
 	// baseCtx is the parent of every request context. Cancelling it on shutdown
-	// signals long-lived handlers (the SSE /api/events stream) to return so
-	// srv.Shutdown can drain instead of blocking until its timeout.
+	// signals any long-lived handlers to return so srv.Shutdown can drain instead
+	// of blocking until its timeout.
 	baseCtx, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
 	srv := &http.Server{
@@ -224,20 +213,6 @@ func Run(cfg Config, version string) error {
 		Handler:     server.Router,
 		BaseContext: func(net.Listener) context.Context { return baseCtx },
 	}
-
-	// Run one per-tenant sweep at startup, then keep a background sweeper running
-	// on an hourly tick. The done channel stops the goroutine on shutdown so it
-	// does not leak.
-	// recForSweep is nil when the recurring feature is gated off, so the sweep
-	// skips generation (routes are unmounted too — the feature is fully dark).
-	recForSweep := recurringSvc
-	if !cfg.FeatureRecurring {
-		recForSweep = nil
-	}
-	runSweepOnce(tenants.ActiveTenantIDs, invoiceSvc, recForSweep, logger)
-	overdueDone := make(chan struct{})
-	go runSweeper(tenants.ActiveTenantIDs, invoiceSvc, recForSweep, logger, overdueDone)
-	defer close(overdueDone)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -262,7 +237,7 @@ func Run(cfg Config, version string) error {
 		logger.Info("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		cancelBase() // release long-lived SSE handlers so Shutdown can drain
+		cancelBase() // release long-lived handlers so Shutdown can drain
 		if err := srv.Shutdown(ctx); err != nil {
 			return fmt.Errorf("shutdown: %w", err)
 		}

@@ -1,15 +1,13 @@
 /**
  * Rune-based store for the tenant's sessions. Holds the full session list (powering
  * the sessions table, pipeline counts and calendar) plus the derived to-record and
- * suggestion prompts. Refetches on the SSE "session" entity invalidation (the
- * backend broadcasts entity "session" on every session mutation, and "invoice" when
- * a draft cascades session statuses).
+ * suggestion prompts. Polls to refetch on a fixed interval and on focus.
  *
  * Follows collection.svelte.ts conventions: reactive list + loading + error
  * getters, a load(), and a one-shot subscribe.
  */
 
-import { onEntity } from '$lib/realtime/events';
+import { startPolling } from '$lib/realtime/poll';
 import { listAll, suggestions as fetchSuggestions, toRecord as fetchToRecord } from '$lib/api/sessions';
 import type { Session, SessionSuggestion } from '$lib/api/types';
 
@@ -40,14 +38,11 @@ export function createSessionsStore() {
 		}
 	}
 
-	/** Subscribe to the "session" + "invoice" SSE invalidations once (browser only). */
+	/** Start polling once (browser only). */
 	function ensureSubscribed(): void {
 		if (registered) return;
 		registered = true;
-		onEntity('session', () => {
-			void load();
-		});
-		onEntity('invoice', () => {
+		startPolling(() => {
 			void load();
 		});
 	}

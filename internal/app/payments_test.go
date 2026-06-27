@@ -10,7 +10,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
@@ -23,19 +22,16 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "payment.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
-	sm := auth.NewSessionManager(conn, false)
+	v := newStubVerifier()
 	tenants := auth.NewTenants(conn)
-	authH := NewAuthHandler(sm, users, tenants)
-	pH := client.NewHandler(client.NewService(conn, hub))
-	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
-	payH := invoice.NewPaymentHandler(invoice.NewPaymentService(conn, hub))
+	pH := client.NewHandler(client.NewService(conn))
+	invH := invoice.NewHandler(invoice.NewService(conn, session.NewService(conn, invoice.NewInvoices(conn))))
+	payH := invoice.NewPaymentHandler(invoice.NewPaymentService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
-		api.Post("/auth/login", authH.Login)
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.RequireAuth(v))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.Post("/clients", pH.Create)
 			invH.Routes(pr)
@@ -43,7 +39,7 @@ func newPaymentServer(t *testing.T) (*httptest.Server, string) {
 		})
 	})
 
-	srv := httptest.NewServer(sm.LoadAndSave(router))
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, tenantUUID
 }

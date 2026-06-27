@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/billing"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -35,9 +34,8 @@ func newDraftHarness(t *testing.T) (*Service, *session.Service, *session.Session
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
 	clientID := seedClient(t, conn, tenantID, "Jane Client")
-	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
+	invSvc := NewService(conn, sessionSvc)
 	return invSvc, sessionSvc, session.NewSessions(conn), tenantID, clientID
 }
 
@@ -107,9 +105,8 @@ func TestDraftFromSessionsSingleClientGuard(t *testing.T) {
 	tid := seedTenant(t, conn, "T2")
 	p1 := seedClient(t, conn, tid, "P1")
 	p2 := seedClient(t, conn, tid, "P2")
-	hub := realtime.NewHub()
-	shSvc := session.NewService(conn, hub, NewInvoices(conn))
-	iSvc := NewService(conn, hub, shSvc)
+	shSvc := session.NewService(conn, NewInvoices(conn))
+	iSvc := NewService(conn, shSvc)
 	r := session.NewSessions(conn)
 
 	a := recordedSessionWithItems(t, shSvc, r, tid, p1, "2026-01-10", 10)

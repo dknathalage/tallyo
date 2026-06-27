@@ -26,7 +26,31 @@ const (
 	// durable cross-tenant identity) is stored. ResolveTenant reads it to
 	// authorize the URL tenant per request.
 	emailKey
+	// firebaseUIDKey is the context key under which the verified Firebase uid
+	// (the token-stable cross-tenant identity) is stored. RequireAuth sets it
+	// from the bearer token; ResolveTenant reads it to authorize the URL tenant.
+	firebaseUIDKey
 )
+
+// WithFirebaseUID returns a copy of ctx carrying the verified Firebase uid. Set
+// by RequireAuth from the bearer token; read by ResolveTenant.
+func WithFirebaseUID(ctx context.Context, uid string) context.Context {
+	return context.WithValue(ctx, firebaseUIDKey, uid)
+}
+
+// FirebaseUIDFrom returns the verified Firebase uid stored in ctx and whether
+// one was present. ok is false (and the string empty) when no uid was attached.
+func FirebaseUIDFrom(ctx context.Context) (string, bool) {
+	v := ctx.Value(firebaseUIDKey)
+	if v == nil {
+		return "", false
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", false
+	}
+	return s, ok
+}
 
 // WithEmail returns a copy of ctx carrying the authenticated email. Set by the
 // session middleware; read by the URL-tenant resolver.

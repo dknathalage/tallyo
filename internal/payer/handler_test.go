@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
@@ -17,7 +16,7 @@ func newPMHandler(t *testing.T) (*Handler, string, *Payer) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
-	svc := NewService(conn, realtime.NewHub())
+	svc := NewService(conn)
 	seeded, err := svc.Create(tctx(tenantID), PayerInput{Name: "Acme PM", Email: "a@b.com"})
 	if err != nil {
 		t.Fatalf("seed payer: %v", err)

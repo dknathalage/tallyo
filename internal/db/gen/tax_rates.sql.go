@@ -10,7 +10,7 @@ import (
 )
 
 const clearDefaultTaxRates = `-- name: ClearDefaultTaxRates :exec
-UPDATE tax_rates SET is_default = 0 WHERE tenant_id = ?
+UPDATE tax_rates SET is_default = 0 WHERE tenant_id = $1
 `
 
 func (q *Queries) ClearDefaultTaxRates(ctx context.Context, tenantID string) error {
@@ -20,7 +20,7 @@ func (q *Queries) ClearDefaultTaxRates(ctx context.Context, tenantID string) err
 
 const createTaxRate = `-- name: CreateTaxRate :one
 INSERT INTO tax_rates (id, tenant_id, name, rate, is_default, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, tenant_id, name, rate, is_default, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, tenant_id, name, rate, is_default, created_at, updated_at
 `
 
 type CreateTaxRateParams struct {
@@ -57,7 +57,7 @@ func (q *Queries) CreateTaxRate(ctx context.Context, arg CreateTaxRateParams) (T
 }
 
 const deleteTaxRate = `-- name: DeleteTaxRate :exec
-DELETE FROM tax_rates WHERE tenant_id = ? AND id = ?
+DELETE FROM tax_rates WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteTaxRateParams struct {
@@ -71,7 +71,7 @@ func (q *Queries) DeleteTaxRate(ctx context.Context, arg DeleteTaxRateParams) er
 }
 
 const getDefaultTaxRate = `-- name: GetDefaultTaxRate :one
-SELECT id, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = ? AND is_default = 1 LIMIT 1
+SELECT id, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = $1 AND is_default = 1 LIMIT 1
 `
 
 func (q *Queries) GetDefaultTaxRate(ctx context.Context, tenantID string) (TaxRate, error) {
@@ -90,7 +90,7 @@ func (q *Queries) GetDefaultTaxRate(ctx context.Context, tenantID string) (TaxRa
 }
 
 const getTaxRate = `-- name: GetTaxRate :one
-SELECT id, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = ? AND id = ?
+SELECT id, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = $1 AND id = $2
 `
 
 type GetTaxRateParams struct {
@@ -114,7 +114,7 @@ func (q *Queries) GetTaxRate(ctx context.Context, arg GetTaxRateParams) (TaxRate
 }
 
 const listTaxRates = `-- name: ListTaxRates :many
-SELECT id, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = ? ORDER BY is_default DESC, name
+SELECT id, tenant_id, name, rate, is_default, created_at, updated_at FROM tax_rates WHERE tenant_id = $1 ORDER BY is_default DESC, name
 `
 
 func (q *Queries) ListTaxRates(ctx context.Context, tenantID string) ([]TaxRate, error) {
@@ -149,8 +149,8 @@ func (q *Queries) ListTaxRates(ctx context.Context, tenantID string) ([]TaxRate,
 }
 
 const updateTaxRate = `-- name: UpdateTaxRate :one
-UPDATE tax_rates SET name = ?, rate = ?, is_default = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ? RETURNING id, tenant_id, name, rate, is_default, created_at, updated_at
+UPDATE tax_rates SET name = $1, rate = $2, is_default = $3, updated_at = $4
+WHERE tenant_id = $5 AND id = $6 RETURNING id, tenant_id, name, rate, is_default, created_at, updated_at
 `
 
 type UpdateTaxRateParams struct {

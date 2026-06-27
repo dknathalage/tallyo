@@ -1,7 +1,7 @@
 // Package businessprofile is the business-profile vertical slice: domain types,
 // the audited repository over the business_profile table, the service (with SSE
 // broadcast), and the HTTP handler. It depends only on platform packages
-// (db/gen, audit, reqctx, realtime, httpx), never on other domain slices.
+// (db/gen, audit, reqctx, httpx), never on other domain slices.
 package businessprofile
 
 import (
@@ -118,7 +118,7 @@ func (r *BusinessProfileRepo) Save(ctx context.Context, tenantID string, in Busi
 // one when no row exists yet. Read inside the tx so the upsert preserves it.
 func existingUUID(ctx context.Context, tx *sql.Tx, tenantID string) (string, error) {
 	var id string
-	err := tx.QueryRowContext(ctx, "SELECT id FROM business_profile WHERE tenant_id = ?", tenantID).Scan(&id)
+	err := tx.QueryRowContext(ctx, "SELECT id FROM business_profile WHERE tenant_id = $1", tenantID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ids.New(), nil
 	}

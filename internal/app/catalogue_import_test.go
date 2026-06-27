@@ -11,7 +11,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/httpx"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,31 +23,24 @@ func newCatalogueImportServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "catalogue_import.db")
 	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), tenantID, "member@x.com", hash, "", "member", false); err != nil {
+	if _, err := users.Create(t.Context(), tenantID, "member@x.com", "uid-member", "", "member", false); err != nil {
 		t.Fatalf("Create member: %v", err)
 	}
 
-	hub := realtime.NewHub()
-	sm := auth.NewSessionManager(conn, false)
+	v := newStubVerifier()
 	tenants := auth.NewTenants(conn)
-	authH := NewAuthHandler(sm, users, tenants)
-	catH := catalogue.NewHandler(catalogue.NewService(conn, hub))
+	catH := catalogue.NewHandler(catalogue.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
-		api.Post("/auth/login", authH.Login)
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.RequireAuth(v))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			catH.Routes(pr)
 		})
 	})
 
-	srv := httptest.NewServer(sm.LoadAndSave(router))
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, tenantUUID
 }
@@ -158,12 +150,7 @@ func TestCatalogueImportCommitOwnerCreatesItems(t *testing.T) {
 
 func TestCatalogueImportNonAdminForbidden(t *testing.T) {
 	srv, uuid := newCatalogueImportServer(t)
-	c := jarClient(t)
-	lr := login(t, c, srv.URL, "member@x.com", "password1")
-	_ = lr.Body.Close()
-	if lr.StatusCode != http.StatusOK {
-		t.Fatalf("member login: want 200 got %d", lr.StatusCode)
-	}
+	c := bearerClient(memberToken)
 	resp := postMultipart(t, c, srv.URL+"/api/t/"+uuid+"/catalogue/import/inspect", []byte(priceCSV), nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {

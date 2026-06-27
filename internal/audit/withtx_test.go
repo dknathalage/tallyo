@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	appdb "github.com/dknathalage/tallyo/internal/db"
@@ -12,19 +11,12 @@ import (
 
 func mustWDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "w.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 
 func TestWithTxCommitsAndAudits(t *testing.T) {
 	conn := mustWDB(t)
-	defer conn.Close()
 	ctx := context.Background()
 	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: "bp-1", Action: "update", Changes: Changes(map[string]any{"name": "Acme"})},
 		func(tx *sql.Tx) error {
@@ -50,7 +42,6 @@ func TestWithTxCommitsAndAudits(t *testing.T) {
 
 func TestWithTxRollsBackOnFnError(t *testing.T) {
 	conn := mustWDB(t)
-	defer conn.Close()
 	ctx := context.Background()
 	boom := errors.New("boom")
 	err := WithTx(ctx, conn, Entry{EntityType: "business_profile", EntityID: "bp-1", Action: "update"},
@@ -75,7 +66,6 @@ func TestWithTxRollsBackOnFnError(t *testing.T) {
 
 func TestWithTxSkipsAutoLogWhenActionEmpty(t *testing.T) {
 	conn := mustWDB(t)
-	defer conn.Close()
 	ctx := context.Background()
 	// Action == "" → WithTx must NOT auto-log; the fn logs manually if it wants.
 	err := WithTx(ctx, conn, Entry{EntityType: "x", Action: ""},

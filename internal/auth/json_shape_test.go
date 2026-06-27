@@ -13,11 +13,12 @@ import (
 // "tenantId" is the tenant uuid (string). The int PKs never appear in the JSON.
 func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 	u := &User{
-		ID:       ids.New(),
-		TenantID: ids.New(),
-		Email:    "owner@x.com",
-		Name:     "Owner",
-		Role:     "owner",
+		ID:          ids.New(),
+		TenantID:    ids.New(),
+		Email:       "owner@x.com",
+		Name:        "Owner",
+		Role:        "owner",
+		FirebaseUID: "uid-secret",
 	}
 	raw, err := json.Marshal(u)
 	if err != nil {
@@ -29,6 +30,13 @@ func TestUserJSONExposesUUIDsNotInts(t *testing.T) {
 	}
 	assertStringField(t, generic, "id", u.ID, raw)
 	assertStringField(t, generic, "tenantId", u.TenantID, raw)
+	// The Firebase uid is server-side only and must never be serialized.
+	if _, leaked := generic["firebaseUid"]; leaked {
+		t.Fatalf("firebaseUid leaked: %s", raw)
+	}
+	if _, leaked := generic["firebase_uid"]; leaked {
+		t.Fatalf("firebase_uid leaked: %s", raw)
+	}
 	// No JSON value may be a number — every id is a uuid string.
 	for k, v := range generic {
 		if _, ok := v.(float64); ok {
@@ -75,8 +83,7 @@ func TestGetByIDPopulatesTenantUUID(t *testing.T) {
 	repo := NewUsers(conn)
 	ctx := context.Background()
 
-	hash, _ := HashPassword("pw123456")
-	created, err := repo.Create(ctx, tid, "owner@x.com", hash, "Owner", "owner", false)
+	created, err := repo.Create(ctx, tid, "owner@x.com", "uid-owner", "Owner", "owner", false)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

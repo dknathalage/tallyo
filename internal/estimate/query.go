@@ -55,7 +55,7 @@ func (r *EstimatesRepo) Query(ctx context.Context, tenantID string, c listquery.
 		return nil, 0, errors.New("query estimates: tenant id required")
 	}
 	var total int64
-	countSQL := "SELECT count(*) FROM (" + estimateListSelect + c.Where + ")"
+	countSQL := db.Rebind("SELECT count(*) FROM (" + estimateListSelect + c.Where + ") AS sub")
 	countArgs := append([]any{tenantID}, c.CountArgs()...)
 	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count estimates: %w", err)
@@ -64,7 +64,7 @@ func (r *EstimatesRepo) Query(ctx context.Context, tenantID string, c listquery.
 	if order == "" {
 		order = " ORDER BY e.created_at DESC"
 	}
-	sqlText := estimateListSelect + c.Where + order + c.Limit
+	sqlText := db.Rebind(estimateListSelect + c.Where + order + c.Limit)
 	pageArgs := append([]any{tenantID}, c.Args...)
 	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
 	if err != nil {

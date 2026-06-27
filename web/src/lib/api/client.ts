@@ -1,6 +1,34 @@
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
+import { getFirebaseAuth } from '$lib/firebase';
 import type { ValidationDetail, EmailTenant } from './types';
+
+/**
+ * Resolve the current Firebase ID token for the Authorization header.
+ * Returns null when no user is signed in (request goes out unauthenticated and
+ * the server answers 401 → redirect). `forceRefresh` is used once after a 401 in
+ * case the cached token went stale.
+ */
+async function authToken(forceRefresh = false): Promise<string | null> {
+	if (typeof window === 'undefined') return null;
+	try {
+		const auth = await getFirebaseAuth();
+		const u = auth.currentUser;
+		if (!u) return null;
+		return await u.getIdToken(forceRefresh);
+	} catch {
+		return null;
+	}
+}
+
+/** Build request headers, attaching the Bearer token when a user is signed in. */
+async function authHeaders(base: Record<string, string>, forceRefresh = false): Promise<Record<string, string>> {
+	const token = await authToken(forceRefresh);
+	if (token) {
+		return { ...base, Authorization: `Bearer ${token}` };
+	}
+	return base;
+}
 
 /** Shape of an error body returned by the Go API. */
 interface ApiErrorBody {
@@ -56,20 +84,29 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 		throw new Error('api request: path must be a non-empty string');
 	}
 
-	const init: RequestInit = {
-		method,
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' }
+	const serialized = body !== undefined ? JSON.stringify(body) : undefined;
+
+	const doFetch = async (forceRefresh: boolean): Promise<Response> => {
+		const init: RequestInit = {
+			method,
+			headers: await authHeaders({ 'Content-Type': 'application/json' }, forceRefresh)
+		};
+		if (serialized !== undefined) {
+			init.body = serialized;
+		}
+		return fetch(path, init);
 	};
-	if (body !== undefined) {
-		init.body = JSON.stringify(body);
-	}
 
-	const res = await fetch(path, init);
+	let res = await doFetch(false);
 
+	// A 401 may just be a stale token: retry once with a force-refreshed token
+	// before giving up and redirecting to /login.
 	if (res.status === 401) {
-		handleUnauthorized();
-		return null;
+		res = await doFetch(true);
+		if (res.status === 401) {
+			handleUnauthorized();
+			return null;
+		}
 	}
 
 	if (res.status === 204) {
@@ -149,10 +186,17 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T | nu
 	if (!(form instanceof FormData)) {
 		throw new Error('apiUpload: form must be a FormData');
 	}
-	const res = await fetch(path, { method: 'POST', credentials: 'include', body: form });
+	const upload = (forceRefresh: boolean) =>
+		authHeaders({}, forceRefresh).then((headers) =>
+			fetch(path, { method: 'POST', headers, body: form })
+		);
+	let res = await upload(false);
 	if (res.status === 401) {
-		handleUnauthorized();
-		return null;
+		res = await upload(true);
+		if (res.status === 401) {
+			handleUnauthorized();
+			return null;
+		}
 	}
 	const text = await res.text();
 	const data: unknown = text.length > 0 ? JSON.parse(text) : null;

@@ -11,7 +11,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
@@ -36,10 +35,9 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	conn := openMigratedDB(t, "session.db")
 	_, tenantID, _, _ := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
 	ctx := reqctx.WithTenant(context.Background(), tenantID)
 
-	partSvc := client.NewService(conn, hub)
+	partSvc := client.NewService(conn)
 	part, err := partSvc.Create(ctx, client.ClientInput{Name: "Stark"})
 	if err != nil {
 		t.Fatalf("seed client: %v", err)
@@ -48,7 +46,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		t.Fatalf("seed client: want uuid got %+v", part)
 	}
 
-	ciSvc := catalogue.NewService(conn, hub)
+	ciSvc := catalogue.NewService(conn)
 	ci, err := ciSvc.Create(ctx, catalogue.CatalogueItemInput{Name: "Mileage", UnitPrice: 0.85, Unit: "km"})
 	if err != nil {
 		t.Fatalf("seed custom item: %v", err)
@@ -57,7 +55,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		t.Fatalf("seed custom item: want uuid got %+v", ci)
 	}
 
-	h := session.NewHandler(session.NewService(conn, hub, invoice.NewInvoices(conn)))
+	h := session.NewHandler(session.NewService(conn, invoice.NewInvoices(conn)))
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

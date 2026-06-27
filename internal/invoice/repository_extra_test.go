@@ -3,7 +3,6 @@ package invoice
 import (
 	"context"
 	"testing"
-	"time"
 )
 
 func TestInvoiceListByStatus(t *testing.T) {
@@ -96,76 +95,5 @@ func TestInvoiceBulkDeleteAndBulkStatus(t *testing.T) {
 	list, _ := repo.List(ctx, tid)
 	if len(list) != 1 || list[0].ID != c.ID {
 		t.Fatalf("after bulk delete list = %+v, want only c (id=%s)", list, c.ID)
-	}
-}
-
-func TestInvoiceMarkOverdueForTenant(t *testing.T) {
-	conn := newTestDB(t)
-	tid := seedTenant(t, conn, "T")
-	pid := seedClient(t, conn, tid, "Jane")
-	repo := NewInvoices(conn)
-	ctx := context.Background()
-
-	past := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")
-	future := time.Now().UTC().AddDate(0, 0, 30).Format("2006-01-02")
-
-	overdueInv := mkInvoiceRepo(t, repo, tid, pid, past)
-	notDue := mkInvoiceRepo(t, repo, tid, pid, future)
-	draftPast := mkInvoiceRepo(t, repo, tid, pid, past)
-
-	// Only 'sent' invoices are eligible; mark both past-due ones sent except draftPast.
-	if err := repo.UpdateStatus(ctx, tid, overdueInv.ID, "sent"); err != nil {
-		t.Fatalf("UpdateStatus overdueInv: %v", err)
-	}
-	if err := repo.UpdateStatus(ctx, tid, notDue.ID, "sent"); err != nil {
-		t.Fatalf("UpdateStatus notDue: %v", err)
-	}
-
-	flipped, err := repo.MarkOverdueForTenant(ctx, tid)
-	if err != nil {
-		t.Fatalf("MarkOverdueForTenant: %v", err)
-	}
-	if len(flipped) != 1 || flipped[0].ID != overdueInv.ID {
-		t.Fatalf("flipped = %+v, want only overdueInv (id=%s)", flipped, overdueInv.ID)
-	}
-
-	got, _ := repo.Get(ctx, tid, overdueInv.ID)
-	if got.Status != "overdue" {
-		t.Fatalf("overdueInv status = %q, want overdue", got.Status)
-	}
-	// draftPast stays draft (not sent), notDue stays sent.
-	if g, _ := repo.Get(ctx, tid, draftPast.ID); g.Status != "draft" {
-		t.Fatalf("draftPast status = %q, want draft", g.Status)
-	}
-	if g, _ := repo.Get(ctx, tid, notDue.ID); g.Status != "sent" {
-		t.Fatalf("notDue status = %q, want sent", g.Status)
-	}
-}
-
-func TestInvoiceMarkOverdueRequiresTenant(t *testing.T) {
-	conn := newTestDB(t)
-	repo := NewInvoices(conn)
-	if _, err := repo.MarkOverdueForTenant(context.Background(), ""); err == nil {
-		t.Fatal("MarkOverdueForTenant with empty tenant: want error")
-	}
-}
-
-func TestInvoiceActiveTenantIDs(t *testing.T) {
-	conn := newTestDB(t)
-	a := seedTenant(t, conn, "Active A")
-	b := seedTenant(t, conn, "Active B")
-	repo := NewInvoices(conn)
-
-	ids, err := repo.ActiveTenantIDs(context.Background())
-	if err != nil {
-		t.Fatalf("ActiveTenantIDs: %v", err)
-	}
-	// Both seeded tenants are 'active'.
-	seen := map[string]bool{}
-	for _, id := range ids {
-		seen[id] = true
-	}
-	if !seen[a] || !seen[b] {
-		t.Fatalf("ActiveTenantIDs = %v, want to include %s and %s", ids, a, b)
 	}
 }

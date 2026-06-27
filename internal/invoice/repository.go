@@ -74,13 +74,6 @@ type InvoiceInput struct {
 	PayerSnapshot    string  `json:"payerSnapshot"`
 }
 
-// OverdueInvoice identifies an invoice flipped to overdue by MarkOverdue.
-type OverdueInvoice struct {
-	ID       string `json:"id"`
-	TenantID string `json:"tenantId"`
-	Number   string `json:"number"`
-}
-
 // ClientStats aggregates a client's invoice activity.
 type ClientStats struct {
 	InvoiceCount  int64   `json:"invoiceCount"`

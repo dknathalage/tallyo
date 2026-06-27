@@ -1,7 +1,7 @@
 // Package taxrate is the tax-rate vertical slice: domain types, the audited
 // repository over the tax_rates table, the service (with SSE broadcast), and the
 // HTTP handler. It depends only on platform packages (db/gen, audit, reqctx,
-// realtime, httpx), never on other domain slices.
+// httpx), never on other domain slices.
 package taxrate
 
 import (
@@ -99,7 +99,7 @@ func (r *TaxRatesRepo) Query(ctx context.Context, tenantID string, c listquery.C
 		return nil, 0, errors.New("query tax rates: tenant id required")
 	}
 	var total int64
-	countSQL := "SELECT count(*) FROM (" + taxRateListSelect + c.Where + ")"
+	countSQL := db.Rebind("SELECT count(*) FROM (" + taxRateListSelect + c.Where + ") AS sub")
 	countArgs := append([]any{tenantID}, c.CountArgs()...)
 	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count tax rates: %w", err)
@@ -108,7 +108,7 @@ func (r *TaxRatesRepo) Query(ctx context.Context, tenantID string, c listquery.C
 	if order == "" {
 		order = " ORDER BY is_default DESC, name"
 	}
-	sqlText := taxRateListSelect + c.Where + order + c.Limit
+	sqlText := db.Rebind(taxRateListSelect + c.Where + order + c.Limit)
 	pageArgs := append([]any{tenantID}, c.Args...)
 	rows, err := r.db.QueryContext(ctx, sqlText, pageArgs...)
 	if err != nil {

@@ -45,7 +45,7 @@ func TestSortDesc(t *testing.T) {
 
 func TestTextFilterIsBound(t *testing.T) {
 	c := Build(mustValues(t, "f.name="+url.QueryEscape("x' OR '1'='1")), spec)
-	if !strings.Contains(c.Where, "p.name LIKE ?") {
+	if !strings.Contains(c.Where, "p.name ILIKE ?") {
 		t.Fatalf("text filter not parameterized: %q", c.Where)
 	}
 	if c.Args[0] != "%x' OR '1'='1%" {

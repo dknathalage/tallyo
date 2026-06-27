@@ -10,7 +10,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,22 +20,20 @@ func newBusinessProfileServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "bp.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	sm := auth.NewSessionManager(conn, false)
+	v := newStubVerifier()
 	tenants := auth.NewTenants(conn)
-	authH := NewAuthHandler(sm, users, tenants)
-	bpH := businessprofile.NewHandler(businessprofile.NewService(conn, realtime.NewHub()))
+	bpH := businessprofile.NewHandler(businessprofile.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
-		api.Post("/auth/login", authH.Login)
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.RequireAuth(v))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			bpH.Routes(pr)
 		})
 	})
 
-	srv := httptest.NewServer(sm.LoadAndSave(router))
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, tenantUUID
 }

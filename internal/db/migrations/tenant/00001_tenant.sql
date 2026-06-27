@@ -58,7 +58,7 @@ CREATE TABLE custom_items (
     id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
     tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
     name       TEXT NOT NULL,
-    rate       REAL NOT NULL DEFAULT 0,
+    rate       double precision NOT NULL DEFAULT 0,
     unit       TEXT DEFAULT '',
     taxable    INTEGER NOT NULL DEFAULT 1,
     metadata   TEXT DEFAULT '{}',
@@ -71,7 +71,7 @@ CREATE TABLE tax_rates (
     id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
     tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
     name       TEXT NOT NULL,
-    rate       REAL NOT NULL DEFAULT 0,
+    rate       double precision NOT NULL DEFAULT 0,
     is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -87,9 +87,9 @@ CREATE TABLE invoices (
     status            TEXT NOT NULL DEFAULT 'draft',
     issue_date        TEXT NOT NULL,
     due_date          TEXT NOT NULL,
-    subtotal          REAL NOT NULL DEFAULT 0,
-    tax               REAL NOT NULL DEFAULT 0,
-    total             REAL NOT NULL DEFAULT 0,
+    subtotal          double precision NOT NULL DEFAULT 0,
+    tax               double precision NOT NULL DEFAULT 0,
+    total             double precision NOT NULL DEFAULT 0,
     notes             TEXT DEFAULT '',
     business_snapshot TEXT DEFAULT '{}',
     client_snapshot   TEXT DEFAULT '{}',
@@ -141,10 +141,10 @@ CREATE TABLE line_items (
     unit               TEXT DEFAULT '',
     start_time         TEXT,
     end_time           TEXT,
-    quantity           REAL NOT NULL DEFAULT 1,
-    unit_price         REAL NOT NULL DEFAULT 0,
+    quantity           double precision NOT NULL DEFAULT 1,
+    unit_price         double precision NOT NULL DEFAULT 0,
     taxable            INTEGER NOT NULL DEFAULT 1,
-    line_total         REAL NOT NULL DEFAULT 0,
+    line_total         double precision NOT NULL DEFAULT 0,
     sort_order         INTEGER DEFAULT 0,
     CHECK (session_id IS NOT NULL OR invoice_id IS NOT NULL)
 );
@@ -162,9 +162,9 @@ CREATE TABLE estimates (
     status               TEXT NOT NULL DEFAULT 'draft',
     issue_date           TEXT NOT NULL,
     valid_until          TEXT NOT NULL,
-    subtotal             REAL NOT NULL DEFAULT 0,
-    tax                  REAL NOT NULL DEFAULT 0,
-    total                REAL NOT NULL DEFAULT 0,
+    subtotal             double precision NOT NULL DEFAULT 0,
+    tax                  double precision NOT NULL DEFAULT 0,
+    total                double precision NOT NULL DEFAULT 0,
     notes                TEXT DEFAULT '',
     converted_invoice_id TEXT REFERENCES invoices(id) ON DELETE SET NULL,
     business_snapshot    TEXT DEFAULT '{}',
@@ -189,10 +189,10 @@ CREATE TABLE estimate_line_items (
     description        TEXT NOT NULL,       -- snapshot
     service_date       TEXT,                -- DATE
     unit               TEXT DEFAULT '',
-    quantity           REAL NOT NULL DEFAULT 1,
-    unit_price         REAL NOT NULL DEFAULT 0,
+    quantity           double precision NOT NULL DEFAULT 1,
+    unit_price         double precision NOT NULL DEFAULT 0,
     taxable            INTEGER NOT NULL DEFAULT 1,
-    line_total         REAL NOT NULL DEFAULT 0,
+    line_total         double precision NOT NULL DEFAULT 0,
     sort_order         INTEGER DEFAULT 0
 );
 CREATE INDEX idx_estimate_line_items_tenant   ON estimate_line_items (tenant_id);
@@ -202,7 +202,7 @@ CREATE TABLE payments (
     id         TEXT PRIMARY KEY,                -- uuidv7, app-supplied
     tenant_id  TEXT NOT NULL,                   -- guard column (uuid)
     invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
-    amount     REAL NOT NULL,
+    amount     double precision NOT NULL,
     paid_at    TEXT NOT NULL,
     method     TEXT DEFAULT '',
     reference  TEXT DEFAULT '',
@@ -213,27 +213,7 @@ CREATE TABLE payments (
 CREATE INDEX idx_payments_tenant  ON payments (tenant_id);
 CREATE INDEX idx_payments_invoice ON payments (invoice_id);
 
-CREATE TABLE recurring_templates (
-    id              TEXT PRIMARY KEY,           -- uuidv7, app-supplied
-    tenant_id       TEXT NOT NULL,              -- guard column (uuid)
-    client_id       TEXT REFERENCES clients(id) ON DELETE SET NULL,
-    payer_id TEXT REFERENCES payers(id) ON DELETE SET NULL,
-    name            TEXT NOT NULL,
-    frequency       TEXT NOT NULL,
-    next_due        TEXT NOT NULL,
-    line_items      TEXT NOT NULL DEFAULT '[]',  -- line template (JSON)
-    tax_rate        REAL NOT NULL DEFAULT 0,
-    notes           TEXT NOT NULL DEFAULT '',
-    is_active       INTEGER NOT NULL DEFAULT 1,
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
-);
-CREATE INDEX idx_recurring_tenant      ON recurring_templates (tenant_id);
-CREATE INDEX idx_recurring_client ON recurring_templates (client_id);
-CREATE INDEX idx_recurring_next_due    ON recurring_templates (next_due);
-
 -- +goose Down
-DROP TABLE recurring_templates;
 DROP TABLE payments;
 DROP TABLE estimate_line_items;
 DROP TABLE estimates;

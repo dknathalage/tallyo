@@ -7,7 +7,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/db/gen"
 	"github.com/dknathalage/tallyo/internal/ids"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 )
 
@@ -36,7 +35,7 @@ func countSessionItems(t *testing.T, conn *sql.DB, tenantID, sessionID string) i
 	t.Helper()
 	var n int
 	if err := conn.QueryRow(
-		`SELECT COUNT(*) FROM line_items WHERE tenant_id=? AND session_id=? AND invoice_id IS NULL`,
+		`SELECT COUNT(*) FROM line_items WHERE tenant_id=$1 AND session_id=$2 AND invoice_id IS NULL`,
 		tenantID, sessionID).Scan(&n); err != nil {
 		t.Fatalf("countSessionItems: %v", err)
 	}
@@ -47,7 +46,7 @@ func countInvoiceLines(t *testing.T, conn *sql.DB, tenantID, invoiceID string) i
 	t.Helper()
 	var n int
 	if err := conn.QueryRow(
-		`SELECT COUNT(*) FROM line_items WHERE tenant_id=? AND invoice_id=?`,
+		`SELECT COUNT(*) FROM line_items WHERE tenant_id=$1 AND invoice_id=$2`,
 		tenantID, invoiceID).Scan(&n); err != nil {
 		t.Fatalf("countInvoiceLines: %v", err)
 	}
@@ -58,9 +57,8 @@ func TestDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "T")
 	clientID := seedClient(t, conn, tenantID, "Jane")
-	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
+	invSvc := NewService(conn, sessionSvc)
 	repo := session.NewSessions(conn)
 	ctx := tctx(tenantID)
 
@@ -95,9 +93,8 @@ func TestBulkDeleteUnlinksSessionItemsBeforeCascade(t *testing.T) {
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "T")
 	clientID := seedClient(t, conn, tenantID, "Jane")
-	hub := realtime.NewHub()
-	sessionSvc := session.NewService(conn, hub, NewInvoices(conn))
-	invSvc := NewService(conn, hub, sessionSvc)
+	sessionSvc := session.NewService(conn, NewInvoices(conn))
+	invSvc := NewService(conn, sessionSvc)
 	repo := session.NewSessions(conn)
 	ctx := tctx(tenantID)
 

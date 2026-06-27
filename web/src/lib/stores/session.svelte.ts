@@ -1,4 +1,6 @@
-import { apiGet, apiPost, tenantPath } from '$lib/api/client';
+import { apiGet, tenantPath } from '$lib/api/client';
+import { getFirebaseAuth } from '$lib/firebase';
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth';
 import type { User } from '$lib/api/types';
 
 /**
@@ -30,9 +32,31 @@ function createSessionStore() {
 	let user = $state<User | null>(null);
 	let email = $state<string>('');
 	let tenants = $state<SessionTenant[]>([]);
+	let firebaseUser = $state<FirebaseUser | null>(null);
+
+	/**
+	 * Subscribe to Firebase auth state once. Tracks the signed-in Firebase user so
+	 * the rest of the app can react to sign-in/sign-out, and clears local account
+	 * state when the user signs out (e.g. token revoked in another tab).
+	 */
+	let watching = false;
+	async function watchAuth(): Promise<void> {
+		if (watching || typeof window === 'undefined') return;
+		watching = true;
+		const auth = await getFirebaseAuth();
+		onAuthStateChanged(auth, (u) => {
+			firebaseUser = u;
+			if (u === null) {
+				user = null;
+				email = '';
+				tenants = [];
+			}
+		});
+	}
 
 	/** Load the agnostic account session (email + tenants). */
 	async function loadSession(): Promise<SessionInfo | null> {
+		await watchAuth();
 		const info = await apiGet<SessionInfo>('/api/auth/session');
 		email = info?.email ?? '';
 		tenants = info?.tenants ?? [];
@@ -52,13 +76,17 @@ function createSessionStore() {
 
 	async function logout(): Promise<void> {
 		try {
-			await apiPost('/api/auth/logout');
+			const auth = await getFirebaseAuth();
+			await signOut(auth);
 		} catch {
 			// Ignore — clear local state regardless.
 		}
+		// onAuthStateChanged also clears these, but do it eagerly so callers that
+		// navigate immediately after logout() see a clean store.
 		user = null;
 		email = '';
 		tenants = [];
+		firebaseUser = null;
 	}
 
 	return {
@@ -76,6 +104,10 @@ function createSessionStore() {
 		},
 		get isPlatformAdmin(): boolean {
 			return user?.isPlatformAdmin === true;
+		},
+		/** The signed-in Firebase user (null when signed out), tracked live. */
+		get firebaseUser(): FirebaseUser | null {
+			return firebaseUser;
 		},
 		loadSession,
 		loadMe,

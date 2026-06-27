@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
@@ -78,62 +78,61 @@ func (s *statusWriter) Unwrap() http.ResponseWriter {
 	return s.ResponseWriter
 }
 
-// RequireAuth requires a valid session whose userID maps to an existing user
-// whose tenant is not suspended. The user is re-checked against the store on
-// every request so deleting a user (or suspending their tenant) invalidates
-// their session immediately. Nil dependencies are programmer errors.
-func RequireAuth(sm *scs.SessionManager, users *auth.UsersRepo, tenants *auth.TenantsRepo) func(http.Handler) http.Handler {
-	if sm == nil || users == nil || tenants == nil {
-		panic("RequireAuth: nil dep")
+// RequireAuth parses the "Authorization: Bearer <token>" header, verifies it as
+// a Firebase ID token, and attaches the verified uid + email to the context. It
+// is the stateless replacement for the old scs RequireSession: it does NOT
+// resolve a tenant — tenant-agnostic authed routes (e.g. /auth/session) use it
+// alone, while tenant-scoped routes chain ResolveTenant after it.
+//
+// A missing/malformed header or an invalid token yields 401. A nil verifier is a
+// programmer error.
+func RequireAuth(verifier auth.TokenVerifier) func(http.Handler) http.Handler {
+	if verifier == nil {
+		panic("RequireAuth: nil verifier")
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := sm.GetString(r.Context(), "userID")
-			tenantID := sm.GetString(r.Context(), "tenantID")
-			if id == "" || tenantID == "" {
+			raw, ok := bearerToken(r)
+			if !ok {
 				WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-			// Attach the tenant to the context BEFORE the user re-check so the
-			// tenant-scoped GetByID is filtered to the session's tenant. Attach
-			// the acting user id too so audited mutations record who acted.
-			ctx := reqctx.WithTenant(r.Context(), tenantID)
-			ctx = reqctx.WithUser(ctx, id)
-			// Enrich the request-scoped logger so every line for this request
-			// (including the final request summary) carries tenant_id/user_id.
+			tok, err := verifier.VerifyIDToken(r.Context(), raw)
+			if err != nil {
+				LoggerFrom(r.Context()).Warn("bearer token rejected")
+				WriteError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			if tok.UID == "" {
+				WriteError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			ctx := reqctx.WithFirebaseUID(r.Context(), tok.UID)
+			ctx = reqctx.WithEmail(ctx, tok.Email)
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {
-				return l.With(slog.String("tenant_id", tenantID), slog.String("user_id", id))
+				return l.With(slog.String("firebase_uid", tok.UID))
 			})
-			// Suspended-tenant guard: reject existing sessions whose tenant was
-			// suspended after they logged in (spec §3.1).
-			status, ok, err := tenants.Status(ctx, tenantID)
-			if err != nil {
-				WriteError(w, http.StatusInternalServerError, "internal error")
-				return
-			}
-			if !ok || status == auth.StatusSuspended {
-				if derr := sm.Destroy(ctx); derr != nil {
-					LoggerFrom(ctx).Error("destroy session for suspended tenant", slog.Any("error", derr))
-				}
-				WriteError(w, http.StatusForbidden, "tenant suspended")
-				return
-			}
-			u, err := users.GetByID(ctx, tenantID, id)
-			if err != nil {
-				WriteError(w, http.StatusInternalServerError, "internal error")
-				return
-			}
-			if u == nil { // user deleted → invalidate session
-				if derr := sm.Destroy(ctx); derr != nil {
-					LoggerFrom(ctx).Error("destroy session for deleted user", slog.Any("error", derr))
-				}
-				WriteError(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
-			ctx = context.WithValue(ctx, userCtxKey, u)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// bearerToken extracts the raw token from the Authorization header. ok is false
+// when the header is absent or not a well-formed "Bearer <token>".
+func bearerToken(r *http.Request) (string, bool) {
+	h := r.Header.Get("Authorization")
+	if h == "" {
+		return "", false
+	}
+	const prefix = "Bearer "
+	if len(h) <= len(prefix) || !strings.EqualFold(h[:len(prefix)], prefix) {
+		return "", false
+	}
+	tok := strings.TrimSpace(h[len(prefix):])
+	if tok == "" {
+		return "", false
+	}
+	return tok, true
 }
 
 // RequireRole gates a route to users holding one of the allowed tenant roles
@@ -191,42 +190,20 @@ type TenantLookup interface {
 	GetByUUID(ctx context.Context, tenantUUID string) (*auth.Tenant, error)
 }
 
-// MemberLookup resolves the user row (with role) for an email within a tenant,
-// returning (nil, nil) when the email is not a member (satisfied by *auth.UsersRepo).
+// MemberLookup resolves the user row (with role) for a Firebase uid within a
+// tenant, returning (nil, nil) when the uid is not a member (satisfied by
+// *auth.UsersRepo).
 type MemberLookup interface {
-	GetByEmail(ctx context.Context, tenantID string, email string) (*auth.User, error)
+	GetByFirebaseUID(ctx context.Context, tenantID string, firebaseUID string) (*auth.User, error)
 }
 
-// RequireSession requires a valid session carrying a userID + email, attaching
-// both to the request context. It does NOT resolve a tenant — tenant-agnostic
-// authed routes (e.g. /auth/session, /auth/logout) use this alone; tenant-scoped
-// routes chain ResolveTenant after it.
-func RequireSession(sm *scs.SessionManager) func(http.Handler) http.Handler {
-	if sm == nil {
-		panic("RequireSession: nil session manager")
-	}
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := sm.GetString(r.Context(), "userID")
-			email := sm.GetString(r.Context(), "email")
-			if id == "" || email == "" {
-				WriteError(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
-			ctx := reqctx.WithUser(r.Context(), id)
-			ctx = reqctx.WithEmail(ctx, email)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
-}
-
-// ResolveTenant authorizes the {tenantUUID} URL segment against the session
-// email and attaches the resolved tenant + that tenant's user (and role) to the
-// context. It is the security core of URL-based multi-tenancy:
-//   - email missing → 401 (must be chained after RequireSession)
+// ResolveTenant authorizes the {tenantUUID} URL segment against the verified
+// Firebase uid and attaches the resolved tenant + that tenant's user (and role)
+// to the context. It is the security core of URL-based multi-tenancy:
+//   - uid missing → 401 (must be chained after RequireAuth)
 //   - unknown tenant uuid → 404
 //   - suspended tenant → 403
-//   - email is not a member of the tenant → 403
+//   - uid is not a member of the tenant → 403
 //
 // On success, downstream handlers read the tenant via reqctx.MustTenant and the
 // per-tenant user/role via UserFrom (so role gates reflect THIS tenant's role).
@@ -237,8 +214,8 @@ func ResolveTenant(users MemberLookup, tenants TenantLookup) func(http.Handler) 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			email, ok := reqctx.EmailFrom(ctx)
-			if !ok || email == "" {
+			uid, ok := reqctx.FirebaseUIDFrom(ctx)
+			if !ok || uid == "" {
 				WriteError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
@@ -260,7 +237,7 @@ func ResolveTenant(users MemberLookup, tenants TenantLookup) func(http.Handler) 
 				WriteError(w, http.StatusForbidden, "tenant suspended")
 				return
 			}
-			u, err := users.GetByEmail(ctx, tenant.ID, email)
+			u, err := users.GetByFirebaseUID(ctx, tenant.ID, uid)
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal error")
 				return

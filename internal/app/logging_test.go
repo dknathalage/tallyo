@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
@@ -60,32 +59,27 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 // newLoggingServer builds a server with the full httpx.Recover→httpx.RequestLogger→Session
 // chain plus an authenticated probe, so the request logger and httpx.RequireAuth
 // enrichment are exercised end to end.
-func newLoggingServer(t *testing.T) (*httptest.Server, *scs.SessionManager, *auth.UsersRepo, string) {
+func newLoggingServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "log.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
-	sm := auth.NewSessionManager(conn, false)
+	v := newStubVerifier()
 	tenants := auth.NewTenants(conn)
-	authH := NewAuthHandler(sm, users, tenants)
 
 	router := chi.NewRouter()
 	router.Use(httpx.Recover)
 	router.Use(httpx.RequestLogger)
-	router.Group(func(g chi.Router) {
-		g.Use(sm.LoadAndSave)
-		g.Route("/api", func(api chi.Router) {
-			api.Post("/auth/login", authH.Login)
-			api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-				pr.Use(httpx.RequireSession(sm))
-				pr.Use(httpx.ResolveTenant(users, tenants))
-				pr.Get("/probe", probe200)
-			})
+	router.Route("/api", func(api chi.Router) {
+		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
+			pr.Use(httpx.RequireAuth(v))
+			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.Get("/probe", probe200)
 		})
 	})
 
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
-	return srv, sm, users, tenantUUID
+	return srv, users, tenantUUID
 }
 
 // findRequestRecord returns the "request" summary record for the given path.
@@ -102,14 +96,9 @@ func findRequestRecord(t *testing.T, recs []map[string]any, path string) map[str
 
 func TestRequestLoggerAttachesRequestIDAndTenantUser(t *testing.T) {
 	read := captureLogs(t)
-	srv, _, _, uuid := newLoggingServer(t)
+	srv, _, uuid := newLoggingServer(t)
 
-	c := jarClient(t)
-	resp := login(t, c, srv.URL, "o@x.com", "password1")
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("login: want 200 got %d", resp.StatusCode)
-	}
+	c := loggedInClient(t, srv.URL)
 	probePath := "/api/t/" + uuid + "/probe"
 	pr := get(t, c, srv.URL+probePath)
 	_ = pr.Body.Close()
@@ -137,35 +126,30 @@ func TestRequestLoggerAttachesRequestIDAndTenantUser(t *testing.T) {
 	}
 }
 
-func TestRequestLoggerNoSecretsOnLogin(t *testing.T) {
+func TestRequestLoggerNoSecretsOnAuthedRequest(t *testing.T) {
 	read := captureLogs(t)
-	srv, _, _, _ := newLoggingServer(t)
+	srv, _, uuid := newLoggingServer(t)
 
-	c := jarClient(t)
-	// Wrong password drives the warn("failed login attempt") path.
-	resp := login(t, c, srv.URL, "o@x.com", "hunter2-supersecret")
+	// A bogus bearer token drives the warn("bearer token rejected") path.
+	c := bearerClient("super-secret-bearer-token")
+	resp := get(t, c, srv.URL+"/api/t/"+uuid+"/probe")
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("bad login: want 401 got %d", resp.StatusCode)
+		t.Fatalf("bad token: want 401 got %d", resp.StatusCode)
 	}
 
 	recs := read()
-	// The login request must have been logged...
-	rec := findRequestRecord(t, recs, "/api/auth/login")
-	if rec["status"].(float64) != http.StatusUnauthorized {
-		t.Fatalf("login record status: %v", rec)
-	}
-	// ...but NO record may contain the password, a session token, or PII fields.
+	// NO record may contain the raw bearer token or password/token PII fields.
 	for _, r := range recs {
 		raw, err := json.Marshal(r)
 		if err != nil {
 			t.Fatalf("marshal record: %v", err)
 		}
 		blob := strings.ToLower(string(raw))
-		if strings.Contains(blob, "hunter2-supersecret") {
-			t.Fatalf("password leaked into logs: %s", raw)
+		if strings.Contains(blob, "super-secret-bearer-token") {
+			t.Fatalf("bearer token leaked into logs: %s", raw)
 		}
-		for _, banned := range []string{"password", "password_hash", "token", "reference"} {
+		for _, banned := range []string{"password", "password_hash", "token", "authorization"} {
 			if _, ok := r[banned]; ok {
 				t.Fatalf("banned field %q present in log record: %s", banned, raw)
 			}

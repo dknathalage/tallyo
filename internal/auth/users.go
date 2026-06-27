@@ -13,13 +13,9 @@ import (
 	"github.com/dknathalage/tallyo/internal/ids"
 )
 
-// ErrAmbiguousEmail is returned by GetCredentialsGlobal when an email is
-// registered in more than one tenant. Login must then require a tenant selector
-// rather than authenticating into an arbitrary tenant (fail safe, spec §3.1).
-var ErrAmbiguousEmail = errors.New("email registered in multiple tenants")
-
-// User is the domain view of a row in the users table. It deliberately omits
-// the password hash so callers never receive credential material.
+// User is the domain view of a row in the users table. The firebase_uid links
+// the row to a Firebase identity but is server-side only (json:"-") so it never
+// crosses the API.
 //
 // Public-id contract (spec: "int PK never crosses the API"): the serialized
 // identifier is the user's uuid (json:"id") and the tenant is identified by the
@@ -33,11 +29,12 @@ type User struct {
 	Role            string `json:"role"`
 	IsPlatformAdmin bool   `json:"isPlatformAdmin"`
 	LastLoginAt     string `json:"lastLoginAt"`
+	FirebaseUID     string `json:"-"` // Firebase identity link (never serialized)
 }
 
 // UsersRepo reads and writes the users table with audited mutations. Tenant
-// scoping (spec §3.1): per-tenant reads take a tenantID; the global, pre-tenant
-// login lookup uses GetByEmailGlobal.
+// scoping (spec §3.1): per-tenant reads take a tenantID; the Firebase uid links
+// each row to its identity (resolved per request from the bearer token).
 type UsersRepo struct {
 	db *sql.DB
 }
@@ -59,16 +56,17 @@ func (r *UsersRepo) Count(ctx context.Context, tenantID string) (int64, error) {
 	return n, nil
 }
 
-// Create inserts a user into a tenant and writes one audit row, atomically.
-func (r *UsersRepo) Create(ctx context.Context, tenantID string, email, hash, name, role string, isPlatformAdmin bool) (*User, error) {
+// Create inserts a user into a tenant and writes one audit row, atomically. The
+// user is linked to a Firebase identity via firebaseUID (no password material).
+func (r *UsersRepo) Create(ctx context.Context, tenantID string, email, firebaseUID, name, role string, isPlatformAdmin bool) (*User, error) {
 	if tenantID == "" {
 		return nil, errors.New("create user: tenant id required")
 	}
 	if email == "" {
 		return nil, errors.New("create user: email is required")
 	}
-	if hash == "" {
-		return nil, errors.New("create user: password hash is required")
+	if firebaseUID == "" {
+		return nil, errors.New("create user: firebase uid is required")
 	}
 
 	var created gen.User
@@ -78,7 +76,7 @@ func (r *UsersRepo) Create(ctx context.Context, tenantID string, email, hash, na
 			ID:              ids.New(),
 			TenantID:        tenantID,
 			Email:           email,
-			PasswordHash:    hash,
+			FirebaseUid:     firebaseUID,
 			Name:            name,
 			IsPlatformAdmin: bi(isPlatformAdmin),
 			Role:            role,
@@ -114,19 +112,6 @@ func (r *UsersRepo) GetByEmail(ctx context.Context, tenantID string, email strin
 	return toUser(row), nil
 }
 
-// GetByEmailGlobal returns the user with the given email regardless of tenant,
-// for the pre-tenant login flow (J5). Returns (nil, nil) when none matches.
-func (r *UsersRepo) GetByEmailGlobal(ctx context.Context, email string) (*User, error) {
-	row, err := gen.New(r.db).GetUserByEmailGlobal(ctx, email)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get user by email global: %w", err)
-	}
-	return toUser(row), nil
-}
-
 // GetByID returns a tenant's user by id (used by the auth-guard middleware), or
 // (nil, nil) when none matches.
 func (r *UsersRepo) GetByID(ctx context.Context, tenantID, id string) (*User, error) {
@@ -140,46 +125,39 @@ func (r *UsersRepo) GetByID(ctx context.Context, tenantID, id string) (*User, er
 	return toUser(row), nil
 }
 
-// Credentials carries the fields needed to authenticate and establish a session.
-// It is the only return shape that exposes the password hash; callers must never
-// surface Hash to clients.
-type Credentials struct {
-	ID       string
-	TenantID string
-	Hash     string
-}
-
-// CountByEmailGlobal returns how many users across all tenants share an email.
-// Login uses this to detect the AMBIGUOUS case (count > 1) and fail safe rather
-// than authenticating into an arbitrary tenant.
-func (r *UsersRepo) CountByEmailGlobal(ctx context.Context, email string) (int64, error) {
-	n, err := gen.New(r.db).CountUsersByEmailGlobal(ctx, email)
-	if err != nil {
-		return 0, fmt.Errorf("count users by email: %w", err)
+// GetByFirebaseUID returns a tenant's user by its Firebase uid (used by the
+// auth-guard middleware to resolve membership from the token), or (nil, nil)
+// when none matches.
+func (r *UsersRepo) GetByFirebaseUID(ctx context.Context, tenantID, firebaseUID string) (*User, error) {
+	row, err := gen.New(r.db).GetUserByFirebaseUID(ctx, gen.GetUserByFirebaseUIDParams{TenantID: tenantID, FirebaseUid: firebaseUID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
 	}
-	return n, nil
+	if err != nil {
+		return nil, fmt.Errorf("get user by firebase uid: %w", err)
+	}
+	return toUser(row), nil
 }
 
-// EmailTenant identifies one tenant in which an email is registered. Returned by
-// TenantsForEmail so an ambiguous login can prompt the user to choose a tenant.
+// EmailTenant identifies one tenant in which a user is a member. Returned by
+// TenantsForFirebaseUID to power the "pick tenant" UX.
 //
 // Public-id contract (spec: "int PK never crosses the API"): the tenant is
 // identified by its uuid, serialized as "id". The int TenantID is server-side
-// only (json:"-"); it stays on the struct because the login flow uses it to
-// scope the credential lookup.
+// only (json:"-").
 type EmailTenant struct {
-	TenantID   string `json:"-"`  // tenant uuid (used by login, not serialized)
+	TenantID   string `json:"-"`  // tenant uuid (server-side, not serialized)
 	TenantUUID string `json:"id"` // public tenant identifier (uuid)
 	TenantName string `json:"tenantName"`
 	Role       string `json:"role"`
 }
 
-// TenantsForEmail lists the tenants in which an email is registered, for the
-// tenant-disambiguation step of login.
-func (r *UsersRepo) TenantsForEmail(ctx context.Context, email string) ([]EmailTenant, error) {
-	rows, err := gen.New(r.db).ListTenantsByEmail(ctx, email)
+// TenantsForFirebaseUID lists the tenants in which a Firebase identity is a
+// member, with the per-tenant role. Powers GET /api/auth/session.
+func (r *UsersRepo) TenantsForFirebaseUID(ctx context.Context, firebaseUID string) ([]EmailTenant, error) {
+	rows, err := gen.New(r.db).ListTenantsByFirebaseUID(ctx, firebaseUID)
 	if err != nil {
-		return nil, fmt.Errorf("list tenants by email: %w", err)
+		return nil, fmt.Errorf("list tenants by firebase uid: %w", err)
 	}
 	out := make([]EmailTenant, 0, len(rows))
 	for i := range rows {
@@ -191,48 +169,6 @@ func (r *UsersRepo) TenantsForEmail(ctx context.Context, email string) ([]EmailT
 		})
 	}
 	return out, nil
-}
-
-// GetCredentialsGlobal returns the credentials for an email when EXACTLY ONE
-// user across all tenants has it. found is false (nil error) when no user
-// matches. When more than one tenant shares the email it returns ErrAmbiguous so
-// the caller can fail safe instead of picking an arbitrary tenant.
-func (r *UsersRepo) GetCredentialsGlobal(ctx context.Context, email string) (creds Credentials, found bool, err error) {
-	n, err := r.CountByEmailGlobal(ctx, email)
-	if err != nil {
-		return Credentials{}, false, err
-	}
-	if n == 0 {
-		return Credentials{}, false, nil
-	}
-	if n > 1 {
-		return Credentials{}, false, ErrAmbiguousEmail
-	}
-	row, qerr := gen.New(r.db).GetUserByEmailGlobal(ctx, email)
-	if errors.Is(qerr, sql.ErrNoRows) {
-		return Credentials{}, false, nil
-	}
-	if qerr != nil {
-		return Credentials{}, false, fmt.Errorf("get credentials: %w", qerr)
-	}
-	return Credentials{ID: row.ID, TenantID: row.TenantID, Hash: row.PasswordHash}, true, nil
-}
-
-// GetCredentialsForTenant returns the credentials for an (email, tenant) pair.
-// Used when the login request names a tenant (disambiguation). found is false
-// (nil error) when no such user exists.
-func (r *UsersRepo) GetCredentialsForTenant(ctx context.Context, tenantID string, email string) (creds Credentials, found bool, err error) {
-	if tenantID == "" {
-		return Credentials{}, false, errors.New("get credentials for tenant: tenant id required")
-	}
-	row, qerr := gen.New(r.db).GetUserByEmail(ctx, gen.GetUserByEmailParams{TenantID: tenantID, Email: email})
-	if errors.Is(qerr, sql.ErrNoRows) {
-		return Credentials{}, false, nil
-	}
-	if qerr != nil {
-		return Credentials{}, false, fmt.Errorf("get credentials for tenant: %w", qerr)
-	}
-	return Credentials{ID: row.ID, TenantID: row.TenantID, Hash: row.PasswordHash}, true, nil
 }
 
 // List returns a tenant's users ordered by id. Every row shares the tenant uuid,
@@ -276,7 +212,7 @@ func (r *UsersRepo) TouchLastLogin(ctx context.Context, id string) error {
 	return nil
 }
 
-// bi maps a Go bool to the SQLite 0/1 integer convention.
+// bi maps a Go bool to the 0/1 integer convention used for INTEGER bool columns.
 func bi(b bool) int64 {
 	if b {
 		return 1
@@ -284,8 +220,8 @@ func bi(b bool) int64 {
 	return 0
 }
 
-// toUser maps a generated row to the domain User, dropping the password hash.
-// TenantID is the tenant uuid (the public tenant identifier).
+// toUser maps a generated row to the domain User. TenantID is the tenant uuid
+// (the public tenant identifier); FirebaseUID is server-side only.
 func toUser(row gen.User) *User {
 	return &User{
 		ID:              row.ID,
@@ -295,5 +231,6 @@ func toUser(row gen.User) *User {
 		Role:            row.Role,
 		IsPlatformAdmin: row.IsPlatformAdmin == 1,
 		LastLoginAt:     row.LastLoginAt.String,
+		FirebaseUID:     row.FirebaseUid,
 	}
 }

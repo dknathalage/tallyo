@@ -12,42 +12,46 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// inviteeToken is the bearer token for the invited person. They sign in with
+// Firebase first (creating their identity); the stub maps this token to a fresh
+// uid/email distinct from the seeded members.
+const inviteeToken = "invitee-token"
+
 // newInviteServer spins up a real httptest.Server with the invite routes wired
-// the same way production wires them: Create behind httpx.RequireAuth, Validate and
-// Accept public (the invitee is not logged in). It returns the server and the
-// users repo so tests can assert on created members.
+// the same way production wires them: Create is tenant-scoped + owner/admin only;
+// Validate is public; Accept is Bearer-authed (the invitee has signed in). It
+// returns the server and the users repo so tests can assert on created members.
 func newInviteServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, string) {
 	t.Helper()
 	conn := openMigratedDB(t, "i.db")
 	users, tenantID, _, tenantUUID := seedTenantOwner(t, conn)
-	hash, err := auth.HashPassword("password1")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	if _, err := users.Create(t.Context(), tenantID, "m@x.com", hash, "", "member", false); err != nil {
+	if _, err := users.Create(t.Context(), tenantID, "member@x.com", "uid-member", "", "member", false); err != nil {
 		t.Fatalf("Create member: %v", err)
 	}
 
-	sm := auth.NewSessionManager(conn, false)
+	v := newStubVerifier()
+	v.add(inviteeToken, auth.Token{UID: "uid-new", Email: "new@x.com", Name: "Token Name"})
 	tenants := auth.NewTenants(conn)
-	authH := NewAuthHandler(sm, users, tenants)
 	invH := NewInviteHandler(auth.NewInvites(conn), users)
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
-		api.Post("/auth/login", authH.Login)
-		// Public invite routes: the invitee is not logged in.
+		// Public invite validation: the invitee may not have an account yet.
 		api.Get("/invites/{token}", invH.Validate)
-		api.Post("/invites/{token}/accept", invH.Accept)
+		// Bearer-authed invite acceptance (needs the uid).
+		api.Group(func(pr chi.Router) {
+			pr.Use(httpx.RequireAuth(v))
+			pr.Post("/invites/{token}/accept", invH.Accept)
+		})
 		// Invite create is tenant-scoped + owner/admin only (matches production).
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(sm))
+			pr.Use(httpx.RequireAuth(v))
 			pr.Use(httpx.ResolveTenant(users, tenants))
 			pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", invH.Create)
 		})
 	})
 
-	srv := httptest.NewServer(sm.LoadAndSave(router))
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, users, tenantUUID
 }
@@ -99,12 +103,7 @@ func TestInviteCreateOwner201(t *testing.T) {
 
 func TestInviteCreateMemberForbidden(t *testing.T) {
 	srv, _, uuid := newInviteServer(t)
-	c := jarClient(t)
-	resp := login(t, c, srv.URL, "m@x.com", "password1")
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("member login: want 200 got %d", resp.StatusCode)
-	}
+	c := bearerClient(memberToken)
 	r2 := postJSON(t, c, srv.URL+"/api/t/"+uuid+"/invites", `{"email":"new@x.com","role":"member"}`)
 	defer func() { _ = r2.Body.Close() }()
 	if r2.StatusCode != http.StatusForbidden {
@@ -153,28 +152,25 @@ func TestInviteValidateBadToken404(t *testing.T) {
 	}
 }
 
-func TestInviteAcceptCreatesMemberThenLogin(t *testing.T) {
+func TestInviteAcceptCreatesMember(t *testing.T) {
 	srv, users, uuid := newInviteServer(t)
 	token := createInvite(t, srv, uuid)
 
-	c := jarClient(t)
-	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
+	c := bearerClient(inviteeToken)
+	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member"}`)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("accept: want 201 got %d", resp.StatusCode)
 	}
 
-	// A member user must now exist in the invite's tenant, with the form's name.
-	creds, found, err := users.GetCredentialsGlobal(t.Context(), "new@x.com")
-	if err != nil {
-		t.Fatalf("GetCredentialsGlobal: %v", err)
-	}
-	if !found {
-		t.Fatalf("accept: member user not created")
-	}
-	u, err := users.GetByID(t.Context(), creds.TenantID, creds.ID)
+	// A member user must now exist in the invite's tenant, linked to the token's
+	// uid, with the form's name.
+	u, err := users.GetByFirebaseUID(t.Context(), uuid, "uid-new")
 	if err != nil || u == nil {
-		t.Fatalf("GetByID: %+v err=%v", u, err)
+		t.Fatalf("GetByFirebaseUID: %+v err=%v", u, err)
+	}
+	if u.Email != "new@x.com" {
+		t.Fatalf("accept: email wrong, got %q", u.Email)
 	}
 	if u.Name != "New Member" {
 		t.Fatalf("accept: display name not set, got %q", u.Name)
@@ -182,13 +178,16 @@ func TestInviteAcceptCreatesMemberThenLogin(t *testing.T) {
 	if u.Role != "member" {
 		t.Fatalf("accept: role wrong, got %q", u.Role)
 	}
+}
 
-	// And the new member can log in.
-	c2 := jarClient(t)
-	r2 := login(t, c2, srv.URL, "new@x.com", "password1")
-	_ = r2.Body.Close()
-	if r2.StatusCode != http.StatusOK {
-		t.Fatalf("new member login: want 200 got %d", r2.StatusCode)
+func TestInviteAcceptUnauthenticated401(t *testing.T) {
+	srv, _, uuid := newInviteServer(t)
+	token := createInvite(t, srv, uuid)
+	c := jarClient(t) // no bearer token
+	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anon accept: want 401 got %d", resp.StatusCode)
 	}
 }
 
@@ -196,27 +195,16 @@ func TestInviteAcceptTwiceConflict(t *testing.T) {
 	srv, _, uuid := newInviteServer(t)
 	token := createInvite(t, srv, uuid)
 
-	c := jarClient(t)
-	r1 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
+	c := bearerClient(inviteeToken)
+	r1 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member"}`)
 	_ = r1.Body.Close()
 	if r1.StatusCode != http.StatusCreated {
 		t.Fatalf("first accept: want 201 got %d", r1.StatusCode)
 	}
 
-	r2 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member","password":"password1"}`)
+	r2 := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"name":"New Member"}`)
 	_ = r2.Body.Close()
 	if r2.StatusCode != http.StatusConflict {
 		t.Fatalf("second accept: want 409 got %d", r2.StatusCode)
-	}
-}
-
-func TestInviteAcceptShortPassword400(t *testing.T) {
-	srv, _, uuid := newInviteServer(t)
-	token := createInvite(t, srv, uuid)
-	c := jarClient(t)
-	resp := postJSON(t, c, srv.URL+"/api/invites/"+token+"/accept", `{"password":"short"}`)
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("short password: want 400 got %d", resp.StatusCode)
 	}
 }

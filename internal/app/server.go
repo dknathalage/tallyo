@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalogue"
@@ -13,8 +12,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
-	"github.com/dknathalage/tallyo/internal/recurring"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -28,13 +25,13 @@ import (
 // the rest inside it.
 type Deps struct {
 	Assets          fs.FS                    // embedded SPA build sub-FS (index/200.html, _app/...)
-	Signup          *SignupHandler           // public self-serve tenant signup
-	Session         *scs.SessionManager      // loads/saves the session per request
-	Users           *auth.UsersRepo          // backs the auth-guard's user-exists recheck
+	Verifier        auth.TokenVerifier       // verifies Firebase bearer tokens (RequireAuth)
+	AuthConfig      *AuthConfigHandler       // public GET /api/auth/config
+	Signup          *SignupHandler           // Bearer-authed self-serve tenant signup
+	Users           *auth.UsersRepo          // backs ResolveTenant's membership lookup
 	Tenants         *auth.TenantsRepo        // backs the auth-guard's suspended-tenant recheck
-	Auth            *AuthHandler             // login/logout/me
+	Auth            *AuthHandler             // session/me
 	Invites         *InviteHandler           // invite create (owner-only) + public validate/accept
-	Events          *realtime.EventsHandler  // SSE stream at GET /api/events
 	BusinessProfile *businessprofile.Handler // singleton business profile
 	Payers          *payer.Handler           // payer CRUD + bulk-delete
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
@@ -44,7 +41,6 @@ type Deps struct {
 	Sessions        *session.Handler         // session lifecycle, billing suggestions, CRUD
 	Estimates       *estimate.Handler        // estimate CRUD, status, duplicate, bulk, convert
 	Payments        *invoice.PaymentHandler  // per-invoice payment list/create + delete
-	Recurring       *recurring.Handler       // recurring-template CRUD + generate
 	Smarts          *smarts.Handler          // AI "Smarts" routes (503 when AI disabled)
 	Features        map[string]bool          // feature-gate state exposed at GET /api/features
 }
@@ -65,12 +61,6 @@ func NewServer(deps Deps) *Server {
 	r := chi.NewRouter()
 	r.Use(httpx.Recover)
 	r.Use(httpx.RequestLogger)
-	// LoadAndSave must wrap any route that reads or writes the session. It is
-	// harmless on session-free routes (/healthz, SPA). Guarded so the static-only
-	// NewServer construction used in unit tests works without a session manager.
-	if deps.Session != nil {
-		r.Use(deps.Session.LoadAndSave)
-	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if _, err := w.Write([]byte("ok")); err != nil {
@@ -82,35 +72,40 @@ func NewServer(deps Deps) *Server {
 	// The per-field nil guards let tests build NewServer with a subset of deps
 	// (a handler's Routes() is called at registration time, so a nil one panics).
 	r.Route("/api", func(api chi.Router) {
-		if deps.Signup != nil {
-			api.Post("/signup", deps.Signup.Signup)
+		// Public config: the SPA fetches this on boot to init Firebase and decide
+		// which sign-in buttons to render. No auth.
+		if deps.AuthConfig != nil {
+			api.Get("/auth/config", deps.AuthConfig.Config)
 		}
-		if deps.Auth != nil {
-			api.Post("/auth/login", deps.Auth.Login)
-			api.Post("/auth/logout", deps.Auth.Logout)
-		}
-		// Public invite routes: the invitee is not logged in, so Validate and
-		// Accept must sit outside the RequireAuth group.
+		// Public invite VALIDATION: the invitee may not have an account yet.
+		// Acceptance is Bearer-authed (it needs the uid), so it lives in the
+		// authed group below.
 		if deps.Invites != nil {
 			api.Get("/invites/{token}", deps.Invites.Validate)
-			api.Post("/invites/{token}/accept", deps.Invites.Accept)
 		}
-		if deps.Session == nil {
-			return // no authenticated routes without a session manager
+		if deps.Verifier == nil {
+			return // no authenticated routes without a token verifier
 		}
-		// Tenant-AGNOSTIC authed routes: a valid session (email) is enough; no
-		// tenant is resolved. Powers bootstrap + the tenant switcher.
+		// Tenant-AGNOSTIC authed routes: a valid bearer token (uid) is enough; no
+		// tenant is resolved. Powers bootstrap, signup, invite-accept and the
+		// tenant switcher.
 		api.Group(func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(deps.Session))
+			pr.Use(httpx.RequireAuth(deps.Verifier))
+			if deps.Signup != nil {
+				pr.Post("/signup", deps.Signup.Signup)
+			}
 			if deps.Auth != nil {
 				pr.Get("/auth/session", deps.Auth.Session)
 			}
+			if deps.Invites != nil {
+				pr.Post("/invites/{token}/accept", deps.Invites.Accept)
+			}
 		})
 		// Tenant-SCOPED routes: the {tenantUUID} segment is authorized against
-		// the session email by ResolveTenant, which attaches the per-tenant
+		// the verified uid by ResolveTenant, which attaches the per-tenant
 		// tenant id + user + role to the context.
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
-			pr.Use(httpx.RequireSession(deps.Session))
+			pr.Use(httpx.RequireAuth(deps.Verifier))
 			pr.Use(httpx.ResolveTenant(deps.Users, deps.Tenants))
 			if deps.Auth != nil {
 				pr.Get("/auth/me", deps.Auth.Me)
@@ -119,9 +114,6 @@ func NewServer(deps Deps) *Server {
 				// User management is owner/admin only (spec §3.2).
 				pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
 				pr.With(httpx.RequireRole("owner", "admin")).Delete("/invites/{inviteUUID}", deps.Invites.Revoke)
-			}
-			if deps.Events != nil {
-				pr.Get("/events", deps.Events.Stream)
 			}
 			if deps.BusinessProfile != nil {
 				deps.BusinessProfile.Routes(pr)
@@ -152,9 +144,6 @@ func NewServer(deps Deps) *Server {
 			}
 			if deps.Payments != nil {
 				deps.Payments.Routes(pr)
-			}
-			if deps.Recurring != nil && deps.Features["recurring"] {
-				deps.Recurring.Routes(pr)
 			}
 			if deps.Smarts != nil {
 				deps.Smarts.Routes(pr)

@@ -45,7 +45,7 @@ func migrate(conn *sql.DB, dir, versionTable string) error {
 	}
 	goose.SetBaseFS(migrationsFS)
 	goose.SetTableName(versionTable)
-	if err := goose.SetDialect("sqlite3"); err != nil {
+	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("set goose dialect: %w", err)
 	}
 	if err := goose.Up(conn, dir); err != nil {

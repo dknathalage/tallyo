@@ -15,7 +15,7 @@ INSERT INTO estimates (
     id, tenant_id, number, client_id, payer_id, status, issue_date, valid_until,
     subtotal, tax, total, notes, converted_invoice_id,
     business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 RETURNING id, tenant_id, number, client_id, payer_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
@@ -86,7 +86,7 @@ func (q *Queries) CreateEstimate(ctx context.Context, arg CreateEstimateParams) 
 }
 
 const deleteEstimate = `-- name: DeleteEstimate :exec
-DELETE FROM estimates WHERE tenant_id = ? AND id = ?
+DELETE FROM estimates WHERE tenant_id = $1 AND id = $2
 `
 
 type DeleteEstimateParams struct {
@@ -105,7 +105,7 @@ FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.id = ?
+WHERE e.tenant_id = $1 AND e.id = $2
 `
 
 type GetEstimateParams struct {
@@ -174,7 +174,7 @@ FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.id = ?
+WHERE e.tenant_id = $1 AND e.id = $2
 `
 
 type GetEstimateByIDParams struct {
@@ -238,7 +238,7 @@ func (q *Queries) GetEstimateByID(ctx context.Context, arg GetEstimateByIDParams
 }
 
 const getEstimateIDByUUID = `-- name: GetEstimateIDByUUID :one
-SELECT id FROM estimates WHERE tenant_id = ? AND id = ?
+SELECT id FROM estimates WHERE tenant_id = $1 AND id = $2
 `
 
 type GetEstimateIDByUUIDParams struct {
@@ -259,7 +259,7 @@ FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.client_id = ?
+WHERE e.tenant_id = $1 AND e.client_id = $2
 ORDER BY e.created_at DESC
 `
 
@@ -345,7 +345,7 @@ FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ?
+WHERE e.tenant_id = $1
 ORDER BY e.created_at DESC
 `
 
@@ -426,7 +426,7 @@ FROM estimates e
 LEFT JOIN clients p ON e.client_id = p.id AND p.tenant_id = e.tenant_id
 LEFT JOIN payers pm ON e.payer_id = pm.id AND pm.tenant_id = e.tenant_id
 LEFT JOIN invoices ci ON e.converted_invoice_id = ci.id AND ci.tenant_id = e.tenant_id
-WHERE e.tenant_id = ? AND e.status = ?
+WHERE e.tenant_id = $1 AND e.status = $2
 ORDER BY e.created_at DESC
 `
 
@@ -507,9 +507,9 @@ func (q *Queries) ListEstimatesByStatus(ctx context.Context, arg ListEstimatesBy
 }
 
 const maxEstimateNumberLike = `-- name: MaxEstimateNumberLike :one
-SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST(?1 AS INTEGER) + 1) AS INTEGER)), 0) AS INTEGER) AS max_seq
+SELECT CAST(COALESCE(MAX(CAST(substr(number, CAST($1 AS INTEGER) + 1) AS INTEGER)), 0) AS INTEGER) AS max_seq
 FROM estimates
-WHERE tenant_id = ?2 AND number LIKE ?3
+WHERE tenant_id = $2 AND number LIKE $3
 `
 
 type MaxEstimateNumberLikeParams struct {
@@ -529,8 +529,8 @@ func (q *Queries) MaxEstimateNumberLike(ctx context.Context, arg MaxEstimateNumb
 }
 
 const setEstimateConverted = `-- name: SetEstimateConverted :exec
-UPDATE estimates SET converted_invoice_id = ?, status = 'converted', updated_at = ?
-WHERE tenant_id = ? AND id = ?
+UPDATE estimates SET converted_invoice_id = $1, status = 'converted', updated_at = $2
+WHERE tenant_id = $3 AND id = $4
 `
 
 type SetEstimateConvertedParams struct {
@@ -552,10 +552,10 @@ func (q *Queries) SetEstimateConverted(ctx context.Context, arg SetEstimateConve
 
 const updateEstimate = `-- name: UpdateEstimate :one
 UPDATE estimates SET
-    number = ?, client_id = ?, payer_id = ?, status = ?, issue_date = ?, valid_until = ?,
-    subtotal = ?, tax = ?, total = ?, notes = ?,
-    business_snapshot = ?, client_snapshot = ?, payer_snapshot = ?, updated_at = ?
-WHERE tenant_id = ? AND id = ?
+    number = $1, client_id = $2, payer_id = $3, status = $4, issue_date = $5, valid_until = $6,
+    subtotal = $7, tax = $8, total = $9, notes = $10,
+    business_snapshot = $11, client_snapshot = $12, payer_snapshot = $13, updated_at = $14
+WHERE tenant_id = $15 AND id = $16
 RETURNING id, tenant_id, number, client_id, payer_id, status, issue_date, valid_until, subtotal, tax, total, notes, converted_invoice_id, business_snapshot, client_snapshot, payer_snapshot, created_at, updated_at
 `
 
@@ -622,7 +622,7 @@ func (q *Queries) UpdateEstimate(ctx context.Context, arg UpdateEstimateParams) 
 }
 
 const updateEstimateStatus = `-- name: UpdateEstimateStatus :exec
-UPDATE estimates SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?
+UPDATE estimates SET status = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4
 `
 
 type UpdateEstimateStatusParams struct {

@@ -3,7 +3,6 @@ package billing_test
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,17 +15,10 @@ import (
 	"github.com/dknathalage/tallyo/internal/billing"
 )
 
-// newTestDB opens a fresh migrated in-temp SQLite DB for a test.
+// newTestDB opens the shared migrated Postgres test DB for a test.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := appdb.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if err := appdb.Migrate(conn); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	conn := appdb.OpenTestDB(t)
 	return conn
 }
 

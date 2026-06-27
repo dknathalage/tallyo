@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 	"github.com/go-chi/chi/v5"
 )
@@ -17,7 +16,7 @@ func newTaxHandler(t *testing.T) (*Handler, string, *TaxRate) {
 	t.Helper()
 	conn := newTestDB(t)
 	tenantID := seedTenant(t, conn, "Acme")
-	svc := NewService(conn, realtime.NewHub())
+	svc := NewService(conn)
 	seeded, err := svc.Create(tctx(tenantID), TaxRateInput{Name: "GST", Rate: 10})
 	if err != nil {
 		t.Fatalf("seed tax rate: %v", err)

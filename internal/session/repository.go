@@ -1,7 +1,7 @@
 // Package session is the session vertical slice: domain types, the audited
 // repository over the sessions table, the service (with SSE broadcast), and the
 // HTTP handler. It depends only on platform packages (db/gen, audit, reqctx,
-// realtime, httpx), never on other domain slices.
+// httpx), never on other domain slices.
 package session
 
 import (

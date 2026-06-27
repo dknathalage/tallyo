@@ -24,23 +24,23 @@ func TestInviteCreateRejectsZeroTenant(t *testing.T) {
 	}
 }
 
-func TestAcceptRejectsEmptyTokenOrHash(t *testing.T) {
+func TestAcceptRejectsEmptyTokenOrUID(t *testing.T) {
 	conn, _, _ := mustInviteDB(t)
 	defer conn.Close()
 	repo := NewInvites(conn)
 	ctx := context.Background()
-	if _, err := repo.Accept(ctx, "", "Name", "hash"); err == nil {
+	if _, err := repo.Accept(ctx, "", "Name", "uid"); err == nil {
 		t.Fatal("empty token must error")
 	}
 	if _, err := repo.Accept(ctx, "tok", "Name", ""); err == nil {
-		t.Fatal("empty hash must error")
+		t.Fatal("empty firebase uid must error")
 	}
 }
 
 func TestAcceptUnknownTokenFails(t *testing.T) {
 	conn, _, _ := mustInviteDB(t)
 	defer conn.Close()
-	_, err := NewInvites(conn).Accept(context.Background(), "no-such-token", "Name", "hash")
+	_, err := NewInvites(conn).Accept(context.Background(), "no-such-token", "Name", "uid")
 	if !errors.Is(err, ErrInviteInvalid) {
 		t.Fatalf("want ErrInviteInvalid, got %v", err)
 	}
@@ -56,8 +56,7 @@ func TestAcceptExpiredInviteFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create expired: %v", err)
 	}
-	hash, _ := HashPassword("password1")
-	if _, err := repo.Accept(ctx, inv.Token, "Late", hash); !errors.Is(err, ErrInviteInvalid) {
+	if _, err := repo.Accept(ctx, inv.Token, "Late", "uid-late"); !errors.Is(err, ErrInviteInvalid) {
 		t.Fatalf("want ErrInviteInvalid for expired accept, got %v", err)
 	}
 	// the user must NOT have been created (rollback / pre-check).
@@ -77,29 +76,4 @@ func TestNewInvitesNilDBPanics(t *testing.T) {
 		}
 	}()
 	NewInvites(nil)
-}
-
-func TestVerifyPasswordEdgeCases(t *testing.T) {
-	h, err := HashPassword("real-password")
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	// table of edge cases: empty hash, empty pw, malformed hash.
-	cases := []struct {
-		name string
-		hash string
-		pw   string
-		want bool
-	}{
-		{"empty hash", "", "real-password", false},
-		{"empty pw", h, "", false},
-		{"malformed hash", "not-a-bcrypt-hash", "real-password", false},
-		{"correct", h, "real-password", true},
-	}
-	// bounded loop: fixed-size table
-	for _, tc := range cases {
-		if got := VerifyPassword(tc.hash, tc.pw); got != tc.want {
-			t.Fatalf("%s: VerifyPassword=%v want %v", tc.name, got, tc.want)
-		}
-	}
 }

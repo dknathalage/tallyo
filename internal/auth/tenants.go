@@ -53,17 +53,6 @@ func (r *TenantsRepo) Count(ctx context.Context) (int64, error) {
 	return int64(len(rows)), nil
 }
 
-// ActiveTenantIDs returns the ids of active (non-suspended) tenants. The
-// per-tenant sweep iterates these; suspended tenants are skipped. Reads the
-// control DB (the tenants registry).
-func (r *TenantsRepo) ActiveTenantIDs(ctx context.Context) ([]string, error) {
-	ids, err := gen.New(r.db).ListActiveTenantIDs(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("active tenant ids: %w", err)
-	}
-	return ids, nil
-}
-
 // Create inserts a tenant (status "active") and writes one audit row, atomically.
 func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) {
 	if name == "" {
@@ -147,7 +136,7 @@ func (r *TenantsRepo) GetByUUID(ctx context.Context, tenantUUID string) (*Tenant
 type SignupInput struct {
 	BusinessName string
 	Email        string
-	PasswordHash string
+	FirebaseUID  string
 	OwnerName    string
 }
 
@@ -184,8 +173,8 @@ func ProvisionBusinessProfile(ctx context.Context, db db.Executor, tenantID stri
 // half-provisioned tenant can never persist (the startup orphan-sweep is the
 // backstop). Returns the created owner user (without the password hash).
 func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision ProfileProvisioner) (*User, error) {
-	if in.BusinessName == "" || in.Email == "" || in.PasswordHash == "" {
-		return nil, errors.New("signup: business name, email and password hash are required")
+	if in.BusinessName == "" || in.Email == "" || in.FirebaseUID == "" {
+		return nil, errors.New("signup: business name, email and firebase uid are required")
 	}
 	var owner gen.User
 	err := audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
@@ -205,7 +194,7 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 			ID:              ids.New(),
 			TenantID:        t.ID,
 			Email:           in.Email,
-			PasswordHash:    in.PasswordHash,
+			FirebaseUid:     in.FirebaseUID,
 			Name:            in.OwnerName,
 			IsPlatformAdmin: 0,
 			Role:            "owner",
@@ -230,8 +219,8 @@ func (r *TenantsRepo) Signup(ctx context.Context, in SignupInput, provision Prof
 		if e := provision(ctx, owner.TenantID, in); e != nil {
 			// Compensate: the tenant+owner are committed but unusable without a
 			// profile/tenant DB. Best-effort delete; orphan-sweep is the backstop.
-			_, _ = r.db.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = ?", owner.TenantID)
-			_, _ = r.db.ExecContext(ctx, "DELETE FROM tenants WHERE id = ?", owner.TenantID)
+			_, _ = r.db.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = $1", owner.TenantID)
+			_, _ = r.db.ExecContext(ctx, "DELETE FROM tenants WHERE id = $1", owner.TenantID)
 			return nil, fmt.Errorf("signup: provision profile: %w", e)
 		}
 	}

@@ -5,26 +5,18 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/db"
-	"github.com/dknathalage/tallyo/internal/events"
 	"github.com/dknathalage/tallyo/internal/listquery"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/reqctx"
 )
 
-// Service orchestrates per-tenant catalogue reads/writes and publishes change
-// events after a successful commit.
+// Service orchestrates per-tenant catalogue reads/writes.
 type Service struct {
-	repo   *Repo
-	hub    *realtime.Hub
-	events events.Notifier
+	repo *Repo
 }
 
-// NewService constructs a Service. A nil hub is a programmer error.
-func NewService(database db.Executor, hub *realtime.Hub) *Service {
-	if hub == nil {
-		panic("catalogue.NewService: nil hub")
-	}
-	return &Service{repo: NewRepo(database), hub: hub, events: events.New(hub, "catalogue_item")}
+// NewService constructs a Service.
+func NewService(database db.Executor) *Service {
+	return &Service{repo: NewRepo(database)}
 }
 
 func (s *Service) List(ctx context.Context) ([]*CatalogueItem, error) {
@@ -60,7 +52,7 @@ func (s *Service) Get(ctx context.Context, uuid string) (*CatalogueItem, error) 
 	return item, nil
 }
 
-// Create inserts a catalogue item, then broadcasts after the commit succeeds.
+// Create inserts a catalogue item.
 func (s *Service) Create(ctx context.Context, in CatalogueItemInput) (*CatalogueItem, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -70,11 +62,10 @@ func (s *Service) Create(ctx context.Context, in CatalogueItemInput) (*Catalogue
 	if err != nil {
 		return nil, err
 	}
-	s.events.Created(tenantID, item.ID)
 	return item, nil
 }
 
-// Update mutates (copy-on-write) a catalogue item, then broadcasts on success.
+// Update mutates (copy-on-write) a catalogue item.
 func (s *Service) Update(ctx context.Context, uuid string, in CatalogueItemInput) (*CatalogueItem, error) {
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -84,17 +75,15 @@ func (s *Service) Update(ctx context.Context, uuid string, in CatalogueItemInput
 	if err != nil {
 		return nil, err
 	}
-	s.events.Updated(tenantID, item.ID)
 	return item, nil
 }
 
-// Delete tombstones a catalogue item, then broadcasts on success.
+// Delete tombstones a catalogue item.
 func (s *Service) Delete(ctx context.Context, uuid string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.Delete(ctx, tenantID, uuid); err != nil {
 		return err
 	}
-	s.events.Deleted(tenantID, uuid)
 	return nil
 }
 
@@ -105,13 +94,12 @@ func (s *Service) ResolveLogicalIDs(ctx context.Context, uuids []string) ([]stri
 	return s.repo.ResolveCatalogueLogicalIDs(ctx, reqctx.MustTenant(ctx), uuids)
 }
 
-// BulkDelete tombstones multiple items, then broadcasts a single bulk_delete event.
+// BulkDelete tombstones multiple items.
 func (s *Service) BulkDelete(ctx context.Context, logicalIDs []string) error {
 	tenantID := reqctx.MustTenant(ctx)
 	if err := s.repo.BulkDelete(ctx, tenantID, logicalIDs); err != nil {
 		return err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "catalogue_item", UUID: "", Action: "bulk_delete"})
 	return nil
 }
 
@@ -121,13 +109,12 @@ func (s *Service) Inspect(data []byte, fileType, sheetName string, headerRow int
 }
 
 // ImportMapped applies a column mapping and upserts by code (owner/admin import,
-// step 2), then broadcasts on success.
+// step 2).
 func (s *Service) ImportMapped(ctx context.Context, data []byte, fileType, sheetName string, headerRow int, mapping map[string]string) (*ImportSummary, error) {
 	tenantID := reqctx.MustTenant(ctx)
 	summary, err := s.repo.ImportMapped(ctx, tenantID, data, fileType, sheetName, headerRow, mapping)
 	if err != nil {
 		return nil, err
 	}
-	s.hub.Broadcast(realtime.Event{TenantID: tenantID, Entity: "catalogue_item", UUID: "", Action: "import"})
 	return summary, nil
 }
