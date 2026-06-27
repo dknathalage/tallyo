@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/dknathalage/tallyo/internal/auth"
+	"github.com/dknathalage/tallyo/internal/entitlement"
 	"github.com/dknathalage/tallyo/internal/ids"
 	"github.com/dknathalage/tallyo/internal/reqctx"
-	"github.com/dknathalage/tallyo/internal/subscription"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -273,7 +273,7 @@ func ResolveTenant(users MemberLookup, tenants TenantLookup, billingEnabled bool
 			ctx = reqctx.WithUser(ctx, u.ID)
 			// Entitlement rides along the already-loaded tenant (no extra read).
 			// Gate off → always entitled. Read by RequireSubscription.
-			entitled := !billingEnabled || subscription.Entitled(tenant.SubscriptionStatus)
+			entitled := !billingEnabled || entitlement.Entitled(tenant.SubscriptionStatus)
 			ctx = reqctx.WithEntitled(ctx, entitled)
 			tenantID, userID := tenant.ID, u.ID
 			EnrichLogger(ctx, func(l *slog.Logger) *slog.Logger {

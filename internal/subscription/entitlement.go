@@ -1,28 +1,22 @@
-// Package subscription holds SaaS billing: the entitlement gate, the Stripe
-// integration (Checkout + Customer Portal), and the webhook that syncs Stripe
-// subscription state back onto the control-DB tenants table. It is distinct from
-// internal/billing, which computes invoice line-item math.
+// Package subscription holds SaaS billing: the entitlement gate (re-exported from
+// internal/entitlement), the Stripe integration (Checkout + Customer Portal), and
+// the webhook that syncs Stripe subscription state back onto the control-DB
+// tenants table. It is distinct from internal/billing, which computes invoice
+// line-item math.
 package subscription
 
-// Subscription status values. trialing/active/past_due mirror Stripe; "none" is
-// the local pre-Checkout state (tenant signed up but never paid).
+import "github.com/dknathalage/tallyo/internal/entitlement"
+
+// Status constants re-exported from internal/entitlement so callers within the
+// billing domain use subscription.Status*. The canonical definitions (and the
+// gate rule) live in the leaf entitlement package to avoid an httpx import cycle.
 const (
-	StatusNone     = "none"
-	StatusTrialing = "trialing"
-	StatusActive   = "active"
-	StatusPastDue  = "past_due" // in dunning — kept entitled with a grace banner
-	StatusCanceled = "canceled"
+	StatusNone     = entitlement.StatusNone
+	StatusTrialing = entitlement.StatusTrialing
+	StatusActive   = entitlement.StatusActive
+	StatusPastDue  = entitlement.StatusPastDue
+	StatusCanceled = entitlement.StatusCanceled
 )
 
-// Entitled reports whether a tenant in the given subscription status may perform
-// write actions. trialing, active, and past_due (grace) are entitled; none and
-// canceled are not. Stripe owns the trial clock, so there is no time math here —
-// the webhook flips the status and that is the only input.
-func Entitled(status string) bool {
-	switch status {
-	case StatusActive, StatusTrialing, StatusPastDue:
-		return true
-	default:
-		return false
-	}
-}
+// Entitled re-exports entitlement.Entitled.
+var Entitled = entitlement.Entitled

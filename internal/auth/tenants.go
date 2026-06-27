@@ -138,13 +138,7 @@ func (r *TenantsRepo) GetByUUID(ctx context.Context, tenantUUID string) (*Tenant
 	if err != nil {
 		return nil, fmt.Errorf("tenant by uuid: %w", err)
 	}
-	return &Tenant{
-		ID:        row.ID,
-		Name:      row.Name,
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
-	}, nil
+	return tenantFromRow(row), nil
 }
 
 // SignupInput carries the validated fields for self-serve onboarding. Validation
