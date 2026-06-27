@@ -75,6 +75,9 @@ function handleUnauthorized(): void {
 	if (typeof window === 'undefined') return;
 	const path = page.url?.pathname ?? window.location.pathname;
 	const publicPaths = ['/login', '/signup', '/accept-invite'];
+	// '/' is the public marketing landing — a logged-out 401 there must NOT bounce
+	// to /login (exact match only; '/' is a prefix of everything).
+	if (path === '/') return;
 	if (publicPaths.some((p) => path === p || path.startsWith(p + '/'))) return;
 	void goto('/login');
 }
