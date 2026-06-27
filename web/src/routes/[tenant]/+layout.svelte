@@ -4,6 +4,8 @@
 	import { page } from '$app/state';
 	import { session } from '$lib/stores/session.svelte';
 	import { features } from '$lib/stores/features.svelte';
+	import { billing } from '$lib/stores/billing.svelte';
+	import { trialDaysLeft } from '$lib/api/billing';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { t } from '$lib/nav';
 
@@ -62,8 +64,20 @@
 			void (async () => {
 				await session.loadMe();
 				await features.load();
+				if (features.billing) await billing.load();
 			})();
 		});
+	});
+
+	// A write blocked by the subscription gate (402) refreshes billing state so the
+	// banner/paywall appears immediately. The event is dispatched by the API client.
+	onMount(() => {
+		const onBlocked = () => {
+			billing.markBlocked();
+			void billing.load();
+		};
+		window.addEventListener('billing:blocked', onBlocked);
+		return () => window.removeEventListener('billing:blocked', onBlocked);
 	});
 
 	import type { Icon as IconType } from '@lucide/svelte';
@@ -118,6 +132,7 @@
 			children: [
 				{ href: '/settings', label: 'Business profile' },
 				...(features.invites ? [{ href: '/settings/users', label: 'Users' }] : []),
+				...(features.billing && session.isOwner ? [{ href: '/settings/billing', label: 'Billing' }] : []),
 				{ href: '/settings/account', label: 'Account' }
 			]
 		}
@@ -223,6 +238,34 @@
 	</header>
 
 	<main class="mx-auto w-full max-w-4xl flex-1 px-4 py-8 md:min-w-0">
+		{#if features.billing && billing.status}
+			{@const st = billing.status}
+			{#if !st.entitled}
+				<div class="mb-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+					Your subscription is inactive — you can view and export data, but changes are
+					disabled.
+					{#if session.isOwner}
+						<a href={t('/settings/billing')} class="font-medium underline">Subscribe to continue</a>.
+					{:else}
+						Ask your account owner to subscribe.
+					{/if}
+				</div>
+			{:else if st.status === 'past_due'}
+				<div
+					class="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+				>
+					Your last payment failed. Please update your billing details to avoid losing access.
+					{#if session.isOwner}<a href={t('/settings/billing')} class="font-medium underline">Manage billing</a>.{/if}
+				</div>
+			{:else if st.status === 'trialing'}
+				<div
+					class="mb-6 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800"
+				>
+					Trial active — {trialDaysLeft(st.trialEnd)} day(s) left.
+					{#if session.isOwner}<a href={t('/settings/billing')} class="font-medium underline">Manage billing</a>.{/if}
+				</div>
+			{/if}
+		{/if}
 		{#if showTabs && currentGroup}
 			<nav class="mb-6 flex flex-wrap gap-x-1 border-b border-gray-200">
 				{#each currentGroup.children as child (child.href)}

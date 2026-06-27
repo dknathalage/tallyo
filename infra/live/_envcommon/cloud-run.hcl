@@ -34,9 +34,11 @@ dependency "secrets" {
   config_path = "${dirname(get_terragrunt_dir())}/secrets"
 
   mock_outputs = {
-    db_password           = "mock-pw"
-    db_password_secret_id = "tallyo-mock-db-password"
-    anthropic_secret_id   = "tallyo-mock-anthropic"
+    db_password                     = "mock-pw"
+    db_password_secret_id           = "tallyo-mock-db-password"
+    anthropic_secret_id             = "tallyo-mock-anthropic"
+    stripe_secret_key_secret_id     = "tallyo-mock-stripe-secret-key"
+    stripe_webhook_secret_secret_id = "tallyo-mock-stripe-webhook-secret"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "init"]
 }
@@ -63,7 +65,17 @@ inputs = {
   anthropic_secret_id      = dependency.secrets.outputs.anthropic_secret_id
   db_password_secret_id    = dependency.secrets.outputs.db_password_secret_id
 
+  stripe_secret_key_secret_id     = dependency.secrets.outputs.stripe_secret_key_secret_id
+  stripe_webhook_secret_secret_id = dependency.secrets.outputs.stripe_webhook_secret_secret_id
+
   firebase_api_key     = dependency.identity_platform.outputs.web_api_key
   firebase_auth_domain = dependency.identity_platform.outputs.auth_domain
   firebase_project_id  = dependency.identity_platform.outputs.project_id
+
+  # Billing: off until the Stripe dashboard product/price/webhook exist and the
+  # GSM secret VALUES are populated. Flip per-env in the leaf terragrunt inputs
+  # and set stripe_price_id there.
+  billing_enabled = false
+  stripe_price_id = ""
+  trial_days      = 90
 }

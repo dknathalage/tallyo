@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/apperr"
 	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/db"
 	"github.com/dknathalage/tallyo/internal/db/gen"
@@ -20,6 +21,30 @@ type Tenant struct {
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
+
+	// SaaS subscription mirror (set by the Stripe webhook; see internal/subscription).
+	// SubscriptionStatus drives the entitlement gate; the rest are display-only.
+	StripeCustomerID     string `json:"stripeCustomerId,omitempty"`
+	StripeSubscriptionID string `json:"stripeSubscriptionId,omitempty"`
+	SubscriptionStatus   string `json:"subscriptionStatus"`
+	TrialEnd             string `json:"trialEnd,omitempty"`
+	CurrentPeriodEnd     string `json:"currentPeriodEnd,omitempty"`
+}
+
+// tenantFromRow maps a generated tenants row to the domain Tenant.
+func tenantFromRow(row gen.Tenant) *Tenant {
+	return &Tenant{
+		ID:                   row.ID,
+		Name:                 row.Name,
+		Status:               row.Status,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		StripeCustomerID:     row.StripeCustomerID.String,
+		StripeSubscriptionID: row.StripeSubscriptionID.String,
+		SubscriptionStatus:   row.SubscriptionStatus,
+		TrialEnd:             row.TrialEnd.String,
+		CurrentPeriodEnd:     row.CurrentPeriodEnd.String,
+	}
 }
 
 // Tenant status values (spec §3.1). A suspended tenant blocks login for all of
@@ -82,13 +107,7 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 	if err != nil {
 		return nil, fmt.Errorf("create tenant: %w", err)
 	}
-	return &Tenant{
-		ID:        created.ID,
-		Name:      created.Name,
-		Status:    created.Status,
-		CreatedAt: created.CreatedAt,
-		UpdatedAt: created.UpdatedAt,
-	}, nil
+	return tenantFromRow(created), nil
 }
 
 // Status returns a tenant's status string. Returns ("", false, nil) when no such
@@ -120,13 +139,143 @@ func (r *TenantsRepo) GetByUUID(ctx context.Context, tenantUUID string) (*Tenant
 	if err != nil {
 		return nil, fmt.Errorf("tenant by uuid: %w", err)
 	}
-	return &Tenant{
-		ID:        row.ID,
-		Name:      row.Name,
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
-	}, nil
+	return tenantFromRow(row), nil
+}
+
+// TenantSummary is the admin list view of a tenant: all Tenant fields plus the
+// count of users belonging to that tenant.
+type TenantSummary struct {
+	Tenant
+	UserCount int64 `json:"userCount"`
+}
+
+// List returns all tenants with per-tenant user counts. Intended for the
+// platform-admin panel; not tenant-scoped.
+func (r *TenantsRepo) List(ctx context.Context) ([]*TenantSummary, error) {
+	rows, err := gen.New(r.db).ListTenantsWithUserCount(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tenants: %w", err)
+	}
+	out := make([]*TenantSummary, 0, len(rows))
+	for _, row := range rows {
+		t := tenantFromRow(gen.Tenant{
+			ID:                   row.ID,
+			Name:                 row.Name,
+			Status:               row.Status,
+			CreatedAt:            row.CreatedAt,
+			UpdatedAt:            row.UpdatedAt,
+			StripeCustomerID:     row.StripeCustomerID,
+			StripeSubscriptionID: row.StripeSubscriptionID,
+			SubscriptionStatus:   row.SubscriptionStatus,
+			TrialEnd:             row.TrialEnd,
+			CurrentPeriodEnd:     row.CurrentPeriodEnd,
+			SubscriptionSyncedAt: row.SubscriptionSyncedAt,
+		})
+		out = append(out, &TenantSummary{Tenant: *t, UserCount: row.UserCount})
+	}
+	return out, nil
+}
+
+// Suspend sets a tenant's status to StatusSuspended, blocking login for all of
+// its users. adminUserID is the acting platform admin; it is stamped on the
+// audit row alongside the target tenant. Returns apperr.ErrNotFound when no
+// tenant has the given uuid (handler → 404), so suspending a phantom tenant is
+// not a silent 204.
+func (r *TenantsRepo) Suspend(ctx context.Context, tenantUUID, adminUserID string) error {
+	if tenantUUID == "" {
+		return errors.New("suspend tenant: tenant uuid required")
+	}
+	return r.setStatus(ctx, tenantUUID, adminUserID, StatusSuspended, "suspend")
+}
+
+// Unsuspend clears a tenant's suspended status, setting it back to
+// StatusActive and allowing its users to log in again. Returns apperr.ErrNotFound
+// when no tenant has the given uuid.
+func (r *TenantsRepo) Unsuspend(ctx context.Context, tenantUUID, adminUserID string) error {
+	if tenantUUID == "" {
+		return errors.New("unsuspend tenant: tenant uuid required")
+	}
+	return r.setStatus(ctx, tenantUUID, adminUserID, StatusActive, "unsuspend")
+}
+
+// setStatus is the shared suspend/unsuspend body: it updates the tenant's status
+// and writes an audit row in one tx. UpdateTenantStatus is :execrows, so a
+// no-match (unknown tenant) surfaces as apperr.ErrNotFound instead of a silent
+// success.
+func (r *TenantsRepo) setStatus(ctx context.Context, tenantUUID, adminUserID, status, action string) error {
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		n, err := gen.New(tx).UpdateTenantStatus(ctx, gen.UpdateTenantStatusParams{
+			Status:    status,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+			ID:        tenantUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("%s: update status: %w", action, err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%s tenant %q: %w", action, tenantUUID, apperr.ErrNotFound)
+		}
+		return audit.LogAs(ctx, tx, tenantUUID, adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantUUID,
+			Action:     action,
+			Changes:    audit.Changes(map[string]any{"status": status}),
+		})
+	})
+}
+
+// Delete permanently removes a tenant and its control-DB dependents (invites,
+// users, and any audit rows that reference the tenant). This is destructive and
+// irreversible. The control schema has no ON DELETE CASCADE, so dependents are
+// removed in FK order INSIDE the transaction before the tenant row.
+//
+// The delete-audit row itself is stamped with tenant_id = NULL (the tenant is
+// gone — a non-NULL tenant_id would re-violate the FK and, even cascaded, would
+// be deleted with the tenant) and records the gone tenant in entity_id, with
+// the acting admin in user_id, preserving an attributable trail.
+//
+// ponytail: a control-DB ON DELETE CASCADE (or a single recursive delete query)
+// would replace this hand-ordered cleanup if the dependent set grows.
+func (r *TenantsRepo) Delete(ctx context.Context, tenantUUID, adminUserID string) error {
+	if tenantUUID == "" {
+		return errors.New("delete tenant: tenant uuid required")
+	}
+	return audit.WithTx(ctx, r.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		// Existence check FIRST: deleting a phantom tenant must 404, not silently
+		// succeed (the per-table DELETEs below all no-op for an unknown id). The
+		// row-lock isn't needed; this runs inside the tx so a concurrent delete
+		// would be serialized by the final DeleteTenant anyway.
+		var exists string
+		switch err := tx.QueryRowContext(ctx, "SELECT id FROM tenants WHERE id = $1", tenantUUID).Scan(&exists); {
+		case errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("delete tenant %q: %w", tenantUUID, apperr.ErrNotFound)
+		case err != nil:
+			return fmt.Errorf("delete: lookup tenant: %w", err)
+		}
+		// Audit FIRST (tenant_id NULL so the row survives the tenant delete and
+		// does not itself block it). entity_id keeps the gone tenant's id.
+		if err := audit.LogAs(ctx, tx, "", adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantUUID,
+			Action:     "delete",
+			Changes:    audit.Changes(map[string]any{"tenantId": tenantUUID}),
+		}); err != nil {
+			return err
+		}
+		// Remove dependents in FK order: invites (→ tenants, → users) first,
+		// then any audit rows still pointing at the tenant, then users, then the
+		// tenant itself. Raw SQL: these cross-table cleanups have no sqlc query.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM invites WHERE tenant_id = $1", tenantUUID); err != nil {
+			return fmt.Errorf("delete invites: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM audit_log WHERE tenant_id = $1", tenantUUID); err != nil {
+			return fmt.Errorf("delete audit rows: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE tenant_id = $1", tenantUUID); err != nil {
+			return fmt.Errorf("delete users: %w", err)
+		}
+		return gen.New(tx).DeleteTenant(ctx, tenantUUID)
+	})
 }
 
 // SignupInput carries the validated fields for self-serve onboarding. Validation

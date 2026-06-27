@@ -11,7 +11,7 @@
 
 	let ready = $state(false);
 
-	const PUBLIC_PATHS = ['/login', '/signup', '/accept-invite'];
+	const PUBLIC_PATHS = ['/', '/login', '/signup', '/accept-invite'];
 
 	function isPublic(path: string): boolean {
 		return PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));
@@ -23,6 +23,10 @@
 	});
 
 	async function bootstrap(): Promise<void> {
+		// Public pages (landing, login, …) render instantly — don't gate them
+		// behind the session call. The session check still runs below so a
+		// logged-in user hitting '/' is redirected to their tenant.
+		if (isPublic(page.url.pathname)) ready = true;
 		try {
 			const info = await session.loadSession();
 			if (info === null) {

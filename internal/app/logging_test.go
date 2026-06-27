@@ -72,7 +72,7 @@ func newLoggingServer(t *testing.T) (*httptest.Server, *auth.UsersRepo, string) 
 	router.Route("/api", func(api chi.Router) {
 		api.Route("/t/{tenantUUID}", func(pr chi.Router) {
 			pr.Use(httpx.RequireAuth(v))
-			pr.Use(httpx.ResolveTenant(users, tenants))
+			pr.Use(httpx.ResolveTenant(users, tenants, false))
 			pr.Get("/probe", probe200)
 		})
 	})

@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dknathalage/tallyo/internal/admin"
+	"github.com/dknathalage/tallyo/internal/audit"
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/businessprofile"
 	"github.com/dknathalage/tallyo/internal/catalogue"
@@ -28,6 +30,7 @@ import (
 	"github.com/dknathalage/tallyo/internal/payer"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
+	"github.com/dknathalage/tallyo/internal/subscription"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	tallyoweb "github.com/dknathalage/tallyo/web"
 )
@@ -165,6 +168,23 @@ func Run(cfg Config, version string) error {
 		smartsHandler = smarts.NewHandler(nil, false)
 	}
 
+	// SaaS billing (optional, behind BILLING_ENABLED). When off, the handler is
+	// nil (routes unmounted) and ResolveTenant treats every tenant as entitled.
+	// A misconfigured-but-enabled billing setup is fatal: better to fail at boot
+	// than silently run unbilled.
+	billingCfg := subscription.LoadConfig()
+	var subHandler *subscription.Handler
+	if billingCfg.Enabled {
+		stripeClient, cerr := subscription.NewClient(billingCfg)
+		if cerr != nil {
+			return fmt.Errorf("billing enabled but misconfigured: %w", cerr)
+		}
+		subHandler = subscription.NewHandler(stripeClient, subscription.NewStore(database), tenants)
+		logger.Info("billing enabled", slog.Int("trial_days", billingCfg.TrialDays))
+	} else {
+		logger.Warn("billing disabled: BILLING_ENABLED off — all tenants entitled")
+	}
+
 	assets, err := fs.Sub(tallyoweb.Build, "build")
 	if err != nil {
 		return fmt.Errorf("sub web build: %w", err)
@@ -173,6 +193,13 @@ func Run(cfg Config, version string) error {
 	if _, err := fs.Stat(assets, "200.html"); err != nil {
 		return fmt.Errorf("embedded SPA missing 200.html — run `npm run build` in web/ before `go build`: %w", err)
 	}
+
+	// Platform-admin panel. Independent of billing state: an operator can override
+	// a tenant's subscription status, suspend/delete, and read the audit trail even
+	// when BILLING_ENABLED is off. Its own subscription.Store + audit.Reader read
+	// the control DB directly (the routes are gated by RequirePlatformAdmin in
+	// server.go).
+	adminHandler := admin.New(tenants, subscription.NewStore(database), audit.NewReader(database))
 
 	deps := Deps{
 		Assets:          assets,
@@ -193,11 +220,15 @@ func Run(cfg Config, version string) error {
 		Estimates:       estimate.NewHandler(estimateSvc),
 		Payments:        invoice.NewPaymentHandler(paymentSvc),
 		Smarts:          smartsHandler,
+		Subscription:    subHandler,
+		BillingEnabled:  billingCfg.Enabled,
+		Admin:           adminHandler,
 		// smarts is "on" only when both the gate and the API key allow it, so the
 		// SPA hides AI affordances that would otherwise 503.
 		Features: map[string]bool{
 			"smarts":  smartsEnabled,
 			"invites": cfg.FeatureInvites,
+			"billing": billingCfg.Enabled,
 		},
 	}
 

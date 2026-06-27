@@ -1,0 +1,164 @@
+package subscription
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/dknathalage/tallyo/internal/apperr"
+	"github.com/dknathalage/tallyo/internal/audit"
+	"github.com/dknathalage/tallyo/internal/db/gen"
+	"github.com/dknathalage/tallyo/internal/entitlement"
+)
+
+// Store reads and writes the subscription mirror columns on the control-DB
+// tenants table. It is the only writer of those columns — the Stripe webhook
+// calls Apply; ResolveTenant reads via auth.TenantsRepo.
+type Store struct {
+	db *sql.DB
+}
+
+// NewStore constructs a Store. A nil db is a programmer error.
+func NewStore(db *sql.DB) *Store {
+	if db == nil {
+		panic("subscription: NewStore requires a non-nil *sql.DB")
+	}
+	return &Store{db: db}
+}
+
+// Update carries the subscription state to write for one tenant. All timestamps
+// are RFC3339 UTC strings ("" → NULL). SyncedAt is the source event's timestamp
+// and drives idempotency: an Update whose SyncedAt is not newer than what is
+// stored is a no-op (handles Stripe's at-least-once, possibly-out-of-order
+// delivery).
+type Update struct {
+	TenantID             string
+	StripeCustomerID     string
+	StripeSubscriptionID string
+	Status               string
+	TrialEnd             string
+	CurrentPeriodEnd     string
+	SyncedAt             string
+}
+
+// Apply writes the subscription state for u.TenantID unless the stored
+// subscription_synced_at is already >= u.SyncedAt (stale/duplicate event). It
+// reports whether a write happened.
+func (s *Store) Apply(ctx context.Context, u Update) (applied bool, err error) {
+	if u.TenantID == "" {
+		return false, errors.New("subscription apply: tenant id required")
+	}
+	q := gen.New(s.db)
+	cur, err := q.GetTenant(ctx, u.TenantID)
+	if err != nil {
+		return false, fmt.Errorf("subscription apply: load tenant: %w", err)
+	}
+	// RFC3339-UTC strings sort chronologically, so a lexicographic compare is a
+	// valid "is this event newer?" check. Equal timestamps are treated as
+	// duplicates → no-op.
+	if u.SyncedAt != "" && cur.SubscriptionSyncedAt.Valid && u.SyncedAt <= cur.SubscriptionSyncedAt.String {
+		return false, nil
+	}
+	err = q.UpdateTenantSubscription(ctx, gen.UpdateTenantSubscriptionParams{
+		StripeCustomerID:     nullStr(u.StripeCustomerID),
+		StripeSubscriptionID: nullStr(u.StripeSubscriptionID),
+		SubscriptionStatus:   u.Status,
+		TrialEnd:             nullStr(u.TrialEnd),
+		CurrentPeriodEnd:     nullStr(u.CurrentPeriodEnd),
+		SubscriptionSyncedAt: nullStr(u.SyncedAt),
+		UpdatedAt:            time.Now().UTC().Format(time.RFC3339),
+		ID:                   u.TenantID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("subscription apply: update: %w", err)
+	}
+	return true, nil
+}
+
+// GetTenantByStripeCustomer resolves the tenant id linked to a Stripe customer.
+// Returns ("", false, nil) when no tenant carries that customer id (used by the
+// webhook to map a subscription event back to a tenant).
+func (s *Store) GetTenantByStripeCustomer(ctx context.Context, customerID string) (tenantID string, found bool, err error) {
+	if customerID == "" {
+		return "", false, errors.New("subscription lookup: customer id required")
+	}
+	row, qerr := gen.New(s.db).GetTenantByStripeCustomer(ctx, nullStr(customerID))
+	if errors.Is(qerr, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if qerr != nil {
+		return "", false, fmt.Errorf("subscription lookup: %w", qerr)
+	}
+	return row.ID, true, nil
+}
+
+// SetSubscriptionStatus writes subscription_status for the given tenant,
+// bypassing the Stripe sync gate and leaving Stripe IDs untouched. It writes
+// one audit row attributed to the target tenant and the acting admin user.
+//
+// trial_end handling: when status is trialing AND trialEndsAt is non-empty,
+// trial_end is set to trialEndsAt. For ALL OTHER statuses (and for trialing
+// with an empty trialEndsAt), trial_end is CLEARED to NULL — the update always
+// writes the trial_end column, so a non-trialing override drops any prior trial
+// date. This is intentional: a trial date is only meaningful while trialing.
+//
+// Known limitation: a subsequent Stripe webhook for that tenant can overwrite a
+// manual override via Apply. The override is an operator stopgap, not a lock.
+// ponytail: an override-lock column is the upgrade path if webhooks fight
+// overrides in practice.
+func (s *Store) SetSubscriptionStatus(ctx context.Context, tenantID, status, adminUserID string, trialEndsAt string) error {
+	if tenantID == "" {
+		return errors.New("set subscription status: tenant id required")
+	}
+	switch status {
+	case entitlement.StatusNone, entitlement.StatusTrialing, entitlement.StatusActive,
+		entitlement.StatusPastDue, entitlement.StatusCanceled:
+		// valid
+	default:
+		// A bad status is a client input error, not a server fault: surface it as
+		// a 422 via apperr.Validation (WriteServiceError maps it), not a bare error
+		// that would default to 500.
+		return &apperr.ValidationError{Errors: []apperr.FieldError{{
+			Field:   "status",
+			Message: fmt.Sprintf("invalid status %q (must be one of none, trialing, active, past_due, canceled)", status),
+		}}}
+	}
+
+	var trialEnd sql.NullString
+	if status == entitlement.StatusTrialing && trialEndsAt != "" {
+		trialEnd = sql.NullString{String: trialEndsAt, Valid: true}
+	}
+
+	return audit.WithTx(ctx, s.db, audit.Entry{Action: ""}, func(tx *sql.Tx) error {
+		n, err := gen.New(tx).SetTenantSubscriptionStatus(ctx, gen.SetTenantSubscriptionStatusParams{
+			SubscriptionStatus: status,
+			TrialEnd:           trialEnd,
+			UpdatedAt:          time.Now().UTC().Format(time.RFC3339),
+			ID:                 tenantID,
+		})
+		if err != nil {
+			return fmt.Errorf("set subscription status: update: %w", err)
+		}
+		if n == 0 {
+			// Unknown tenant id: no row written. Surface as not-found (handler → 404)
+			// instead of a silent success.
+			return fmt.Errorf("set subscription status: tenant %q: %w", tenantID, apperr.ErrNotFound)
+		}
+		changes := map[string]any{"subscription_status": status}
+		if trialEnd.Valid {
+			changes["trial_end"] = trialEndsAt
+		}
+		return audit.LogAs(ctx, tx, tenantID, adminUserID, audit.Entry{
+			EntityType: "tenant",
+			EntityID:   tenantID,
+			Action:     "set_subscription_status",
+			Changes:    audit.Changes(changes),
+		})
+	})
+}
+
+func nullStr(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
+}

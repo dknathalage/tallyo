@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/johnfercher/maroto/v2 v2.4.0
 	github.com/pressly/goose/v3 v3.27.1
+	github.com/stripe/stripe-go/v82 v82.5.1
 	github.com/xuri/excelize/v2 v2.10.1
 	google.golang.org/api v0.279.0
 )

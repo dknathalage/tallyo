@@ -30,7 +30,32 @@ const (
 	// (the token-stable cross-tenant identity) is stored. RequireAuth sets it
 	// from the bearer token; ResolveTenant reads it to authorize the URL tenant.
 	firebaseUIDKey
+	// entitledKey is the context key under which the tenant's billing entitlement
+	// (a bool) is stored. ResolveTenant sets it; RequireSubscription reads it to
+	// gate write methods. Absent means "gate disabled" → treated as entitled.
+	entitledKey
 )
+
+// WithEntitled returns a copy of ctx carrying the tenant's billing entitlement.
+// Set by ResolveTenant; read by RequireSubscription.
+func WithEntitled(ctx context.Context, entitled bool) context.Context {
+	return context.WithValue(ctx, entitledKey, entitled)
+}
+
+// EntitledFrom returns the entitlement flag stored in ctx and whether one was
+// present. ok is false when no flag was attached (e.g. the billing gate is off);
+// callers treat that as entitled.
+func EntitledFrom(ctx context.Context) (entitled bool, ok bool) {
+	v := ctx.Value(entitledKey)
+	if v == nil {
+		return false, false
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, false
+	}
+	return b, true
+}
 
 // WithFirebaseUID returns a copy of ctx carrying the verified Firebase uid. Set
 // by RequireAuth from the bearer token; read by ResolveTenant.

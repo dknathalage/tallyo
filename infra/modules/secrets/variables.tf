@@ -15,3 +15,15 @@ variable "anthropic_api_key" {
   default   = ""
   sensitive = true
 }
+
+variable "stripe_secret_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "stripe_webhook_secret" {
+  type      = string
+  default   = ""
+  sensitive = true
+}

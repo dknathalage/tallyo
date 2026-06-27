@@ -267,7 +267,9 @@
 					<X class="size-3.5" />
 				</button>
 			</div>
-		{:else}
+		{:else if onnew !== undefined || newHref !== undefined}
+			<!-- Only render "+ New" when the page wired a create action; a read-only
+			     table (e.g. the admin tenant list) passes neither and gets no button. -->
 			<div class="ml-auto">
 				<Button size="sm" onclick={() => (onnew ? onnew() : newHref && goto(newHref))}>
 					<Plus class="size-3.5" /> New

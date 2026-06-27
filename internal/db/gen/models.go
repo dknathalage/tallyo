@@ -191,11 +191,17 @@ type TaxRate struct {
 }
 
 type Tenant struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID                   string         `json:"id"`
+	Name                 string         `json:"name"`
+	Status               string         `json:"status"`
+	CreatedAt            string         `json:"created_at"`
+	UpdatedAt            string         `json:"updated_at"`
+	StripeCustomerID     sql.NullString `json:"stripe_customer_id"`
+	StripeSubscriptionID sql.NullString `json:"stripe_subscription_id"`
+	SubscriptionStatus   string         `json:"subscription_status"`
+	TrialEnd             sql.NullString `json:"trial_end"`
+	CurrentPeriodEnd     sql.NullString `json:"current_period_end"`
+	SubscriptionSyncedAt sql.NullString `json:"subscription_synced_at"`
 }
 
 type User struct {
