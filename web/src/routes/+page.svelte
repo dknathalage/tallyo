@@ -2,6 +2,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import PricingCard from '$lib/components/PricingCard.svelte';
+	import { pricesFor } from '$lib/pricing';
 	import Receipt from '@lucide/svelte/icons/receipt';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Users from '@lucide/svelte/icons/users';
@@ -12,12 +13,8 @@
 	// Display-only billing toggle — no backend effect. All CTAs go to /signup.
 	let annual = $state(false);
 
-	// Monthly prices (display only)
-	const monthlyPrices = { starter: '$0', professional: '$29', business: '$79' };
-	// Annual prices shown when toggle is on (approx 2 months free)
-	const annualPrices = { starter: '$0', professional: '$24', business: '$66' };
-
-	let prices = $derived(annual ? annualPrices : monthlyPrices);
+	// Prices are display-only marketing copy; selection lives in $lib/pricing.
+	let prices = $derived(pricesFor(annual));
 
 	const starterFeatures = [
 		'Up to 5 clients',
