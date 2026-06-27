@@ -125,6 +125,26 @@ func (r *UsersRepo) GetByID(ctx context.Context, tenantID, id string) (*User, er
 	return toUser(row), nil
 }
 
+// GetByEmailGlobal returns any user with the given email across all tenants, or
+// (nil, nil) when no match exists. Used by the platform-admin middleware to
+// resolve the acting user from the Firebase-verified email without a tenant
+// scope. When the same email exists in multiple tenants (unlikely but possible),
+// the first row returned by the DB is used — callers that need the is_platform_admin
+// flag should check it on the returned user.
+func (r *UsersRepo) GetByEmailGlobal(ctx context.Context, email string) (*User, error) {
+	if email == "" {
+		return nil, errors.New("get user by email: email required")
+	}
+	row, err := gen.New(r.db).GetUserByEmailGlobal(ctx, email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user by email global: %w", err)
+	}
+	return toUser(row), nil
+}
+
 // GetByFirebaseUID returns a tenant's user by its Firebase uid (used by the
 // auth-guard middleware to resolve membership from the token), or (nil, nil)
 // when none matches.

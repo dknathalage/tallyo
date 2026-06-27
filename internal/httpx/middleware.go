@@ -185,8 +185,9 @@ func RequireSubscription(next http.Handler) http.Handler {
 }
 
 // RequirePlatformAdmin gates a route to platform admins. is_platform_admin is
-// ORTHOGONAL to the tenant role (spec §3.1): it is only checked for the global
-// catalogue-admin area (J7 ingest). Must be chained after RequireAuth.
+// ORTHOGONAL to the tenant role (spec §3.1): it applies to any platform-admin
+// surface (J7 ingest, /api/admin tenant management, etc.). Must be chained after
+// RequireAuth AND ResolveAdminUser (which populates UserFrom).
 func RequirePlatformAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := UserFrom(r.Context())
@@ -206,6 +207,52 @@ func RequirePlatformAdmin(next http.Handler) http.Handler {
 func UserFrom(ctx context.Context) *auth.User {
 	u, _ := ctx.Value(userCtxKey).(*auth.User)
 	return u
+}
+
+// WithUserInContext stores u on ctx under the same key read by UserFrom. It is
+// intended for test helpers and server-internal middleware (e.g. ResolveAdminUser)
+// that need to pre-populate the authenticated user without going through
+// ResolveTenant.
+func WithUserInContext(ctx context.Context, u *auth.User) context.Context {
+	return context.WithValue(ctx, userCtxKey, u)
+}
+
+// GlobalUserLookup resolves a user by email across all tenants, returning
+// (nil, nil) when no match exists. Satisfied by *auth.UsersRepo.
+type GlobalUserLookup interface {
+	GetByEmailGlobal(ctx context.Context, email string) (*auth.User, error)
+}
+
+// ResolveAdminUser resolves the calling user from the Firebase-verified email
+// stored on the context (set by RequireAuth) using a cross-tenant lookup. On
+// success it stores the user on the context so that downstream middleware
+// (RequirePlatformAdmin) and handlers can call UserFrom. Must be chained after
+// RequireAuth. Returns 401 when the email is absent and 403 when no user row
+// matches.
+func ResolveAdminUser(users GlobalUserLookup) func(http.Handler) http.Handler {
+	if users == nil {
+		panic("ResolveAdminUser: nil users lookup")
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			email, ok := reqctx.EmailFrom(r.Context())
+			if !ok || email == "" {
+				WriteError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			u, err := users.GetByEmailGlobal(r.Context(), email)
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if u == nil {
+				WriteError(w, http.StatusForbidden, "forbidden")
+				return
+			}
+			ctx := WithUserInContext(r.Context(), u)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 // TenantLookup resolves a tenant by its public UUID (satisfied by *auth.TenantsRepo).
