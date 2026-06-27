@@ -20,6 +20,30 @@ type Tenant struct {
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
+
+	// SaaS subscription mirror (set by the Stripe webhook; see internal/subscription).
+	// SubscriptionStatus drives the entitlement gate; the rest are display-only.
+	StripeCustomerID     string `json:"stripeCustomerId,omitempty"`
+	StripeSubscriptionID string `json:"stripeSubscriptionId,omitempty"`
+	SubscriptionStatus   string `json:"subscriptionStatus"`
+	TrialEnd             string `json:"trialEnd,omitempty"`
+	CurrentPeriodEnd     string `json:"currentPeriodEnd,omitempty"`
+}
+
+// tenantFromRow maps a generated tenants row to the domain Tenant.
+func tenantFromRow(row gen.Tenant) *Tenant {
+	return &Tenant{
+		ID:                   row.ID,
+		Name:                 row.Name,
+		Status:               row.Status,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		StripeCustomerID:     row.StripeCustomerID.String,
+		StripeSubscriptionID: row.StripeSubscriptionID.String,
+		SubscriptionStatus:   row.SubscriptionStatus,
+		TrialEnd:             row.TrialEnd.String,
+		CurrentPeriodEnd:     row.CurrentPeriodEnd.String,
+	}
 }
 
 // Tenant status values (spec §3.1). A suspended tenant blocks login for all of
@@ -82,13 +106,7 @@ func (r *TenantsRepo) Create(ctx context.Context, name string) (*Tenant, error) 
 	if err != nil {
 		return nil, fmt.Errorf("create tenant: %w", err)
 	}
-	return &Tenant{
-		ID:        created.ID,
-		Name:      created.Name,
-		Status:    created.Status,
-		CreatedAt: created.CreatedAt,
-		UpdatedAt: created.UpdatedAt,
-	}, nil
+	return tenantFromRow(created), nil
 }
 
 // Status returns a tenant's status string. Returns ("", false, nil) when no such

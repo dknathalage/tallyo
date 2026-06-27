@@ -9,6 +9,20 @@ SELECT * FROM tenants WHERE id = $1;
 -- name: GetTenantByUUID :one
 SELECT * FROM tenants WHERE id = $1;
 
+-- name: GetTenantByStripeCustomer :one
+SELECT * FROM tenants WHERE stripe_customer_id = $1;
+
+-- name: UpdateTenantSubscription :exec
+UPDATE tenants SET
+    stripe_customer_id     = $1,
+    stripe_subscription_id = $2,
+    subscription_status    = $3,
+    trial_end              = $4,
+    current_period_end     = $5,
+    subscription_synced_at = $6,
+    updated_at             = $7
+WHERE id = $8;
+
 -- name: ListTenants :many
 SELECT * FROM tenants ORDER BY created_at DESC;
 

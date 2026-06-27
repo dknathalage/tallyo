@@ -84,6 +84,7 @@ type Querier interface {
 	GetSessionLineItemByUUID(ctx context.Context, arg GetSessionLineItemByUUIDParams) (GetSessionLineItemByUUIDRow, error)
 	GetTaxRate(ctx context.Context, arg GetTaxRateParams) (TaxRate, error)
 	GetTenant(ctx context.Context, id string) (Tenant, error)
+	GetTenantByStripeCustomer(ctx context.Context, stripeCustomerID sql.NullString) (Tenant, error)
 	GetTenantByUUID(ctx context.Context, id string) (Tenant, error)
 	GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error)
 	GetUserByEmailGlobal(ctx context.Context, email string) (User, error)
@@ -165,6 +166,7 @@ type Querier interface {
 	UpdateTaxRate(ctx context.Context, arg UpdateTaxRateParams) (TaxRate, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
 	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error
+	UpdateTenantSubscription(ctx context.Context, arg UpdateTenantSubscriptionParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	UpsertBusinessProfile(ctx context.Context, arg UpsertBusinessProfileParams) error
 }
