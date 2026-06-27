@@ -27,7 +27,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -144,20 +143,19 @@ func Run(cfg Config, version string) error {
 		}
 	}()
 
-	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(database, cfg.SecureCookie)
 	users := auth.NewUsers(database)
 	tenants := auth.NewTenants(database)
 	invites := auth.NewInvites(database)
-	bpSvc := businessprofile.NewService(database, hub)
-	payerSvc := payer.NewService(database, hub)
-	taxRateSvc := taxrate.NewService(database, hub)
-	clientSvc := client.NewService(database, hub)
-	catalogueSvc := catalogue.NewService(database, hub)
-	sessionSvc := session.NewService(database, hub, invoice.NewInvoices(database))
-	invoiceSvc := invoice.NewService(database, hub, sessionSvc)
-	estimateSvc := estimate.NewService(database, hub)
-	paymentSvc := invoice.NewPaymentService(database, hub)
+	bpSvc := businessprofile.NewService(database)
+	payerSvc := payer.NewService(database)
+	taxRateSvc := taxrate.NewService(database)
+	clientSvc := client.NewService(database)
+	catalogueSvc := catalogue.NewService(database)
+	sessionSvc := session.NewService(database, invoice.NewInvoices(database))
+	invoiceSvc := invoice.NewService(database, sessionSvc)
+	estimateSvc := estimate.NewService(database)
+	paymentSvc := invoice.NewPaymentService(database)
 
 	// AI "Smarts" (optional): construct the service only when ANTHROPIC_API_KEY is
 	// set. The handler is always wired — when disabled it is a guard-only handler
@@ -188,7 +186,6 @@ func Run(cfg Config, version string) error {
 		Signup:          NewSignupHandler(sm, tenants, users, provisionProfile(database)),
 		Auth:            NewAuthHandler(sm, users, tenants),
 		Invites:         NewInviteHandler(invites, users),
-		Events:          realtime.NewEventsHandler(hub),
 		BusinessProfile: businessprofile.NewHandler(bpSvc),
 		Payers:          payer.NewHandler(payerSvc),
 		TaxRates:        taxrate.NewHandler(taxRateSvc),
@@ -210,8 +207,8 @@ func Run(cfg Config, version string) error {
 	server := NewServer(deps)
 
 	// baseCtx is the parent of every request context. Cancelling it on shutdown
-	// signals long-lived handlers (the SSE /api/events stream) to return so
-	// srv.Shutdown can drain instead of blocking until its timeout.
+	// signals any long-lived handlers to return so srv.Shutdown can drain instead
+	// of blocking until its timeout.
 	baseCtx, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
 	srv := &http.Server{
@@ -243,7 +240,7 @@ func Run(cfg Config, version string) error {
 		logger.Info("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		cancelBase() // release long-lived SSE handlers so Shutdown can drain
+		cancelBase() // release long-lived handlers so Shutdown can drain
 		if err := srv.Shutdown(ctx); err != nil {
 			return fmt.Errorf("shutdown: %w", err)
 		}

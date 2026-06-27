@@ -1,7 +1,7 @@
 // Package payer is the payer vertical slice: domain types, the
 // audited repository over the payers table, the service (with SSE
 // broadcast), and the HTTP handler. It depends only on platform packages
-// (db/gen, audit, reqctx, realtime, httpx), never on other domain slices.
+// (db/gen, audit, reqctx, httpx), never on other domain slices.
 package payer
 
 import (

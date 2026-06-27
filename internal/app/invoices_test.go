@@ -11,7 +11,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
@@ -24,13 +23,12 @@ func newInvoiceServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "invoice.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
-	pH := client.NewHandler(client.NewService(conn, hub))
-	catH := catalogue.NewHandler(catalogue.NewService(conn, hub))
+	invH := invoice.NewHandler(invoice.NewService(conn, session.NewService(conn, invoice.NewInvoices(conn))))
+	pH := client.NewHandler(client.NewService(conn))
+	catH := catalogue.NewHandler(catalogue.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

@@ -13,7 +13,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/dknathalage/tallyo/internal/smarts"
 	"github.com/dknathalage/tallyo/internal/taxrate"
@@ -33,7 +32,6 @@ type Deps struct {
 	Tenants         *auth.TenantsRepo        // backs the auth-guard's suspended-tenant recheck
 	Auth            *AuthHandler             // login/logout/me
 	Invites         *InviteHandler           // invite create (owner-only) + public validate/accept
-	Events          *realtime.EventsHandler  // SSE stream at GET /api/events
 	BusinessProfile *businessprofile.Handler // singleton business profile
 	Payers          *payer.Handler           // payer CRUD + bulk-delete
 	TaxRates        *taxrate.Handler         // tax-rate CRUD
@@ -117,9 +115,6 @@ func NewServer(deps Deps) *Server {
 				// User management is owner/admin only (spec §3.2).
 				pr.With(httpx.RequireRole("owner", "admin")).Post("/invites", deps.Invites.Create)
 				pr.With(httpx.RequireRole("owner", "admin")).Delete("/invites/{inviteUUID}", deps.Invites.Revoke)
-			}
-			if deps.Events != nil {
-				pr.Get("/events", deps.Events.Stream)
 			}
 			if deps.BusinessProfile != nil {
 				deps.BusinessProfile.Routes(pr)

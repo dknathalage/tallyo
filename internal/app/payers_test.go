@@ -9,7 +9,6 @@ import (
 
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
@@ -38,7 +37,7 @@ func newPayerServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	pH := payer.NewHandler(payer.NewService(conn, realtime.NewHub()))
+	pH := payer.NewHandler(payer.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

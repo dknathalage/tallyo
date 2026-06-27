@@ -20,7 +20,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/estimate"
 	"github.com/dknathalage/tallyo/internal/httpx"
 	"github.com/dknathalage/tallyo/internal/invoice"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/session"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
@@ -33,13 +32,12 @@ func newValidationServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "validation_e2e.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	invH := invoice.NewHandler(invoice.NewService(conn, hub, session.NewService(conn, hub, invoice.NewInvoices(conn))))
-	estH := estimate.NewHandler(estimate.NewService(conn, hub))
-	pH := client.NewHandler(client.NewService(conn, hub))
+	invH := invoice.NewHandler(invoice.NewService(conn, session.NewService(conn, invoice.NewInvoices(conn))))
+	estH := estimate.NewHandler(estimate.NewService(conn))
+	pH := client.NewHandler(client.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

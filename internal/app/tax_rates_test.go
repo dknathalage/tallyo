@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/dknathalage/tallyo/internal/auth"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/dknathalage/tallyo/internal/taxrate"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
@@ -24,7 +23,7 @@ func newTaxRateServer(t *testing.T) (*httptest.Server, string) {
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	trH := taxrate.NewHandler(taxrate.NewService(conn, realtime.NewHub()))
+	trH := taxrate.NewHandler(taxrate.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

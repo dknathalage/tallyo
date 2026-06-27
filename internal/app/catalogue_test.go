@@ -9,7 +9,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/httpx"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
@@ -20,11 +19,10 @@ func newCatalogueServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "catalogue.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	catH := catalogue.NewHandler(catalogue.NewService(conn, hub))
+	catH := catalogue.NewHandler(catalogue.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

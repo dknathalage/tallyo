@@ -1,7 +1,7 @@
 // Package businessprofile is the business-profile vertical slice: domain types,
 // the audited repository over the business_profile table, the service (with SSE
 // broadcast), and the HTTP handler. It depends only on platform packages
-// (db/gen, audit, reqctx, realtime, httpx), never on other domain slices.
+// (db/gen, audit, reqctx, httpx), never on other domain slices.
 package businessprofile
 
 import (

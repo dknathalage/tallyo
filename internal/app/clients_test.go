@@ -10,7 +10,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/client"
 	"github.com/dknathalage/tallyo/internal/payer"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 	uuidpkg "github.com/google/uuid"
 )
@@ -22,13 +21,12 @@ func newClientServer(t *testing.T) (*httptest.Server, string) {
 	conn := openMigratedDB(t, "client.db")
 	users, _, _, tenantUUID := seedTenantOwner(t, conn)
 
-	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	clientSvc := client.NewService(conn, hub)
+	clientSvc := client.NewService(conn)
 	pH := client.NewHandler(clientSvc)
-	pmH := payer.NewHandler(payer.NewService(conn, hub))
+	pmH := payer.NewHandler(payer.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {

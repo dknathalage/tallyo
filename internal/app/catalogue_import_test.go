@@ -11,7 +11,6 @@ import (
 	"github.com/dknathalage/tallyo/internal/auth"
 	"github.com/dknathalage/tallyo/internal/catalogue"
 	"github.com/dknathalage/tallyo/internal/httpx"
-	"github.com/dknathalage/tallyo/internal/realtime"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -32,11 +31,10 @@ func newCatalogueImportServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatalf("Create member: %v", err)
 	}
 
-	hub := realtime.NewHub()
 	sm := auth.NewSessionManager(conn, false)
 	tenants := auth.NewTenants(conn)
 	authH := NewAuthHandler(sm, users, tenants)
-	catH := catalogue.NewHandler(catalogue.NewService(conn, hub))
+	catH := catalogue.NewHandler(catalogue.NewService(conn))
 
 	router := chi.NewRouter()
 	router.Route("/api", func(api chi.Router) {
