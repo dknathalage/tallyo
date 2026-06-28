@@ -3,15 +3,21 @@
 	import { billing } from '$lib/stores/billing.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { startCheckout, openPortal, trialDaysLeft } from '$lib/api/billing';
+	import { planFor } from '$lib/pricing';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 
 	const isOwner = $derived(session.isOwner);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
+	// Billing cadence sent to Checkout. Pre-seeded from the landing-page toggle
+	// (sessionStorage 'tallyo_plan'), but the user can change it here — this page
+	// is the source of truth for what checkout receives.
+	let annual = $state(false);
 
 	onMount(() => {
 		void billing.load();
+		annual = sessionStorage.getItem('tallyo_plan') === 'annual';
 	});
 
 	const status = $derived(billing.status);
@@ -37,7 +43,7 @@
 		busy = true;
 		error = null;
 		try {
-			const url = await startCheckout();
+			const url = await startCheckout(annual ? 'annual' : 'monthly');
 			if (url) window.location.assign(url);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not start checkout';
@@ -79,6 +85,25 @@
 		{:else if canManage}
 			<Button onclick={manage} loading={busy} disabled={busy}>Manage billing</Button>
 		{:else}
+			<div class="inline-flex items-center gap-1 rounded-lg border border-gray-200 p-1 text-sm">
+				<button
+					type="button"
+					onclick={() => (annual = false)}
+					class="rounded-md px-3 py-1 font-medium transition-colors
+						{!annual ? 'bg-brand-700 text-onbrand' : 'text-gray-600 hover:text-gray-900'}"
+					aria-pressed={!annual}>Monthly</button
+				>
+				<button
+					type="button"
+					onclick={() => (annual = true)}
+					class="rounded-md px-3 py-1 font-medium transition-colors
+						{annual ? 'bg-brand-700 text-onbrand' : 'text-gray-600 hover:text-gray-900'}"
+					aria-pressed={annual}>Annual</button
+				>
+			</div>
+			<p class="text-sm text-gray-500">
+				{planFor(annual).price}{planFor(annual).period}
+			</p>
 			<Button onclick={subscribe} loading={busy} disabled={busy}>Subscribe</Button>
 		{/if}
 	</Card>

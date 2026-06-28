@@ -13,9 +13,11 @@ export async function getBillingStatus(): Promise<BillingStatus | null> {
 	return apiGet<BillingStatus>(tenantPath('billing'));
 }
 
-/** Start a Stripe Checkout session and return its redirect URL (owner-only). */
-export async function startCheckout(): Promise<string | null> {
-	const res = await apiPost<{ url: string }>(tenantPath('billing/checkout'));
+/** Start a Stripe Checkout session and return its redirect URL (owner-only).
+ * plan selects the recurring price; unknown/omitted → monthly (server default). */
+export async function startCheckout(plan?: 'monthly' | 'annual'): Promise<string | null> {
+	const path = plan === 'annual' ? tenantPath('billing/checkout') + '?plan=annual' : tenantPath('billing/checkout');
+	const res = await apiPost<{ url: string }>(path);
 	return res?.url ?? null;
 }
 

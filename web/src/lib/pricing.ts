@@ -1,27 +1,16 @@
-// Display-only marketing pricing. The backend has exactly ONE Stripe price;
-// these tiers are copy. Every tier CTA goes to /signup (no plan param). The
-// monthly/annual toggle changes shown numbers only — it does not affect checkout.
+// Display-only marketing pricing. The backend has exactly ONE Stripe price
+// (monthly, AUD). The annual figure is the per-month equivalent of the $190/yr
+// plan. The monthly/annual toggle changes shown numbers only — it does not
+// affect checkout. The CTA goes to /signup (no plan param).
 
-export type Tier = 'starter' | 'professional' | 'business';
+// AUD. Monthly is the real charge; annual shown as the per-month equivalent.
+export const monthlyPrice = '$19';
+export const annualPerMonth = '$15.83';
+export const annualTotal = '$190';
 
-export type TierPrices = Record<Tier, string>;
-
-// Monthly prices (shown when the toggle is on "Monthly").
-export const monthlyPrices: TierPrices = {
-	starter: '$0',
-	professional: '$29',
-	business: '$79'
-};
-
-// Annual prices (shown when the toggle is on "Annual" — approx 2 months free,
-// displayed per month).
-export const annualPrices: TierPrices = {
-	starter: '$0',
-	professional: '$24',
-	business: '$66'
-};
-
-/** Pure selection: the price set to display for the chosen billing cadence. */
-export function pricesFor(annual: boolean): TierPrices {
-	return annual ? annualPrices : monthlyPrices;
+/** Pure selection: price + period string for the chosen billing cadence. */
+export function planFor(annual: boolean): { price: string; period: string } {
+	return annual
+		? { price: annualPerMonth, period: '/mo, billed annually' }
+		: { price: monthlyPrice, period: '/month' };
 }

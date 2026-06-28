@@ -14,7 +14,8 @@ import (
 // kept here too so the handler has one place to read config-derived Stripe state.
 type Client struct {
 	api           *stripe.Client
-	priceID       string
+	priceID       string // monthly
+	priceIDAnnual string // annual (falls back to monthly when unset)
 	trialDays     int
 	webhookSecret string
 }
@@ -31,9 +32,19 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{
 		api:           stripe.NewClient(cfg.SecretKey),
 		priceID:       cfg.PriceID,
+		priceIDAnnual: cfg.PriceIDAnnual,
 		trialDays:     cfg.TrialDays,
 		webhookSecret: cfg.WebhookSecret,
 	}, nil
+}
+
+// priceFor selects the Stripe price for the requested plan. Unknown/empty → monthly.
+// Annual falls back to the monthly price when STRIPE_PRICE_ID_ANNUAL is unset.
+func (c *Client) priceFor(plan string) string {
+	if plan == "annual" && c.priceIDAnnual != "" {
+		return c.priceIDAnnual
+	}
+	return c.priceID
 }
 
 // WebhookSecret returns the configured Stripe webhook signing secret.
@@ -45,6 +56,7 @@ type CheckoutInput struct {
 	Email      string
 	SuccessURL string
 	CancelURL  string
+	Plan       string // "monthly" | "annual"; empty/unknown → monthly
 }
 
 // CreateCheckoutSession starts a subscription Checkout with the configured trial.
@@ -60,7 +72,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, in CheckoutInput) (u
 		SuccessURL:        stripe.String(in.SuccessURL),
 		CancelURL:         stripe.String(in.CancelURL),
 		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{{
-			Price:    stripe.String(c.priceID),
+			Price:    stripe.String(c.priceFor(in.Plan)),
 			Quantity: stripe.Int64(1),
 		}},
 		SubscriptionData: &stripe.CheckoutSessionCreateSubscriptionDataParams{

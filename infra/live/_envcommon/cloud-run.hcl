@@ -77,5 +77,5 @@ inputs = {
   # and set stripe_price_id there.
   billing_enabled = false
   stripe_price_id = ""
-  trial_days      = 90
+  trial_days      = 30
 }
